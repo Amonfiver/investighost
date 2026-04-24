@@ -1,0 +1,3 @@
+# Directorio para migraciones de Drizzle
+# Este archivo mantiene el directorio en git
+# Los archivos SQL generados están en .gitignore

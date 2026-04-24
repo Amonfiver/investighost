@@ -1,0 +1,75 @@
+# ============================================
+# Investighost - Archivos ignorados por Git
+# ============================================
+
+# Dependencias
+node_modules
+.pnp
+.pnp.js
+
+# Builds y salidas
+dist
+dist-electron
+dist-ssr
+release
+*.local
+
+# Bases de datos locales y temporales
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+database/*.db
+database/*.sqlite
+!database/.gitkeep
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Archivos de entorno (NUNCA subir .env)
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# Configuración de IDE y editores
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Testing
+coverage
+.nyc_output
+
+# Cache
+.cache
+.parcel-cache
+.eslintcache
+.stylelintcache
+
+# TypeScript
+*.tsbuildinfo
+
+# Drizzle ORM
+drizzle/migrations/*.sql
+!drizzle/migrations/.gitkeep
+
+# Misc
+*.bak
+*.tmp
+*.temp

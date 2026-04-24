@@ -1,0 +1,17 @@
+/**
+ * Configuración TypeScript para Vite/Electron
+ * 
+ * Propósito: Configuración específica para el build de Vite
+ * Alcance: Scripts de build y configuración
+ */
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true
+  },
+  "include": ["vite.config.ts"]
+}

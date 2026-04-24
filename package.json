@@ -1,0 +1,66 @@
+{
+  "name": "investighost",
+  "version": "0.1.0",
+  "description": "Herramienta personal de investigación para alimentar Trawel",
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:vite dev:electron",
+    "dev:vite": "vite",
+    "dev:electron": "electron . --dev",
+    "build": "tsc && vite build && electron-builder",
+    "build:vite": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "db:generate": "drizzle-kit generate:sqlite",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "drizzle-orm": "^0.35.3",
+    "electron-is-dev": "^3.0.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.60.2",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^20.11.30",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "@vitejs/plugin-react": "^4.3.3",
+    "drizzle-kit": "^0.26.2",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "eslint": "^8.57.1",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "eslint-plugin-react-refresh": "^0.4.14",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vite-plugin-electron": "^0.29.0"
+  },
+  "build": {
+    "appId": "com.investighost.app",
+    "productName": "Investighost",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron",
+      "dist"
+    ],
+    "mac": {
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}

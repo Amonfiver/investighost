@@ -1,20 +1,25 @@
 /**
- * Investighost - Estilos App
+ * Investighost - Estilos App (MVP Funcional)
  * 
- * Propósito: Estilos base de la UI
- * Alcance: Pantalla de estado inicial
- * Estado: Minimalista, preparado para escalar
+ * Propósito: Estilos para la UI completa del flujo
+ * Alcance: Layout, componentes, estados y responsive básico
+ * Estado: Funcional para demo - se puede mejorar diseño después
  */
 
 :root {
   --color-bg: #0d1117;
   --color-bg-secondary: #161b22;
+  --color-bg-tertiary: #21262d;
   --color-border: #30363d;
   --color-text: #c9d1d9;
   --color-text-muted: #8b949e;
   --color-accent: #58a6ff;
+  --color-accent-hover: #79c0ff;
   --color-success: #238636;
   --color-warning: #f0883e;
+  --color-error: #da3633;
+  --radius: 8px;
+  --spacing: 1rem;
 }
 
 * {
@@ -35,154 +40,470 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
 }
 
-/* Header */
+/* ============================================
+   Header
+   ============================================ */
+
 .app-header {
-  text-align: center;
-  margin-bottom: 3rem;
-  padding-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  background: var(--color-bg-secondary);
   border-bottom: 1px solid var(--color-border);
 }
 
 .app-header h1 {
-  font-size: 2.5rem;
-  font-weight: 300;
-  letter-spacing: -0.02em;
-  margin-bottom: 0.5rem;
-  color: var(--color-text);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-accent);
 }
 
 .subtitle {
   color: var(--color-text-muted);
-  font-size: 1.1rem;
-  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
 }
 
-.version {
-  font-size: 0.85rem;
-  color: var(--color-text-muted);
-  font-family: monospace;
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
-/* Main content */
+/* ============================================
+   Botones
+   ============================================ */
+
+.btn-primary,
+.btn-secondary,
+.btn-back {
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--radius);
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: #000;
+  font-weight: 500;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary,
+.btn-back {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.btn-secondary:hover,
+.btn-back:hover {
+  background: var(--color-border);
+}
+
+.btn-back {
+  margin-bottom: 1rem;
+}
+
+/* ============================================
+   Main Content
+   ============================================ */
+
 .app-main {
   flex: 1;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 3rem;
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
 }
 
-@media (max-width: 900px) {
-  .app-main {
-    grid-template-columns: 1fr;
-  }
-}
+/* ============================================
+   Footer
+   ============================================ */
 
-/* Sections */
-.status-section,
-.modules-section {
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 1.5rem;
-}
-
-.status-section h2,
-.modules-section h2 {
-  font-size: 1.1rem;
-  font-weight: 500;
-  margin-bottom: 1.5rem;
-  color: var(--color-text);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 0.9rem;
-}
-
-/* Status grid */
-.status-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.status-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.status-item.active {
-  background: rgba(35, 134, 54, 0.1);
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-warning);
-  flex-shrink: 0;
-}
-
-.status-item.active .status-dot {
-  background: var(--color-success);
-}
-
-.status-label {
-  flex: 1;
-  font-size: 0.95rem;
-}
-
-.status-note {
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
-  font-style: italic;
-}
-
-/* Modules list */
-.modules-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.module-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.module-item code {
-  background: rgba(88, 166, 255, 0.15);
-  color: var(--color-accent);
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.85rem;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  min-width: 100px;
-}
-
-.module-item span {
-  color: var(--color-text-muted);
-  font-size: 0.9rem;
-}
-
-/* Footer */
 .app-footer {
-  margin-top: 3rem;
-  padding-top: 2rem;
+  padding: 1rem 2rem;
+  background: var(--color-bg-secondary);
   border-top: 1px solid var(--color-border);
   text-align: center;
   font-size: 0.85rem;
   color: var(--color-text-muted);
+}
+
+.badge-mock {
+  background: var(--color-warning);
+  color: #000;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* ============================================
+   Estados de carga/vacío
+   ============================================ */
+
+.loading,
+.empty-state,
+.waiting-state {
+  text-align: center;
+  padding: 3rem;
+  color: var(--color-text-muted);
+}
+
+.empty-state p,
+.waiting-state p {
+  margin-bottom: 0.5rem;
+}
+
+.error-message {
+  color: var(--color-error);
+  margin-top: 1rem;
+}
+
+/* ============================================
+   Lista de investigaciones
+   ============================================ */
+
+.research-list h2 {
+  margin-bottom: 1.5rem;
+  font-size: 1.25rem;
+}
+
+.request-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.request-card {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.request-card:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-2px);
+}
+
+.request-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.request-header h3 {
+  font-size: 1.1rem;
+  color: var(--color-text);
+}
+
+.request-body {
+  margin-bottom: 1rem;
+}
+
+.request-body p {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.request-footer {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+/* ============================================
+   Badges de estado
+   ============================================ */
+
+.status-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.status-pending { background: #6e7681; color: #fff; }
+.status-researching { background: var(--color-accent); color: #000; }
+.status-structured { background: #8957e5; color: #fff; }
+.status-drafted { background: var(--color-success); color: #fff; }
+.status-under_review { background: var(--color-warning); color: #000; }
+.status-approved { background: #3fb950; color: #000; }
+.status-published { background: #2ea043; color: #fff; }
+.status-error { background: var(--color-error); color: #fff; }
+
+/* ============================================
+   Formulario nueva investigación
+   ============================================ */
+
+.new-research-form {
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.new-research-form h2 {
+  margin-bottom: 1.5rem;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-size: 0.95rem;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+/* ============================================
+   Detalle de investigación
+   ============================================ */
+
+.research-detail {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.detail-header h2 {
+  font-size: 1.5rem;
+}
+
+/* Tabs */
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.5rem;
+}
+
+.tabs button {
+  padding: 0.6rem 1rem;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: all 0.2s;
+}
+
+.tabs button:hover {
+  color: var(--color-text);
+  background: var(--color-bg-secondary);
+}
+
+.tabs button.active {
+  color: var(--color-accent);
+  background: rgba(88, 166, 255, 0.1);
+}
+
+.tab-content {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+}
+
+/* ============================================
+   Contenido de tabs
+   ============================================ */
+
+.overview-tab section,
+.draft-content section {
+  margin-bottom: 1.5rem;
+}
+
+.overview-tab h3,
+.draft-content h4 {
+  font-size: 1rem;
+  color: var(--color-accent);
+  margin-bottom: 0.75rem;
+}
+
+.overview-tab p {
+  margin-bottom: 0.5rem;
+}
+
+.confidence-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.confidence-fill {
+  height: 8px;
+  background: var(--color-success);
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.tips-list,
+.sources-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.tips-list li {
+  padding: 0.5rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+}
+
+.tips-list li::before {
+  content: '•';
+  color: var(--color-accent);
+  position: absolute;
+  left: 0.5rem;
+}
+
+.sources-list li {
+  padding: 0.4rem 0;
+}
+
+.sources-list a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.sources-list a:hover {
+  text-decoration: underline;
+}
+
+/* ============================================
+   Lugares y Actividades
+   ============================================ */
+
+.place-card,
+.activity-card {
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.place-header,
+.activity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.place-header h4,
+.activity-header h4 {
+  font-size: 1.1rem;
+}
+
+.category-badge {
+  background: rgba(88, 166, 255, 0.2);
+  color: var(--color-accent);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.practical-info {
+  background: rgba(240, 136, 62, 0.1);
+  border-left: 3px solid var(--color-warning);
+  padding: 0.75rem;
+  margin-top: 0.75rem;
+  border-radius: 0 4px 4px 0;
+}
+
+/* ============================================
+   Borrador editorial
+   ============================================ */
+
+.draft-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.draft-meta {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.draft-meta .badge {
+  background: var(--color-bg-tertiary);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.introduction {
+  background: rgba(88, 166, 255, 0.05);
+  padding: 1rem;
+  border-radius: var(--radius);
+  border-left: 3px solid var(--color-accent);
+}
+
+.section-content p {
+  margin-bottom: 0.75rem;
+}
+
+.draft-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
 }

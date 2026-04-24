@@ -19,7 +19,10 @@ const electronAPI = {
   
   // Placeholder para futura API de DB
   db: {
-    status: () => Promise.resolve({ connected: false, reason: 'Not implemented in skeleton phase' }),
+    status: () => Promise.resolve({ 
+      connected: false, 
+      reason: 'Using memory store - SQLite pending build tools setup' 
+    }),
   }
 }
 

@@ -245,8 +245,82 @@ Definir y alinear el contrato de datos del MVP entre tipos TypeScript, validacio
 ✅ Todos los módulos actualizados a los nuevos tipos
 ✅ TypeScript compila sin errores
 
-### Siguiente paso
-Implementar el flujo completo: UI para crear ResearchRequest → mock de investigación → generación de ResearchResult → UI de revisión.
+
+---
+
+## Sesión 6 — Flujo funcional simulado de punta a punta
+
+### Objetivo
+Implementar un flujo local simulado completo para validar que Investighost puede crear investigaciones, persistirlas, generar resultados mock y mostrar el flujo en la interfaz.
+
+### Archivos tocados
+
+**Persistencia temporal:**
+- `src/modules/persistence/memory-store.ts` — Nuevo: Store en memoria con CRUD completo
+
+**Módulo Research (implementado):**
+- `src/modules/research/mock-data.ts` — Nuevo: Generadores de datos mock coherentes
+- `src/modules/research/index.ts` — Reescrito: Implementación funcional con simulación
+
+**UI completa:**
+- `src/renderer/App.tsx` — Reescrito: UI funcional con 3 vistas (listado, formulario, detalle)
+- `src/renderer/App.css` — Reescrito: Estilos para todo el flujo
+
+**Otros:**
+- `src/main/preload.ts` — Actualizado: Mensaje indicando persistencia temporal
+
+### Persistencia resuelta
+
+**Solución temporal:** Store en memoria (`memory-store.ts`)
+- Mapas en memoria para requests, results y drafts
+- API async/await compatible con futura implementación SQLite
+- Métodos: saveRequest, getRequest, getAllRequests, updateRequestStatus, saveResult, saveDraft, etc.
+- Funciones de utilidad: clearStore, getStoreStats
+
+**Por qué esta solución:**
+- SQLite (better-sqlite3) requiere Visual Studio Build Tools que no están disponibles
+- La arquitectura permite sustituir fácilmente por Drizzle cuando esté operativo
+- Todo está encapsulado en el módulo persistence
+
+### Flujo implementado
+
+1. **Crear investigación:** Formulario con país, región, enfoque, idioma, notas
+2. **Persistencia:** Se guarda en memoria con estado 'pending'
+3. **Simulación automática:** Al crear, se inicia el proceso simulado
+4. **Transición de estados:** pending → researching → structured → drafted
+5. **Generación mock:** Resultados coherentes basados en el destino introducido
+6. **Visualización:** Tabs para resumen, lugares, actividades, borrador editorial
+
+### Partes simuladas (claramente identificadas)
+
+| Componente | Estado | Nota |
+|------------|--------|------|
+| Investigación real | SIMULADO | `mock-data.ts` genera datos coherentes |
+| Scraping web | NO IMPLEMENTADO | Pendiente de integración |
+| IA generativa | SIMULADO | El borrador se genera a partir de datos estructurados |
+| Publicación Trawel | NO IMPLEMENTADO | Pendiente rebuild de Trawel |
+| Persistencia | TEMPORAL | Memoria (se pierde al cerrar app) |
+
+### Estado final
+✅ App arranca con `npm run dev`
+✅ Se pueden crear investigaciones con el formulario
+✅ Aparecen en el listado con estado en tiempo real
+✅ Al hacer clic, se ven los resultados estructurados mock
+✅ El borrador editorial se genera y se visualiza
+✅ El flujo de estados tiene sentido (pending → researching → structured → drafted)
+✅ TypeScript compila sin errores
+
+### Comando para arrancar
+```bash
+npm run dev
+```
+
+### Siguiente paso recomendado
+Opciones:
+1. **Persistencia real:** Instalar Visual Studio Build Tools y activar SQLite + Drizzle
+2. **Investigación real:** Integrar búsqueda web y/o APIs de IA
+3. **Mejorar UI:** Añadir edición de borradores, aprobación/rechazo, flujo completo de revisión
+
 
 
 
@@ -273,3 +347,139 @@ Corregir de forma mínima el error persistente de arranque en desarrollo donde E
 
 ### Estado final
 Verificado con `npm run build:vite` y `npm run dev`. El build genera `dist-electron/main.js` y `dist-electron/preload.js`, y el proceso dev permanece arrancado sin el error de archivo no encontrado.
+
+
+---
+
+## Sesión 7 — Arquitectura Multi-Proveedor y Cola Editorial
+
+### Objetivo
+Preparar la arquitectura base de Investighost para:
+1. Soportar múltiples proveedores de IA (OpenAI, Kimi, Local)
+2. Separar claramente producción interna de publicación externa
+3. Dejar lista la base para auditoría de coste/calidad por proveedor
+4. Introducir la noción de cola editorial/publicación regulada
+
+### Archivos tocados
+
+**Tipos compartidos:**
+- `src/shared/types.ts` — Reescrito con tipos para multi-proveedor, cola editorial y auditoría
+
+**Servicio AI (multi-proveedor):**
+- `src/services/ai/providers.ts` — NUEVO: Contratos e implementaciones base para proveedores
+- `src/services/ai/index.ts` — Reescrito: Orquestador multi-proveedor con estrategias
+
+**Módulo Publishing (cola editorial):**
+- `src/modules/publishing/queue.ts` — NUEVO: Cola editorial con ritmo de publicación
+- `src/modules/publishing/index.ts` — Reescrito: Exporta sistema de cola y flujo de aprobación
+
+**Base de datos:**
+- `src/services/db/schema.ts` — Añadidas tablas: publishing_queue, publishing_rate_configs, provider_usage_logs, content_pieces
+
+**Documentación:**
+- `docs/BITACORA.md` — Esta entrada
+- `docs/ARCHITECTURE.md` — Actualizado en sesión paralela
+
+### Arquitectura Multi-Proveedor
+
+**Tipos de proveedores:**
+- `AIProvider`: 'openai' | 'kimi' | 'local'
+- `SearchProvider`: 'openai' | 'kimi' | 'web' | 'local'
+- `ProviderStrategy`: 'auto' | 'openai' | 'kimi' | 'fallback' | 'compare'
+
+**Estrategias implementadas:**
+- `auto`: Selecciona automáticamente según preferencia (OpenAI > Kimi > Local)
+- `openai`/`kimi`: Fuerza uso de proveedor específico
+- `fallback`: Intenta en cadena hasta que uno funcione
+- `compare`: Ejecuta múltiples proveedores y permite comparar resultados
+
+**Clases base:**
+- `BaseAIProvider`: Clase abstracta con métodos comunes
+- `OpenAIProvider`: Implementación placeholder para OpenAI
+- `KimiProvider`: Implementación placeholder para Kimi (Moonshot AI)
+- `LocalProvider`: Implementación placeholder para modelos locales (Ollama, etc.)
+
+**Factory:**
+- `ProviderFactory`: Gestiona instancias de proveedores
+- `initializeProviderFactory()`: Inicialización con configuración
+- `getProviderFactory()`: Acceso global a la factory
+
+### Separación Producción vs Publicación
+
+**Estados separados:**
+- `ProductionStatus`: pending → researching → structured → drafted → under_review → approved → rejected → error
+- `PublishingStatus`: not_published → queued → scheduled → publishing → published → unpublished
+
+**Entidad `ContentPiece`:**
+- Agrupa: request + result + draft
+- Tiene dos estados independientes: `productionStatus` y `publishingStatus`
+- Permite acumular trabajo aprobado sin presión de publicación inmediata
+- Guarda auditoría de proveedores usados
+
+**Flujo:**
+1. Producción interna: investigación → estructuración → borrador → revisión → aprobación
+2. Cola editorial: aprobado → encolado → programado/ordenado → publicación regulada
+3. Publicación externa: cuando toca según ritmo configurado
+
+### Cola Editorial
+
+**Funcionalidades:**
+- `enqueueContent()`: Añadir pieza aprobada a la cola
+- `getNextPublishableItem()`: Obtener siguiente elemento listo
+- `scheduleItem()`: Programar para fecha específica
+- `reorderItem()`: Cambiar prioridad
+- Configuración de ritmo: máximo diario, ventana horaria, días permitidos
+
+**Configuración por defecto:**
+- Ritmo estándar: 3 publicaciones/día
+- Horario: 9:00 - 20:00
+- Todos los días permitidos
+- Intervalo mínimo: 60 minutos
+
+**Almacenamiento:**
+- Store temporal en memoria (se migrará a SQLite)
+- Tablas preparadas en schema: `publishing_queue`, `publishing_rate_configs`
+
+### Auditoría de Coste/Calidad
+
+**Registro por operación:**
+- `ProviderUsageLog`: Guarda proveedor usado, estrategia, modelo, coste estimado, tokens
+- Campos de evaluación: `qualityRating` (1-5), `qualityNotes`, `wasUseful`
+- Timestamp de cada uso
+
+**Análisis disponible:**
+- `getProviderStats()`: Estadísticas agregadas por proveedor
+- `getUsageLogs()`: Logs filtrables por tipo, proveedor
+- `rateProviderResult()`: Añadir evaluación de calidad retrospectiva
+
+**Estimación de costes:**
+- Cada proveedor implementa `estimateCost()` basado en pricing configurado
+- Logs acumulan coste total estimado
+- Permite comparar coste/calidad entre proveedores
+
+### Decisiones arquitectónicas
+
+1. **No romper el trabajo existente**: Tipos nuevos coexisten con los antiguos, `ResearchStatus` es alias de compatibilidad
+2. **Persistencia temporal**: Cola y auditoría usan memoria por ahora, esquema SQL preparado para migración
+3. **Implementaciones placeholder**: Los proveedores lanzan errores explicativos hasta que se configuren API keys
+4. **Separación clara**: Producción y publicación son flujos independientes que se comunican por la cola
+5. **Extensible**: Fácil añadir más proveedores (Anthropic, Google, etc.) implementando `BaseAIProvider`
+
+### Estado final
+
+✅ Tipos actualizados con soporte multi-proveedor y cola editorial
+✅ Arquitectura de proveedores preparada (OpenAI, Kimi, Local)
+✅ Estrategias implementadas: auto, fallback, compare
+✅ Cola editorial funcional con gestión de ritmo
+✅ Tablas de base de datos preparadas para persistencia real
+✅ Sistema de auditoría listo para registrar coste/calidad
+✅ Separación clara entre producción interna y publicación externa
+
+### Próximos pasos sugeridos
+
+1. Configurar API keys y activar integraciones reales con OpenAI/Kimi
+2. Implementar migraciones de Drizzle para las nuevas tablas
+3. Construir UI para gestionar cola editorial y configurar ritmo
+4. Añadir más proveedores (Anthropic Claude, Google Gemini)
+5. Implementar comparación visual de resultados en modo 'compare'
+6. Crear dashboard de estadísticas de coste/calidad

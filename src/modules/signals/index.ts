@@ -1,28 +1,28 @@
 /**
  * Investighost - Módulo Signals
  * 
- * Propósito: Recopilación y análisis de señales útiles
- * Alcance: Detección de menciones, reviews, contenido relevante
+ * Propósito: Recopilación y análisis de señales útiles (fuentes, menciones)
+ * Alcance: Detección de información relevante de fuentes externas
  * Estado: Placeholder - se implementará en bloque posterior
  */
 
-import type { Signal, Source } from '@shared/types'
+import type { Source } from '@shared/types'
 
 export interface SignalsModule {
-  collectSignals(query: string): Promise<Signal[]>
-  verifySignal(signalId: string): Promise<boolean>
-  scoreSource(source: Source): number
+  collectFromQuery(query: string): Promise<Source[]>
+  verifySource(sourceId: string): Promise<boolean>
+  scoreReliability(source: Source): number
 }
 
 // Placeholder
 export const signalsModule: SignalsModule = {
-  collectSignals: async () => {
+  collectFromQuery: async () => {
     throw new Error('Signals module not implemented in skeleton phase')
   },
-  verifySignal: async () => {
+  verifySource: async () => {
     throw new Error('Signals module not implemented in skeleton phase')
   },
-  scoreSource: () => 0,
+  scoreReliability: () => 0.5,
 }
 
 console.log('[Signals Module] Placeholder loaded - implementation pending')

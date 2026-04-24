@@ -177,8 +177,77 @@ Corregir el arranque en modo desarrollo que fallaba porque Electron intentaba ca
 ✅ Preload script se compila y carga en el renderer
 ✅ Hot reload funcional
 
+
+---
+
+## Sesión 5 — Consolidación del contrato de datos (MVP)
+
+### Objetivo
+Definir y alinear el contrato de datos del MVP entre tipos TypeScript, validaciones Zod y esquema de base de datos, simplificando el diseño anterior.
+
+### Archivos tocados
+- `src/shared/types.ts` — Tipos completamente reescritos para el MVP
+- `src/utils/validation.ts` — Esquemas Zod alineados con los tipos
+- `src/services/db/schema.ts` — Esquemas de Drizzle simplificados y coherentes
+- `src/modules/research/index.ts` — Actualizado a nuevos tipos
+- `src/modules/signals/index.ts` — Actualizado a nuevos tipos
+- `src/modules/editorial/index.ts` — Actualizado a nuevos tipos
+- `src/modules/publishing/index.ts` — Actualizado a nuevos tipos
+- `src/modules/review/index.ts` — Actualizado a nuevos tipos
+
+### Contrato de datos definido
+
+**Estados del flujo (ResearchStatus):**
+`pending` → `researching` → `structured` → `drafted` → `under_review` → `approved` → `published`
+(+ `error` para casos de fallo)
+
+**Entrada de investigación (ResearchInput):**
+- `country`: string (requerido)
+- `region`: string opcional (ciudad, zona, barrio)
+- `focus`: string opcional (tipo de búsqueda: gastronomía, cultura, etc.)
+- `outputLanguage`: string (idioma de salida, default 'es')
+- `userNotes`: string opcional
+
+**Resultado estructurado (ResearchResult):**
+- Datos del destino (country, region, description)
+- Resumen general
+- Lista de lugares recomendados (con categorías específicas)
+- Lista de actividades/planes
+- Consejos/tips
+- Fuentes consultadas
+- Nivel de confianza 0-1
+
+**Borrador editorial (EditorialDraft):**
+- Título e introducción
+- Secciones estructuradas (heading + content)
+- Tono definido (friendly, informative, enthusiastic, relaxed)
+- Estado del borrador (generating, ready, in_review, approved, rejected)
+- Metadatos de revisión y publicación
+
+### Decisiones importantes
+
+1. **Simplificación drástica:** Eliminada la entidad `Signal` separada; las fuentes ahora son `Source` directamente consultadas.
+2. **Places y Activities como entidades propias:** Mejor modelado que JSON anidado, permite queries específicas.
+3. **Tips como tabla separada:** Facilita ordenar y gestionar consejos individuales.
+4. **Estados claros y secuenciales:** El flujo ahora tiene una progresión lógica de estados.
+5. **Nombres consistentes:** `ResearchRequest` (la solicitud), `ResearchResult` (los datos estructurados), `EditorialDraft` (el borrador).
+
+### Simplificaciones realizadas
+
+- Eliminada tabla `researches` (ahora `research_requests` con campos expandidos)
+- Eliminada tabla `structured_data` (ahora `research_results` más enfocada)
+- Eliminada entidad `Signal` intermedia (simplificado a `Source`)
+- Campos de destino normalizados en `research_results` (destinationCountry, destinationRegion, etc.)
+- Tabla `tips` nueva para consejos ordenados
+
+### Estado final
+✅ Tipos, Zod y DB schema alineados
+✅ Todos los módulos actualizados a los nuevos tipos
+✅ TypeScript compila sin errores
+
 ### Siguiente paso
-Activar SQLite instalando build tools nativas, o comenzar implementación de módulo Research con persistencia en memoria temporal.
+Implementar el flujo completo: UI para crear ResearchRequest → mock de investigación → generación de ResearchResult → UI de revisión.
+
 
 
 ---

@@ -2,14 +2,14 @@
  * Investighost - Módulo Editorial
  * 
  * Propósito: Generación de borradores naturales y agradables
- * Alcance: Transformar datos estructurados en texto editorial
+ * Alcance: Transformar ResearchResult en EditorialDraft
  * Estado: Placeholder - se implementará en bloque posterior
  */
 
-import type { StructuredData, EditorialDraft } from '@shared/types'
+import type { ResearchResult, EditorialDraft, Tone } from '@shared/types'
 
 export interface EditorialModule {
-  generateDraft(data: StructuredData, tone?: string): Promise<EditorialDraft>
+  generateDraft(result: ResearchResult, tone?: Tone): Promise<EditorialDraft>
   improveDraft(draftId: string, feedback: string): Promise<EditorialDraft>
   estimateReadingTime(content: string): number
 }

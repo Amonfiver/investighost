@@ -6,24 +6,28 @@
  * Estado: Placeholder - se implementará en bloque posterior
  */
 
-import type { ResearchInput, StructuredData } from '@shared/types'
+import type { ResearchRequest, ResearchResult } from '@shared/types'
 
 export interface ResearchModule {
-  startResearch(input: ResearchInput): Promise<string> // Returns researchId
-  getStatus(researchId: string): Promise<'pending' | 'in_progress' | 'completed'>
-  getResults(researchId: string): Promise<StructuredData[]>
-  cancelResearch(researchId: string): Promise<void>
+  createRequest(input: unknown): Promise<ResearchRequest>
+  startResearch(requestId: string): Promise<void>
+  getStatus(requestId: string): Promise<ResearchRequest['status']>
+  getResult(requestId: string): Promise<ResearchResult | null>
+  cancelResearch(requestId: string): Promise<void>
 }
 
 // Placeholder para futura implementación
 export const researchModule: ResearchModule = {
+  createRequest: async () => {
+    throw new Error('Research module not implemented in skeleton phase')
+  },
   startResearch: async () => {
     throw new Error('Research module not implemented in skeleton phase')
   },
   getStatus: async () => {
     throw new Error('Research module not implemented in skeleton phase')
   },
-  getResults: async () => {
+  getResult: async () => {
     throw new Error('Research module not implemented in skeleton phase')
   },
   cancelResearch: async () => {

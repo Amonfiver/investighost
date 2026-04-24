@@ -6,12 +6,12 @@
  * Estado: Placeholder - se implementará cuando se rehaga Trawel
  */
 
-import type { EditorialDraft, StructuredData } from '@shared/types'
+import type { EditorialDraft, ResearchResult } from '@shared/types'
 
 export interface PublishingModule {
   prepareForPublishing(draftId: string): Promise<{
     draft: EditorialDraft
-    structuredData: StructuredData
+    result: ResearchResult
     publishable: boolean
   }>
   publish(draftId: string): Promise<{ success: boolean; trawelId?: string }>

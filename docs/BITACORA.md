@@ -179,3 +179,28 @@ Corregir el arranque en modo desarrollo que fallaba porque Electron intentaba ca
 
 ### Siguiente paso
 Activar SQLite instalando build tools nativas, o comenzar implementación de módulo Research con persistencia en memoria temporal.
+
+
+---
+
+## Sesión 4 — Alineación real del arranque dev de Electron
+
+### Objetivo
+Corregir de forma mínima el error persistente de arranque en desarrollo donde Electron buscaba `dist-electron/main.js` pero Vite generaba `dist-electron/index.js`.
+
+### Archivos tocados
+- `vite.config.ts`
+- `src/main/index.ts`
+- `docs/BITACORA.md`
+
+### Cambios realizados
+- Se forzó la salida del bundle del proceso main a `dist-electron/main.js` mediante `build.lib.fileName`.
+- Se mantuvo el preload alineado con `dist-electron/preload.js`.
+- Se ajustó el main process para calcular `__dirname` de forma compatible con ESM usando `import.meta.url`.
+- Se sustituyó `electron-is-dev` en el main process por `!app.isPackaged` para evitar un fallo ESM/CJS durante el arranque.
+
+### Explicación breve
+`package.json` declara `"main": "dist-electron/main.js"`, pero la configuración anterior dejaba que Vite nombrara el bundle principal según el entry `index.ts`, generando `index.js`. La corrección alinea el archivo generado con el archivo que Electron espera cargar.
+
+### Estado final
+Verificado con `npm run build:vite` y `npm run dev`. El build genera `dist-electron/main.js` y `dist-electron/preload.js`, y el proceso dev permanece arrancado sin el error de archivo no encontrado.

@@ -31,6 +31,11 @@ export default defineConfig({
             sourcemap: true,
             minify: false,
             outDir: 'dist-electron',
+            lib: {
+              entry: 'src/main/index.ts',
+              formats: ['es'],
+              fileName: () => 'main.js',
+            },
             rollupOptions: {
               external: ['better-sqlite3', 'electron'],
             },

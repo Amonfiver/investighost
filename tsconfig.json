@@ -1,11 +1,3 @@
-/**
- * Configuración TypeScript para Investighost
- * 
- * Propósito: Configuración base del compilador TypeScript
- * Alcance: Todo el proyecto (main + renderer)
- * Decisiones: Estricto, módulos ES2022, paths para imports limpios
- * Estado: Configuración inicial estable
- */
 {
   "compilerOptions": {
     "target": "ES2022",

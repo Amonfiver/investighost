@@ -13,6 +13,7 @@ dist-electron
 dist-ssr
 release
 *.local
+*.exe
 
 # Bases de datos locales y temporales
 *.db
@@ -66,8 +67,6 @@ coverage
 *.tsbuildinfo
 
 # Drizzle ORM
-drizzle/migrations/*.sql
-!drizzle/migrations/.gitkeep
 
 # Misc
 *.bak

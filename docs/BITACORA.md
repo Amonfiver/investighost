@@ -152,4 +152,30 @@ Opciones para siguiente bloque:
 3. **Configurar integración AI** (requiere API keys)
 4. **Añadir tests unitarios** base
 
-Recomendación: Opción 1 (activar DB) para tener persistencia funcional antes de continuar con lógica de negocio.
+
+---
+
+## Sesión 3 — Corrección arranque desarrollo
+
+### Objetivo
+Corregir el arranque en modo desarrollo que fallaba porque Electron intentaba cargar archivos que aún no existían.
+
+### Problema
+- El script `dev` usaba `npm-run-all --parallel` que no funciona bien con `vite-plugin-electron`
+- El preload script no se compilaba porque faltaba en la configuración
+- Electron intentaba leer `dist-electron/main.js` antes de que Vite lo generara
+
+### Archivos tocados
+- `package.json` — Simplificado script `dev` a solo `vite`
+- `vite.config.ts` — Configurado array de entradas: main + preload
+
+### Solución
+`vite-plugin-electron` gestiona automáticamente el ciclo de vida: compila main y preload, luego inicia Electron cuando están listos. No hace falta paralelización manual.
+
+### Estado final
+✅ `npm run dev` inicia Vite + Electron correctamente
+✅ Preload script se compila y carga en el renderer
+✅ Hot reload funcional
+
+### Siguiente paso
+Activar SQLite instalando build tools nativas, o comenzar implementación de módulo Research con persistencia en memoria temporal.

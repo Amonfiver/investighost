@@ -17,24 +17,47 @@ import electron from 'vite-plugin-electron'
 export default defineConfig({
   plugins: [
     react(),
-    electron({
-      entry: 'src/main/index.ts',
-      onstart: options => {
-        if (options.startup) {
-          options.startup()
-        }
-      },
-      vite: {
-        build: {
-          sourcemap: true,
-          minify: false,
-          outDir: 'dist-electron',
-          rollupOptions: {
-            external: ['better-sqlite3', 'electron'],
+    electron([
+      // Main process
+      {
+        entry: 'src/main/index.ts',
+        onstart: options => {
+          if (options.startup) {
+            options.startup()
+          }
+        },
+        vite: {
+          build: {
+            sourcemap: true,
+            minify: false,
+            outDir: 'dist-electron',
+            rollupOptions: {
+              external: ['better-sqlite3', 'electron'],
+            },
           },
         },
       },
-    }),
+      // Preload script
+      {
+        entry: 'src/main/preload.ts',
+        onstart: () => {},
+        vite: {
+          build: {
+            sourcemap: true,
+            minify: false,
+            outDir: 'dist-electron',
+            lib: {
+              entry: 'src/main/preload.ts',
+              formats: ['cjs'],
+              fileName: () => 'preload.js',
+            },
+            rollupOptions: {
+              external: ['electron'],
+            },
+          },
+        },
+      },
+    ]),
   ],
   resolve: {
     alias: {

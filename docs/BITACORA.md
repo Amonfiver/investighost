@@ -1269,3 +1269,55 @@ Conectar de forma mínima y controlada la búsqueda web real con el análisis/re
 
 - Probar desde UI con `SEARCH_PROVIDER=brave` y `BRAVE_SEARCH_API_KEY` válida.
 - Ajustar el prompt si Kimi devuelve JSON demasiado laxo o demasiado breve.
+
+---
+
+## Sesión 16 — Prompt compacto Brave → Kimi
+
+### Objetivo
+Corregir el timeout del primer pipeline real Brave → Kimi reduciendo la carga enviada al proveedor IA.
+
+### Causa encontrada
+
+- El camino con `WebResearchBundle` enviaba demasiadas fuentes a Kimi.
+- Además hacía dos llamadas consecutivas:
+  1. análisis textual del material web,
+  2. conversión posterior a JSON estructurado.
+- Para el MVP, esa combinación era demasiado lenta y podía superar el timeout de Kimi.
+
+### Solución aplicada
+
+- `src/services/ai/research.ts`
+  - El flujo con bundle web ahora usa una sola llamada a Kimi.
+  - Antes de llamar a Kimi compacta el bundle:
+    - máximo 6 resultados,
+    - URLs únicas,
+    - orden por `reliabilityScore`,
+    - snippet recortado a 300 caracteres,
+    - solo `title`, `url`, `snippet`, `provider` y `reliabilityScore` en el prompt.
+  - Añadidos logs:
+    - `[Research] compacting web bundle`
+    - `[Research] compacted web results: N`
+    - `[Research] compact prompt length: X`
+    - `[Research] sending compact bundle to Kimi`
+  - El resultado sigue construyendo `ResearchResult.sources` desde URLs reales del bundle.
+  - La confianza se mantiene limitada a `0.75`.
+- `src/modules/research/index.ts`
+  - El log previo a Kimi ahora indica explícitamente que se envía un bundle compacto.
+- `src/services/ai/providers.ts`
+  - El timeout de Kimi pasa a 90 segundos, manteniendo error claro si expira.
+
+### Política mantenida
+
+- Si Brave funciona pero Kimi falla, la request pasa a `error`.
+- No se genera mock turístico automático tras un fallo de Kimi real.
+- No se hace scraping de páginas completas.
+- No se modifica `.env` ni se imprimen API keys.
+
+### Verificación
+
+- `npm run build:vite` compila sin errores.
+
+### Pendiente
+
+- Probar desde UI una investigación de Albarracín con Brave activo y confirmar que Kimi responde dentro del nuevo flujo compacto.

@@ -115,7 +115,7 @@ async function startResearch(requestId: string): Promise<void> {
           return
         }
 
-        console.log('[Research] sending web bundle to Kimi')
+        console.log('[Research] sending compact bundle to Kimi')
         const { result, draft, logId, cost } = await researchWithAI(requestId, request.input, webResearchBundle)
         console.log('[Research] AI result generated from web bundle')
         

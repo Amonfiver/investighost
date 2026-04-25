@@ -79,66 +79,6 @@ ESTRUCTURA DE RESPUESTA:
 Responde en español, siendo honesto sobre lo que sabes y lo que desconoces.`
 }
 
-const buildWebBundleResearchPrompt = (
-  input: ResearchInput,
-  webResearchBundle: WebResearchBundle
-): string => {
-  const { country, region, focus, userNotes } = input
-  const location = region ? `${region}, ${country}` : country
-  const focusText = focus ? ` con enfoque en ${focus}` : ''
-  const notesText = userNotes ? `\n\nNotas adicionales del usuario: ${userNotes}` : ''
-
-  return `Eres un analista editorial de viajes para Trawel. Tu trabajo es analizar material recopilado de busqueda web sobre "${location}"${focusText}.
-
-REGLAS ESTRICTAS:
-1. Usa SOLO la informacion incluida en el MATERIAL WEB RECOPILADO.
-2. NO uses conocimiento externo del modelo para completar datos.
-3. NO inventes lugares, fuentes, URLs, horarios, precios, restaurantes ni opiniones.
-4. Si un dato no aparece en las fuentes, marca "[pendiente de verificar]".
-5. Diferencia claramente "confirmado por fuente", "senal encontrada en fuente" y "pendiente de verificar".
-6. No conviertas snippets de opiniones en hechos universales.
-7. Evita frases genericas como "combinacion perfecta", "experiencias memorables" o "cautiva los sentidos".
-8. Mantén una confianza prudente: hay busqueda web, pero NO se han abierto ni scrapeado paginas completas.
-
-MATERIAL WEB RECOPILADO:
-${formatWebSourcesForPrompt(webResearchBundle)}
-
-ESTRUCTURA DE RESPUESTA:
-
-1. RESUMEN EDITORIAL
-   - 2-3 frases basadas solo en las fuentes.
-
-2. HECHOS Y SENALES CONFIRMADAS
-   - Lista de datos o lugares que aparecen en fuentes.
-   - Incluye entre parentesis el numero de fuente: [F1], [F2], etc.
-
-3. LUGARES / TEMAS RELEVANTES
-   Para cada elemento:
-   - Nombre especifico
-   - Que dice la fuente
-   - Por que puede ser util editorialmente
-   - Fuente(s)
-   - Nivel de confianza: alto/medio/bajo
-
-4. OPINIONES / SENALES DE VIAJEROS
-   - Solo si aparecen en snippets de reseñas, blogs o foros.
-   - Marcarlas como señales, no como hechos.
-
-5. IDEAS DE ENFOQUE PARA ARTICULO
-   - 3-4 angulos editoriales derivados de las fuentes.
-
-6. ELEMENTOS PENDIENTES DE VERIFICAR
-   - Horarios, precios, accesos, disponibilidad, eventos actuales.
-   - Cualquier dato que requiera abrir paginas completas o fuente oficial.
-
-7. LIMITACIONES
-   - Esta investigacion usa resultados de busqueda: titulo, URL y snippet.
-   - No incluye scraping ni lectura completa de paginas.
-   - Antes de publicar, revisar las URLs clave.${notesText}
-
-Responde en español con criterio editorial prudente.`
-}
-
 /**
  * Prompt para estructurar datos: Enfatiza honestidad y marca lo pendiente
  */
@@ -206,45 +146,63 @@ REGLAS CRÍTICAS:
 5. Sé específico: en lugar de "Mercado Tradicional", pon el nombre real si lo conoces, o indica "[nombre real pendiente de verificar]".`
 }
 
-const buildWebStructuredPrompt = (
+interface CompactWebSource {
+  ref: string
+  title: string
+  url: string
+  snippet: string
+  provider: string
+  reliabilityScore: number
+  sourceType: WebSourceType
+  capturedAt: Date
+}
+
+const buildCompactWebStructuredPrompt = (
   input: ResearchInput,
-  researchText: string,
-  webResearchBundle: WebResearchBundle
+  sources: CompactWebSource[]
 ): string => {
   const { country, region } = input
   const location = region ? `${region}, ${country}` : country
 
-  return `Basandote SOLO en esta investigacion y en las fuentes listadas sobre "${location}":
-"""
-${researchText}
-"""
+  return `Eres analista/redactor editorial para Trawel. Analiza "${location}" usando SOLO estas fuentes de busqueda web ya compactadas.
 
-FUENTES WEB DISPONIBLES:
-${formatWebSourcesForPrompt(webResearchBundle)}
+FUENTES DISPONIBLES:
+${formatCompactSourcesForPrompt(sources)}
 
-Genera un objeto JSON con la siguiente estructura EXACTA. No inventes datos que no esten soportados por las fuentes.
+Reglas estrictas:
+- Usa solo title, url y snippet de las fuentes.
+- No inventes lugares, fuentes, horarios, precios, restaurantes ni opiniones.
+- Si algo no aparece en las fuentes, ponlo en pendingVerification.
+- Conserva URLs reales solo desde las fuentes.
+- No uses frases promocionales genericas.
+- confidence debe ser prudente y nunca mayor que 0.75.
+- Devuelve SOLO JSON valido, sin markdown.
+
+Genera un objeto JSON con esta estructura:
 
 {
   "destination": {
     "country": "${country}",
     "region": "${region || country}",
-    "description": "descripcion especifica basada en fuentes, sin adjetivos vacios"
+    "description": "descripcion breve basada solo en fuentes"
   },
-  "summary": "resumen honesto de por que puede interesar, maximo 2 frases",
+  "title": "titulo editorial prudente",
+  "summary": "resumen honesto, maximo 2 frases",
+  "keyPoints": ["punto clave basado en fuente [F1]"],
   "places": [
     {
-      "name": "nombre especifico mencionado o respaldado por fuente",
+      "name": "lugar o tema detectado",
       "category": "landmark|neighborhood|museum|viewpoint|beach|park|market|other",
-      "description": "descripcion factual basada en fuentes",
-      "whyVisit": "razon concreta basada en fuentes",
+      "description": "que dice la fuente",
+      "whyVisit": "por que puede ser util editorialmente",
       "confidenceLevel": "high|medium|low",
-      "verificationNeeded": "que falta verificar antes de publicar, o null",
-      "sourceRefs": ["F1", "F2"]
+      "verificationNeeded": "que falta verificar antes de publicar",
+      "sourceRefs": ["F1"]
     }
   ],
   "activities": [
     {
-      "name": "actividad o tema respaldado por fuente",
+      "name": "actividad o tema practico detectado",
       "description": "descripcion sin relleno",
       "category": "experience|tour|food|nightlife|shopping|relax|other",
       "confidenceLevel": "high|medium|low",
@@ -252,11 +210,9 @@ Genera un objeto JSON con la siguiente estructura EXACTA. No inventes datos que 
     }
   ],
   "tips": ["consejo practico derivado de fuentes o marcado pendiente de verificar"],
+  "sourcesUsed": ["F1", "F2"],
   "pendingVerification": [
-    "horarios actuales",
-    "precios actuales",
-    "accesos/aparcamiento",
-    "datos que requieren abrir fuente completa"
+    "horarios, precios o datos que requieren abrir fuente completa"
   ],
   "articleAngles": [
     "angulo editorial derivado de fuentes"
@@ -264,13 +220,7 @@ Genera un objeto JSON con la siguiente estructura EXACTA. No inventes datos que 
   "limitations": "Esta investigacion se basa en resultados de busqueda (titulo, URL y snippet). No se han abierto paginas completas.",
   "confidence": 0.65
 }
-
-REGLAS CRITICAS:
-1. confidence: usa 0.5-0.75. NUNCA uses 0.9+.
-2. NO inventes URLs ni fuentes: las fuentes reales ya estan listadas.
-3. Si algo no esta respaldado por fuente, omitelo o marca pendiente.
-4. Evita frases genericas y promocionales.
-5. Devuelve SOLO JSON valido, sin markdown.`
+`
 }
 
 // ============================================
@@ -297,11 +247,13 @@ export async function researchWithAI(
   
   console.log('🤖 [researchWithAI] Called with researchId:', researchId)
   console.log('🤖 [researchWithAI] Input:', JSON.stringify(input))
+
+  if (webResearchBundle) {
+    return researchWithCompactWebBundle(researchId, input, webResearchBundle)
+  }
   
   // 1. Generar investigación textual
-  const researchPrompt = webResearchBundle
-    ? buildWebBundleResearchPrompt(input, webResearchBundle)
-    : buildResearchPrompt(input)
+  const researchPrompt = buildResearchPrompt(input)
   console.log('🤖 [researchWithAI] Prompt 1 length:', researchPrompt.length)
   
   const { result: researchText, cost, logId } = await generateText(researchPrompt, {
@@ -313,9 +265,7 @@ export async function researchWithAI(
   console.log('🤖 [researchWithAI] Step 1 preview:', researchText.substring(0, 200) + '...')
   
   // 2. Generar datos estructurados
-  const structuredPrompt = webResearchBundle
-    ? buildWebStructuredPrompt(input, researchText, webResearchBundle)
-    : buildStructuredPrompt(input, researchText)
+  const structuredPrompt = buildStructuredPrompt(input, researchText)
   console.log('🤖 [researchWithAI] Prompt 2 length:', structuredPrompt.length)
   
   const { result: structuredData, provider: structProvider, cost: structCost, logId: structLogId } = await generateText(
@@ -373,16 +323,14 @@ export async function researchWithAI(
       !t.toLowerCase().includes('respeta las normas') &&
       !t.toLowerCase().includes('disfruta de')
     ),
-    sources: webResearchBundle
-      ? buildSourcesFromWebBundle(webResearchBundle)
-      : [{
-        id: generateId(),
-        url: 'internal://model-knowledge',
-        title: 'Conocimiento del modelo Kimi (sin búsqueda web)',
-        type: 'other',
-        reliability: 0.6,
-        accessedAt: new Date(),
-      }],
+    sources: [{
+      id: generateId(),
+      url: 'internal://model-knowledge',
+      title: 'Conocimiento del modelo Kimi (sin búsqueda web)',
+      type: 'other',
+      reliability: 0.6,
+      accessedAt: new Date(),
+    }],
     confidence: Math.min((parsedData.confidence as number) ?? 0.65, 0.75), // Cap a 0.75 max
     generatedAt: new Date(),
   }
@@ -426,6 +374,7 @@ function generateHonestEditorialDraft(
   _researchText: string
 ): EditorialDraft {
   const { destination, summary, places, activities, tips } = result
+  const hasWebSources = result.sources.some(source => !source.url.startsWith('internal://'))
   
   const pendingVerification = (parsedData.pendingVerification as string[]) || []
   const articleAngles = (parsedData.articleAngles as string[]) || []
@@ -449,12 +398,14 @@ function generateHonestEditorialDraft(
     },
     {
       id: generateId(),
-      heading: 'Lugares destacados (verificados)',
+      heading: hasWebSources ? 'Lugares y temas detectados en fuentes' : 'Lugares destacados (verificados)',
       content: highConfidencePlaces.length > 0 
         ? highConfidencePlaces.map(p => 
             `**${p.name}** (${p.category})\n${p.description}\n${p.whyVisit ? `Por qué visitarlo: ${p.whyVisit}` : ''}`
           ).join('\n\n')
-        : 'No hay lugares con alta confianza en la base de conocimiento del modelo. Se requiere investigación web adicional.',
+        : hasWebSources
+          ? 'No hay lugares con soporte suficiente en los snippets recopilados.'
+          : 'No hay lugares con alta confianza en la base de conocimiento del modelo. Se requiere investigación web adicional.',
       order: 1,
     },
     {
@@ -505,7 +456,7 @@ function generateHonestEditorialDraft(
     {
       id: generateId(),
       heading: 'Limitaciones de esta investigación',
-      content: `${limitations}\n\n**Nivel de confianza general: ${Math.round(result.confidence * 100)}%**\n\nEsta investigación NO reemplaza la verificación web. Antes de publicar:\n1. Verifica nombres de lugares en fuentes oficiales\n2. Confirma precios y horarios actuales\n3. Comprueba disponibilidad de tours y servicios\n4. Añade fuentes reales consultadas`,
+      content: `${limitations}\n\n**Nivel de confianza general: ${Math.round(result.confidence * 100)}%**\n\nAntes de publicar:\n1. Abre y revisa las URLs clave\n2. Confirma precios y horarios actuales\n3. Comprueba disponibilidad de tours y servicios\n4. Contrasta los datos importantes con fuentes oficiales`,
       order: 7,
     },
   ]
@@ -516,7 +467,9 @@ function generateHonestEditorialDraft(
     id: generateId(),
     researchResultId: result.id,
     title: `${destination.region}, ${destination.country} — Borrador preliminar [REQUIERE REVISIÓN]`,
-    introduction: `${summary}\n\n⚠️ **AVISO DE EDITOR**: Este borrador se generó sin búsqueda web real. Requiere verificación antes de su uso editorial.`,
+    introduction: hasWebSources
+      ? `${summary}\n\n**AVISO DE EDITOR**: Este borrador se generó a partir de resultados de búsqueda web (título, URL y snippet). Requiere abrir y verificar las fuentes antes de publicar.`
+      : `${summary}\n\n**AVISO DE EDITOR**: Este borrador se generó sin búsqueda web real. Requiere verificación antes de su uso editorial.`,
     sections,
     tone: 'informative', // Más informativo que entusiasta
     language: 'es',
@@ -542,21 +495,114 @@ export function isAIResearchAvailable(): boolean {
   }
 }
 
-function formatWebSourcesForPrompt(webResearchBundle: WebResearchBundle): string {
-  return selectPromptSources(webResearchBundle.results)
-    .map((source, index) => {
-      const ref = `F${index + 1}`
-      return `[${ref}]
+async function researchWithCompactWebBundle(
+  researchId: string,
+  input: ResearchInput,
+  webResearchBundle: WebResearchBundle
+): Promise<ResearchWithAIResult> {
+  console.log('[Research] compacting web bundle')
+  const compactSources = compactWebBundleSources(webResearchBundle.results)
+  console.log('[Research] compacted web results:', compactSources.length)
+
+  if (compactSources.length === 0) {
+    throw new Error('No hay fuentes web reales suficientes para enviar a Kimi')
+  }
+
+  const prompt = buildCompactWebStructuredPrompt(input, compactSources)
+  console.log('[Research] compact prompt length:', prompt.length)
+  console.log('[Research] sending compact bundle to Kimi')
+
+  const { result: structuredData, provider, cost, logId } = await generateText(prompt, {
+    strategy: 'kimi',
+    trackUsage: true,
+  })
+
+  let parsedData: Record<string, unknown>
+  try {
+    const cleanJson = structuredData
+      .replace(/```json\n?/g, '')
+      .replace(/```\n?/g, '')
+      .trim()
+    parsedData = JSON.parse(cleanJson) as Record<string, unknown>
+  } catch (error) {
+    throw new Error(`Failed to parse compact web bundle response: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+
+  const result: ResearchResult = {
+    id: generateId(),
+    researchId,
+    destination: {
+      country: (parsedData.destination as { country?: string })?.country || input.country,
+      region: (parsedData.destination as { region?: string })?.region || input.region || input.country,
+      description: (parsedData.destination as { description?: string })?.description || `Destino en ${input.country}`,
+    },
+    summary: (parsedData.summary as string) || `Investigación con fuentes web sobre ${input.region || input.country}`,
+    places: ((parsedData.places as Record<string, unknown>[]) || []).map((p) => {
+      const sourceRefs = Array.isArray(p.sourceRefs) ? (p.sourceRefs as string[]) : []
+      const verificationNeeded = (p.verificationNeeded as string) || undefined
+
+      return {
+        id: generateId(),
+        name: (p.name as string) || 'Elemento detectado en fuentes',
+        category: (p.category as Place['category']) || 'other',
+        description: (p.description as string) || '',
+        whyVisit: (p.whyVisit as string) || '',
+        bestFor: sourceRefs.length > 0 ? `Fuentes: ${sourceRefs.join(', ')}` : undefined,
+        practicalInfo: verificationNeeded,
+      }
+    }),
+    activities: ((parsedData.activities as Record<string, unknown>[]) || []).map((a) => {
+      const sourceRefs = Array.isArray(a.sourceRefs) ? (a.sourceRefs as string[]) : []
+
+      return {
+        id: generateId(),
+        name: (a.name as string) || 'Tema detectado en fuentes',
+        description: (a.description as string) || '',
+        category: (a.category as Activity['category']) || 'other',
+        idealFor: sourceRefs.length > 0 ? `Fuentes: ${sourceRefs.join(', ')}` : undefined,
+      }
+    }),
+    tips: ((parsedData.tips as string[]) || []).filter(t =>
+      !t.toLowerCase().includes('aprender frases básicas') &&
+      !t.toLowerCase().includes('respeta las normas') &&
+      !t.toLowerCase().includes('disfruta de')
+    ),
+    sources: buildSourcesFromCompactSources(compactSources),
+    confidence: Math.min((parsedData.confidence as number) ?? 0.65, 0.75),
+    generatedAt: new Date(),
+  }
+
+  const draft = generateHonestEditorialDraft(result, parsedData, JSON.stringify(compactSources))
+
+  console.log('🤖 [researchWithAI] Compact web result built:', {
+    id: result.id,
+    confidence: result.confidence,
+    placesCount: result.places.length,
+    sourcesCount: result.sources.length,
+    sourcesTitles: result.sources.map(s => s.title),
+  })
+
+  return {
+    result,
+    draft,
+    logId,
+    provider,
+    cost,
+  }
+}
+
+function formatCompactSourcesForPrompt(sources: CompactWebSource[]): string {
+  return sources
+    .map(source => `[${source.ref}]
 Title: ${source.title}
 URL: ${source.url}
 Snippet: ${source.snippet || '[sin snippet]'}
 ReliabilityScore: ${source.reliabilityScore}
-Provider: ${source.provider}`
-    })
+Provider: ${source.provider}`)
     .join('\n\n')
 }
 
-function selectPromptSources(results: WebSearchResult[]): WebSearchResult[] {
+function compactWebBundleSources(results: WebSearchResult[]): CompactWebSource[] {
   const seen = new Set<string>()
 
   return [...results]
@@ -566,18 +612,37 @@ function selectPromptSources(results: WebSearchResult[]): WebSearchResult[] {
       seen.add(result.url)
       return true
     })
-    .slice(0, 14)
+    .slice(0, 6)
+    .map((result, index) => ({
+      ref: `F${index + 1}`,
+      title: result.title,
+      url: result.url,
+      snippet: truncateText(result.snippet || '', 300),
+      provider: result.provider,
+      reliabilityScore: result.reliabilityScore,
+      sourceType: result.sourceType,
+      capturedAt: result.capturedAt,
+    }))
 }
 
-function buildSourcesFromWebBundle(webResearchBundle: WebResearchBundle): Source[] {
-  return selectPromptSources(webResearchBundle.results).map(result => ({
+function buildSourcesFromCompactSources(sources: CompactWebSource[]): Source[] {
+  return sources.map(result => ({
     id: generateId(),
     url: result.url,
-    title: result.title,
+    title: `${result.ref} - ${result.title}`,
     type: mapWebSourceType(result.sourceType),
     reliability: result.reliabilityScore,
     accessedAt: result.capturedAt,
   }))
+}
+
+function truncateText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxLength) {
+    return normalized
+  }
+
+  return `${normalized.slice(0, maxLength - 3).trim()}...`
 }
 
 function mapWebSourceType(sourceType: WebSourceType): Source['type'] {

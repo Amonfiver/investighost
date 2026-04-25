@@ -12,7 +12,7 @@ import OpenAI from 'openai'
 import type { AIProvider, AIProviderContract, SearchProvider } from '@shared/types'
 import { getConfig } from '@services/config'
 
-const KIMI_REQUEST_TIMEOUT_MS = 60_000
+const KIMI_REQUEST_TIMEOUT_MS = 90_000
 
 // ============================================
 // CONFIGURACIÓN DE PROVEEDORES

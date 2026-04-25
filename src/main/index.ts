@@ -20,10 +20,13 @@
  *   - Integrado sistema de config multi-proveedor
  */
 
-import { app, BrowserWindow, ipcMain } from 'electron'
+import electron from 'electron'
+import type { BrowserWindow as BrowserWindowType } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import dotenv from 'dotenv'
+
+const { app, BrowserWindow, ipcMain } = electron
 
 // ============================================
 // CARGA CONFIGURACIÓN DESDE .ENV
@@ -50,11 +53,11 @@ console.log(`[Main] dotenv loaded: ${dotenvResult.parsed ? Object.keys(dotenvRes
 
 // Cargar configuración de la app
 import { loadConfig, getProviderConfigStatus } from '@services/config'
-import { initializeProviderFactory } from '@services/ai/providers'
+import { createProviderConfigFromEnv, initializeProviderFactory } from '@services/ai/providers'
 
 // Inicializar configuración (esto debe hacerse antes de cualquier otra cosa)
 loadConfig()
-initializeProviderFactory({ providers: {}, defaults: { strategy: 'auto', searchProvider: 'kimi', aiProvider: 'kimi' }, fallbackOrder: ['kimi', 'openai', 'local'] })
+initializeProviderFactory(createProviderConfigFromEnv())
 
 // Log de estado de proveedores
 const providerStatus = getProviderConfigStatus()
@@ -64,7 +67,7 @@ console.log('[Main] Provider status:', {
 })
 
 // Mantener referencia global para evitar garbage collection
-let mainWindow: BrowserWindow | null = null
+let mainWindow: BrowserWindowType | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({

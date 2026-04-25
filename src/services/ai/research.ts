@@ -11,6 +11,7 @@
  */
 
 import { generateText } from './index'
+import { getProviderFactory } from './providers'
 import type { ResearchInput, ResearchResult, EditorialDraft, Place, Activity } from '@shared/types'
 import { generateId } from '@utils/helpers'
 
@@ -400,7 +401,6 @@ function generateHonestEditorialDraft(
  */
 export function isAIResearchAvailable(): boolean {
   try {
-    const { getProviderFactory } = require('./providers')
     const factory = getProviderFactory()
     return factory.getAvailableProviders().length > 0
   } catch {

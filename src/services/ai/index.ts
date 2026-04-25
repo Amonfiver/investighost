@@ -413,4 +413,3 @@ export const aiService: AIService = {
 }
 
 console.log('[AI Service] Multi-provider orchestrator loaded')
-console.log('[AI Service] Available providers:', getAIServiceStatus().availableProviders)

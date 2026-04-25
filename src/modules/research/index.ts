@@ -14,6 +14,7 @@ import { generateId, sleep } from '@utils/helpers'
 import * as store from '@modules/persistence/memory-store'
 import { generateMockResult } from './mock-data'
 import { researchWithAI, isAIResearchAvailable } from '@services/ai/research'
+import { getProviderFactory } from '@services/ai/providers'
 
 // Re-exportar el mock para uso externo si es necesario
 export { generateMockResult } from './mock-data'
@@ -82,7 +83,6 @@ async function startResearch(requestId: string): Promise<void> {
   
   // Verificar estado de provider factory directamente
   try {
-    const { getProviderFactory } = require('@services/ai/providers')
     const factory = getProviderFactory()
     const availableProviders = factory.getAvailableProviders()
     console.log('🔍 [Research] Available providers:', availableProviders)
@@ -98,43 +98,33 @@ async function startResearch(requestId: string): Promise<void> {
     if (aiAvailable) {
       // Investigar con IA real (Kimi)
       console.log('✅ [Research] USING REAL KIMI - Generating honest research...')
-      
-      const { result, draft, logId, cost } = await researchWithAI(requestId, request.input)
-      
-      console.log('✅ [Research] Kimi result confidence:', result.confidence)
-      console.log('✅ [Research] Kimi result places count:', result.places.length)
-      console.log('✅ [Research] Kimi result sources:', result.sources.map(s => s.title))
-      
-      // Guardar resultado
-      await store.saveResult(result)
-      await updateStatus(requestId, 'structured')
-      console.log('✅ [Research] Result from Kimi saved:', result.id, `(cost: $${cost?.toFixed(4) || 'unknown'})`)
-      
-      // Guardar borrador
-      await store.saveDraft(draft)
-      await updateStatus(requestId, 'drafted')
-      console.log('✅ [Research] Honest draft saved:', draft.id, 'log:', logId)
+
+      try {
+        const { result, draft, logId, cost } = await researchWithAI(requestId, request.input)
+        
+        console.log('✅ [Research] Kimi result confidence:', result.confidence)
+        console.log('✅ [Research] Kimi result places count:', result.places.length)
+        console.log('✅ [Research] Kimi result sources:', result.sources.map(s => s.title))
+        
+        // Guardar resultado
+        await store.saveResult(result)
+        await updateStatus(requestId, 'structured')
+        console.log('✅ [Research] Result from Kimi saved:', result.id, `(cost: $${cost?.toFixed(4) || 'unknown'})`)
+        
+        // Guardar borrador
+        await store.saveDraft(draft)
+        await updateStatus(requestId, 'drafted')
+        console.log('✅ [Research] Honest draft saved:', draft.id, 'log:', logId)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        console.warn('⚠️ [Research] Kimi call failed - using explicit MOCK fallback:', message)
+        await runMockFallback(requestId, request.input, 'Kimi API failed')
+      }
       
     } else {
       // Simulación temporal (cuando no hay Kimi configurado)
-      console.log('⚠️ [Research] NO AI CONFIGURED - Using MOCK simulation (legacy)')
-      console.log('⚠️ [Research] This should NOT happen when KIMI_API_KEY is set!')
-      
-      await sleep(1500)
-      
-      const result = generateMockResult(requestId, request.input)
-      console.log('⚠️ [Research] MOCK result generated with confidence:', result.confidence)
-      console.log('⚠️ [Research] MOCK sources:', result.sources.map(s => s.title))
-      
-      await store.saveResult(result)
-      await updateStatus(requestId, 'structured')
-      console.log('⚠️ [Research] MOCK Result saved:', result.id)
-      
-      await sleep(1000)
-      const draft = generateMockDraft(result)
-      await store.saveDraft(draft)
-      await updateStatus(requestId, 'drafted')
-      console.log('⚠️ [Research] MOCK Draft saved:', draft.id)
+      console.log('⚠️ [Research] KIMI_API_KEY not configured - using explicit MOCK simulation')
+      await runMockFallback(requestId, request.input, 'No AI provider configured')
     }
 
   } catch (error) {
@@ -201,6 +191,30 @@ async function updateStatus(
   await store.updateRequestStatus(requestId, status, errorMessage)
 }
 
+async function runMockFallback(
+  requestId: string,
+  input: ResearchRequest['input'],
+  reason: string
+): Promise<void> {
+  console.log('⚠️ [Research] MOCK fallback reason:', reason)
+  
+  await sleep(1500)
+  
+  const result = generateMockResult(requestId, input)
+  console.log('⚠️ [Research] MOCK result generated with confidence:', result.confidence)
+  console.log('⚠️ [Research] MOCK sources:', result.sources.map(s => s.title))
+  
+  await store.saveResult(result)
+  await updateStatus(requestId, 'structured')
+  console.log('⚠️ [Research] MOCK Result saved:', result.id)
+  
+  await sleep(1000)
+  const draft = generateMockDraft(result)
+  await store.saveDraft(draft)
+  await updateStatus(requestId, 'drafted')
+  console.log('⚠️ [Research] MOCK Draft saved:', draft.id)
+}
+
 /**
  * Genera un borrador editorial mock (para modo simulación)
  */
@@ -265,4 +279,3 @@ export const researchModule: ResearchModule = {
 }
 
 console.log('[Research Module] Loaded')
-console.log('[Research Module] AI configured:', isAIResearchAvailable() ? '✅ YES (Kimi ready)' : '❌ NO (using mock)')

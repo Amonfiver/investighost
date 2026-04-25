@@ -882,3 +882,54 @@ Si no hay `KIMI_API_KEY` configurada:
 - Implementar edición de borradores antes de aprobar
 - Mejorar prompts de investigación para mayor especificidad
 - Añadir comparación calidad/coste entre Kimi y OpenAI (cuando OpenAI se implemente)
+
+---
+
+## Sesión 9 — Corrección quirúrgica Kimi vs Mock
+
+### Objetivo
+Corregir el fallo por el que la UI indicaba Kimi configurado, pero al iniciar una investigación el backend caía en simulación/mock.
+
+### Diagnóstico real
+
+- El main process cargaba `.env` correctamente, pero después inicializaba `ProviderFactory` con una configuración vacía.
+- `src/services/ai/index.ts` y `src/modules/research/index.ts` calculaban disponibilidad/logs al cargar módulo, antes de que el runtime hubiera inicializado proveedores con la config real.
+- Había usos de `require(...)` dentro de código ESM:
+  - `src/modules/research/index.ts`
+  - `src/services/ai/research.ts`
+- En desarrollo apareció además una incompatibilidad de runtime con el main process en ESM y el módulo especial de Electron. Se resolvió compilando solo el main process como CJS (`main.cjs`), manteniendo el resto de la app intacta.
+
+### Solución aplicada
+
+- `src/main/index.ts`
+  - Ahora inicializa `ProviderFactory` con `createProviderConfigFromEnv()` después de `loadConfig()`.
+  - Mantiene logs de estado después de cargar `.env`.
+- `src/services/ai/research.ts`
+  - Sustituido `require('./providers')` por import ESM.
+  - `isAIResearchAvailable()` consulta la factory en tiempo de ejecución.
+- `src/modules/research/index.ts`
+  - Sustituido `require('@services/ai/providers')` por import ESM.
+  - Eliminado el log obsoleto de disponibilidad al cargar el módulo.
+  - El mock queda como fallback explícito cuando no hay proveedor o falla la llamada real a Kimi.
+- `src/services/ai/index.ts`
+  - Eliminado el log de proveedores disponibles calculado al cargar el módulo.
+- `vite.config.ts` y `package.json`
+  - El main process se genera como `dist-electron/main.cjs` para evitar el fallo ESM/CJS de Electron en dev.
+
+### Verificación
+
+- `npm run build:vite` compila sin errores.
+- `npm run dev` arranca al retirar `ELECTRON_RUN_AS_NODE` del entorno de prueba.
+- Logs de arranque observados:
+  - `[Main] dotenv loaded: 3 variables`
+  - `[Config] Kimi configured: true`
+  - `[Main] Provider status: { kimi: '✅ configured', openai: '❌ not configured' }`
+- Ya no aparece:
+  - `ReferenceError: require is not defined`
+  - `[ProviderFactory] Config not loaded, returning empty config`
+  - `[Research Module] AI configured: NO (using mock)`
+
+### Pendiente
+
+- Probar una investigación real desde la UI con una API key válida y saldo disponible.
+- Mantener SQLite y búsqueda web real para fases posteriores.

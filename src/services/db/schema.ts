@@ -215,7 +215,7 @@ export const providerUsageLogs = sqliteTable('provider_usage_logs', {
   strategy: text('strategy').notNull(),
   
   // Proveedor de búsqueda (si aplica)
-  searchProvider: text('search_provider'), // openai, kimi, web, local
+    searchProvider: text('search_provider'), // mock, serpapi, searchapi, brave, tavily
   searchModel: text('search_model'),
   searchCostEstimated: real('search_cost_estimated'),
   

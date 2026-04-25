@@ -149,6 +149,14 @@ Debe:
 
 El contenido final debe basarse en investigación real, no en prompts vacíos.
 
+### Separación entre recolección y análisis
+La investigación real se divide en dos responsabilidades:
+
+1. **Recolector web:** busca fuentes reales, snippets, señales y URLs mediante un proveedor de búsqueda.
+2. **Analista/redactor IA:** lee el material recopilado y lo convierte en conclusiones, estructura y borrador editorial.
+
+Kimi no debe ser tratado como sustituto de la búsqueda web. Su rol principal será analizar y redactar sobre material recogido previamente.
+
 ---
 
 ## 10. Tono editorial de salida
@@ -168,12 +176,15 @@ En lugar de textos tipo guía genérica, el contenido debe sonar como una recome
 
 ## 11. Flujo de trabajo previsto
 1. El usuario indica un destino.
-2. Investighost investiga y recopila señales.
-3. Investighost estructura los datos.
-4. Investighost genera un borrador natural.
-5. El usuario revisa.
-6. El usuario pulsa publicar.
-7. El contenido pasa a Trawel.
+2. Investighost genera búsquedas web relevantes.
+3. Investighost recopila fuentes, snippets y señales reales.
+4. Investighost organiza ese material.
+5. Kimi u otro proveedor IA analiza la información recopilada.
+6. Investighost estructura los datos.
+7. Investighost genera un borrador natural.
+8. El usuario revisa.
+9. El usuario pulsa publicar.
+10. El contenido pasa a Trawel.
 
 ---
 

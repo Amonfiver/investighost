@@ -12,7 +12,52 @@
 
 export type AIProvider = 'openai' | 'kimi' | 'local'
 
-export type SearchProvider = 'openai' | 'kimi' | 'web' | 'local'
+export type SearchProvider = 'mock' | 'serpapi' | 'searchapi' | 'brave' | 'tavily'
+
+export type WebSourceType = 
+  | 'official'
+  | 'blog'
+  | 'review'
+  | 'forum'
+  | 'social'
+  | 'news'
+  | 'unknown'
+
+export interface WebSearchQuery {
+  id: string
+  destination: {
+    country: string
+    region?: string
+  }
+  query: string
+  focus?: string
+  createdAt: Date
+}
+
+export interface WebSearchResult {
+  id: string
+  query: string
+  title: string
+  url: string
+  snippet: string
+  sourceType: WebSourceType
+  reliabilityScore: number
+  capturedAt: Date
+  provider: SearchProvider
+}
+
+export interface WebResearchBundle {
+  id: string
+  destination: {
+    country: string
+    region?: string
+  }
+  queries: WebSearchQuery[]
+  results: WebSearchResult[]
+  provider: SearchProvider
+  createdAt: Date
+  notes?: string[]
+}
 
 export type ProviderStrategy = 
   | 'auto'        // Elige automáticamente según disponibilidad y coste

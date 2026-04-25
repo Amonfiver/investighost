@@ -54,13 +54,16 @@ La publicación hacia Trawel es un proceso separado y regulado.
 ### Flujo principal
 1. El usuario indica un destino.
 2. Investighost interpreta la petición.
-3. El sistema investiga fuentes y recopila señales (usando proveedor configurado).
-4. El sistema transforma lo investigado en datos estructurados.
-5. El sistema genera un borrador editorial (usando proveedor configurado).
-6. El usuario revisa el resultado.
-7. El usuario aprueba (el contenido va a cola editorial).
-8. El sistema publica según ritmo configurado (ej: 3 piezas/día).
-9. El sistema registra auditoría de proveedores y costes.
+3. El sistema genera queries de investigación web.
+4. Un proveedor de búsqueda recopila fuentes, snippets y señales reales.
+5. El sistema organiza ese material en un `WebResearchBundle`.
+6. Kimi u otro proveedor IA analiza el bundle recopilado.
+7. El sistema transforma lo investigado en datos estructurados.
+8. El sistema genera un borrador editorial (usando proveedor IA configurado).
+9. El usuario revisa el resultado.
+10. El usuario aprueba (el contenido va a cola editorial).
+11. El sistema publica según ritmo configurado (ej: 3 piezas/día).
+12. El sistema registra auditoría de proveedores y costes.
 
 ---
 
@@ -98,16 +101,26 @@ Interpretar la petición inicial del usuario y convertirla en un input claro y n
 ## 5. Arquitectura Multi-Proveedor (Sesión 7+)
 
 ### Visión
+Investighost debe separar proveedores de búsqueda y proveedores de IA.
+
+Los proveedores de búsqueda recolectan material real de internet. Los proveedores de IA, como Kimi, actúan como analistas/redactores sobre ese material.
+
 Investighost debe poder trabajar con múltiples proveedores de IA para:
 - Elegir el más adecuado según coste/disponibilidad
 - Usar fallback si uno falla o no tiene saldo
 - Comparar coste/calidad entre proveedores
-- Usar uno para búsqueda y otro para redacción
+- Analizar bundles de investigación web y redactar borradores
 
 ### Proveedores soportados
-- **OpenAI**: GPT-4o, GPT-4o-mini (búsqueda + chat + estructurado)
-- **Kimi**: Moonshot AI (búsqueda + chat + estructurado)
+- **OpenAI**: GPT-4o, GPT-4o-mini (chat + estructurado, futuro fallback)
+- **Kimi**: Moonshot AI (analista/redactor principal)
 - **Local**: Ollama, LM Studio (chat + estructurado, sin búsqueda)
+
+### Proveedores de búsqueda previstos
+- **mock**: proveedor temporal local, no llama a internet.
+- **SerpAPI/SearchAPI**: candidatos para resultados de buscador general.
+- **Brave Search API**: candidato sencillo para búsqueda web.
+- **Tavily**: candidato orientado a extracción/resumen para agentes.
 
 ### Estrategias de uso
 - `auto`: Selección automática según preferencia y disponibilidad
@@ -119,7 +132,7 @@ Investighost debe poder trabajar con múltiples proveedores de IA para:
 Todos los proveedores implementan `AIProviderContract`:
 - `generateText()`: Generación de texto libre
 - `generateStructured()`: Generación con salida JSON
-- `searchAndSummarize()`: Búsqueda web + resumen
+- `searchAndSummarize()`: compatibilidad heredada; no sustituye al motor de búsqueda web real
 - `estimateCost()`: Estimación de coste en USD
 
 ### Arquitectura de clases
@@ -131,6 +144,27 @@ BaseAIProvider (abstracta)
 
 ProviderFactory → Gestiona instancias
 ```
+
+---
+
+## 5.1. Motor de Búsqueda Web
+
+### Responsabilidad
+El motor de búsqueda web es el primer paso real de una investigación. Su objetivo no es redactar, sino recolectar material verificable:
+- queries generadas desde el destino,
+- resultados con URL, título y snippet,
+- clasificación aproximada de fuente,
+- puntuación inicial de fiabilidad,
+- fecha de captura,
+- proveedor usado.
+
+### Contrato base
+Los proveedores de búsqueda implementan `BaseSearchProvider` y devuelven `WebSearchResult[]`.
+
+El resultado agregado se guarda como `WebResearchBundle`, que después será la entrada natural para Kimi u otro proveedor IA.
+
+### Estado actual
+Existe `LocalMockSearchProvider`, etiquetado como `MOCK_SEARCH_PROVIDER`, para desarrollar el pipeline sin llamar todavía a APIs externas.
 
 ---
 
@@ -236,7 +270,8 @@ src/
 │   ├── ai/              # Servicios de IA
 │   │   ├── index.ts     # Orquestador multi-proveedor
 │   │   └── providers.ts # Implementaciones de proveedores
-│   ├── web/             # Búsqueda web
+│   ├── search/          # Motor de búsqueda web por proveedores
+│   ├── web/             # Fetch/extracción futura de páginas
 │   ├── db/              # Persistencia
 │   │   └── schema.ts    # Esquemas incluyendo cola y auditoría
 │   └── trawel/          # Integración futura con Trawel

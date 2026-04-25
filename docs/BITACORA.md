@@ -1071,3 +1071,72 @@ Evitar que una investigación quede colgada indefinidamente cuando la llamada re
 
 - Probar desde UI una investigación real completa para confirmar si Kimi responde antes del timeout.
 - Si aparece otro error de API posterior, ajustar únicamente el parámetro rechazado.
+
+---
+
+## Sesión 13 — Base del Motor de Búsqueda Web
+
+### Objetivo
+Formalizar la decisión de arquitectura: Investighost debe buscar información real en internet antes de pedir a Kimi que analice o redacte.
+
+### Decisión aplicada
+
+- Kimi pasa a considerarse **analista/redactor**.
+- La recolección de fuentes reales será responsabilidad de un **Web Search Provider** separado.
+- El flujo objetivo queda:
+
+`Destino → queries web → WebResearchBundle → análisis con Kimi → estructura → borrador editorial`
+
+### Archivos modificados
+
+- `docs/SPEC.md`
+  - Añadida separación entre recolector web y analista/redactor IA.
+  - Actualizado el flujo previsto para incluir búsqueda web antes de análisis IA.
+- `docs/ARCHITECTURE.md`
+  - Actualizado el flujo principal.
+  - Separados proveedores de búsqueda y proveedores IA.
+  - Añadida sección `Motor de Búsqueda Web`.
+  - Actualizada estructura de módulos con `src/services/search`.
+- `docs/DECISIONES.md`
+  - Añadida decisión `2.6`: Kimi será analista/redactor, no recolector web.
+- `src/shared/types.ts`
+  - Añadidos tipos:
+    - `SearchProvider`
+    - `WebSourceType`
+    - `WebSearchQuery`
+    - `WebSearchResult`
+    - `WebResearchBundle`
+- `src/services/ai/providers.ts`
+  - `searchProvider` pasa a apuntar al proveedor de búsqueda separado.
+  - Default temporal: `mock`.
+- `src/services/search/index.ts`
+  - Nuevo servicio base de búsqueda.
+  - Añadidos:
+    - `BaseSearchProvider`
+    - `LocalMockSearchProvider`
+    - `createSearchProvider()`
+    - `generateDestinationSearchQueries()`
+    - `collectWebResearchBundle()`
+
+### Estado actual
+
+- No se llama todavía a internet.
+- `LocalMockSearchProvider` está claramente etiquetado como `MOCK_SEARCH_PROVIDER`.
+- El generador de queries crea búsquedas para turismo, historia/cultura, opiniones, gastronomía, acceso/aparcamiento y problemas/reseñas.
+- Logs preparados:
+  - `[Search] generated queries`
+  - `[Search] provider selected`
+  - `[Search] results collected: N`
+
+### Verificación
+
+- `npm run build:vite` compila sin errores.
+- No se toca `.env`.
+- No se rompe el flujo Kimi actual.
+
+### Siguiente paso recomendado
+
+Conectar un proveedor real de búsqueda. Candidatos:
+- **Brave Search API**: buena primera opción por simplicidad y coste/control.
+- **Tavily**: interesante si se quiere una API más orientada a agentes.
+- **SerpAPI/SearchAPI**: útiles si se necesita emular resultados tipo buscador general.

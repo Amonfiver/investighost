@@ -9,7 +9,7 @@
  */
 
 import OpenAI from 'openai'
-import type { AIProvider, AIProviderContract } from '@shared/types'
+import type { AIProvider, AIProviderContract, SearchProvider } from '@shared/types'
 import { getConfig } from '@services/config'
 
 const KIMI_REQUEST_TIMEOUT_MS = 60_000
@@ -46,7 +46,7 @@ export interface MultiProviderConfig {
   }
   defaults: {
     strategy: 'auto' | 'openai' | 'kimi' | 'fallback' | 'compare'
-    searchProvider: 'openai' | 'kimi' | 'web' | 'local'
+    searchProvider: SearchProvider
     aiProvider: 'openai' | 'kimi' | 'local'
   }
   fallbackOrder: AIProvider[]  // Orden de intento en modo fallback
@@ -442,7 +442,7 @@ export function createProviderConfigFromEnv(): MultiProviderConfig {
       },
       defaults: {
         strategy: 'auto',
-        searchProvider: 'kimi',
+        searchProvider: 'mock',
         aiProvider: 'kimi'
       },
       fallbackOrder: ['kimi', 'openai', 'local']
@@ -454,7 +454,7 @@ export function createProviderConfigFromEnv(): MultiProviderConfig {
       providers: {},
       defaults: {
         strategy: 'auto',
-        searchProvider: 'kimi',
+        searchProvider: 'mock',
         aiProvider: 'kimi'
       },
       fallbackOrder: ['kimi', 'openai', 'local']
@@ -466,7 +466,7 @@ export const defaultProviderConfig: MultiProviderConfig = {
   providers: {},
   defaults: {
     strategy: 'auto',
-    searchProvider: 'kimi',
+    searchProvider: 'mock',
     aiProvider: 'kimi'
   },
   fallbackOrder: ['kimi', 'openai', 'local']

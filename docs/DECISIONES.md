@@ -54,6 +54,27 @@ El usuario debe mantener control editorial y validar calidad antes de publicar e
 
 ---
 
+### Decisión 2.6 — Kimi será analista/redactor, no recolector web
+Kimi se usará principalmente para analizar material recopilado y generar estructura/borradores editoriales.
+
+La recolección de información real de internet será responsabilidad de un proveedor de búsqueda web separado.
+
+### Motivo
+Preguntar directamente a un modelo sobre un destino produce contenido más genérico y menos trazable.
+
+Separar búsqueda y análisis permite:
+- trabajar con fuentes reales,
+- guardar trazabilidad,
+- cambiar proveedor de búsqueda sin tocar prompts de redacción,
+- usar Kimi sobre contexto concreto y verificable.
+
+### Consecuencia
+El flujo objetivo pasa a ser:
+
+**Destino → búsqueda web → WebResearchBundle → análisis IA → estructura → borrador**
+
+---
+
 ## 3. Decisiones sobre el tipo de contenido
 
 ### Decisión 3.1 — Se guardará contenido estable

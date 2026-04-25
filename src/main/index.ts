@@ -145,23 +145,22 @@ ipcMain.handle('research:start', async (_event, requestId) => {
 })
 
 ipcMain.handle('research:get-all', async () => {
-  console.log('[IPC] research:get-all called')
-  const requests = await researchModule.getAllRequests()
-  console.log('[IPC] research:get-all returning:', requests.length, 'requests')
-  return requests
+  return researchModule.getAllRequests()
 })
 
 ipcMain.handle('research:get-result', async (_event, requestId) => {
-  console.log('[IPC] research:get-result called for:', requestId)
   const result = await researchModule.getResult(requestId)
-  console.log('[IPC] research:get-result found:', result ? 'yes' : 'no')
+  if (result) {
+    console.log('[IPC] research:get-result found for:', requestId)
+  }
   return result
 })
 
 ipcMain.handle('research:get-draft', async (_event, resultId) => {
-  console.log('[IPC] research:get-draft called for resultId:', resultId)
   const draft = await store.getDraftByResultId(resultId)
-  console.log('[IPC] research:get-draft found:', draft ? 'yes' : 'no')
+  if (draft) {
+    console.log('[IPC] research:get-draft found for resultId:', resultId)
+  }
   return draft
 })
 

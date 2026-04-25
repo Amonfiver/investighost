@@ -1019,3 +1019,55 @@ Corregir el error real de API `400 invalid temperature: only 1 is allowed for th
 
 - Probar una investigación completa desde UI para confirmar que la siguiente llamada real a Kimi muestra `[KimiProvider] temperature: 1`.
 - Si la API devuelve otro parámetro rechazado, ajustar solo ese parámetro en `KimiProvider`.
+
+---
+
+## Sesión 12 — Timeout Kimi y Polling Finito
+
+### Objetivo
+Evitar que una investigación quede colgada indefinidamente cuando la llamada real a Kimi no responde o tarda demasiado.
+
+### Causa encontrada
+
+- `KimiProvider` llamaba a `client.chat.completions.create()` sin timeout explícito.
+- Si la petición quedaba abierta, `researchWithAI()` no devolvía resultado ni error.
+- La request quedaba en `researching` y la UI seguía consultando `getAllResearch` / `getResearchResult`.
+- Además, los handlers IPC de lectura escribían logs en cada polling, generando ruido constante en PowerShell.
+
+### Solución aplicada
+
+- `src/services/ai/providers.ts`
+  - Añadido timeout real de 60 segundos por llamada Kimi.
+  - Se usa `AbortController` y `Promise.race`.
+  - Si expira, se aborta la llamada y se lanza: `La llamada a Kimi superó el tiempo máximo de espera`.
+  - Logs seguros añadidos:
+    - `[KimiProvider] request started`
+    - `[KimiProvider] request timeout after 60000 ms`
+- `src/modules/research/index.ts`
+  - Si Kimi falla o agota timeout, la request pasa a `error`.
+  - Se eliminó el fallback mock automático para fallos de Kimi real.
+  - El mock queda solo para el caso explícito de no tener proveedor IA configurado.
+- `src/renderer/App.tsx`
+  - Polling cada 2 segundos con límite total de 140 segundos.
+  - Si se supera el límite, la UI marca localmente la investigación como `error` con mensaje de timeout.
+  - El polling silencioso evita logs repetitivos en consola del renderer.
+- `src/main/index.ts`
+  - Los IPC de lectura (`research:get-all`, `research:get-result`, `research:get-draft`) ya no loguean cada consulta vacía.
+  - Solo registran resultados/drafts cuando aparecen.
+
+### Política de errores
+
+- Kimi responde correctamente: se guarda resultado real y borrador.
+- Kimi falla, tarda demasiado o lanza excepción: estado `error` con mensaje claro.
+- Sin IA configurada: se mantiene modo simulación explícito.
+
+### Verificación
+
+- `npm run build:vite` compila sin errores.
+- DevTools sigue condicionado a `OPEN_DEVTOOLS=true`.
+- No se modifica `.env` ni se imprimen API keys.
+
+### Pendiente
+
+- Probar desde UI una investigación real completa para confirmar si Kimi responde antes del timeout.
+- Si aparece otro error de API posterior, ajustar únicamente el parámetro rechazado.

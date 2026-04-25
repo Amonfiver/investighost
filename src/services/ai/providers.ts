@@ -12,6 +12,8 @@ import OpenAI from 'openai'
 import type { AIProvider, AIProviderContract } from '@shared/types'
 import { getConfig } from '@services/config'
 
+const KIMI_REQUEST_TIMEOUT_MS = 60_000
+
 // ============================================
 // CONFIGURACIÓN DE PROVEEDORES
 // ============================================
@@ -128,13 +130,20 @@ export class KimiProvider extends BaseAIProvider {
     const temperature = resolveKimiTemperature(model, options?.temperature ?? 0.7)
     console.log('[KimiProvider] model:', model)
     console.log('[KimiProvider] temperature:', temperature)
+    console.log('[KimiProvider] request started')
     
     try {
-      const response = await this.client.chat.completions.create({
-        model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature,
-      })
+      const response = await runKimiRequest(
+        signal => this.client!.chat.completions.create(
+          {
+            model,
+            messages: [{ role: 'user', content: prompt }],
+            temperature,
+          },
+          { signal }
+        ),
+        KIMI_REQUEST_TIMEOUT_MS
+      )
       
       const content = response.choices[0]?.message?.content
       if (!content) {
@@ -161,6 +170,7 @@ export class KimiProvider extends BaseAIProvider {
     const temperature = resolveKimiTemperature(model, options?.temperature ?? 0.3)
     console.log('[KimiProvider] model:', model)
     console.log('[KimiProvider] temperature:', temperature)
+    console.log('[KimiProvider] request started')
     
     // Construir prompt que fuerza JSON válido
     const structuredPrompt = `${prompt}
@@ -171,11 +181,17 @@ Expected JSON structure:
 ${JSON.stringify(schema, null, 2)}`
 
     try {
-      const response = await this.client.chat.completions.create({
-        model,
-        messages: [{ role: 'user', content: structuredPrompt }],
-        temperature,
-      })
+      const response = await runKimiRequest(
+        signal => this.client!.chat.completions.create(
+          {
+            model,
+            messages: [{ role: 'user', content: structuredPrompt }],
+            temperature,
+          },
+          { signal }
+        ),
+        KIMI_REQUEST_TIMEOUT_MS
+      )
       
       const content = response.choices[0]?.message?.content
       if (!content) {
@@ -226,6 +242,33 @@ function resolveKimiTemperature(model: string, requestedTemperature: number): nu
   }
 
   return requestedTemperature
+}
+
+async function runKimiRequest<T>(
+  requestFactory: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  const controller = new AbortController()
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        controller.abort()
+        console.warn(`[KimiProvider] request timeout after ${timeoutMs} ms`)
+        reject(new Error('La llamada a Kimi superó el tiempo máximo de espera'))
+      }, timeoutMs)
+    })
+
+    return await Promise.race([
+      requestFactory(controller.signal),
+      timeoutPromise,
+    ])
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+  }
 }
 
 // ============================================

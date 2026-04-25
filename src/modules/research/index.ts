@@ -117,8 +117,8 @@ async function startResearch(requestId: string): Promise<void> {
         console.log('✅ [Research] Honest draft saved:', draft.id, 'log:', logId)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
-        console.warn('⚠️ [Research] Kimi call failed - using explicit MOCK fallback:', message)
-        await runMockFallback(requestId, request.input, 'Kimi API failed')
+        console.error('❌ [Research] failed:', message)
+        throw error
       }
       
     } else {

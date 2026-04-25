@@ -32,11 +32,15 @@ export function App(): JSX.Element {
   } | null>(null)
 
   // Cargar solicitudes y estado de proveedores al iniciar
-  const loadRequests = useCallback(async (): Promise<ResearchRequest[]> => {
-    console.log('[Renderer] Loading requests via IPC...')
+  const loadRequests = useCallback(async (silent = false): Promise<ResearchRequest[]> => {
+    if (!silent) {
+      console.log('[Renderer] Loading requests via IPC...')
+    }
     try {
       const requests = await window.electronAPI.getAllResearch()
-      console.log('[Renderer] Loaded', requests.length, 'requests')
+      if (!silent) {
+        console.log('[Renderer] Loaded', requests.length, 'requests')
+      }
       setRequests(requests)
       return requests
     } catch (error) {
@@ -64,14 +68,15 @@ export function App(): JSX.Element {
   }, [loadRequests, loadProviderStatus])
 
   const pollResearchUntilSettled = useCallback(async (requestId: string) => {
-    const maxAttempts = 80
-    const intervalMs = 1500
+    const maxDurationMs = 140_000
+    const intervalMs = 2000
+    const startedAt = Date.now()
     const activeStatuses: ResearchRequest['status'][] = ['pending', 'researching', 'structured']
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    while (Date.now() - startedAt < maxDurationMs) {
       await new Promise(resolve => setTimeout(resolve, intervalMs))
 
-      const latestRequests = await loadRequests()
+      const latestRequests = await loadRequests(true)
       const latestRequest = latestRequests.find(req => req.id === requestId)
       if (latestRequest) {
         setSelectedRequest(current => current?.id === requestId ? latestRequest : current)
@@ -88,6 +93,19 @@ export function App(): JSX.Element {
         return
       }
     }
+
+    const timeoutMessage = 'La investigación superó el tiempo máximo de espera. Revisa la conexión o intenta de nuevo.'
+    setRequests(current => current.map(req => 
+      req.id === requestId 
+        ? { ...req, status: 'error', errorMessage: timeoutMessage, updatedAt: new Date() }
+        : req
+    ))
+    setSelectedRequest(current => 
+      current?.id === requestId 
+        ? { ...current, status: 'error', errorMessage: timeoutMessage, updatedAt: new Date() }
+        : current
+    )
+    console.warn('[Renderer] Research polling timeout:', requestId)
   }, [loadRequests])
 
   // Handlers

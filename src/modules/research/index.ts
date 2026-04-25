@@ -201,6 +201,15 @@ async function runMockFallback(
   await sleep(1500)
   
   const result = generateMockResult(requestId, input)
+  result.sources = [{
+    id: generateId(),
+    url: 'internal://mock-fallback',
+    title: `SIMULACION/FALLBACK - ${reason}`,
+    type: 'other',
+    reliability: 0.2,
+    accessedAt: new Date(),
+  }]
+  result.confidence = Math.min(result.confidence, 0.6)
   console.log('⚠️ [Research] MOCK result generated with confidence:', result.confidence)
   console.log('⚠️ [Research] MOCK sources:', result.sources.map(s => s.title))
   

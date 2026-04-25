@@ -933,3 +933,49 @@ Corregir el fallo por el que la UI indicaba Kimi configurado, pero al iniciar un
 
 - Probar una investigación real desde la UI con una API key válida y saldo disponible.
 - Mantener SQLite y búsqueda web real para fases posteriores.
+
+---
+
+## Sesión 10 — Modelo Kimi y Estado Pending
+
+### Objetivo
+Corregir el intento de llamada a Kimi con el modelo antiguo `kimi-k1` y evitar que la UI se quede mostrando investigaciones en `pending` después de lanzar el proceso por IPC.
+
+### Causa exacta
+
+- `.env` usaba `KIMI_MODEL=kimi-k2.6`, pero `src/services/config/index.ts` solo leía `KIMI_DEFAULT_MODEL`.
+- Al no encontrar `KIMI_DEFAULT_MODEL`, la config caía al default antiguo `kimi-k1`.
+- Ese valor llegaba a `ProviderFactory`, luego a `KimiProvider`, y finalmente a `client.chat.completions.create({ model })`, provocando `404 Not found the model kimi-k1 or Permission denied`.
+- La UI llamaba `research:start` en modo fire-and-forget y solo recargaba la lista antes de que el backend cambiara el estado, por eso conservaba el snapshot inicial `pending`.
+
+### Solución aplicada
+
+- `src/services/config/index.ts`
+  - Ahora lee `KIMI_MODEL` primero, mantiene compatibilidad con `KIMI_DEFAULT_MODEL` y usa `kimi-k2.6` como default.
+  - Añade logs seguros de baseURL y modelo, sin exponer API key.
+- `src/services/ai/providers.ts`
+  - `KimiProvider` registra de forma segura la `baseURL` y el `model`.
+  - Cada llamada usa `options.model || config.defaultModel`, que ahora viene de `KIMI_MODEL`.
+- `src/modules/research/index.ts`
+  - El fallback mock reemplaza sus fuentes por una fuente explícita `SIMULACION/FALLBACK`.
+  - La confianza del fallback queda limitada a `0.6`.
+- `src/renderer/App.tsx`
+  - Después de `startResearch`, la UI hace polling temporal de `getAllResearch`.
+  - El polling termina cuando la request sale de `pending/researching/structured`.
+  - Si hay detalle abierto, también actualiza request, resultado y draft.
+
+### Verificación
+
+- `npm run build:vite` compila sin errores.
+- `npm run dev` arranca.
+- Logs observados:
+  - `[Config] Kimi baseURL: https://api.moonshot.ai/v1`
+  - `[Config] Kimi model: kimi-k2.6`
+  - `[KimiProvider] baseURL: https://api.moonshot.ai/v1`
+  - `[KimiProvider] model: kimi-k2.6`
+- Ya no aparece `kimi-k1` en el código fuente activo.
+
+### Pendiente
+
+- Probar una investigación completa contra Kimi con saldo/permisos válidos.
+- Si Kimi devuelve errores de permisos/saldo/modelo, decidir en la siguiente fase si se prefiere fallback mock o estado `error` sin fallback.

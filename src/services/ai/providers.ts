@@ -110,6 +110,8 @@ export class KimiProvider extends BaseAIProvider {
   constructor(config: ProviderConfig) {
     super(config)
     if (config.apiKey) {
+      console.log('[KimiProvider] baseURL:', config.baseUrl || 'https://api.moonshot.ai/v1')
+      console.log('[KimiProvider] model:', config.defaultModel)
       this.client = new OpenAI({
         apiKey: config.apiKey,
         baseURL: config.baseUrl || 'https://api.moonshot.ai/v1',
@@ -124,6 +126,7 @@ export class KimiProvider extends BaseAIProvider {
     
     const model = options?.model || this.config.defaultModel
     const temperature = options?.temperature ?? 0.7
+    console.log('[KimiProvider] model:', model)
     
     try {
       const response = await this.client.chat.completions.create({
@@ -155,6 +158,7 @@ export class KimiProvider extends BaseAIProvider {
     
     const model = options?.model || this.config.defaultModel
     const temperature = options?.temperature ?? 0.3  // Más bajo para estructurado
+    console.log('[KimiProvider] model:', model)
     
     // Construir prompt que fuerza JSON válido
     const structuredPrompt = `${prompt}

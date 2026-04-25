@@ -32,14 +32,16 @@ export function App(): JSX.Element {
   } | null>(null)
 
   // Cargar solicitudes y estado de proveedores al iniciar
-  const loadRequests = useCallback(async () => {
+  const loadRequests = useCallback(async (): Promise<ResearchRequest[]> => {
     console.log('[Renderer] Loading requests via IPC...')
     try {
       const requests = await window.electronAPI.getAllResearch()
       console.log('[Renderer] Loaded', requests.length, 'requests')
       setRequests(requests)
+      return requests
     } catch (error) {
       console.error('[Renderer] Failed to load requests:', error)
+      return []
     }
   }, [])
 
@@ -61,6 +63,33 @@ export function App(): JSX.Element {
     loadProviderStatus()
   }, [loadRequests, loadProviderStatus])
 
+  const pollResearchUntilSettled = useCallback(async (requestId: string) => {
+    const maxAttempts = 80
+    const intervalMs = 1500
+    const activeStatuses: ResearchRequest['status'][] = ['pending', 'researching', 'structured']
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, intervalMs))
+
+      const latestRequests = await loadRequests()
+      const latestRequest = latestRequests.find(req => req.id === requestId)
+      if (latestRequest) {
+        setSelectedRequest(current => current?.id === requestId ? latestRequest : current)
+      }
+
+      const result = await window.electronAPI.getResearchResult(requestId)
+      if (result) {
+        setSelectedResult(result)
+        const draft = await window.electronAPI.getDraft(result.id)
+        setSelectedDraft(draft)
+      }
+
+      if (!latestRequest || !activeStatuses.includes(latestRequest.status)) {
+        return
+      }
+    }
+  }, [loadRequests])
+
   // Handlers
   const handleCreateRequest = async (input: unknown) => {
     console.log('[Renderer] Creating research via IPC:', input)
@@ -77,6 +106,7 @@ export function App(): JSX.Element {
       console.log('[Renderer] Starting research via IPC:', request.id)
       await window.electronAPI.startResearch(request.id)
       console.log('[Renderer] Research started:', request.id)
+      pollResearchUntilSettled(request.id)
       
     } catch (error) {
       console.error('[Renderer] Research creation failed:', error)

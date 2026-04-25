@@ -125,8 +125,9 @@ export class KimiProvider extends BaseAIProvider {
     }
     
     const model = options?.model || this.config.defaultModel
-    const temperature = options?.temperature ?? 0.7
+    const temperature = resolveKimiTemperature(model, options?.temperature ?? 0.7)
     console.log('[KimiProvider] model:', model)
+    console.log('[KimiProvider] temperature:', temperature)
     
     try {
       const response = await this.client.chat.completions.create({
@@ -157,8 +158,9 @@ export class KimiProvider extends BaseAIProvider {
     }
     
     const model = options?.model || this.config.defaultModel
-    const temperature = options?.temperature ?? 0.3  // Más bajo para estructurado
+    const temperature = resolveKimiTemperature(model, options?.temperature ?? 0.3)
     console.log('[KimiProvider] model:', model)
+    console.log('[KimiProvider] temperature:', temperature)
     
     // Construir prompt que fuerza JSON válido
     const structuredPrompt = `${prompt}
@@ -216,6 +218,14 @@ Responde en español de forma natural y útil.`
 
     return this.generateText(searchPrompt, { ...options, temperature: 0.7 })
   }
+}
+
+function resolveKimiTemperature(model: string, requestedTemperature: number): number {
+  if (model === 'kimi-k2.6') {
+    return 1
+  }
+
+  return requestedTemperature
 }
 
 // ============================================

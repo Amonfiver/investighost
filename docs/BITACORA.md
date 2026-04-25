@@ -979,3 +979,43 @@ Corregir el intento de llamada a Kimi con el modelo antiguo `kimi-k1` y evitar q
 
 - Probar una investigación completa contra Kimi con saldo/permisos válidos.
 - Si Kimi devuelve errores de permisos/saldo/modelo, decidir en la siguiente fase si se prefiere fallback mock o estado `error` sin fallback.
+
+---
+
+## Sesión 11 — Temperature Kimi k2.6 y DevTools
+
+### Objetivo
+Corregir el error real de API `400 invalid temperature: only 1 is allowed for this model` al usar `kimi-k2.6`, y evitar que DevTools se abra automáticamente al arrancar la app.
+
+### Causa exacta
+
+- `src/services/ai/providers.ts` enviaba `temperature: 0.7` para generación normal.
+- El mismo proveedor enviaba `temperature: 0.3` para generación estructurada.
+- `searchAndSummarize()` también forzaba `temperature: 0.7`.
+- El modelo `kimi-k2.6` solo acepta `temperature: 1`, así que la API rechazaba la petición antes de generar contenido.
+- `src/main/index.ts` abría DevTools siempre en desarrollo con `mainWindow.webContents.openDevTools()`.
+
+### Solución aplicada
+
+- `src/services/ai/providers.ts`
+  - Añadida resolución de temperatura específica para Kimi.
+  - Si el modelo es `kimi-k2.6`, `KimiProvider` siempre envía `temperature: 1`.
+  - Se mantiene la temperatura solicitada para otros modelos.
+  - Añadido log seguro `[KimiProvider] temperature: ...`.
+- `src/main/index.ts`
+  - DevTools ya no se abre por defecto.
+  - Solo se abre si el entorno define `OPEN_DEVTOOLS=true`.
+
+### Verificación
+
+- `npm run build:vite` compila sin errores.
+- `npm run dev` arranca.
+- Arranque confirmado con:
+  - `[Config] Kimi model: kimi-k2.6`
+  - `[KimiProvider] model: kimi-k2.6`
+- DevTools no se abre automáticamente y no aparecen errores de DevTools en stderr durante el arranque.
+
+### Pendiente
+
+- Probar una investigación completa desde UI para confirmar que la siguiente llamada real a Kimi muestra `[KimiProvider] temperature: 1`.
+- Si la API devuelve otro parámetro rechazado, ajustar solo ese parámetro en `KimiProvider`.

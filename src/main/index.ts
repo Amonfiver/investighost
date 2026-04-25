@@ -66,6 +66,8 @@ console.log('[Main] Provider status:', {
   openai: providerStatus.openai.configured ? '✅ configured' : '❌ not configured',
 })
 
+const shouldOpenDevTools = process.env.OPEN_DEVTOOLS === 'true'
+
 // Mantener referencia global para evitar garbage collection
 let mainWindow: BrowserWindowType | null = null
 
@@ -88,7 +90,9 @@ function createWindow(): void {
   // Cargar contenido según entorno
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
-    mainWindow.webContents.openDevTools()
+    if (shouldOpenDevTools) {
+      mainWindow.webContents.openDevTools()
+    }
   } else {
     mainWindow.loadFile(path.join(__dirname, '../index.html'))
   }

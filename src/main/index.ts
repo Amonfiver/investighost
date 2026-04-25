@@ -116,6 +116,48 @@ ipcMain.handle('ai:get-provider-status', () => {
   return getProviderConfigStatus()
 })
 
+// Research handlers - conectan UI con backend real
+import { researchModule } from '@modules/research'
+import * as store from '@modules/persistence/memory-store'
+
+ipcMain.handle('research:create', async (_event, input) => {
+  console.log('[IPC] research:create called with:', JSON.stringify(input))
+  const request = await researchModule.createRequest(input)
+  console.log('[IPC] research:create returned:', request.id)
+  return request
+})
+
+ipcMain.handle('research:start', async (_event, requestId) => {
+  console.log('[IPC] research:start called for:', requestId)
+  // Iniciar investigación en background (no esperamos a que termine)
+  researchModule.startResearch(requestId).catch(err => {
+    console.error('[IPC] research:start failed:', err.message)
+  })
+  console.log('[IPC] research:start initiated for:', requestId)
+  return { started: true, requestId }
+})
+
+ipcMain.handle('research:get-all', async () => {
+  console.log('[IPC] research:get-all called')
+  const requests = await researchModule.getAllRequests()
+  console.log('[IPC] research:get-all returning:', requests.length, 'requests')
+  return requests
+})
+
+ipcMain.handle('research:get-result', async (_event, requestId) => {
+  console.log('[IPC] research:get-result called for:', requestId)
+  const result = await researchModule.getResult(requestId)
+  console.log('[IPC] research:get-result found:', result ? 'yes' : 'no')
+  return result
+})
+
+ipcMain.handle('research:get-draft', async (_event, resultId) => {
+  console.log('[IPC] research:get-draft called for resultId:', resultId)
+  const draft = await store.getDraftByResultId(resultId)
+  console.log('[IPC] research:get-draft found:', draft ? 'yes' : 'no')
+  return draft
+})
+
 // Ciclo de vida de la app
 app.whenReady().then(() => {
   createWindow()

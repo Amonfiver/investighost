@@ -32,6 +32,7 @@ export default defineConfig({
               '@services': path.resolve(__dirname, './src/services'),
               '@shared': path.resolve(__dirname, './src/shared'),
               '@utils': path.resolve(__dirname, './src/utils'),
+              '@modules': path.resolve(__dirname, './src/modules'),
             },
           },
           build: {

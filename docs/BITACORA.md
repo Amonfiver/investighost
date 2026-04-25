@@ -672,6 +672,99 @@ Ejecutar `npm run dev`, crear una investigación, y revisar los logs de consola 
 
 ---
 
+## Sesión 12 — Fix: Cableado UI → Backend Real
+
+### Objetivo
+Corregir el fallo crítico donde la UI generaba resultados mock localmente sin llamar al backend, ignorando la configuración de Kimi.
+
+### Causa raíz encontrada
+**La UI no estaba cableada al backend.** El flujo era:
+1. UI importaba `researchModule` directamente desde `@modules/research`
+2. Esto funcionaba en desarrollo porque Vite permitía cierto acceso
+3. Pero el renderer no tenía acceso real a Node.js en producción
+4. El resultado se generaba localmente sin logs visibles en PowerShell
+
+**Faltaba el IPC completo:**
+- Preload no exponía funciones de research
+- Main no registraba handlers de research
+- UI no usaba `window.electronAPI`
+
+### Solución aplicada
+
+**1. Preload (`src/main/preload.ts`):**
+```typescript
+createResearch: (input) => ipcRenderer.invoke('research:create', input)
+startResearch: (requestId) => ipcRenderer.invoke('research:start', requestId)
+getAllResearch: () => ipcRenderer.invoke('research:get-all')
+getResearchResult: (requestId) => ipcRenderer.invoke('research:get-result', requestId)
+getDraft: (resultId) => ipcRenderer.invoke('research:get-draft', resultId)
+```
+
+**2. Main (`src/main/index.ts`):**
+Registrados 5 handlers IPC que llaman a `researchModule` real.
+
+**3. UI (`src/renderer/App.tsx`):**
+- Eliminado import directo de `@modules/research`
+- Ahora usa `window.electronAPI.*` para todas las operaciones
+- Añadidos logs `[Renderer]` en todas las operaciones
+
+**4. Tipos (`src/vite-env.d.ts`):**
+Actualizados tipos de `Window.electronAPI` con todas las funciones.
+
+**5. Build (`vite.config.ts`):**
+Añadido alias `@modules` al build del main process.
+
+### Archivos modificados
+- `src/main/preload.ts` — Exposición de API de research
+- `src/main/index.ts` — Handlers IPC para research
+- `src/renderer/App.tsx` — Uso de IPC en lugar de imports directos
+- `src/vite-env.d.ts` — Tipos actualizados
+- `vite.config.ts` — Alias para main build
+
+### Logs nuevos en UI (consola del renderer):
+```
+[Renderer] Loading requests via IPC...
+[Renderer] Creating research via IPC: {...}
+[Renderer] Research created: <id>
+[Renderer] Starting research via IPC: <id>
+```
+
+### Logs nuevos en Main (PowerShell):
+```
+[IPC] research:create called with: {...}
+[IPC] research:create returned: <id>
+[IPC] research:start called for: <id>
+[IPC] research:start initiated for: <id>
+✅ [Research] USING REAL KIMI - Generating honest research...
+```
+
+### Estado final
+- ✅ Build compila sin errores
+- ✅ UI conectada a backend vía IPC
+- ✅ Logs visibles en ambas consolas
+- ✅ Kimi real se activa cuando está configurado
+- ✅ Mock solo como fallback cuando no hay API key
+
+### Cómo probar
+1. `npm run dev`
+2. Crear investigación con "Albarracín, España"
+3. Verificar en **PowerShell**:
+   - `[IPC] research:create called`
+   - `✅ [Research] USING REAL KIMI`
+4. Verificar en **Consola del renderer**:
+   - `[Renderer] Research created`
+   - `[Renderer] Research started`
+
+### Limitaciones actuales
+- Persistencia sigue en memoria (se pierde al cerrar)
+- Sin búsqueda web real
+- Si Kimi falla, no hay retry automático
+
+### Siguiente bloque recomendado
+**Persistencia SQLite real** o **búsqueda web integrada**.
+
+---
+
 ## Sesión 8 — Integración Kimi como Proveedor Real
 
 ### Objetivo

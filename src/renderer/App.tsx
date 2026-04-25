@@ -3,13 +3,13 @@
  * 
  * Propósito: UI completa del flujo de investigación con soporte para IA real
  * Alcance: Formulario, listado, detalle, configuración y visualización de resultados
- * Estado: Integrado con Kimi - muestra estados de configuración y errores
+ * Estado: Cableado a backend real vía IPC
+ * 
+ * NOTA: Este componente usa window.electronAPI para comunicarse con el main process
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import './App.css'
-import { researchModule } from '@modules/research'
-import * as store from '@modules/persistence/memory-store'
 import type { ResearchRequest, ResearchResult, EditorialDraft } from '@shared/types'
 
 // ============================================
@@ -33,18 +33,26 @@ export function App(): JSX.Element {
 
   // Cargar solicitudes y estado de proveedores al iniciar
   const loadRequests = useCallback(async () => {
-    const all = await researchModule.getAllRequests()
-    setRequests(all)
+    console.log('[Renderer] Loading requests via IPC...')
+    try {
+      const requests = await window.electronAPI.getAllResearch()
+      console.log('[Renderer] Loaded', requests.length, 'requests')
+      setRequests(requests)
+    } catch (error) {
+      console.error('[Renderer] Failed to load requests:', error)
+    }
   }, [])
 
   const loadProviderStatus = useCallback(async () => {
     try {
-      const status = await window.electronAPI?.getProviderStatus?.()
+      console.log('[Renderer] Loading provider status...')
+      const status = await window.electronAPI.getProviderStatus()
       if (status) {
+        console.log('[Renderer] Provider status:', status)
         setProviderStatus(status)
       }
     } catch (error) {
-      console.error('Failed to load provider status:', error)
+      console.error('[Renderer] Failed to load provider status:', error)
     }
   }, [])
 
@@ -55,23 +63,23 @@ export function App(): JSX.Element {
 
   // Handlers
   const handleCreateRequest = async (input: unknown) => {
+    console.log('[Renderer] Creating research via IPC:', input)
     setIsLoading(true)
     try {
-      const request = await researchModule.createRequest(input)
+      const request = await window.electronAPI.createResearch(input)
+      console.log('[Renderer] Research created:', request.id)
+      
+      // Recargar lista
       await loadRequests()
       setActiveView('list')
       
       // Iniciar investigación automáticamente
-      setTimeout(async () => {
-        try {
-          await researchModule.startResearch(request.id)
-        } catch (error) {
-          console.error('Research failed:', error)
-        } finally {
-          await loadRequests()
-        }
-      }, 100)
+      console.log('[Renderer] Starting research via IPC:', request.id)
+      await window.electronAPI.startResearch(request.id)
+      console.log('[Renderer] Research started:', request.id)
+      
     } catch (error) {
+      console.error('[Renderer] Research creation failed:', error)
       alert('Error: ' + (error as Error).message)
     } finally {
       setIsLoading(false)
@@ -79,15 +87,24 @@ export function App(): JSX.Element {
   }
 
   const handleSelectRequest = async (request: ResearchRequest) => {
+    console.log('[Renderer] Selecting request:', request.id)
     setSelectedRequest(request)
     setIsLoading(true)
     
-    const result = await researchModule.getResult(request.id)
-    setSelectedResult(result)
-    
-    if (result) {
-      const draft = await store.getDraftByResultId(result.id)
-      setSelectedDraft(draft)
+    try {
+      console.log('[Renderer] Getting result for:', request.id)
+      const result = await window.electronAPI.getResearchResult(request.id)
+      console.log('[Renderer] Result found:', result ? 'yes' : 'no')
+      setSelectedResult(result)
+      
+      if (result) {
+        console.log('[Renderer] Getting draft for result:', result.id)
+        const draft = await window.electronAPI.getDraft(result.id)
+        console.log('[Renderer] Draft found:', draft ? 'yes' : 'no')
+        setSelectedDraft(draft)
+      }
+    } catch (error) {
+      console.error('[Renderer] Error loading details:', error)
     }
     
     setIsLoading(false)
@@ -249,7 +266,7 @@ function ResearchList({ requests, onSelect, isLoading, kimiConfigured }: Researc
                 <p><strong>Idioma:</strong> {req.input.outputLanguage}</p>
               </div>
               <div className="request-footer">
-                <small>{req.createdAt.toLocaleDateString('es-ES')}</small>
+                <small>{new Date(req.createdAt).toLocaleDateString('es-ES')}</small>
               </div>
             </div>
           ))}

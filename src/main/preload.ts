@@ -18,17 +18,17 @@ const electronAPI = {
   
   // AI Providers
   getProviderStatus: () => ipcRenderer.invoke('ai:get-provider-status'),
+  
+  // Research operations
+  createResearch: (input: unknown) => ipcRenderer.invoke('research:create', input),
+  startResearch: (requestId: string) => ipcRenderer.invoke('research:start', requestId),
+  getAllResearch: () => ipcRenderer.invoke('research:get-all'),
+  getResearchResult: (requestId: string) => ipcRenderer.invoke('research:get-result', requestId),
+  getDraft: (resultId: string) => ipcRenderer.invoke('research:get-draft', resultId),
 }
 
 // Exponer como window.electronAPI
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)
-
-// Tipos para TypeScript
-declare global {
-  interface Window {
-    electronAPI: typeof electronAPI
-  }
-}
 
 console.log('[Preload] Electron API exposed')
 console.log('[Preload] Investighost security context initialized')

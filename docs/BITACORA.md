@@ -486,6 +486,45 @@ Preparar la arquitectura base de Investighost para:
 
 ---
 
+## Sesión 9 — Fix: Carga correcta de .env en desarrollo
+
+### Objetivo
+Corregir el fallo donde Electron/main no leía correctamente el archivo `.env` en modo desarrollo, mostrando `injected env (0)` en lugar de cargar las variables de entorno.
+
+### Problema
+- El cálculo de ruta usaba `path.join(__dirname, '../..')` desde `dist-electron/`
+- En desarrollo con Vite, esto apuntaba a un directorio incorrecto
+- Resultado: `dotenv` cargaba 0 variables y Kimi aparecía como no configurado
+
+### Solución
+- Usar `process.cwd()` en desarrollo (donde se ejecuta `npm run dev`)
+- Mantener `__dirname` relativo para producción
+- Añadir logs informativos de la ruta y variables cargadas
+
+### Archivos tocados
+- `src/main/index.ts` — Corrección de lógica de carga de `.env`
+
+### Cambios realizados
+```typescript
+// Antes: ruta frágil basada en __dirname
+const rootDir = path.join(__dirname, '../..')
+
+// Después: estrategia robusta según entorno
+const isDev = !app.isPackaged
+const rootDir = isDev 
+  ? process.cwd() 
+  : path.join(__dirname, '../..')
+```
+
+### Estado final
+✅ `npm run dev` carga correctamente `.env` desde raíz del proyecto
+✅ Aparece en consola: `[Main] dotenv loaded: 3 variables`
+✅ Aparece: `[Config] Kimi configured: true`
+✅ Kimi disponible en UI para investigaciones reales
+✅ Build compila sin errores
+
+---
+
 ## Sesión 8 — Integración Kimi como Proveedor Real
 
 ### Objetivo

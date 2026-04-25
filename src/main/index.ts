@@ -29,12 +29,24 @@ import dotenv from 'dotenv'
 // CARGA CONFIGURACIÓN DESDE .ENV
 // ============================================
 
+// Detectar modo desarrollo ANTES de cualquier otra operación
+const isDev = !app.isPackaged
+
 // Cargar .env desde la raíz del proyecto
+// En desarrollo: process.cwd() apunta a la raíz del proyecto
+// En producción: usar __dirname relativo al ejecutable
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const rootDir = path.join(__dirname, '../..')
 
-dotenv.config({ path: path.join(rootDir, '.env') })
+const rootDir = isDev 
+  ? process.cwd() 
+  : path.join(__dirname, '../..')
+
+const envPath = path.join(rootDir, '.env')
+console.log('[Main] Loading .env from:', envPath)
+
+const dotenvResult = dotenv.config({ path: envPath })
+console.log(`[Main] dotenv loaded: ${dotenvResult.parsed ? Object.keys(dotenvResult.parsed).length : 0} variables`)
 
 // Cargar configuración de la app
 import { loadConfig, getProviderConfigStatus } from '@services/config'
@@ -50,8 +62,6 @@ console.log('[Main] Provider status:', {
   kimi: providerStatus.kimi.configured ? '✅ configured' : '❌ not configured',
   openai: providerStatus.openai.configured ? '✅ configured' : '❌ not configured',
 })
-
-const isDev = !app.isPackaged
 
 // Mantener referencia global para evitar garbage collection
 let mainWindow: BrowserWindow | null = null

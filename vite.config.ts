@@ -27,6 +27,13 @@ export default defineConfig({
           }
         },
         vite: {
+          resolve: {
+            alias: {
+              '@services': path.resolve(__dirname, './src/services'),
+              '@shared': path.resolve(__dirname, './src/shared'),
+              '@utils': path.resolve(__dirname, './src/utils'),
+            },
+          },
           build: {
             sourcemap: true,
             minify: false,

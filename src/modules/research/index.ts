@@ -1,9 +1,11 @@
 /**
- * Investighost - Módulo Research (Implementación Funcional MVP)
+ * Investighost - Módulo Research (Integración Real con Kimi)
  * 
- * Propósito: Gestión del flujo de investigación con simulación temporal
- * Alcance: Crear solicitudes, simular investigación, generar resultados mock
- * Estado: FUNCIONAL CON SIMULACIÓN - la investigación real se implementará luego
+ * Propósito: Gestión del flujo de investigación con soporte para IA real
+ * Alcance: Crear solicitudes, investigar con Kimi o simular, generar resultados
+ * Estado: INTEGRADO CON KIMI - usa investigación real cuando hay API key
+ * 
+ * NOTA: Si no hay Kimi configurado, mantiene simulación con mensaje claro
  */
 
 import type { ResearchRequest, ResearchResult, EditorialDraft } from '@shared/types'
@@ -11,9 +13,11 @@ import { validateResearchInput } from '@utils/validation'
 import { generateId, sleep } from '@utils/helpers'
 import * as store from '@modules/persistence/memory-store'
 import { generateMockResult } from './mock-data'
+import { researchWithAI, isAIResearchAvailable } from '@services/ai/research'
 
 // Re-exportar el mock para uso externo si es necesario
 export { generateMockResult } from './mock-data'
+export { isAIResearchAvailable } from '@services/ai/research'
 
 export interface ResearchModule {
   createRequest(input: unknown): Promise<ResearchRequest>
@@ -22,10 +26,11 @@ export interface ResearchModule {
   getAllRequests(): Promise<ResearchRequest[]>
   getResult(requestId: string): Promise<ResearchResult | null>
   cancelResearch(requestId: string): Promise<void>
+  isAIConfigured(): boolean
 }
 
 // ============================================
-// Implementación funcional con simulación
+// Implementación con soporte IA real
 // ============================================
 
 /**
@@ -55,8 +60,8 @@ async function createRequest(input: unknown): Promise<ResearchRequest> {
 }
 
 /**
- * Inicia el proceso de investigación (simulado)
- * En el futuro, esto hará búsqueda real en internet y análisis con IA
+ * Inicia el proceso de investigación
+ * Usa Kimi si está configurado, simulación si no
  */
 async function startResearch(requestId: string): Promise<void> {
   const request = await store.getRequest(requestId)
@@ -69,29 +74,49 @@ async function startResearch(requestId: string): Promise<void> {
   }
 
   console.log('[Research] Starting research for:', requestId)
+  console.log('[Research] AI available:', isAIResearchAvailable())
 
-  // Simular transición de estados
   try {
     // 1. researching
     await updateStatus(requestId, 'researching')
-    await sleep(1500) // Simular tiempo de investigación
-
-    // 2. structured (datos listos)
-    const result = generateMockResult(requestId, request.input)
-    await store.saveResult(result)
-    await updateStatus(requestId, 'structured')
-    console.log('[Research] Result generated:', result.id)
-
-    // 3. drafted (borrador listo) - esto lo hará el módulo editorial, 
-    // pero lo simulamos aquí para el flujo completo
-    await sleep(1000)
-    const draft = generateMockDraft(result)
-    await store.saveDraft(draft)
-    await updateStatus(requestId, 'drafted')
-    console.log('[Research] Draft generated:', draft.id)
+    
+    if (isAIResearchAvailable()) {
+      // Investigar con IA real (Kimi)
+      console.log('[Research] Using Kimi for real research...')
+      
+      const { result, draft, logId, cost } = await researchWithAI(requestId, request.input)
+      
+      // Guardar resultado
+      await store.saveResult(result)
+      await updateStatus(requestId, 'structured')
+      console.log('[Research] Result from Kimi:', result.id, `(cost: $${cost?.toFixed(4) || 'unknown'})`)
+      
+      // Guardar borrador
+      await store.saveDraft(draft)
+      await updateStatus(requestId, 'drafted')
+      console.log('[Research] Draft generated:', draft.id, 'log:', logId)
+      
+    } else {
+      // Simulación temporal (cuando no hay Kimi configurado)
+      console.log('[Research] No AI configured, using MOCK simulation')
+      
+      await sleep(1500)
+      
+      const result = generateMockResult(requestId, request.input)
+      await store.saveResult(result)
+      await updateStatus(requestId, 'structured')
+      console.log('[Research] MOCK Result generated:', result.id)
+      
+      await sleep(1000)
+      const draft = generateMockDraft(result)
+      await store.saveDraft(draft)
+      await updateStatus(requestId, 'drafted')
+      console.log('[Research] MOCK Draft generated:', draft.id)
+    }
 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[Research] Error during research:', message)
     await updateStatus(requestId, 'error', message)
     throw error
   }
@@ -131,9 +156,14 @@ async function cancelResearch(requestId: string): Promise<void> {
     throw new Error(`Cannot cancel research with status: ${request.status}`)
   }
 
-  // Para el mock, simplemente eliminamos la solicitud
-  // En la versión real, marcaríamos como cancelada
   console.log('[Research] Request cancelled:', requestId)
+}
+
+/**
+ * Verifica si la IA está configurada
+ */
+function isAIConfigured(): boolean {
+  return isAIResearchAvailable()
 }
 
 // ============================================
@@ -149,8 +179,7 @@ async function updateStatus(
 }
 
 /**
- * Genera un borrador editorial mock a partir de un resultado
- * NOTA: En el futuro esto será responsabilidad del módulo editorial con IA real
+ * Genera un borrador editorial mock (para modo simulación)
  */
 function generateMockDraft(result: ResearchResult): EditorialDraft {
   const { destination, summary, places, activities, tips } = result
@@ -209,7 +238,8 @@ export const researchModule: ResearchModule = {
   getAllRequests,
   getResult,
   cancelResearch,
+  isAIConfigured,
 }
 
-console.log('[Research Module] Loaded with MOCK simulation')
-console.log('[Research Module] ⚠️  Using simulated data - real research not implemented yet')
+console.log('[Research Module] Loaded')
+console.log('[Research Module] AI configured:', isAIResearchAvailable() ? '✅ YES (Kimi ready)' : '❌ NO (using mock)')

@@ -1,9 +1,9 @@
 /**
- * Investighost - Componente Principal App (MVP Funcional)
+ * Investighost - Componente Principal App (Con Integración Kimi)
  * 
- * Propósito: UI completa del flujo de investigación → revisión
- * Alcance: Formulario, listado, detalle y visualización de resultados
- * Estado: Funcional con simulación - investigación real pendiente
+ * Propósito: UI completa del flujo de investigación con soporte para IA real
+ * Alcance: Formulario, listado, detalle, configuración y visualización de resultados
+ * Estado: Integrado con Kimi - muestra estados de configuración y errores
  */
 
 import { useState, useEffect, useCallback } from 'react'
@@ -23,16 +23,35 @@ export function App(): JSX.Element {
   const [selectedResult, setSelectedResult] = useState<ResearchResult | null>(null)
   const [selectedDraft, setSelectedDraft] = useState<EditorialDraft | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  
+  // Estado de configuración de proveedores
+  const [providerStatus, setProviderStatus] = useState<{
+    kimi: { configured: boolean; hasKey: boolean }
+    openai: { configured: boolean; hasKey: boolean }
+    debug: boolean
+  } | null>(null)
 
-  // Cargar solicitudes al iniciar
+  // Cargar solicitudes y estado de proveedores al iniciar
   const loadRequests = useCallback(async () => {
     const all = await researchModule.getAllRequests()
     setRequests(all)
   }, [])
 
+  const loadProviderStatus = useCallback(async () => {
+    try {
+      const status = await window.electronAPI?.getProviderStatus?.()
+      if (status) {
+        setProviderStatus(status)
+      }
+    } catch (error) {
+      console.error('Failed to load provider status:', error)
+    }
+  }, [])
+
   useEffect(() => {
     loadRequests()
-  }, [loadRequests])
+    loadProviderStatus()
+  }, [loadRequests, loadProviderStatus])
 
   // Handlers
   const handleCreateRequest = async (input: unknown) => {
@@ -44,8 +63,13 @@ export function App(): JSX.Element {
       
       // Iniciar investigación automáticamente
       setTimeout(async () => {
-        await researchModule.startResearch(request.id)
-        await loadRequests()
+        try {
+          await researchModule.startResearch(request.id)
+        } catch (error) {
+          console.error('Research failed:', error)
+        } finally {
+          await loadRequests()
+        }
       }, 100)
     } catch (error) {
       alert('Error: ' + (error as Error).message)
@@ -70,6 +94,8 @@ export function App(): JSX.Element {
     setActiveView('detail')
   }
 
+  const kimiConfigured = providerStatus?.kimi?.configured ?? false
+
   return (
     <div className="app">
       <header className="app-header">
@@ -77,6 +103,16 @@ export function App(): JSX.Element {
           Investighost
         </h1>
         <p className="subtitle">Investigación de destinos para Trawel</p>
+        
+        {/* Indicador de estado de Kimi */}
+        <div className="provider-status">
+          {providerStatus && (
+            <span className={`status-indicator ${kimiConfigured ? 'ready' : 'not-ready'}`}>
+              {kimiConfigured ? '🟢 Kimi listo' : '🔴 Kimi no configurado'}
+            </span>
+          )}
+        </div>
+        
         <div className="header-actions">
           <button 
             className="btn-primary"
@@ -89,11 +125,31 @@ export function App(): JSX.Element {
       </header>
 
       <main className="app-main">
+        {/* Banner de configuración si Kimi no está listo */}
+        {!kimiConfigured && activeView === 'list' && (
+          <div className="config-banner">
+            <h3>⚠️ Configuración necesaria</h3>
+            <p>
+              Para usar investigación real con Kimi, crea un archivo <code>.env</code> en la raíz del proyecto:
+            </p>
+            <pre>
+              KIMI_API_KEY=sk-tu-clave-aqui
+            </pre>
+            <p>
+              Obtén tu API key en <a href="https://platform.moonshot.cn/" target="_blank" rel="noopener noreferrer">platform.moonshot.cn</a>
+            </p>
+            <p className="note">
+              Sin configuración, la app funcionará en modo simulación con datos de ejemplo.
+            </p>
+          </div>
+        )}
+
         {activeView === 'list' && (
           <ResearchList 
             requests={requests} 
             onSelect={handleSelectRequest}
             isLoading={isLoading}
+            kimiConfigured={kimiConfigured}
           />
         )}
         
@@ -102,6 +158,7 @@ export function App(): JSX.Element {
             onSubmit={handleCreateRequest}
             onCancel={() => setActiveView('list')}
             isLoading={isLoading}
+            kimiConfigured={kimiConfigured}
           />
         )}
         
@@ -112,13 +169,15 @@ export function App(): JSX.Element {
             draft={selectedDraft}
             onBack={() => setActiveView('list')}
             isLoading={isLoading}
+            kimiConfigured={kimiConfigured}
           />
         )}
       </main>
 
       <footer className="app-footer">
         <p>
-          <span className="badge-mock">🔄 SIMULACIÓN</span>
+          {!kimiConfigured && <span className="badge-mock">🔄 SIMULACIÓN</span>}
+          {kimiConfigured && <span className="badge-live">🤖 KIMI ACTIVO</span>}
           {' '}| Stack: Electron + React + TypeScript + Vite
           {' '}| Persistencia: Memoria temporal
         </p>
@@ -135,13 +194,14 @@ interface ResearchListProps {
   requests: ResearchRequest[]
   onSelect: (r: ResearchRequest) => void
   isLoading: boolean
+  kimiConfigured: boolean
 }
 
-function ResearchList({ requests, onSelect, isLoading }: ResearchListProps): JSX.Element {
+function ResearchList({ requests, onSelect, isLoading, kimiConfigured }: ResearchListProps): JSX.Element {
   const getStatusLabel = (status: ResearchRequest['status']) => {
     const labels: Record<string, string> = {
       pending: '⏳ Pendiente',
-      researching: '🔍 Investigando...',
+      researching: kimiConfigured ? '🔍 Investigando con Kimi...' : '🔍 Simulando...',
       structured: '📊 Estructurado',
       drafted: '📝 Borrador listo',
       under_review: '👀 En revisión',
@@ -167,7 +227,7 @@ function ResearchList({ requests, onSelect, isLoading }: ResearchListProps): JSX
       {requests.length === 0 ? (
         <div className="empty-state">
           <p>No hay investigaciones todavía.</p>
-          <p>Crea tu primera investigación para empezar.</p>
+          <p>{kimiConfigured ? 'Crea tu primera investigación con Kimi.' : 'Crea tu primera investigación (modo simulación).'}</p>
         </div>
       ) : (
         <div className="request-grid">
@@ -203,9 +263,10 @@ interface NewResearchFormProps {
   onSubmit: (input: unknown) => void
   onCancel: () => void
   isLoading: boolean
+  kimiConfigured: boolean
 }
 
-function NewResearchForm({ onSubmit, onCancel, isLoading }: NewResearchFormProps): JSX.Element {
+function NewResearchForm({ onSubmit, onCancel, isLoading, kimiConfigured }: NewResearchFormProps): JSX.Element {
   const [formData, setFormData] = useState({
     country: '',
     region: '',
@@ -222,6 +283,14 @@ function NewResearchForm({ onSubmit, onCancel, isLoading }: NewResearchFormProps
   return (
     <div className="new-research-form">
       <h2>Nueva investigación</h2>
+      
+      {!kimiConfigured && (
+        <div className="warning-box">
+          <p>⚠️ <strong>Modo simulación:</strong> No hay Kimi configurado.</p>
+          <p>La investigación usará datos de ejemplo en lugar de IA real.</p>
+        </div>
+      )}
+      
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label htmlFor="country">País *</label>
@@ -287,7 +356,7 @@ function NewResearchForm({ onSubmit, onCancel, isLoading }: NewResearchFormProps
             Cancelar
           </button>
           <button type="submit" className="btn-primary" disabled={isLoading}>
-            {isLoading ? 'Creando...' : 'Crear investigación'}
+            {isLoading ? 'Creando...' : (kimiConfigured ? 'Investigar con Kimi' : 'Crear (simulación)')}
           </button>
         </div>
       </form>
@@ -301,14 +370,18 @@ interface ResearchDetailProps {
   draft: EditorialDraft | null
   onBack: () => void
   isLoading: boolean
+  kimiConfigured: boolean
 }
 
-function ResearchDetail({ request, result, draft, onBack, isLoading }: ResearchDetailProps): JSX.Element {
+function ResearchDetail({ request, result, draft, onBack, isLoading, kimiConfigured }: ResearchDetailProps): JSX.Element {
   const [activeTab, setActiveTab] = useState<'overview' | 'places' | 'activities' | 'draft'>('overview')
 
   if (isLoading) {
     return <div className="loading">Cargando detalles...</div>
   }
+
+  const isError = request.status === 'error'
+  const errorMessage = request.errorMessage
 
   return (
     <div className="research-detail">
@@ -321,12 +394,33 @@ function ResearchDetail({ request, result, draft, onBack, isLoading }: ResearchD
         </span>
       </div>
 
+      {/* Mensaje de error si lo hay */}
+      {isError && errorMessage && (
+        <div className="error-banner">
+          <h4>❌ Error en la investigación</h4>
+          <p>{errorMessage}</p>
+          {!kimiConfigured && (
+            <p className="hint">
+              ¿No tienes Kimi configurado? Revisa el archivo <code>.env</code> y añade tu KIMI_API_KEY.
+            </p>
+          )}
+          {kimiConfigured && errorMessage?.includes('API key') && (
+            <p className="hint">
+              Parece que hay un problema con la API key. Verifica que sea válida y tenga saldo.
+            </p>
+          )}
+        </div>
+      )}
+
       {!result ? (
         <div className="waiting-state">
           <p>La investigación está en curso...</p>
           <p>Estado actual: <strong>{request.status}</strong></p>
-          {request.status === 'error' && request.errorMessage && (
-            <p className="error-message">Error: {request.errorMessage}</p>
+          {!kimiConfigured && request.status === 'researching' && (
+            <p className="note">Usando modo simulación (sin IA real)</p>
+          )}
+          {kimiConfigured && request.status === 'researching' && (
+            <p className="note">Consultando con Kimi AI...</p>
           )}
         </div>
       ) : (
@@ -360,11 +454,11 @@ function ResearchDetail({ request, result, draft, onBack, isLoading }: ResearchD
 
           <div className="tab-content">
             {activeTab === 'overview' && (
-              <OverviewTab result={result} request={request} />
+              <OverviewTab result={result} kimiConfigured={kimiConfigured} />
             )}
             {activeTab === 'places' && <PlacesTab places={result.places} />}
             {activeTab === 'activities' && <ActivitiesTab activities={result.activities} />}
-            {activeTab === 'draft' && draft && <DraftTab draft={draft} />}
+            {activeTab === 'draft' && draft && <DraftTab draft={draft} kimiConfigured={kimiConfigured} />}
           </div>
         </>
       )}
@@ -372,7 +466,10 @@ function ResearchDetail({ request, result, draft, onBack, isLoading }: ResearchD
   )
 }
 
-function OverviewTab({ result }: { result: ResearchResult; request: ResearchRequest }): JSX.Element {
+function OverviewTab({ result, kimiConfigured }: { 
+  result: ResearchResult; 
+  kimiConfigured: boolean;
+}): JSX.Element {
   return (
     <div className="overview-tab">
       <section>
@@ -395,6 +492,9 @@ function OverviewTab({ result }: { result: ResearchResult; request: ResearchRequ
           />
           <span>{Math.round(result.confidence * 100)}%</span>
         </div>
+        {!kimiConfigured && (
+          <p className="note">⚠️ Modo simulación - confianza estimada</p>
+        )}
       </section>
 
       <section>
@@ -464,7 +564,7 @@ function ActivitiesTab({ activities }: { activities: ResearchResult['activities'
   )
 }
 
-function DraftTab({ draft }: { draft: EditorialDraft }): JSX.Element {
+function DraftTab({ draft, kimiConfigured }: { draft: EditorialDraft; kimiConfigured: boolean }): JSX.Element {
   return (
     <div className="draft-tab">
       <div className="draft-header">
@@ -473,6 +573,8 @@ function DraftTab({ draft }: { draft: EditorialDraft }): JSX.Element {
           <span className="badge">Tono: {draft.tone}</span>
           <span className="badge">{draft.wordCount} palabras</span>
           <span className="badge">Estado: {draft.status}</span>
+          {!kimiConfigured && <span className="badge badge-mock">SIMULADO</span>}
+          {kimiConfigured && <span className="badge badge-live">KIMI</span>}
         </div>
       </div>
 

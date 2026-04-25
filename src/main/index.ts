@@ -5,6 +5,8 @@
  * Alcance: Node.js/Electron main process - no tiene acceso a DOM
  * 
  * Decisiones técnicas:
+ *   - Carga variables de entorno desde .env al inicio
+ *   - Inicializa configuración de proveedores de IA
  *   - Usa electron-is-dev para detectar modo desarrollo
  *   - Carga Vite dev server en desarrollo, archivos estáticos en producción
  *   - Preload script para comunicación segura main/renderer
@@ -13,15 +15,42 @@
  *   - better-sqlite3 requiere build tools nativas (VS Build Tools en Windows)
  *   - Por ahora la DB está preparada pero no inicializada
  * 
- * Cambios recientes: Creación inicial del esqueleto
+ * Cambios recientes: 
+ *   - Añadido carga de .env y configuración de proveedores
+ *   - Integrado sistema de config multi-proveedor
  */
 
 import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import dotenv from 'dotenv'
 
+// ============================================
+// CARGA CONFIGURACIÓN DESDE .ENV
+// ============================================
+
+// Cargar .env desde la raíz del proyecto
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+const rootDir = path.join(__dirname, '../..')
+
+dotenv.config({ path: path.join(rootDir, '.env') })
+
+// Cargar configuración de la app
+import { loadConfig, getProviderConfigStatus } from '@services/config'
+import { initializeProviderFactory } from '@services/ai/providers'
+
+// Inicializar configuración (esto debe hacerse antes de cualquier otra cosa)
+loadConfig()
+initializeProviderFactory({ providers: {}, defaults: { strategy: 'auto', searchProvider: 'kimi', aiProvider: 'kimi' }, fallbackOrder: ['kimi', 'openai', 'local'] })
+
+// Log de estado de proveedores
+const providerStatus = getProviderConfigStatus()
+console.log('[Main] Provider status:', {
+  kimi: providerStatus.kimi.configured ? '✅ configured' : '❌ not configured',
+  openai: providerStatus.openai.configured ? '✅ configured' : '❌ not configured',
+})
+
 const isDev = !app.isPackaged
 
 // Mantener referencia global para evitar garbage collection
@@ -60,13 +89,21 @@ function createWindow(): void {
   })
 }
 
-// IPC handlers para comunicación segura
+// ============================================
+// IPC HANDLERS
+// ============================================
+
 ipcMain.handle('app:get-version', () => {
   return app.getVersion()
 })
 
 ipcMain.handle('app:get-platform', () => {
   return process.platform
+})
+
+// Nuevo: Verificar estado de configuración de proveedores
+ipcMain.handle('ai:get-provider-status', () => {
+  return getProviderConfigStatus()
 })
 
 // Ciclo de vida de la app

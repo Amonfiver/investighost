@@ -1,15 +1,16 @@
 /**
  * Investighost - Proveedores de IA
  * 
- * Propósito: Definir contratos e implementaciones base para múltiples proveedores
- * Alcance: OpenAI, Kimi, y futuros proveedores
- * Estado: Arquitectura preparada, implementaciones placeholder
+ * Propósito: Definir contratos e implementaciones para múltiples proveedores
+ * Alcance: OpenAI (placeholder), Kimi (implementado), Local (placeholder)
+ * Estado: Kimi implementado con API real, OpenAI preparado para futuro
  * 
- * NOTA: Este módulo implementa el patrón Strategy para múltiples proveedores
- * permitiendo: selección manual, auto-selección, fallback y comparación.
+ * NOTA: Kimi usa API compatible con OpenAI (baseURL: https://api.moonshot.ai/v1)
  */
 
-import type { AIProvider, AIProviderContract, ProviderStrategy } from '@shared/types'
+import OpenAI from 'openai'
+import type { AIProvider, AIProviderContract } from '@shared/types'
+import { getConfig } from '@services/config'
 
 // ============================================
 // CONFIGURACIÓN DE PROVEEDORES
@@ -42,7 +43,7 @@ export interface MultiProviderConfig {
     local?: ProviderConfig
   }
   defaults: {
-    strategy: ProviderStrategy
+    strategy: 'auto' | 'openai' | 'kimi' | 'fallback' | 'compare'
     searchProvider: 'openai' | 'kimi' | 'web' | 'local'
     aiProvider: 'openai' | 'kimi' | 'local'
   }
@@ -91,8 +92,130 @@ export abstract class BaseAIProvider implements AIProviderContract {
 }
 
 // ============================================
-// IMPLEMENTACIONES PLACEHOLDER
-// Se activarán cuando se configuren las API keys
+// IMPLEMENTACIÓN REAL: KIMI (Moonshot AI)
+// ============================================
+
+/**
+ * Proveedor Kimi (Moonshot AI)
+ * Estado: IMPLEMENTADO - usa API real compatible con OpenAI
+ */
+export class KimiProvider extends BaseAIProvider {
+  readonly name: AIProvider = 'kimi'
+  supportsSearch = true
+  supportsChat = true
+  supportsStructured = true
+  
+  private client: OpenAI | null = null
+  
+  constructor(config: ProviderConfig) {
+    super(config)
+    if (config.apiKey) {
+      this.client = new OpenAI({
+        apiKey: config.apiKey,
+        baseURL: config.baseUrl || 'https://api.moonshot.ai/v1',
+      })
+    }
+  }
+  
+  async generateText(prompt: string, options?: { model?: string; temperature?: number }): Promise<string> {
+    if (!this.client || !this.isAvailable) {
+      throw new Error('Kimi not configured - set KIMI_API_KEY in .env file')
+    }
+    
+    const model = options?.model || this.config.defaultModel
+    const temperature = options?.temperature ?? 0.7
+    
+    try {
+      const response = await this.client.chat.completions.create({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature,
+      })
+      
+      const content = response.choices[0]?.message?.content
+      if (!content) {
+        throw new Error('Kimi returned empty response')
+      }
+      
+      return content
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      throw new Error(`Kimi API error: ${message}`)
+    }
+  }
+  
+  async generateStructured<T>(
+    prompt: string, 
+    schema: unknown, 
+    options?: { model?: string; temperature?: number }
+  ): Promise<T> {
+    if (!this.client || !this.isAvailable) {
+      throw new Error('Kimi not configured - set KIMI_API_KEY in .env file')
+    }
+    
+    const model = options?.model || this.config.defaultModel
+    const temperature = options?.temperature ?? 0.3  // Más bajo para estructurado
+    
+    // Construir prompt que fuerza JSON válido
+    const structuredPrompt = `${prompt}
+
+IMPORTANT: You must respond with ONLY valid JSON, no markdown formatting, no code blocks, no additional text.
+
+Expected JSON structure:
+${JSON.stringify(schema, null, 2)}`
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model,
+        messages: [{ role: 'user', content: structuredPrompt }],
+        temperature,
+      })
+      
+      const content = response.choices[0]?.message?.content
+      if (!content) {
+        throw new Error('Kimi returned empty response')
+      }
+      
+      // Limpiar posible formato markdown
+      const cleanContent = content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim()
+      
+      try {
+        return JSON.parse(cleanContent) as T
+      } catch (parseError) {
+        throw new Error(`Kimi returned invalid JSON: ${cleanContent.substring(0, 200)}...`)
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('invalid JSON')) {
+        throw error
+      }
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      throw new Error(`Kimi API error: ${message}`)
+    }
+  }
+  
+  async searchAndSummarize(query: string, options?: { model?: string }): Promise<string> {
+    // Kimi no tiene búsqueda web nativa en la API básica
+    // Se simula con un prompt que pide al modelo usar su conocimiento
+    const searchPrompt = `Investiga sobre el siguiente tema y proporciona un resumen útil para un viajero:
+
+"${query}"
+
+Por favor, proporciona:
+1. Información general relevante
+2. Lugares o experiencias destacadas
+3. Consejos prácticos si aplica
+
+Responde en español de forma natural y útil.`
+
+    return this.generateText(searchPrompt, { ...options, temperature: 0.7 })
+  }
+}
+
+// ============================================
+// IMPLEMENTACIONES PLACEHOLDER (para futuro)
 // ============================================
 
 /**
@@ -101,7 +224,7 @@ export abstract class BaseAIProvider implements AIProviderContract {
  */
 export class OpenAIProvider extends BaseAIProvider {
   readonly name: AIProvider = 'openai'
-  supportsSearch = true   // GPT-4 con browsing
+  supportsSearch = true
   supportsChat = true
   supportsStructured = true
   
@@ -109,15 +232,14 @@ export class OpenAIProvider extends BaseAIProvider {
     if (!this.isAvailable) {
       throw new Error('OpenAI not configured - set OPENAI_API_KEY')
     }
-    // TODO: Implementar integración real con OpenAI
-    throw new Error('OpenAI integration not yet implemented')
+    // TODO: Implementar integración real con OpenAI cuando sea necesario
+    throw new Error('OpenAI integration not yet implemented - use Kimi for now')
   }
   
   async generateStructured<T>(_prompt: string, _schema: unknown): Promise<T> {
     if (!this.isAvailable) {
       throw new Error('OpenAI not configured - set OPENAI_API_KEY')
     }
-    // TODO: Implementar con response_format: { type: "json_object" }
     throw new Error('OpenAI structured generation not yet implemented')
   }
   
@@ -125,43 +247,7 @@ export class OpenAIProvider extends BaseAIProvider {
     if (!this.isAvailable) {
       throw new Error('OpenAI not configured - set OPENAI_API_KEY')
     }
-    // TODO: Implementar con function calling o browsing
     throw new Error('OpenAI search not yet implemented')
-  }
-}
-
-/**
- * Proveedor Kimi (Moonshot AI)
- * Estado: Placeholder - requiere API key para activar
- */
-export class KimiProvider extends BaseAIProvider {
-  readonly name: AIProvider = 'kimi'
-  supportsSearch = true   // Kimi soporta búsqueda web
-  supportsChat = true
-  supportsStructured = true
-  
-  async generateText(_prompt: string, _options?: unknown): Promise<string> {
-    if (!this.isAvailable) {
-      throw new Error('Kimi not configured - set KIMI_API_KEY')
-    }
-    // TODO: Implementar integración real con Kimi API
-    throw new Error('Kimi integration not yet implemented')
-  }
-  
-  async generateStructured<T>(_prompt: string, _schema: unknown): Promise<T> {
-    if (!this.isAvailable) {
-      throw new Error('Kimi not configured - set KIMI_API_KEY')
-    }
-    // TODO: Implementar con mode JSON de Kimi
-    throw new Error('Kimi structured generation not yet implemented')
-  }
-  
-  async searchAndSummarize(_query: string): Promise<string> {
-    if (!this.isAvailable) {
-      throw new Error('Kimi not configured - set KIMI_API_KEY')
-    }
-    // TODO: Implementar con capacidad de búsqueda de Kimi
-    throw new Error('Kimi search not yet implemented')
   }
 }
 
@@ -171,7 +257,7 @@ export class KimiProvider extends BaseAIProvider {
  */
 export class LocalProvider extends BaseAIProvider {
   readonly name: AIProvider = 'local'
-  supportsSearch = false  // Búsqueda local no implementada
+  supportsSearch = false
   supportsChat = true
   supportsStructured = true
   
@@ -179,7 +265,6 @@ export class LocalProvider extends BaseAIProvider {
     if (!this.isAvailable) {
       throw new Error('Local provider not configured - set LOCAL_API_URL')
     }
-    // TODO: Implementar con Ollama o LM Studio API local
     throw new Error('Local provider not yet implemented')
   }
   
@@ -187,7 +272,6 @@ export class LocalProvider extends BaseAIProvider {
     if (!this.isAvailable) {
       throw new Error('Local provider not configured - set LOCAL_API_URL')
     }
-    // TODO: Implementar con prompting para JSON
     throw new Error('Local structured generation not yet implemented')
   }
   
@@ -209,17 +293,17 @@ export class ProviderFactory {
   
   private initializeProviders(): void {
     // Inicializar OpenAI si hay configuración
-    if (this.config.providers.openai) {
+    if (this.config.providers.openai?.apiKey) {
       this.providers.set('openai', new OpenAIProvider(this.config.providers.openai))
     }
     
     // Inicializar Kimi si hay configuración
-    if (this.config.providers.kimi) {
+    if (this.config.providers.kimi?.apiKey) {
       this.providers.set('kimi', new KimiProvider(this.config.providers.kimi))
     }
     
     // Inicializar Local si hay configuración
-    if (this.config.providers.local) {
+    if (this.config.providers.local?.apiKey) {
       this.providers.set('local', new LocalProvider(this.config.providers.local))
     }
   }
@@ -248,65 +332,87 @@ export class ProviderFactory {
 // CONFIGURACIÓN POR DEFECTO
 // ============================================
 
-export const defaultProviderConfig: MultiProviderConfig = {
-  providers: {
-    openai: {
-      defaultModel: 'gpt-4o',
-      models: {
-        search: 'gpt-4o',
-        chat: 'gpt-4o',
-        fast: 'gpt-4o-mini',
-        quality: 'gpt-4o'
+/**
+ * Crea configuración de proveedores desde el módulo de config
+ */
+export function createProviderConfigFromEnv(): MultiProviderConfig {
+  try {
+    const config = getConfig()
+    
+    return {
+      providers: {
+        kimi: config.kimi.apiKey ? {
+          apiKey: config.kimi.apiKey,
+          baseUrl: config.kimi.baseUrl,
+          defaultModel: config.kimi.defaultModel,
+          models: {
+            search: config.kimi.defaultModel,
+            chat: config.kimi.defaultModel,
+            fast: config.kimi.defaultModel,
+            quality: config.kimi.defaultModel,
+          },
+          rateLimits: {
+            requestsPerMinute: 60,
+            tokensPerMinute: 60000,
+          },
+          pricing: {
+            inputPer1kTokens: 0.003,
+            outputPer1kTokens: 0.009,
+          }
+        } : undefined,
+        
+        openai: config.openai.apiKey ? {
+          apiKey: config.openai.apiKey,
+          baseUrl: config.openai.baseUrl,
+          defaultModel: config.openai.defaultModel,
+          models: {
+            search: config.openai.defaultModel,
+            chat: config.openai.defaultModel,
+            fast: 'gpt-4o-mini',
+            quality: config.openai.defaultModel,
+          },
+          rateLimits: {
+            requestsPerMinute: 100,
+            tokensPerMinute: 100000,
+          },
+          pricing: {
+            inputPer1kTokens: 0.005,
+            outputPer1kTokens: 0.015,
+          }
+        } : undefined,
+        
+        local: undefined, // Siempre placeholder por ahora
       },
-      rateLimits: {
-        requestsPerMinute: 100,
-        tokensPerMinute: 100000
+      defaults: {
+        strategy: 'auto',
+        searchProvider: 'kimi',
+        aiProvider: 'kimi'
       },
-      pricing: {
-        inputPer1kTokens: 0.005,
-        outputPer1kTokens: 0.015
-      }
-    },
-    kimi: {
-      defaultModel: 'kimi-k1',
-      models: {
-        search: 'kimi-k1',
-        chat: 'kimi-k1',
-        fast: 'kimi-k1',
-        quality: 'kimi-k1.5'
-      },
-      rateLimits: {
-        requestsPerMinute: 60,
-        tokensPerMinute: 60000
-      },
-      pricing: {
-        inputPer1kTokens: 0.003,
-        outputPer1kTokens: 0.009
-      }
-    },
-    local: {
-      defaultModel: 'llama3.1',
-      models: {
-        chat: 'llama3.1',
-        fast: 'llama3.1',
-        quality: 'llama3.1:70b'
-      },
-      rateLimits: {
-        requestsPerMinute: 1000,
-        tokensPerMinute: 1000000
-      },
-      pricing: {
-        inputPer1kTokens: 0,
-        outputPer1kTokens: 0
-      }
+      fallbackOrder: ['kimi', 'openai', 'local']
     }
-  },
+  } catch (error) {
+    // Si no hay config cargada, devolver config vacía
+    console.warn('[ProviderFactory] Config not loaded, returning empty config')
+    return {
+      providers: {},
+      defaults: {
+        strategy: 'auto',
+        searchProvider: 'kimi',
+        aiProvider: 'kimi'
+      },
+      fallbackOrder: ['kimi', 'openai', 'local']
+    }
+  }
+}
+
+export const defaultProviderConfig: MultiProviderConfig = {
+  providers: {},
   defaults: {
     strategy: 'auto',
-    searchProvider: 'openai',
-    aiProvider: 'openai'
+    searchProvider: 'kimi',
+    aiProvider: 'kimi'
   },
-  fallbackOrder: ['openai', 'kimi', 'local']
+  fallbackOrder: ['kimi', 'openai', 'local']
 }
 
 // ============================================
@@ -321,8 +427,9 @@ export function initializeProviderFactory(config: MultiProviderConfig): void {
 
 export function getProviderFactory(): ProviderFactory {
   if (!providerFactory) {
-    // Inicializar con config por defecto (sin API keys = todos unavailable)
-    providerFactory = new ProviderFactory(defaultProviderConfig)
+    // Intentar inicializar desde config
+    const envConfig = createProviderConfigFromEnv()
+    providerFactory = new ProviderFactory(envConfig)
   }
   return providerFactory
 }

@@ -483,3 +483,123 @@ Preparar la arquitectura base de Investighost para:
 4. Añadir más proveedores (Anthropic Claude, Google Gemini)
 5. Implementar comparación visual de resultados en modo 'compare'
 6. Crear dashboard de estadísticas de coste/calidad
+
+---
+
+## Sesión 8 — Integración Kimi como Proveedor Real
+
+### Objetivo
+Implementar Kimi como primer proveedor real funcional dentro de Investighost, permitiendo investigaciones reales mediante la API de Moonshot AI.
+
+### Archivos creados/nuevos
+
+- `.env.example` — Plantilla de configuración de variables de entorno
+- `src/services/config/index.ts` — Módulo de configuración con validación Zod
+- `src/services/ai/research.ts` — Servicio de investigación real con Kimi
+- `package.json` — Añadidas dependencias: `openai`, `dotenv`
+
+### Archivos modificados
+
+**Configuración:**
+- `vite.config.ts` — Añadidos aliases para servicios en build de main process
+- `.gitignore` — Ya incluía `.env`, confirmado seguro
+
+**Servicios AI:**
+- `src/services/ai/providers.ts` — Implementación real de `KimiProvider` usando SDK OpenAI
+- `src/services/ai/index.ts` — Sin cambios (ya preparado para recibir proveedores configurados)
+
+**Main process:**
+- `src/main/index.ts` — Carga de `.env` y inicialización de configuración de proveedores
+- `src/main/preload.ts` — Exposición de `getProviderStatus` al renderer
+
+**Research module:**
+- `src/modules/research/index.ts` — Integración con investigación real cuando Kimi está configurado
+
+**UI:**
+- `src/renderer/App.tsx` — Estados de UI para configuración, carga, error y resultado
+- `src/renderer/App.css` — Estilos para indicadores de estado Kimi/simulación
+- `src/renderer/main.tsx` — Eliminados tipos duplicados de window.electronAPI
+
+### Implementación técnica
+
+**KimiProvider real:**
+- Usa SDK de OpenAI con `baseURL: https://api.moonshot.ai/v1`
+- Implementa `generateText()`, `generateStructured()`, `searchAndSummarize()`
+- Manejo de errores con mensajes legibles
+- Limpieza de markdown en respuestas JSON
+
+**Configuración segura:**
+- Variables de entorno en `.env` (no versionado)
+- Validación con Zod de configuración
+- Cache de configuración cargada
+- Funciones helper para verificar estado: `isKimiConfigured()`, `getProviderConfigStatus()`
+
+**Flujo de investigación con Kimi:**
+1. Usuario introduce destino (ej: "Albarracín")
+2. Prompt 1: Investigación textual general
+3. Prompt 2: Extracción de datos estructurados en JSON
+4. Generación de borrador editorial a partir de datos
+5. Almacenamiento en memoria con auditoría de uso
+
+**Auditoría automática:**
+- Registro de cada operación en `ProviderUsageLog`
+- Campos: proveedor, modelo, coste estimado, tokens, timestamp
+- Sistema de logs en memoria (preparado para migrar a SQLite)
+
+### Estados de UI implementados
+
+| Estado | Visual | Descripción |
+|--------|--------|-------------|
+| Sin configuración | Banner naranja | Instrucciones para crear `.env` |
+| Kimi listo | Indicador verde 🟢 | API key configurada correctamente |
+| Cargando | Spinner + mensaje | "Consultando con Kimi AI..." |
+| Resultado | Tabs activos | Datos estructurados + borrador |
+| Error | Banner rojo | Mensaje legible + hints de solución |
+
+### Fallback a simulación
+
+Si no hay `KIMI_API_KEY` configurada:
+- La app funciona en modo simulación (como antes)
+- Indicador visual: "🔄 SIMULACIÓN" en footer
+- Badge "SIMULADO" en borradores
+- Mensaje en formulario: "Modo simulación"
+
+### Criterios de aceptación verificados
+
+- [x] App arranca con `npm run dev`
+- [x] Build compila sin errores: `npm run build:vite` ✅
+- [x] Configuración segura en `.env` (no en código ni Git)
+- [x] Estados de UI claros: sin key, cargando, resultado, error
+- [x] Integración con auditoría (logs en memoria)
+- [x] Documentación actualizada en BITACORA
+
+### Limitaciones actuales
+
+1. **Persistencia temporal:** Los datos se pierden al cerrar la app (se migrará a SQLite)
+2. **Sin búsqueda web real:** Kimi no tiene API de búsqueda web directa, usa conocimiento del modelo
+3. **Costes estimados:** Basados en aproximación de tokens, no precisión exacta
+4. **Sin comparación entre proveedores:** Solo Kimi implementado, OpenAI preparado para futuro
+
+### Cómo probar
+
+1. Crear archivo `.env` en raíz del proyecto:
+   ```
+   KIMI_API_KEY=sk-tu-clave-de-kimi
+   ```
+2. Obtener API key en https://platform.moonshot.cn/
+3. Ejecutar `npm run dev`
+4. Crear nueva investigación con destino real (ej: "Valencia, España")
+5. Ver resultado real de Kimi en pestañas de resumen, lugares, actividades
+
+### Próximo bloque recomendado
+
+**Persistencia real con SQLite:**
+- Instalar Visual Studio Build Tools (si no están)
+- Activar Drizzle ORM con migraciones
+- Migrar de memory-store a base de datos real
+- Preservar investigaciones entre sesiones
+
+**Alternativas:**
+- Implementar edición de borradores antes de aprobar
+- Mejorar prompts de investigación para mayor especificidad
+- Añadir comparación calidad/coste entre Kimi y OpenAI (cuando OpenAI se implemente)

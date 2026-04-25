@@ -10,6 +10,7 @@
  */
 
 import { z } from 'zod'
+import type { SearchProvider } from '@shared/types'
 
 // ============================================
 // Esquema de validación de configuración
@@ -27,6 +28,11 @@ const configSchema = z.object({
     apiKey: z.string().min(10).optional(),
     baseUrl: z.string().url().default('https://api.openai.com/v1'),
     defaultModel: z.string().default('gpt-4o'),
+  }).default({}),
+
+  search: z.object({
+    provider: z.enum(['mock', 'brave']).default('mock'),
+    braveApiKey: z.string().min(10).optional(),
   }).default({}),
   
   // Configuración general
@@ -67,6 +73,10 @@ export function loadConfig(): Config {
       baseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
       defaultModel: process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o',
     },
+    search: {
+      provider: parseSearchProvider(process.env.SEARCH_PROVIDER),
+      braveApiKey: process.env.BRAVE_SEARCH_API_KEY,
+    },
     debug: process.env.DEBUG === 'true',
   }
 
@@ -88,8 +98,14 @@ export function loadConfig(): Config {
   console.log('[Config] Kimi baseURL:', cachedConfig.kimi.baseUrl)
   console.log('[Config] Kimi model:', cachedConfig.kimi.defaultModel)
   console.log('[Config] OpenAI configured:', !!cachedConfig.openai.apiKey)
+  console.log('[Config] Search provider:', cachedConfig.search.provider)
+  console.log('[Config] Brave Search configured:', !!cachedConfig.search.braveApiKey)
   
   return cachedConfig
+}
+
+function parseSearchProvider(value: string | undefined): SearchProvider {
+  return value === 'brave' ? 'brave' : 'mock'
 }
 
 /**

@@ -164,7 +164,11 @@ Los proveedores de búsqueda implementan `BaseSearchProvider` y devuelven `WebSe
 El resultado agregado se guarda como `WebResearchBundle`, que después será la entrada natural para Kimi u otro proveedor IA.
 
 ### Estado actual
-Existe `LocalMockSearchProvider`, etiquetado como `MOCK_SEARCH_PROVIDER`, para desarrollar el pipeline sin llamar todavía a APIs externas.
+Existen dos proveedores:
+- `LocalMockSearchProvider`, etiquetado como `MOCK_SEARCH_PROVIDER`, para desarrollar el pipeline sin llamar a APIs externas.
+- `BraveSearchProvider`, primer proveedor real, usando Brave Search API para obtener títulos, URLs y snippets.
+
+La recolección web todavía no está conectada al flujo principal de creación de investigación; queda preparada para el siguiente bloque.
 
 ---
 

@@ -25,6 +25,9 @@ const electronAPI = {
   getAllResearch: () => ipcRenderer.invoke('research:get-all'),
   getResearchResult: (requestId: string) => ipcRenderer.invoke('research:get-result', requestId),
   getDraft: (resultId: string) => ipcRenderer.invoke('research:get-draft', resultId),
+
+  // Search operations
+  collectWebResearch: (input: unknown) => ipcRenderer.invoke('search:collect', input),
 }
 
 // Exponer como window.electronAPI

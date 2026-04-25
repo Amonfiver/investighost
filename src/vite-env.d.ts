@@ -11,7 +11,7 @@ declare module '*.css' {
   export default css
 }
 
-import type { ResearchRequest, ResearchResult, EditorialDraft } from './shared/types'
+import type { ResearchRequest, ResearchResult, EditorialDraft, WebResearchBundle } from './shared/types'
 
 declare global {
   interface Window {
@@ -33,6 +33,9 @@ declare global {
       getAllResearch: () => Promise<ResearchRequest[]>
       getResearchResult: (requestId: string) => Promise<ResearchResult | null>
       getDraft: (resultId: string) => Promise<EditorialDraft | null>
+      
+      // Search operations
+      collectWebResearch: (input: unknown) => Promise<WebResearchBundle>
     }
   }
 }

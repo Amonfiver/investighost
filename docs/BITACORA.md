@@ -1140,3 +1140,75 @@ Conectar un proveedor real de búsqueda. Candidatos:
 - **Brave Search API**: buena primera opción por simplicidad y coste/control.
 - **Tavily**: interesante si se quiere una API más orientada a agentes.
 - **SerpAPI/SearchAPI**: útiles si se necesita emular resultados tipo buscador general.
+
+---
+
+## Sesión 14 — Brave Search Provider
+
+### Objetivo
+Integrar Brave Search API como primer proveedor real de búsqueda web, sin conectar todavía el bundle al flujo Kimi ni al botón principal de investigación.
+
+### Archivos modificados
+
+- `.env.example`
+  - Añadidas variables:
+    - `SEARCH_PROVIDER=mock`
+    - `BRAVE_SEARCH_API_KEY=`
+- `src/services/config/index.ts`
+  - Añadida sección `search`.
+  - Lee `SEARCH_PROVIDER` y `BRAVE_SEARCH_API_KEY`.
+  - Loguea proveedor y si Brave está configurado, sin imprimir la key.
+- `src/services/search/index.ts`
+  - Añadido `BraveSearchProvider`.
+  - Usa endpoint web de Brave Search API.
+  - Añade timeout de 20 segundos.
+  - Mapea resultados a `WebSearchResult`.
+  - Mantiene `LocalMockSearchProvider` como fallback explícito.
+- `src/main/index.ts`, `src/main/preload.ts`, `src/vite-env.d.ts`
+  - Añadido IPC `search:collect`.
+  - Expuesto como `window.electronAPI.collectWebResearch(input)` para pruebas controladas.
+- `docs/ARCHITECTURE.md`
+  - Actualizado estado del motor de búsqueda web: mock + Brave.
+
+### Selección de proveedor
+
+- `SEARCH_PROVIDER=brave` + `BRAVE_SEARCH_API_KEY` válida:
+  - usa `BraveSearchProvider`.
+- `SEARCH_PROVIDER=brave` sin key:
+  - usa `LocalMockSearchProvider`.
+  - log: `[Search] provider selected: mock (Brave API key missing)`.
+- `SEARCH_PROVIDER=mock`:
+  - usa `LocalMockSearchProvider`.
+
+### Logs esperados
+
+- `[Search] provider selected: brave`
+- `[Search] generated queries: [...]`
+- `[Search] collected results: N`
+
+### Límites actuales
+
+- Solo se recogen título, URL y snippet.
+- No hay scraping de páginas completas.
+- No se integra todavía con Kimi ni con la UI principal.
+- No se guarda en SQLite.
+
+### Prueba manual temporal
+
+Con `OPEN_DEVTOOLS=true`, se puede probar desde la consola del renderer:
+
+```ts
+await window.electronAPI.collectWebResearch({
+  country: 'España',
+  region: 'Albarracín',
+  outputLanguage: 'es'
+})
+```
+
+Con Brave configurado debe devolver `provider: "brave"` y resultados con URL real.
+
+### Verificación
+
+- `npm run build:vite` compila sin errores.
+- `.env` real no se modifica.
+- No se imprimen API keys.

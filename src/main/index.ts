@@ -126,6 +126,7 @@ ipcMain.handle('ai:get-provider-status', () => {
 // Research handlers - conectan UI con backend real
 import { researchModule } from '@modules/research'
 import * as store from '@modules/persistence/memory-store'
+import { collectWebResearchBundle } from '@services/search'
 
 ipcMain.handle('research:create', async (_event, input) => {
   console.log('[IPC] research:create called with:', JSON.stringify(input))
@@ -162,6 +163,11 @@ ipcMain.handle('research:get-draft', async (_event, resultId) => {
     console.log('[IPC] research:get-draft found for resultId:', resultId)
   }
   return draft
+})
+
+ipcMain.handle('search:collect', async (_event, input) => {
+  console.log('[IPC] search:collect called')
+  return collectWebResearchBundle(input)
 })
 
 // Ciclo de vida de la app

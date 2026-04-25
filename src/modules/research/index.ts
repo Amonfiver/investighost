@@ -15,6 +15,7 @@ import * as store from '@modules/persistence/memory-store'
 import { generateMockResult } from './mock-data'
 import { researchWithAI, isAIResearchAvailable } from '@services/ai/research'
 import { getProviderFactory } from '@services/ai/providers'
+import { collectWebResearchBundle } from '@services/search'
 
 // Re-exportar el mock para uso externo si es necesario
 export { generateMockResult } from './mock-data'
@@ -100,7 +101,23 @@ async function startResearch(requestId: string): Promise<void> {
       console.log('✅ [Research] USING REAL KIMI - Generating honest research...')
 
       try {
-        const { result, draft, logId, cost } = await researchWithAI(requestId, request.input)
+        console.log('[Research] collecting web bundle')
+        const webResearchBundle = await collectWebResearchBundle(request.input)
+        console.log('[Research] web results collected:', webResearchBundle.results.length)
+
+        if (webResearchBundle.results.length === 0) {
+          throw new Error('No se encontraron fuentes web para esta investigación')
+        }
+
+        if (webResearchBundle.provider === 'mock') {
+          console.warn('[Research] Search provider is mock - using explicit simulation fallback')
+          await runMockFallback(requestId, request.input, 'SEARCH_PROVIDER=mock or Brave Search not configured')
+          return
+        }
+
+        console.log('[Research] sending web bundle to Kimi')
+        const { result, draft, logId, cost } = await researchWithAI(requestId, request.input, webResearchBundle)
+        console.log('[Research] AI result generated from web bundle')
         
         console.log('✅ [Research] Kimi result confidence:', result.confidence)
         console.log('✅ [Research] Kimi result places count:', result.places.length)

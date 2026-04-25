@@ -1212,3 +1212,60 @@ Con Brave configurado debe devolver `provider: "brave"` y resultados con URL rea
 - `npm run build:vite` compila sin errores.
 - `.env` real no se modifica.
 - No se imprimen API keys.
+
+---
+
+## Sesión 15 — Pipeline Brave → Kimi
+
+### Objetivo
+Conectar de forma mínima y controlada la búsqueda web real con el análisis/redacción de Kimi.
+
+### Decisión aplicada
+
+- Kimi no actúa como buscador.
+- El flujo real de investigación pasa a:
+
+`collectWebResearchBundle(input) → WebResearchBundle → researchWithAI(input, bundle)`
+
+- Kimi recibe únicamente títulos, URLs, snippets, provider y reliabilityScore del bundle.
+- No se hace scraping de páginas completas.
+- Si Brave/Kimi falla, la request pasa a `error`; no se genera contenido simulado como si fuera real.
+
+### Archivos modificados
+
+- `src/modules/research/index.ts`
+  - Antes de llamar a Kimi, ahora ejecuta `collectWebResearchBundle(request.input)`.
+  - Añadidos logs:
+    - `[Research] collecting web bundle`
+    - `[Research] web results collected: N`
+    - `[Research] sending web bundle to Kimi`
+    - `[Research] AI result generated from web bundle`
+  - Si el bundle no tiene resultados, lanza error claro.
+  - Si el proveedor de búsqueda es `mock`, usa fallback simulado explícito.
+- `src/services/ai/research.ts`
+  - `researchWithAI()` acepta opcionalmente `WebResearchBundle`.
+  - Añadidos prompts específicos para análisis basado en fuentes web.
+  - Kimi recibe instrucciones estrictas:
+    - usar solo el bundle,
+    - no inventar fuentes/lugares/horarios/precios/opiniones,
+    - diferenciar confirmado/pendiente de verificar,
+    - mantener confianza prudente.
+  - `ResearchResult.sources` se construye desde URLs reales del bundle cuando existe.
+
+### Política de errores
+
+- Brave configurado y devuelve resultados: Kimi analiza el bundle.
+- Brave falla o devuelve 0 resultados: estado `error`.
+- Kimi falla o agota timeout: estado `error`.
+- `SEARCH_PROVIDER=mock` o falta Brave key: se usa simulación explícita, no resultado real.
+
+### Verificación
+
+- `npm run build:vite` compila sin errores.
+- No se toca `.env`.
+- No se imprimen claves privadas.
+
+### Pendiente
+
+- Probar desde UI con `SEARCH_PROVIDER=brave` y `BRAVE_SEARCH_API_KEY` válida.
+- Ajustar el prompt si Kimi devuelve JSON demasiado laxo o demasiado breve.

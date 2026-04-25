@@ -525,6 +525,79 @@ const rootDir = isDev
 
 ---
 
+## Sesión 10 — Mejora de prompts: investigación honesta y específica
+
+### Objetivo
+Corregir los resultados genéricos e inventados de Kimi (ej: "Mercado Local Tradicional", "experiencias inolvidables", confianza del 94%) para obtener investigaciones más honestas, específicas y útiles para revisión editorial.
+
+### Problemas detectados
+- Frases de relleno tipo "combinación perfecta de cultura y gastronomía"
+- Lugares genéricos inventados como "Mercado Local Tradicional"
+- Consejos absurdos como "aprender frases básicas en España"
+- Fuentes falsas simuladas
+- Confianza exagerada (94%) sin verificación real
+- No reconocimiento de las limitaciones del modelo
+
+### Solución aplicada
+
+**Nuevo prompt de investigación (`buildResearchPrompt`):**
+- Rol explícito: "investigador de viajes honesto y riguroso"
+- Reglas estrictas contra invención de fuentes y datos
+- Prohibición de frases genéricas vacías de contenido
+- Estructura clara: resumen, datos útiles, lugares, curiosidades, ángulos editoriales, pendientes de verificar, limitaciones
+- Obliga a marcar `[pendiente de verificar]` lo incierto
+
+**Nuevo prompt estructurador (`buildStructuredPrompt`):**
+- Cap de confianza máxima: 0.75 (nunca 90%+ sin búsqueda web)
+- Campos `confidenceLevel` y `verificationNeeded` para cada lugar/actividad
+- Fuentes explícitas: "NINGUNA FUENTE WEB REAL CONSULTADA"
+- Lista `pendingVerification` obligatoria
+- Filtro de consejos genéricos ("respeta normas", "disfruta", etc.)
+
+**Borrador editorial mejorado (`generateHonestEditorialDraft`):**
+- Título indica `[REQUIERE REVISIÓN]`
+- Aviso explícito: "Este borrador se generó sin búsqueda web real"
+- Sección separada: "Lugares destacados (verificados)" vs "Sugerencias pendientes de verificación"
+- Sección "Ángulos editoriales propuestos" para inspirar al redactor
+- Sección "Elementos que requieren verificación web"
+- Checklist antes de publicar
+
+### Archivos tocados
+- `src/services/ai/research.ts` — Reescrito completamente con prompts honestos
+
+### Criterios de aceptación verificados
+- [x] `npm run build:vite` compila sin errores
+- [x] TypeScript sin errores
+- [x] Prompts guían a Kimi hacia respuestas menos genéricas
+- [x] Confianza capada a 0.75 máximo
+- [x] Fuentes falsas eliminadas
+- [x] Consejos absurdos filtrados
+- [x] Borrador indica claramente qué requiere verificación
+
+### Limitaciones actuales
+- Sigue sin búsqueda web real (requiere implementación futura)
+- Depende de qué conozca Kimi del destino específico
+- Para destinos muy desconocidos, puede devolver poca información concreta
+
+### Cómo probar
+1. `npm run dev`
+2. Crear investigación con "Albarracín, España"
+3. Verificar que:
+   - No aparecen frases como "experiencia única"
+   - Los lugares tienen nombres específicos o marcan [VERIFICAR]
+   - El borrador tiene aviso de "sin búsqueda web"
+   - Confianza ≤ 75%
+   - Hay sección de "Elementos que requieren verificación"
+
+### Próximo bloque recomendado
+**Implementar búsqueda web real:**
+- Integrar serpapi, searchapi.io o similar
+- Combinar conocimiento del modelo + datos web actuales
+- Aumentar confianza cuando haya fuentes reales consultadas
+- Guardar URLs reales en `sources`
+
+---
+
 ## Sesión 8 — Integración Kimi como Proveedor Real
 
 ### Objetivo

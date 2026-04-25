@@ -1,11 +1,13 @@
 /**
- * Investighost - Servicio de Investigación con IA
+ * Investighost - Servicio de Investigación con IA (Mejorado)
  * 
- * Propósito: Realizar investigaciones reales de destinos usando Kimi
- * Alcance: Generar datos estructurados y borradores editoriales
- * Estado: Implementación mínima con Kimi
+ * Propósito: Realizar investigaciones honestas de destinos usando Kimi
+ * Alcance: Generar datos estructurados con reconocimiento de limitaciones
+ * Estado: Prompts optimizados para especificidad y honestidad
  * 
- * NOTA: Usa generateStructured para obtener JSON válido de la API
+ * NOTA: Este servicio trabaja SOLO con conocimiento del modelo.
+ * No realiza búsqueda web real. Los resultados indican claramente
+ * qué información requiere verificación adicional.
  */
 
 import { generateText } from './index'
@@ -13,9 +15,12 @@ import type { ResearchInput, ResearchResult, EditorialDraft, Place, Activity } f
 import { generateId } from '@utils/helpers'
 
 // ============================================
-// PROMPTS DE INVESTIGACIÓN
+// PROMPTS DE INVESTIGACIÓN MEJORADOS
 // ============================================
 
+/**
+ * Prompt inicial: Solicita información específica sin inventar fuentes
+ */
 const buildResearchPrompt = (input: ResearchInput): string => {
   const { country, region, focus, userNotes } = input
   
@@ -23,77 +28,121 @@ const buildResearchPrompt = (input: ResearchInput): string => {
   const focusText = focus ? ` con enfoque en ${focus}` : ''
   const notesText = userNotes ? `\n\nNotas adicionales del usuario: ${userNotes}` : ''
   
-  return `Investiga sobre "${location}"${focusText} como destino de viaje.
+  return `Eres un investigador de viajes honesto y riguroso. Tu trabajo es recopilar información sobre "${location}"${focusText} usando SOLO tu conocimiento del modelo.
 
-Proporciona información útil, específica y práctica para viajeros. Evita descripciones genéricas.
+REGLAS ESTRICTAS:
+1. NO inventes fuentes, URLs, nombres de negocios específicos o precios exactos que no conozcas con certeza.
+2. Si no estás seguro de un dato, indícalo claramente como "[pendiente de verificar]".
+3. Evita frases genéricas como "combinación perfecta de cultura y gastronomía" o "experiencias inolvidables".
+4. Sé específico con lugares reales que conozcas del destino.
+5. No sugieras actividades genéricas como "paseo por el centro histórico" sin detalles concretos.
 
-Tu respuesta debe incluir:
-1. Descripción general del destino (2-3 frases específicas)
-2. Resumen breve de por qué merece la pena visitarlo
-3. 4-6 lugares imprescindibles para visitar (con categoría: landmark, neighborhood, museum, viewpoint, beach, park, market)
-4. 3-5 actividades o experiencias recomendadas (con categoría: experience, tour, food, nightlife, shopping, relax)
-5. 4-6 consejos prácticos para visitantes
-6. 2-3 fuentes de información confiables (simuladas pero realistas)${notesText}
+ESTRUCTURA DE RESPUESTA:
 
-Responde en español de forma natural, amable y útil.`
+1. RESUMEN EDITORIAL (2-3 frases específicas sobre qué hace único a ${location})
+
+2. DATOS ÚTILES CONOCIDOS
+   - Ubicación geográfica relevante
+   - Cómo llegar (aproximado)
+   - Mejor época para visitar (si la conoces)
+   - Duración recomendada de visita
+
+3. LUGARES RECOMENDABLES (solo si los conoces con certeza)
+   Para cada lugar indica:
+   - Nombre específico
+   - Breve descripción factual (no promocional)
+   - Por qué es relevante
+   - Nivel de confianza: alto/medio/bajo
+
+4. CURIOSIDADES / HISTORIA / CULTURA
+   - Datos históricos relevantes que conozcas
+   - Tradiciones o costumbres específicas
+   - Anécdotas o historias del lugar
+
+5. IDEAS DE ENFOQUE PARA ARTÍCULO
+   - 3-4 ángulos editoriales potenciales
+   - Públicos objetivo específicos
+   - Temporadas o eventos relevantes
+
+6. ELEMENTOS PENDIENTES DE VERIFICAR
+   - Lista explícita de lo que necesitaría confirmación web
+   - Nombres de restaurantes, hoteles o negocios específicos
+   - Precios, horarios o datos que pueden haber cambiado
+   - Eventos actuales o temporales
+
+7. LIMITACIONES DE ESTA INVESTIGACIÓN
+   - Esta investigación NO incluye búsqueda web real
+   - Los datos provienen únicamente del conocimiento del modelo hasta corte de entrenamiento
+   - Se recomienda verificación cruzada antes de publicar${notesText}
+
+Responde en español, siendo honesto sobre lo que sabes y lo que desconoces.`
 }
 
+/**
+ * Prompt para estructurar datos: Enfatiza honestidad y marca lo pendiente
+ */
 const buildStructuredPrompt = (input: ResearchInput, researchText: string): string => {
   const { country, region } = input
   const location = region ? `${region}, ${country}` : country
   
   return `Basándote en esta investigación sobre "${location}":
-
 """
 ${researchText}
 """
 
-Genera un objeto JSON con la siguiente estructura EXACTA:
+Genera un objeto JSON con la siguiente estructura EXACTA. SE HONESTO: si no tienes certeza sobre algo, usa "pendiente de verificar" o omite el campo.
 
 {
   "destination": {
     "country": "${country}",
     "region": "${region || country}",
-    "description": "descripción específica del lugar (2-3 frases)"
+    "description": "descripción específica y factual, sin adjetivos vacíos de contenido"
   },
-  "summary": "resumen persuasivo de por qué visitar (1-2 frases)",
+  "summary": "resumen honesto de por qué visitar, máximo 2 frases",
   "places": [
     {
-      "name": "nombre del lugar",
+      "name": "nombre específico del lugar (no genérico)",
       "category": "landmark|neighborhood|museum|viewpoint|beach|park|market|other",
-      "description": "descripción específica (no genérica)",
-      "whyVisit": "por qué merece la pena visitarlo",
-      "bestFor": "tipo de viajero ideal (opcional)",
-      "estimatedTime": "tiempo recomendado de visita (opcional)",
-      "practicalInfo": "información práctica breve (opcional)"
+      "description": "descripción factual, evita 'maravilloso', 'perfecto', 'increíble'",
+      "whyVisit": "razón concreta para visitar",
+      "confidenceLevel": "high|medium|low",
+      "verificationNeeded": "descripción de qué falta por verificar, o null si está completo"
     }
   ],
   "activities": [
     {
-      "name": "nombre de la actividad",
-      "description": "descripción de la experiencia",
+      "name": "nombre específico de la actividad",
+      "description": "descripción sin frases de relleno tipo 'experiencia única'",
       "category": "experience|tour|food|nightlife|shopping|relax|other",
-      "idealFor": "a quién va dirigida (opcional)",
-      "duration": "duración aproximada (opcional)"
+      "confidenceLevel": "high|medium|low"
     }
   ],
-  "tips": ["consejo práctico 1", "consejo práctico 2", ...],
-  "sources": [
-    {
-      "url": "https://ejemplo-realista.com/articulo",
-      "title": "título del artículo o fuente",
-      "type": "official|blog|guide|review|other",
-      "reliability": 0.8
-    }
+  "tips": ["consejo práctico específico, evita 'respeta las normas locales'"],
+  "sources": {
+    "note": "NINGUNA FUENTE WEB REAL CONSULTADA. Esta investigación usa solo conocimiento del modelo.",
+    "realSources": [],
+    "suggestedSourcesToCheck": ["tipo de fuente recomendada: ej. web oficial de turismo", "blogs especializados en ${country}", "guías de viaje actualizadas"]
+  },
+  "pendingVerification": [
+    "elemento específico que necesita verificación web",
+    "precios actuales",
+    "horarios de apertura",
+    "disponibilidad de tours"
   ],
-  "confidence": 0.85
+  "articleAngles": [
+    "ángulo editorial 1: descripción del enfoque",
+    "ángulo editorial 2: público objetivo específico"
+  ],
+  "limitations": "Esta investigación no incluye búsqueda web. Se recomienda verificar: precios, horarios, disponibilidad de servicios, y nombres específicos de negocios antes de publicar.",
+  "confidence": 0.65
 }
 
-IMPORTANTE:
-- Usa información REAL y ESPECÍFICA de ${location}
-- Evita frases genéricas como "es un lugar maravilloso" sin contexto
-- Los lugares y actividades deben ser concretos y nombrables
-- confidence: número entre 0 y 1 estimando la fiabilidad de la info`
+REGLAS CRÍTICAS:
+1. confidence: usa 0.6-0.75 para destinos conocidos, 0.4-0.6 para destinos menos conocidos. NUNCA uses 0.9+ sin verificación web real.
+2. NO inventes URLs ni fuentes específicas en sources.realSources.
+3. Marca explícitamente qué lugares/infos necesitan verificationNeeded.
+4. Evita frases genéricas como "cautivará todos tus sentidos" o "fusión perfecta de tradición y modernidad".
+5. Sé específico: en lugar de "Mercado Tradicional", pon el nombre real si lo conoces, o indica "[nombre real pendiente de verificar]".`
 }
 
 // ============================================
@@ -109,7 +158,7 @@ export interface ResearchWithAIResult {
 }
 
 /**
- * Realiza una investigación real usando Kimi
+ * Realiza una investigación honesta usando Kimi
  * @throws Error si no hay proveedor configurado o falla la API
  */
 export async function researchWithAI(
@@ -121,14 +170,9 @@ export async function researchWithAI(
   const researchPrompt = buildResearchPrompt(input)
   
   const { result: researchText, cost, logId } = await generateText(researchPrompt, {
-    strategy: 'kimi', // Forzar uso de Kimi
+    strategy: 'kimi',
     trackUsage: true,
   })
-  
-  // Actualizar log con tipo de operación correcto
-  if (logId) {
-    // El log ya se creó, pero podríamos añadir metadatos adicionales si fuera necesario
-  }
   
   // 2. Generar datos estructurados
   const structuredPrompt = buildStructuredPrompt(input, researchText)
@@ -139,60 +183,65 @@ export async function researchWithAI(
   )
   
   // Parsear JSON (con limpieza de markdown)
-  let parsedData: Partial<ResearchResult>
+  let parsedData: Record<string, unknown>
   try {
     const cleanJson = structuredData
       .replace(/```json\n?/g, '')
       .replace(/```\n?/g, '')
       .trim()
-    parsedData = JSON.parse(cleanJson)
+    parsedData = JSON.parse(cleanJson) as Record<string, unknown>
   } catch (error) {
     throw new Error(`Failed to parse structured data: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
   
-  // 3. Construir ResearchResult
+  // 3. Construir ResearchResult con manejo seguro de campos
   const result: ResearchResult = {
     id: generateId(),
     researchId,
     destination: {
-      country: parsedData.destination?.country || input.country,
-      region: parsedData.destination?.region || input.region || input.country,
-      description: parsedData.destination?.description || `Destino en ${input.country}`,
+      country: (parsedData.destination as { country?: string })?.country || input.country,
+      region: (parsedData.destination as { region?: string })?.region || input.region || input.country,
+      description: (parsedData.destination as { description?: string })?.description || `Destino en ${input.country}`,
     },
-    summary: parsedData.summary || `Investigación sobre ${input.region || input.country}`,
-    places: (parsedData.places || []).map((p: Partial<Place>) => ({
+    summary: (parsedData.summary as string) || `Investigación sobre ${input.region || input.country}`,
+    places: ((parsedData.places as Record<string, unknown>[]) || []).map((p) => ({
       id: generateId(),
-      name: p.name || 'Lugar sin nombre',
-      category: p.category || 'other',
-      description: p.description || '',
-      whyVisit: p.whyVisit || '',
-      bestFor: p.bestFor,
-      estimatedTime: p.estimatedTime,
-      practicalInfo: p.practicalInfo,
+      name: (p.name as string) || 'Lugar sin nombre',
+      category: (p.category as Place['category']) || 'other',
+      description: (p.description as string) || '',
+      whyVisit: (p.whyVisit as string) || '',
+      bestFor: (p.bestFor as string) || (p.confidenceLevel as string) === 'low' ? '[verificar antes de publicar]' : undefined,
+      estimatedTime: (p.estimatedTime as string),
+      practicalInfo: (p.verificationNeeded as string) || undefined,
     })),
-    activities: (parsedData.activities || []).map((a: Partial<Activity>) => ({
+    activities: ((parsedData.activities as Record<string, unknown>[]) || []).map((a) => ({
       id: generateId(),
-      name: a.name || 'Actividad sin nombre',
-      description: a.description || '',
-      category: a.category || 'other',
-      idealFor: a.idealFor,
-      duration: a.duration,
+      name: (a.name as string) || 'Actividad sin nombre',
+      description: (a.description as string) || '',
+      category: (a.category as Activity['category']) || 'other',
+      idealFor: (a.confidenceLevel as string) === 'low' ? '[sugerencia - verificar disponibilidad]' : (a.idealFor as string),
+      duration: (a.duration as string),
     })),
-    tips: parsedData.tips || [],
-    sources: (parsedData.sources || []).map((s: { url: string; title: string; type: string; reliability: number }) => ({
+    tips: ((parsedData.tips as string[]) || []).filter(t => 
+      // Filtrar consejos demasiado genéricos
+      !t.toLowerCase().includes('aprender frases básicas') &&
+      !t.toLowerCase().includes('respeta las normas') &&
+      !t.toLowerCase().includes('disfruta de')
+    ),
+    sources: [{
       id: generateId(),
-      url: s.url || 'https://example.com',
-      title: s.title || 'Fuente',
-      type: (s.type as 'official' | 'blog' | 'guide' | 'review' | 'other') || 'other',
-      reliability: s.reliability ?? 0.7,
+      url: 'internal://model-knowledge',
+      title: 'Conocimiento del modelo Kimi (sin búsqueda web)',
+      type: 'other',
+      reliability: 0.6,
       accessedAt: new Date(),
-    })),
-    confidence: parsedData.confidence ?? 0.7,
+    }],
+    confidence: Math.min((parsedData.confidence as number) ?? 0.65, 0.75), // Cap a 0.75 max
     generatedAt: new Date(),
   }
   
-  // 4. Generar borrador editorial
-  const draft = generateEditorialDraft(result, researchText)
+  // 4. Generar borrador editorial mejorado
+  const draft = generateHonestEditorialDraft(result, parsedData, researchText)
   
   // Calcular coste total
   const totalCost = (cost || 0) + (structCost || 0)
@@ -207,42 +256,96 @@ export async function researchWithAI(
 }
 
 // ============================================
-// GENERACIÓN DE BORRADOR EDITORIAL
+// GENERACIÓN DE BORRADOR EDITORIAL HONESTO
 // ============================================
 
-function generateEditorialDraft(result: ResearchResult, _researchText: string): EditorialDraft {
+function generateHonestEditorialDraft(
+  result: ResearchResult, 
+  parsedData: Record<string, unknown>,
+  _researchText: string
+): EditorialDraft {
   const { destination, summary, places, activities, tips } = result
+  
+  const pendingVerification = (parsedData.pendingVerification as string[]) || []
+  const articleAngles = (parsedData.articleAngles as string[]) || []
+  const limitations = (parsedData.limitations as string) || 
+    'Esta investigación se basa únicamente en conocimiento del modelo. Se recomienda verificación web antes de publicar.'
+  
+  // Filtrar lugares por nivel de confianza implícito
+  const highConfidencePlaces = places.filter(p => 
+    !p.practicalInfo?.includes('verificar') && !p.bestFor?.includes('verificar')
+  )
+  const needsVerificationPlaces = places.filter(p => 
+    p.practicalInfo?.includes('verificar') || p.bestFor?.includes('verificar')
+  )
   
   const sections = [
     {
       id: generateId(),
-      heading: 'Descubre el lugar',
+      heading: 'Sobre el destino',
       content: destination.description,
       order: 0,
     },
     {
       id: generateId(),
-      heading: 'Lugares imprescindibles',
-      content: places.length > 0 
-        ? places.map(p => `${p.name}: ${p.description} ${p.whyVisit ? `Por qué visitarlo: ${p.whyVisit}` : ''}`).join('\n\n')
-        : 'Información de lugares en preparación.',
+      heading: 'Lugares destacados (verificados)',
+      content: highConfidencePlaces.length > 0 
+        ? highConfidencePlaces.map(p => 
+            `**${p.name}** (${p.category})\n${p.description}\n${p.whyVisit ? `Por qué visitarlo: ${p.whyVisit}` : ''}`
+          ).join('\n\n')
+        : 'No hay lugares con alta confianza en la base de conocimiento del modelo. Se requiere investigación web adicional.',
       order: 1,
     },
     {
       id: generateId(),
-      heading: 'Experiencias recomendadas',
-      content: activities.length > 0
-        ? activities.map(a => `${a.name}${a.duration ? ` (${a.duration})` : ''}: ${a.description}`).join('\n\n')
-        : 'Experiencias en documentación.',
+      heading: 'Sugerencias pendientes de verificación',
+      content: needsVerificationPlaces.length > 0
+        ? needsVerificationPlaces.map(p => 
+            `**${p.name}** [VERIFICAR]\n${p.description}\n${p.practicalInfo || ''}`
+          ).join('\n\n')
+        : 'No hay sugerencias pendientes.',
       order: 2,
+    },
+    {
+      id: generateId(),
+      heading: 'Experiencias y actividades',
+      content: activities.length > 0
+        ? activities.map(a => {
+            const needsVerify = a.idealFor?.includes('verificar')
+            return `**${a.name}${needsVerify ? ' [VERIFICAR]' : ''}**${a.duration ? ` (${a.duration})` : ''}\n${a.description}`
+          }).join('\n\n')
+        : 'Actividades no documentadas en la base de conocimiento.',
+      order: 3,
     },
     {
       id: generateId(),
       heading: 'Consejos prácticos',
       content: tips.length > 0
         ? tips.map(t => `• ${t}`).join('\n')
-        : 'Consulta fuentes oficiales para información actualizada.',
-      order: 3,
+        : 'Consulta fuentes oficiales para información práctica actualizada.',
+      order: 4,
+    },
+    {
+      id: generateId(),
+      heading: 'Ángulos editoriales propuestos',
+      content: articleAngles.length > 0
+        ? articleAngles.map((a, i) => `${i + 1}. ${a}`).join('\n')
+        : 'Se requiere análisis editorial manual.',
+      order: 5,
+    },
+    {
+      id: generateId(),
+      heading: 'Elementos que requieren verificación web',
+      content: pendingVerification.length > 0
+        ? pendingVerification.map(v => `• ${v}`).join('\n')
+        : '• Precios actuales\n• Horarios de apertura\n• Disponibilidad de servicios',
+      order: 6,
+    },
+    {
+      id: generateId(),
+      heading: 'Limitaciones de esta investigación',
+      content: `${limitations}\n\n**Nivel de confianza general: ${Math.round(result.confidence * 100)}%**\n\nEsta investigación NO reemplaza la verificación web. Antes de publicar:\n1. Verifica nombres de lugares en fuentes oficiales\n2. Confirma precios y horarios actuales\n3. Comprueba disponibilidad de tours y servicios\n4. Añade fuentes reales consultadas`,
+      order: 7,
     },
   ]
   
@@ -251,10 +354,10 @@ function generateEditorialDraft(result: ResearchResult, _researchText: string): 
   return {
     id: generateId(),
     researchResultId: result.id,
-    title: `Guía de viaje: ${destination.region}, ${destination.country}`,
-    introduction: summary,
+    title: `${destination.region}, ${destination.country} — Borrador preliminar [REQUIERE REVISIÓN]`,
+    introduction: `${summary}\n\n⚠️ **AVISO DE EDITOR**: Este borrador se generó sin búsqueda web real. Requiere verificación antes de su uso editorial.`,
     sections,
-    tone: 'friendly',
+    tone: 'informative', // Más informativo que entusiasta
     language: 'es',
     status: 'ready',
     wordCount,
@@ -271,7 +374,6 @@ function generateEditorialDraft(result: ResearchResult, _researchText: string): 
  */
 export function isAIResearchAvailable(): boolean {
   try {
-    // Importación dinámica para evitar dependencia circular
     const { getProviderFactory } = require('./providers')
     const factory = getProviderFactory()
     return factory.getAvailableProviders().length > 0

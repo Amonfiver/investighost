@@ -598,6 +598,80 @@ Corregir los resultados genéricos e inventados de Kimi (ej: "Mercado Local Trad
 
 ---
 
+## Sesión 11 — Diagnóstico: Logs de trazabilidad y verificación de flujo
+
+### Objetivo
+Diagnosticar por qué la UI sigue mostrando resultados genéricos antiguos (mock) en lugar de los nuevos prompts honestos de Kimi.
+
+### Hipótesis verificadas
+1. ✅ **El mock-data.ts contiene exactamente los textos genéricos reportados**
+   - "combinación perfecta de cultura..." → en `generateDescription()`
+   - "Mercado Local Tradicional" → en `generatePlaces()`
+   - "Mirador Panorámico" → en `generatePlaces()`
+   - "aprender frases básicas..." → en `generateTips()`
+   - fuentes falsas → en `generateSources()`
+   - confianza 92% → `confidence: 0.75 + Math.random() * 0.2`
+
+2. ✅ **El flujo de `src/modules/research/index.ts` tiene dos ramas:**
+   - Si `isAIResearchAvailable()` = true → usa Kimi real
+   - Si `isAIResearchAvailable()` = false → usa mock
+
+3. ❓ **Posible causa:** `isAIResearchAvailable()` podría estar retornando `false` por:
+   - Provider factory no inicializado
+   - Config no cargada en tiempo de ejecución
+   - Error silencioso en `getProviderFactory()`
+
+### Solución aplicada: Logs detallados de trazabilidad
+
+**Añadidos en `src/modules/research/index.ts`:**
+- Log de entrada con input completo
+- Verificación detallada de `isAIResearchAvailable()`
+- Inspección directa del `providerFactory` con `getAvailableProviders()` y `getHealthStatus()`
+- Logs diferenciados: ✅ para Kimi real, ⚠️ para mock
+- Logs de resultado con confidence, places count, sources
+
+**Añadidos en `src/services/ai/research.ts`:**
+- Log de entrada `researchWithAI()`
+- Longitud y preview del prompt 1
+- Confirmación de step 1 complete
+- Longitud del prompt 2
+- Confirmación de step 2 complete
+- Log de resultado construido (confidence, places, sources)
+- Log de draft generado
+
+### Archivos tocados
+- `src/modules/research/index.ts` — Logs de trazabilidad del flujo
+- `src/services/ai/research.ts` — Logs del servicio de investigación
+
+### Cómo diagnosticar ahora
+1. `npm run dev`
+2. Crear investigación con cualquier destino
+3. **Si ves logs con ⚠️ (mock):**
+   - Revisar que `.env` tenga `KIMI_API_KEY`
+   - Verificar que `[Main] dotenv loaded: 3 variables` aparezca
+   - Chequear `[Config] Kimi configured: true`
+4. **Si ves logs con ✅ (Kimi real):**
+   - Verificar que el resultado ya no tenga textos genéricos
+   - Si persiste el problema, revisar consola del renderer (puede haber cacheo)
+
+### Causa raíz probable
+El mock se activa cuando `isAIResearchAvailable()` retorna `false`. Esto ocurre si:
+- La config no se cargó antes de que el módulo research se inicialice
+- Hay un error silencioso en `getProviderFactory()`
+- El `.env` no se cargó correctamente
+
+Los nuevos logs permitirán identificar exactamente qué está pasando.
+
+### Estado
+- ✅ Build compila sin errores
+- ✅ Logs de trazabilidad añadidos
+- ⏳ Pendiente: verificar en ejecución real qué rama se ejecuta
+
+### Siguiente paso
+Ejecutar `npm run dev`, crear una investigación, y revisar los logs de consola para ver si aparece ✅ (Kimi) o ⚠️ (mock).
+
+---
+
 ## Sesión 8 — Integración Kimi como Proveedor Real
 
 ### Objetivo

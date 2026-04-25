@@ -166,21 +166,31 @@ export async function researchWithAI(
   input: ResearchInput
 ): Promise<ResearchWithAIResult> {
   
+  console.log('🤖 [researchWithAI] Called with researchId:', researchId)
+  console.log('🤖 [researchWithAI] Input:', JSON.stringify(input))
+  
   // 1. Generar investigación textual
   const researchPrompt = buildResearchPrompt(input)
+  console.log('🤖 [researchWithAI] Prompt 1 length:', researchPrompt.length)
   
   const { result: researchText, cost, logId } = await generateText(researchPrompt, {
     strategy: 'kimi',
     trackUsage: true,
   })
   
+  console.log('🤖 [researchWithAI] Step 1 complete. Research text length:', researchText.length)
+  console.log('🤖 [researchWithAI] Step 1 preview:', researchText.substring(0, 200) + '...')
+  
   // 2. Generar datos estructurados
   const structuredPrompt = buildStructuredPrompt(input, researchText)
+  console.log('🤖 [researchWithAI] Prompt 2 length:', structuredPrompt.length)
   
   const { result: structuredData, provider: structProvider, cost: structCost, logId: structLogId } = await generateText(
     structuredPrompt,
     { strategy: 'kimi', trackUsage: true }
   )
+  
+  console.log('🤖 [researchWithAI] Step 2 complete. Structured data length:', structuredData.length)
   
   // Parsear JSON (con limpieza de markdown)
   let parsedData: Record<string, unknown>
@@ -193,6 +203,8 @@ export async function researchWithAI(
   } catch (error) {
     throw new Error(`Failed to parse structured data: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
+  
+  console.log('🤖 [researchWithAI] Parsing JSON...')
   
   // 3. Construir ResearchResult con manejo seguro de campos
   const result: ResearchResult = {
@@ -240,8 +252,22 @@ export async function researchWithAI(
     generatedAt: new Date(),
   }
   
+  console.log('🤖 [researchWithAI] Result built:', {
+    id: result.id,
+    confidence: result.confidence,
+    placesCount: result.places.length,
+    sourcesCount: result.sources.length,
+    sourcesTitles: result.sources.map(s => s.title)
+  })
+  
   // 4. Generar borrador editorial mejorado
   const draft = generateHonestEditorialDraft(result, parsedData, researchText)
+  
+  console.log('🤖 [researchWithAI] Draft generated:', {
+    id: draft.id,
+    title: draft.title,
+    sectionsCount: draft.sections.length
+  })
   
   // Calcular coste total
   const totalCost = (cost || 0) + (structCost || 0)

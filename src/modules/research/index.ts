@@ -73,50 +73,73 @@ async function startResearch(requestId: string): Promise<void> {
     throw new Error(`Cannot start research from status: ${request.status}`)
   }
 
-  console.log('[Research] Starting research for:', requestId)
-  console.log('[Research] AI available:', isAIResearchAvailable())
+  console.log('🔍 [Research] Starting research for:', requestId)
+  console.log('🔍 [Research] Input:', JSON.stringify(request.input))
+  
+  // Verificación detallada de disponibilidad de IA
+  const aiAvailable = isAIResearchAvailable()
+  console.log('🔍 [Research] isAIResearchAvailable():', aiAvailable)
+  
+  // Verificar estado de provider factory directamente
+  try {
+    const { getProviderFactory } = require('@services/ai/providers')
+    const factory = getProviderFactory()
+    const availableProviders = factory.getAvailableProviders()
+    console.log('🔍 [Research] Available providers:', availableProviders)
+    console.log('🔍 [Research] Factory health:', factory.getHealthStatus())
+  } catch (e) {
+    console.error('🔍 [Research] Error checking provider factory:', e)
+  }
 
   try {
     // 1. researching
     await updateStatus(requestId, 'researching')
     
-    if (isAIResearchAvailable()) {
+    if (aiAvailable) {
       // Investigar con IA real (Kimi)
-      console.log('[Research] Using Kimi for real research...')
+      console.log('✅ [Research] USING REAL KIMI - Generating honest research...')
       
       const { result, draft, logId, cost } = await researchWithAI(requestId, request.input)
+      
+      console.log('✅ [Research] Kimi result confidence:', result.confidence)
+      console.log('✅ [Research] Kimi result places count:', result.places.length)
+      console.log('✅ [Research] Kimi result sources:', result.sources.map(s => s.title))
       
       // Guardar resultado
       await store.saveResult(result)
       await updateStatus(requestId, 'structured')
-      console.log('[Research] Result from Kimi:', result.id, `(cost: $${cost?.toFixed(4) || 'unknown'})`)
+      console.log('✅ [Research] Result from Kimi saved:', result.id, `(cost: $${cost?.toFixed(4) || 'unknown'})`)
       
       // Guardar borrador
       await store.saveDraft(draft)
       await updateStatus(requestId, 'drafted')
-      console.log('[Research] Draft generated:', draft.id, 'log:', logId)
+      console.log('✅ [Research] Honest draft saved:', draft.id, 'log:', logId)
       
     } else {
       // Simulación temporal (cuando no hay Kimi configurado)
-      console.log('[Research] No AI configured, using MOCK simulation')
+      console.log('⚠️ [Research] NO AI CONFIGURED - Using MOCK simulation (legacy)')
+      console.log('⚠️ [Research] This should NOT happen when KIMI_API_KEY is set!')
       
       await sleep(1500)
       
       const result = generateMockResult(requestId, request.input)
+      console.log('⚠️ [Research] MOCK result generated with confidence:', result.confidence)
+      console.log('⚠️ [Research] MOCK sources:', result.sources.map(s => s.title))
+      
       await store.saveResult(result)
       await updateStatus(requestId, 'structured')
-      console.log('[Research] MOCK Result generated:', result.id)
+      console.log('⚠️ [Research] MOCK Result saved:', result.id)
       
       await sleep(1000)
       const draft = generateMockDraft(result)
       await store.saveDraft(draft)
       await updateStatus(requestId, 'drafted')
-      console.log('[Research] MOCK Draft generated:', draft.id)
+      console.log('⚠️ [Research] MOCK Draft saved:', draft.id)
     }
 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
-    console.error('[Research] Error during research:', message)
+    console.error('❌ [Research] Error during research:', message)
     await updateStatus(requestId, 'error', message)
     throw error
   }

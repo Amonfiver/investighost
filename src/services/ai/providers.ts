@@ -13,6 +13,7 @@ import type { AIProvider, AIProviderContract, SearchProvider } from '@shared/typ
 import { getConfig } from '@services/config'
 
 const KIMI_REQUEST_TIMEOUT_MS = 90_000
+const KIMI_MINIMAL_TEST_TIMEOUT_MS = 20_000
 
 // ============================================
 // CONFIGURACIÓN DE PROVEEDORES
@@ -22,6 +23,7 @@ export interface ProviderConfig {
   apiKey?: string
   baseUrl?: string
   defaultModel: string
+  maxTokens: number
   models: {
     search?: string      // Modelo para búsqueda/investigación
     chat?: string        // Modelo para conversación
@@ -128,8 +130,10 @@ export class KimiProvider extends BaseAIProvider {
     
     const model = options?.model || this.config.defaultModel
     const temperature = resolveKimiTemperature(model, options?.temperature ?? 0.7)
+    const maxTokens = resolveKimiMaxTokens(this.config.maxTokens)
     console.log('[KimiProvider] model:', model)
     console.log('[KimiProvider] temperature:', temperature)
+    console.log('[KimiProvider] max_tokens:', maxTokens)
     console.log('[KimiProvider] request started')
     
     try {
@@ -139,6 +143,7 @@ export class KimiProvider extends BaseAIProvider {
             model,
             messages: [{ role: 'user', content: prompt }],
             temperature,
+            max_tokens: maxTokens,
           },
           { signal }
         ),
@@ -168,8 +173,10 @@ export class KimiProvider extends BaseAIProvider {
     
     const model = options?.model || this.config.defaultModel
     const temperature = resolveKimiTemperature(model, options?.temperature ?? 0.3)
+    const maxTokens = resolveKimiMaxTokens(this.config.maxTokens)
     console.log('[KimiProvider] model:', model)
     console.log('[KimiProvider] temperature:', temperature)
+    console.log('[KimiProvider] max_tokens:', maxTokens)
     console.log('[KimiProvider] request started')
     
     // Construir prompt que fuerza JSON válido
@@ -187,6 +194,7 @@ ${JSON.stringify(schema, null, 2)}`
             model,
             messages: [{ role: 'user', content: structuredPrompt }],
             temperature,
+            max_tokens: maxTokens,
           },
           { signal }
         ),
@@ -234,6 +242,44 @@ Responde en español de forma natural y útil.`
 
     return this.generateText(searchPrompt, { ...options, temperature: 0.7 })
   }
+
+  async testMinimalCall(): Promise<void> {
+    if (!this.client || !this.isAvailable) {
+      throw new Error('Kimi not configured - set KIMI_API_KEY in .env file')
+    }
+
+    const model = this.config.defaultModel
+    const temperature = resolveKimiTemperature(model, 1)
+    console.log('[KimiProvider] minimal test started')
+    console.log('[KimiProvider] model:', model)
+    console.log('[KimiProvider] temperature:', temperature)
+
+    try {
+      const response = await runKimiRequest(
+        signal => this.client!.chat.completions.create(
+          {
+            model,
+            messages: [{ role: 'user', content: 'Responde solo con OK' }],
+            temperature,
+            max_tokens: 8,
+          },
+          { signal }
+        ),
+        KIMI_MINIMAL_TEST_TIMEOUT_MS
+      )
+
+      const content = response.choices[0]?.message?.content?.trim()
+      if (!content) {
+        throw new Error('Kimi returned empty response')
+      }
+
+      console.log('[KimiProvider] minimal test success')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      console.error('[KimiProvider] minimal test failed:', message)
+      throw new Error(`Kimi minimal test failed: ${message}`)
+    }
+  }
 }
 
 function resolveKimiTemperature(model: string, requestedTemperature: number): number {
@@ -242,6 +288,20 @@ function resolveKimiTemperature(model: string, requestedTemperature: number): nu
   }
 
   return requestedTemperature
+}
+
+function resolveKimiMaxTokens(maxTokens: number): number {
+  return Math.max(1, Math.min(maxTokens, 4000))
+}
+
+export async function testKimiMinimalCall(): Promise<void> {
+  const provider = getProviderFactory().getProvider('kimi')
+
+  if (!(provider instanceof KimiProvider)) {
+    throw new Error('Kimi provider not available')
+  }
+
+  await provider.testMinimalCall()
 }
 
 async function runKimiRequest<T>(
@@ -402,6 +462,7 @@ export function createProviderConfigFromEnv(): MultiProviderConfig {
           apiKey: config.kimi.apiKey,
           baseUrl: config.kimi.baseUrl,
           defaultModel: config.kimi.defaultModel,
+          maxTokens: config.kimi.maxTokens,
           models: {
             search: config.kimi.defaultModel,
             chat: config.kimi.defaultModel,
@@ -422,6 +483,7 @@ export function createProviderConfigFromEnv(): MultiProviderConfig {
           apiKey: config.openai.apiKey,
           baseUrl: config.openai.baseUrl,
           defaultModel: config.openai.defaultModel,
+          maxTokens: 1200,
           models: {
             search: config.openai.defaultModel,
             chat: config.openai.defaultModel,

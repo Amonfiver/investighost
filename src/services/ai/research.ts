@@ -11,7 +11,8 @@
  */
 
 import { generateText } from './index'
-import { getProviderFactory } from './providers'
+import { getProviderFactory, testKimiMinimalCall } from './providers'
+import { isAIDiagnosticEnabled } from '@services/config'
 import type { ResearchInput, ResearchResult, EditorialDraft, Place, Activity, Source, WebResearchBundle, WebSearchResult, WebSourceType } from '@shared/types'
 import { generateId } from '@utils/helpers'
 
@@ -164,60 +165,51 @@ const buildCompactWebStructuredPrompt = (
   const { country, region } = input
   const location = region ? `${region}, ${country}` : country
 
-  return `Eres analista/redactor editorial para Trawel. Analiza "${location}" usando SOLO estas fuentes de busqueda web ya compactadas.
+  return `Analiza "${location}" para Trawel usando SOLO estas fuentes compactas.
 
-FUENTES DISPONIBLES:
+FUENTES:
 ${formatCompactSourcesForPrompt(sources)}
 
-Reglas estrictas:
-- Usa solo title, url y snippet de las fuentes.
+Reglas:
+- Usa solo title, url y snippet.
 - No inventes lugares, fuentes, horarios, precios, restaurantes ni opiniones.
-- Si algo no aparece en las fuentes, ponlo en pendingVerification.
-- Conserva URLs reales solo desde las fuentes.
-- No uses frases promocionales genericas.
-- confidence debe ser prudente y nunca mayor que 0.75.
-- Devuelve SOLO JSON valido, sin markdown.
+- Marca lo dudoso en pendingVerification.
+- Respuesta corta. confidence maximo 0.75.
+- Devuelve SOLO JSON valido.
 
-Genera un objeto JSON con esta estructura:
+JSON:
 
 {
   "destination": {
     "country": "${country}",
     "region": "${region || country}",
-    "description": "descripcion breve basada solo en fuentes"
+    "description": "1 frase basada en fuentes"
   },
-  "title": "titulo editorial prudente",
-  "summary": "resumen honesto, maximo 2 frases",
-  "keyPoints": ["punto clave basado en fuente [F1]"],
+  "summary": "maximo 2 frases",
+  "keyPoints": ["punto clave [F1]"],
   "places": [
     {
-      "name": "lugar o tema detectado",
+      "name": "lugar o tema",
       "category": "landmark|neighborhood|museum|viewpoint|beach|park|market|other",
-      "description": "que dice la fuente",
-      "whyVisit": "por que puede ser util editorialmente",
+      "description": "dato breve de fuente",
+      "whyVisit": "utilidad editorial breve",
       "confidenceLevel": "high|medium|low",
-      "verificationNeeded": "que falta verificar antes de publicar",
+      "verificationNeeded": "pendiente concreto",
       "sourceRefs": ["F1"]
     }
   ],
   "activities": [
     {
-      "name": "actividad o tema practico detectado",
-      "description": "descripcion sin relleno",
-      "category": "experience|tour|food|nightlife|shopping|relax|other",
-      "confidenceLevel": "high|medium|low",
+      "name": "actividad o tema",
+      "description": "breve",
+      "category": "experience|tour|food|other",
       "sourceRefs": ["F1"]
     }
   ],
-  "tips": ["consejo practico derivado de fuentes o marcado pendiente de verificar"],
-  "sourcesUsed": ["F1", "F2"],
-  "pendingVerification": [
-    "horarios, precios o datos que requieren abrir fuente completa"
-  ],
-  "articleAngles": [
-    "angulo editorial derivado de fuentes"
-  ],
-  "limitations": "Esta investigacion se basa en resultados de busqueda (titulo, URL y snippet). No se han abierto paginas completas.",
+  "tips": ["consejo practico breve"],
+  "pendingVerification": ["dato que requiere abrir fuente completa"],
+  "articleAngles": ["angulo editorial breve"],
+  "limitations": "Solo se usaron titulo, URL y snippet; no se abrieron paginas completas.",
   "confidence": 0.65
 }
 `
@@ -510,12 +502,33 @@ async function researchWithCompactWebBundle(
 
   const prompt = buildCompactWebStructuredPrompt(input, compactSources)
   console.log('[Research] compact prompt length:', prompt.length)
+
+  const diagnosticPassed = await runKimiDiagnosticIfEnabled()
+
   console.log('[Research] sending compact bundle to Kimi')
 
-  const { result: structuredData, provider, cost, logId } = await generateText(prompt, {
-    strategy: 'kimi',
-    trackUsage: true,
-  })
+  let structuredData: string
+  let provider: string
+  let cost: number | undefined
+  let logId: string | undefined
+
+  try {
+    const response = await generateText(prompt, {
+      strategy: 'kimi',
+      trackUsage: true,
+    })
+    structuredData = response.result
+    provider = response.provider
+    cost = response.cost
+    logId = response.logId
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    if (diagnosticPassed) {
+      throw new Error(`Kimi responde en mínimo, pero falla al procesar el bundle web. Reducir prompt/modelo. Detalle: ${message}`)
+    }
+
+    throw error
+  }
 
   let parsedData: Record<string, unknown>
   try {
@@ -612,17 +625,32 @@ function compactWebBundleSources(results: WebSearchResult[]): CompactWebSource[]
       seen.add(result.url)
       return true
     })
-    .slice(0, 6)
+    .slice(0, 4)
     .map((result, index) => ({
       ref: `F${index + 1}`,
       title: result.title,
       url: result.url,
-      snippet: truncateText(result.snippet || '', 300),
+      snippet: truncateText(result.snippet || '', 180),
       provider: result.provider,
       reliabilityScore: result.reliabilityScore,
       sourceType: result.sourceType,
       capturedAt: result.capturedAt,
     }))
+}
+
+async function runKimiDiagnosticIfEnabled(): Promise<boolean> {
+  if (!isAIDiagnosticEnabled()) {
+    return false
+  }
+
+  try {
+    await testKimiMinimalCall()
+    return true
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[Research] Kimi minimal diagnostic failed:', message)
+    throw new Error('Kimi no responde a una prueba mínima. Revisa modelo, permisos, saldo o endpoint.')
+  }
 }
 
 function buildSourcesFromCompactSources(sources: CompactWebSource[]): Source[] {

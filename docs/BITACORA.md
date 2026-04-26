@@ -1321,3 +1321,82 @@ Corregir el timeout del primer pipeline real Brave → Kimi reduciendo la carga 
 ### Pendiente
 
 - Probar desde UI una investigación de Albarracín con Brave activo y confirmar que Kimi responde dentro del nuevo flujo compacto.
+
+---
+
+## Sesión 17 — Diagnóstico mínimo Kimi y prompt ultracompacto
+
+### Objetivo
+Corregir el timeout persistente de Kimi en el pipeline Brave → Kimi sin tocar Brave ni volver a fallback turístico automático.
+
+### Causa probable
+
+- Brave ya devolvía resultados reales, pero Kimi seguía agotando timeout.
+- La duda principal ya no era la búsqueda web, sino si Moonshot/Kimi respondía siquiera a una llamada mínima desde el SDK y con el modelo configurado.
+- El prompt de investigación seguía siendo demasiado ambicioso para diagnosticar el primer flujo real.
+
+### Cambios realizados
+
+- `src/services/ai/providers.ts`
+  - Añadida llamada mínima real a Kimi:
+    - prompt: `Responde solo con OK`,
+    - `max_tokens: 8`,
+    - timeout de 20 segundos.
+  - Logs seguros:
+    - `[KimiProvider] minimal test started`
+    - `[KimiProvider] minimal test success`
+  - Las llamadas normales a Kimi ahora envían parámetros mínimos:
+    - `model`,
+    - `messages`,
+    - `temperature`,
+    - `max_tokens`.
+  - `max_tokens` se toma de configuración y se limita internamente.
+- `src/services/config/index.ts`
+  - Añadido `KIMI_MAX_TOKENS`, default `1200`.
+  - Añadido `INVESTIGHOST_AI_DIAGNOSTIC`, default `false`.
+  - Logs seguros de modelo, baseURL, max tokens y diagnóstico, sin imprimir keys.
+- `src/services/ai/research.ts`
+  - Si `INVESTIGHOST_AI_DIAGNOSTIC=true`, antes de procesar el bundle ejecuta la llamada mínima.
+  - Si la mínima falla, la request pasa a error claro:
+    - `Kimi no responde a una prueba mínima. Revisa modelo, permisos, saldo o endpoint.`
+  - Si la mínima funciona pero falla el bundle:
+    - `Kimi responde en mínimo, pero falla al procesar el bundle web. Reducir prompt/modelo.`
+  - El prompt Brave → Kimi baja a:
+    - máximo 4 resultados,
+    - snippets de 180 caracteres,
+    - una respuesta JSON corta y editorialmente útil.
+- `.env.example`
+  - Documentadas variables:
+    - `KIMI_BASE_URL`,
+    - `KIMI_MODEL`,
+    - `KIMI_MAX_TOKENS`,
+    - `INVESTIGHOST_AI_DIAGNOSTIC`.
+  - Añadida nota para poder probar otro modelo disponible en la cuenta si `kimi-k2.6` tarda demasiado.
+
+### Logs esperados
+
+Con diagnóstico activo:
+
+- `[KimiProvider] minimal test started`
+- `[KimiProvider] minimal test success`
+- `[Research] compacted web results: 4`
+- `[Research] compact prompt length: X`
+- `[Research] sending compact bundle to Kimi`
+
+### Política mantenida
+
+- No se modifica `.env` real.
+- No se imprimen API keys.
+- No se añaden proveedores.
+- No se hace scraping.
+- Si Brave funciona pero Kimi falla, la request queda en `error`; no hay mock turístico automático.
+
+### Verificación
+
+- `npm run build:vite` compila sin errores.
+
+### Limitaciones
+
+- El diagnóstico mínimo solo valida conectividad/modelo/permisos básicos.
+- El resultado editorial queda deliberadamente corto para estabilizar primero el flujo real.
+- Si la prueba mínima funciona pero el bundle falla, el siguiente paso será probar otro modelo configurado en `KIMI_MODEL` o reducir aún más `KIMI_MAX_TOKENS`/prompt.

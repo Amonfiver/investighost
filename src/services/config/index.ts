@@ -22,6 +22,7 @@ const configSchema = z.object({
     apiKey: z.string().min(10).optional(),
     baseUrl: z.string().url().default('https://api.moonshot.ai/v1'),
     defaultModel: z.string().default('kimi-k2.6'),
+    maxTokens: z.number().int().positive().default(1200),
   }).default({}),
   
   openai: z.object({
@@ -37,6 +38,7 @@ const configSchema = z.object({
   
   // Configuración general
   debug: z.boolean().default(false),
+  aiDiagnostic: z.boolean().default(false),
 })
 
 type Config = z.infer<typeof configSchema>
@@ -67,6 +69,7 @@ export function loadConfig(): Config {
       apiKey: process.env.KIMI_API_KEY,
       baseUrl: process.env.KIMI_BASE_URL || 'https://api.moonshot.ai/v1',
       defaultModel: process.env.KIMI_MODEL || process.env.KIMI_DEFAULT_MODEL || 'kimi-k2.6',
+      maxTokens: parsePositiveInteger(process.env.KIMI_MAX_TOKENS, 1200),
     },
     openai: {
       apiKey: process.env.OPENAI_API_KEY,
@@ -78,6 +81,7 @@ export function loadConfig(): Config {
       braveApiKey: process.env.BRAVE_SEARCH_API_KEY,
     },
     debug: process.env.DEBUG === 'true',
+    aiDiagnostic: process.env.INVESTIGHOST_AI_DIAGNOSTIC === 'true',
   }
 
   // Validar con Zod
@@ -97,15 +101,26 @@ export function loadConfig(): Config {
   console.log('[Config] Kimi configured:', !!cachedConfig.kimi.apiKey)
   console.log('[Config] Kimi baseURL:', cachedConfig.kimi.baseUrl)
   console.log('[Config] Kimi model:', cachedConfig.kimi.defaultModel)
+  console.log('[Config] Kimi max tokens:', cachedConfig.kimi.maxTokens)
   console.log('[Config] OpenAI configured:', !!cachedConfig.openai.apiKey)
   console.log('[Config] Search provider:', cachedConfig.search.provider)
   console.log('[Config] Brave Search configured:', !!cachedConfig.search.braveApiKey)
+  console.log('[Config] AI diagnostic:', cachedConfig.aiDiagnostic)
   
   return cachedConfig
 }
 
 function parseSearchProvider(value: string | undefined): SearchProvider {
   return value === 'brave' ? 'brave' : 'mock'
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback
+  }
+
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
 /**
@@ -133,6 +148,10 @@ export function isKimiConfigured(): boolean {
 export function isOpenAIConfigured(): boolean {
   const config = getConfig()
   return !!config.openai.apiKey && config.openai.apiKey.length > 10
+}
+
+export function isAIDiagnosticEnabled(): boolean {
+  return getConfig().aiDiagnostic
 }
 
 /**

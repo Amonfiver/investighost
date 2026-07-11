@@ -351,3 +351,15 @@ La prioridad es construir:
 - pipeline de redacción,
 - flujo de publicación hacia Trawel,
 - panel o interfaz mínima para revisión.
+
+---
+
+## 22. Contrato canónico desde FASE 1B
+
+La fuente contractual ejecutable es `src/shared/contracts.ts`; el modelo completo está en `DOMAIN_MODEL.md`.
+
+- Producción, revisión y publicación son estados y responsabilidades separados.
+- SQLite es trabajo/caché local, Supabase Investighost será fuente compartida y Trawel recibe solo una proyección pública aprobada.
+- Ninguna pieza entra en cola sin aprobación humana trazable y ninguna escritura Trawel nace como `published`.
+- PII, consentimientos, secretos, prompts, costes y logs internos nunca se publican.
+- Campañas, prospección, tracking, listas de terceros y primera escritura Trawel conservan pausas humanas obligatorias.

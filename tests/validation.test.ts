@@ -43,7 +43,9 @@ describe('ResearchStatus contract', () => {
     'scheduled',
     'publishing',
     'published',
-    'unpublished',
+    'failed',
+    'paused',
+    'archived',
   ])('accepts canonical status %s', status => {
     expect(ResearchStatusSchema.parse(status)).toBe(status)
   })

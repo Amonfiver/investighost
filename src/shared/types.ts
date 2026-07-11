@@ -88,7 +88,9 @@ export type PublishingStatus =
   | 'scheduled'       // Programado para fecha específica
   | 'publishing'      // En proceso de publicación
   | 'published'       // Publicado en Trawel
-  | 'unpublished'     // Despublicado manualmente
+  | 'failed'          // Intento de publicación fallido
+  | 'paused'          // Publicación pausada manualmente
+  | 'archived'        // Retirado del flujo operativo
 
 // Tipo combinado para compatibilidad (obsoleto, usar ProductionStatus)
 export type ResearchStatus = ProductionStatus | PublishingStatus

@@ -333,3 +333,14 @@ Vitest 2 es el runner mínimo por compatibilidad con Vite 5, TypeScript y Node 2
 ### Decisión 11.3 — Un único conjunto mínimo de estados validables
 
 Hasta que FASE 1B cierre los contratos completos, `ResearchStatusSchema` acepta la unión actual de estados de producción y publicación declarada en TypeScript. Una entidad válida por tipos no debe ser rechazada por Zod.
+
+---
+
+## 12. Decisiones canónicas de FASE 1B
+
+- **Fuente contractual:** Zod en `src/shared/contracts.ts`; TypeScript se infiere. Los tipos MVP quedan solo como compatibilidad temporal.
+- **Frontera:** SQLite conserva trabajo/caché; Supabase Investighost será fuente multiusuario; Trawel es destino público derivado.
+- **Supabase:** se recomienda proyecto separado de Trawel; decisión humana obligatoria antes de FASE 2.
+- **Estados:** producción/publicación son ortogonales; moderación, campañas, anuncios y verificación tienen enums propios.
+- **Handoff:** resolver IDs, upsert idempotente, crear draft/review, conservar intentos parciales y publicar solo con acción humana.
+- **Privacidad:** PII local excluida por defecto; RLS, supresión, consentimiento y auditoría privilegiada son requisitos obligatorios.

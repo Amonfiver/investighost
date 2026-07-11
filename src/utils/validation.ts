@@ -7,26 +7,18 @@
  */
 
 import { z } from 'zod'
+import {
+  ProductionStatusSchema,
+  PublicationStatusSchema,
+} from '@shared/contracts'
 
 // ============================================
 // Enums como Zod
 // ============================================
 
-export const ResearchStatusSchema = z.enum([
-  'pending',
-  'researching',
-  'structured',
-  'drafted',
-  'under_review',
-  'approved',
-  'rejected',
-  'not_published',
-  'queued',
-  'scheduled',
-  'publishing',
-  'published',
-  'unpublished',
-  'error',
+export const ResearchStatusSchema = z.union([
+  ProductionStatusSchema,
+  PublicationStatusSchema,
 ])
 
 export const DraftStatusSchema = z.enum([

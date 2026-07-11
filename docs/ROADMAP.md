@@ -1,6 +1,6 @@
 # Roadmap recomendado de Investighost
 
-Estado: FASE 1A ejecutada el 2026-07-11; pendiente aprobación humana antes de FASE 1B.
+Estado: FASE 1B ejecutada el 2026-07-11; PAUSA HUMANA 1 antes de FASE 2.
 
 ## Principios de secuencia
 
@@ -20,9 +20,9 @@ Entregables: auditoría, matriz, roadmap y BITACORA2. Salida: PAUSA HUMANA 0.
 
 Arranque Electron y lint corregidos; scripts canónicos y 21 pruebas mínimas añadidos. La compilación Vite es reproducible. El instalador continúa bloqueado por privilegios de symlinks de Windows y queda documentado como incidencia de entorno/release.
 
-### 1B. Contratos y arquitectura canónica
+### 1B. Contratos y arquitectura canónica — completada
 
-Cerrar modelo de dominios, estados, roles, contratos Zod, payload Trawel, separación SQLite/Supabase, diagramas, seguridad/privacidad y aceptación. Resolver divergencias entre TypeScript, Zod y Drizzle. PAUSA HUMANA 1.
+Modelo de 29 entidades, estados, RBAC, contratos Zod, payload Trawel, frontera de datos, seguridad y aceptación definidos. No se implementó persistencia. PAUSA HUMANA 1 activa.
 
 ### 2. Fundación segura y multiusuario
 
@@ -62,7 +62,7 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 
 ## Orden inmediato recomendado
 
-1. Revisar y aceptar la entrega de FASE 1A.
-2. Iniciar FASE 1B: contratos y arquitectura canónica.
-3. Resolver en FASE 1B las decisiones humanas de Supabase, roles, seguridad, Trawel y compliance.
-4. Mantener pausa humana antes de migraciones, credenciales o funcionalidad nueva.
+1. Revisar y aceptar la entrega de FASE 1B.
+2. Decidir proyecto/región Supabase, usuarios iniciales, roles, correo, consentimiento, analytics y cifrado/retención.
+3. Autorizar por separado FASE 2 y sus migraciones propuestas.
+4. No conectar Trawel ni iniciar dominios comerciales durante FASE 2.

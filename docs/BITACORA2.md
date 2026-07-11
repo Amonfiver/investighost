@@ -115,3 +115,40 @@ FASE 1A completada dentro de alcance. Arranque dev, lint, typecheck y tests qued
 ### Siguiente paso
 
 PAUSA HUMANA. Tras aprobación, ejecutar únicamente FASE 1B — contratos y arquitectura canónica; no iniciar migraciones, Supabase ni dominios nuevos.
+
+---
+
+## Sesión 20 — FASE 1B: contratos y arquitectura canónica
+
+### Fecha y objetivo
+
+2026-07-11. Cerrar dominios, estados, roles, fronteras, seguridad y handoff Trawel antes de persistencia real.
+
+### Archivos tocados
+
+- Nuevos: `src/shared/contracts.ts`, `tests/contracts.test.ts`, `DOMAIN_MODEL.md`, `LOCAL_CLOUD_DATA_BOUNDARIES.md`, `ROLES_AND_PERMISSIONS.md`, `STATE_MACHINES.md`, `TRAWEL_HANDOFF_CONTRACT.md`, `SECURITY_AND_PRIVACY.md` y `ACCEPTANCE_TESTS.md`.
+- Actualizados: `src/shared/types.ts`, `src/utils/validation.ts`, `src/services/db/schema.ts`, `tests/validation.test.ts`, `SPEC.md`, `ARCHITECTURE.md`, `DECISIONES.md`, `ROADMAP.md` y `BITACORA2.md`.
+
+### Cambios
+
+- 29 entidades con contratos Zod, ownership, sensibilidad, retención y ubicación.
+- Estados independientes, RBAC de ocho roles y permisos atómicos.
+- Frontera SQLite/Supabase/Trawel y datos exclusivamente internos.
+- Handoff Trawel 1.0 con draft obligatorio, resolución de IDs, idempotencia, deduplicación y errores parciales.
+- Invariantes de aprobación editorial/legal, anuncios y URLs HTTPS.
+- Sustituido el estado heredado `unpublished` por `failed`, `paused`, `archived`.
+
+### Alcance respetado
+
+Sin Supabase/Auth, migraciones, datos reales, APIs nuevas, lógica CRM/campañas/anuncios/analytics ni publicación Trawel.
+
+### Verificación
+
+- `npm run lint`: pasa.
+- `npm run typecheck`: pasa.
+- `npm test`: pasan 3 archivos y 39 tests.
+- `npm run build:vite`: pasa; renderer, main y preload compilados. No se ejecutó empaquetado, según alcance.
+
+### Siguiente paso
+
+PAUSA HUMANA 1: decidir Supabase, usuarios/roles, correo/remitente, política legal/retención, analytics y cifrado local. Solo después autorizar FASE 2.

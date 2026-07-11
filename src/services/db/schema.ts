@@ -153,7 +153,7 @@ export const publishingQueue = sqliteTable('publishing_queue', {
   destinationCountry: text('destination_country').notNull(),
   destinationRegion: text('destination_region').notNull(),
   
-  // Estado en la cola: queued, scheduled, publishing, published, unpublished
+  // Estado en la cola: queued, scheduled, publishing, published, failed, paused, archived
   status: text('status').notNull().default('queued'),
   
   // Prioridad y orden

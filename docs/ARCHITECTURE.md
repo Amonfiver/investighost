@@ -300,3 +300,18 @@ Si esa variable heredada vale `1`, Electron se comporta como Node y no expone `a
 - Los comandos canónicos son `npm run lint`, `npm run typecheck` y `npm test`.
 
 `npm run build` compila los tres bundles. En el entorno Windows auditado, el empaquetado posterior sigue bloqueado porque `electron-builder` no puede extraer `winCodeSign` sin privilegio para crear enlaces simbólicos.
+
+---
+
+## 11. Arquitectura canónica (FASE 1B)
+
+```text
+Electron renderer → preload/IPC Zod → proceso principal/repositorios
+  → SQLite (borrador, caché, offline parcial)
+  ↔ Supabase Investighost (fuente compartida, Auth/RLS, auditoría)
+  → Edge Function privilegiada → adaptador/payload Zod → Trawel (draft/review)
+```
+
+`src/shared/contracts.ts` es la fuente ejecutable para entidades, enums e invariantes. Drizzle y Supabase no se modificarán hasta FASE 2 y aprobación de migraciones.
+
+Producción agrupa Request/Run/Source/Result/Draft/Revision/ContentPiece. Publicación comienza después de aprobación mediante QueueItem/Attempt. Moderación, CRM, campañas, anuncios y analytics comparten identidad, RBAC y AuditLog, pero no mezclan sus estados con el flujo editorial.

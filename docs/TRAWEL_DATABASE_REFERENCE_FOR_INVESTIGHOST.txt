@@ -1,0 +1,1243 @@
+TRAWEL — MAPA DE BASE DE DATOS PARA INVESTIGHOST
+=================================================
+
+Propósito
+---------
+Este documento resume las tablas, campos y reglas de uso detectadas en la auditoría del proyecto Trawel.
+
+Su objetivo es servir como referencia operativa dentro de Investighost para:
+- saber qué datos debe generar,
+- conocer el nombre exacto de los campos de Supabase,
+- evitar errores al insertar o actualizar contenido,
+- mapear correctamente ciudades, destinos y fuentes,
+- distinguir datos internos de Investighost de datos públicos de Trawel.
+
+IMPORTANTE
+----------
+Este documento se basa en la auditoría del repositorio actual de Trawel y en sus migraciones, tipos y servicios.
+
+No sustituye una comprobación final contra la base de datos real de Supabase antes de activar escritura automática.
+
+Regla general:
+- Investighost investiga, redacta, revisa y prepara.
+- Supabase almacena.
+- Trawel lee y muestra.
+
+Arquitectura operativa
+----------------------
+Internet y fuentes
+        ↓
+Investighost
+        ↓
+Investigación estructurada
+        ↓
+Revisión humana
+        ↓
+Base interna de Investighost
+        ↓
+Adaptador de publicación
+        ↓
+Supabase de Trawel
+        ↓
+Trawel muestra contenido
+
+=================================================
+1. TABLA: countries
+=================================================
+
+Uso
+---
+Representa los países que Trawel puede mostrar o preparar.
+
+Campos
+------
+
+id
+- Tipo esperado: UUID.
+- Función: identificador interno único del país.
+- Uso en Investighost: normalmente no se inventa. Se debe consultar por slug o reutilizar el id existente.
+
+slug
+- Tipo esperado: texto.
+- Obligatorio.
+- Función: identificador público estable para URL y relaciones.
+- Ejemplos: espana, italia, japon.
+- Regla: minúsculas, sin tildes, sin ñ, palabras con guiones.
+
+name_es
+- Tipo esperado: texto.
+- Obligatorio.
+- Función: nombre público del país en español.
+- Ejemplo: España.
+
+emoji
+- Tipo esperado: texto.
+- Opcional.
+- Función: bandera o símbolo visual.
+- Ejemplo: 🇪🇸.
+
+capital_es
+- Tipo esperado: texto.
+- Opcional.
+- Función: capital del país en español.
+
+continent_es
+- Tipo esperado: texto.
+- Opcional.
+- Función: continente del país en español.
+
+description_es
+- Tipo esperado: texto.
+- Opcional.
+- Función: descripción general breve del país.
+
+status
+- Tipo esperado: enum/texto.
+- Obligatorio.
+- Valores detectados:
+  - active
+  - comingSoon
+  - disabled
+- Función:
+  - active: país visible y utilizable.
+  - comingSoon: país preparado pero todavía incompleto.
+  - disabled: país oculto temporalmente.
+- Recomendación para Investighost:
+  - no cambiar este campo automáticamente sin revisión humana.
+
+featured
+- Tipo esperado: boolean.
+- Obligatorio con valor por defecto.
+- Función: indica si el país aparece como destacado.
+
+created_at
+- Tipo esperado: timestamp.
+- Generado por la base.
+- Investighost no debería rellenarlo manualmente salvo necesidad.
+
+updated_at
+- Tipo esperado: timestamp.
+- Se actualiza al modificar el registro.
+
+Notas
+-----
+- Los códigos ISO no están almacenados en esta tabla legacy.
+- No insertar un país nuevo si ya existe con el mismo slug.
+- La publicación editorial del país puede estar separada en editorial_contents.
+
+=================================================
+2. TABLA: cities
+=================================================
+
+Uso
+---
+Representa una ciudad, pueblo, zona o base territorial dentro de un país.
+
+Aunque la tabla se llama cities, en la práctica puede representar una ciudad o una zona principal.
+
+Campos
+------
+
+id
+- Tipo esperado: UUID.
+- Identificador interno único.
+
+country_id
+- Tipo esperado: UUID.
+- Obligatorio.
+- FK a countries.id.
+- Función: indica a qué país pertenece la ciudad/zona.
+- Investighost debe resolver primero el país por slug y obtener su id.
+
+slug
+- Tipo esperado: texto.
+- Obligatorio.
+- Función: identificador URL dentro del país.
+- Ejemplos: morella, valencia, trastevere.
+- Debe ser único dentro del país.
+
+name_es
+- Tipo esperado: texto.
+- Obligatorio.
+- Función: nombre público en español.
+
+short_description_es
+- Tipo esperado: texto.
+- Opcional.
+- Función: resumen corto de la ciudad o zona.
+- Debe ser claro, útil y no promocional.
+
+adventure_content_es
+- Tipo esperado: texto largo.
+- Opcional.
+- Función: contenido para modo aventura.
+- Debe inspirar y orientar, sin sonar genérico.
+
+student_content_es
+- Tipo esperado: texto largo.
+- Opcional.
+- Función: contenido para modo estudiante.
+- Debe explicar contexto histórico, cultural, geográfico o patrimonial.
+
+lat
+- Tipo esperado: numérico.
+- Opcional.
+- Función: latitud.
+- Si no se verifica con seguridad, dejar null.
+
+lng
+- Tipo esperado: numérico.
+- Opcional.
+- Función: longitud.
+- Si no se verifica con seguridad, dejar null.
+
+recommended_duration
+- Tipo esperado: texto.
+- Opcional.
+- Función: tiempo recomendado para visitar la ciudad/zona.
+- Ejemplos:
+  - medio día
+  - 1 día
+  - 1–2 días
+
+best_season_es
+- Tipo esperado: texto.
+- Opcional.
+- Función: mejor época orientativa.
+- Si no está bien verificada, usar texto prudente o dejar pendiente.
+
+sleeping_advice_es
+- Tipo esperado: texto.
+- Opcional.
+- Función: consejo general sobre dónde conviene alojarse.
+- Mejor hablar de zonas y criterios antes que de hoteles concretos.
+
+food_advice_es
+- Tipo esperado: texto.
+- Opcional.
+- Función: orientación gastronómica general.
+- Puede mencionar platos, zonas o tipos de cocina.
+- Evitar datos cambiantes no verificados.
+
+pending_verification
+- Tipo esperado: JSONB array.
+- Obligatorio con [] por defecto.
+- Función: lista de datos pendientes de revisión humana.
+- Ejemplos:
+  - horarios de temporada
+  - accesibilidad
+  - precios
+  - restricciones
+  - transporte
+  - aparcamiento
+
+status
+- Tipo esperado: enum/texto.
+- Valores:
+  - active
+  - comingSoon
+  - disabled
+- Función:
+  - active: la ciudad/zona puede mostrarse.
+  - comingSoon: existe pero falta contenido.
+  - disabled: oculta.
+
+featured
+- Tipo esperado: boolean.
+- Función: indica si se destaca públicamente.
+
+created_at
+- Timestamp generado por la base.
+
+updated_at
+- Timestamp de última modificación.
+
+Orden de inserción
+------------------
+1. Resolver countries.id por countries.slug.
+2. Insertar o actualizar cities.
+3. Recuperar cities.id.
+4. Usar cities.id al crear destinations.
+
+=================================================
+3. TABLA: destinations
+=================================================
+
+Uso
+---
+Representa un lugar concreto visitable dentro de una ciudad o zona.
+
+Ejemplos:
+- castillo,
+- museo,
+- mirador,
+- barrio,
+- parque,
+- ruta,
+- monumento,
+- playa,
+- iglesia,
+- mercado,
+- espacio natural.
+
+Campos
+------
+
+id
+- Tipo esperado: UUID.
+- Identificador interno único.
+
+country_id
+- Tipo esperado: UUID.
+- Obligatorio.
+- FK a countries.id.
+
+city_id
+- Tipo esperado: UUID.
+- Obligatorio.
+- FK a cities.id.
+
+slug
+- Tipo esperado: texto.
+- Obligatorio.
+- Identificador URL dentro de país y ciudad.
+- Ejemplo: castillo-de-morella.
+
+title_es
+- Tipo esperado: texto.
+- Obligatorio.
+- Nombre público del lugar.
+
+summary_es
+- Tipo esperado: texto.
+- Opcional.
+- Resumen breve y útil.
+
+adventure_content_es
+- Tipo esperado: texto largo.
+- Opcional.
+- Contenido modo aventura.
+- Debe ayudar a imaginar la visita y decidir si merece la pena.
+
+student_content_es
+- Tipo esperado: texto largo.
+- Opcional.
+- Contenido modo estudiante.
+- Debe explicar importancia, contexto, historia o patrimonio.
+
+type
+- Tipo esperado: texto.
+- Opcional.
+- Función: categoría del lugar.
+- Valores detectados en el modelo actual:
+  - monument
+  - museum
+  - nature
+  - experience
+  - food
+  - hiddenGem
+- En la guía editorial también aparecen categorías más amplias.
+- Recomendación:
+  - usar solo valores aceptados por el esquema actual,
+  - o crear un mapper explícito antes de publicar.
+
+tags
+- Tipo esperado: JSONB array de texto.
+- Obligatorio con [] por defecto.
+- Función: etiquetas para filtros y navegación.
+- Ejemplos:
+  - historia
+  - familias
+  - vistas
+  - gastronomia
+  - naturaleza
+
+estimated_visit_time
+- Tipo esperado: texto.
+- Opcional.
+- Función: tiempo aproximado de visita.
+- Ejemplos:
+  - 45 minutos
+  - 1–2 horas
+  - media jornada
+
+price
+- Tipo esperado: texto.
+- Opcional.
+- Función: precio orientativo.
+- Si no está verificado, no inventar.
+- Recomendación:
+  - null,
+  - texto prudente,
+  - o gestionar en pending_verification.
+
+opening_hours
+- Tipo esperado: texto.
+- Opcional.
+- Función: horario orientativo.
+- Es información volátil.
+- No publicar como certeza si no se verificó recientemente.
+
+practical_tip_es
+- Tipo esperado: texto.
+- Opcional.
+- Función: consejo práctico específico del lugar.
+- Ejemplos:
+  - llegar temprano
+  - reservar en fines de semana
+  - llevar calzado cómodo
+
+verification_status
+- Tipo esperado: enum/texto.
+- Obligatorio con valor por defecto.
+- Valores:
+  - pending
+  - verified
+  - disputed
+- Función:
+  - pending: falta validar información.
+  - verified: revisado y respaldado.
+  - disputed: hay datos contradictorios o dudosos.
+
+status
+- Tipo esperado: enum/texto.
+- Obligatorio con valor por defecto.
+- Valores:
+  - draft
+  - published
+  - comingSoon
+  - disabled
+- Recomendación:
+  - Investighost debe crear contenido como draft.
+  - Solo pasar a published tras revisión humana.
+
+featured
+- Tipo esperado: boolean.
+- Función: marcar lugar destacado.
+
+pending_verification
+- Tipo esperado: JSONB array.
+- Obligatorio con [] por defecto.
+- Función: lista de aspectos pendientes.
+- Ejemplos:
+  - precio vigente
+  - horarios de invierno
+  - obras
+  - accesibilidad
+  - cierre temporal
+  - reserva obligatoria
+
+created_at
+- Timestamp generado por la base.
+
+updated_at
+- Timestamp de última modificación.
+
+Reglas críticas
+---------------
+- No usar la ciudad completa como destination.
+- Un destination debe ser un lugar concreto.
+- Cada destination debería tener al menos una fuente si es posible.
+- No publicar automáticamente.
+- El contenido debe nacer como draft.
+
+=================================================
+4. TABLA: destination_sources
+=================================================
+
+Uso
+---
+Guarda las fuentes concretas que respaldan un destination.
+
+Campos
+------
+
+id
+- Tipo esperado: UUID.
+- Identificador único.
+
+destination_id
+- Tipo esperado: UUID.
+- Obligatorio.
+- FK a destinations.id.
+- Indica qué lugar respalda la fuente.
+
+title
+- Tipo esperado: texto.
+- Obligatorio.
+- Nombre de la fuente o página.
+
+url
+- Tipo esperado: texto.
+- Opcional.
+- URL completa.
+- No inventar.
+- Si no se verifica, no guardar.
+
+type
+- Tipo esperado: enum/texto.
+- Opcional.
+- Valores detectados:
+  - official
+  - tourism
+  - heritage
+  - blog
+  - reviews
+  - restaurant
+  - accommodation
+  - other
+
+supports
+- Tipo esperado: texto.
+- Opcional.
+- Función: explica qué dato respalda esa fuente.
+- Ejemplos:
+  - confirma el horario oficial
+  - respalda la importancia patrimonial
+  - aporta información sobre accesibilidad
+  - describe la experiencia de visita
+
+created_at
+- Timestamp generado por la base.
+
+Reglas
+------
+- Priorizar fuentes oficiales para horarios, precios, patrimonio y normas.
+- Usar blogs y reseñas para patrones de experiencia, no como única evidencia factual.
+- No copiar opiniones individuales.
+- No inventar URLs.
+
+=================================================
+5. TABLA: editorial_contents
+=================================================
+
+Uso
+---
+Modelo editorial genérico utilizado para contenido por entidad y modo.
+
+Actualmente es especialmente relevante para contenido editorial de país y otras entidades genéricas.
+
+Campos
+------
+
+id
+- UUID.
+
+entity_type
+- Texto obligatorio.
+- Valores detectados:
+  - country
+  - zone
+  - place
+  - route
+  - plan
+  - static_page
+  - generic
+- Indica qué tipo de entidad recibe el contenido.
+
+entity_id
+- UUID opcional.
+- Identificador interno de la entidad.
+
+entity_slug
+- Texto opcional.
+- Slug de la entidad.
+
+country_slug
+- Texto opcional.
+- Slug del país.
+
+zone_slug
+- Texto opcional.
+- Slug de la zona.
+
+mode
+- Texto opcional.
+- Valores:
+  - adventure
+  - student
+  - null
+- Indica el modo editorial.
+
+headline
+- Texto obligatorio.
+- Titular principal.
+
+intro
+- Texto opcional.
+- Introducción editorial.
+
+what_makes_special
+- Texto opcional.
+- Qué diferencia al lugar.
+
+highlights
+- JSONB array.
+- Obligatorio.
+- Lista de destacados.
+
+suggested_route
+- Texto opcional.
+- Ruta sugerida en formato narrativo.
+- No representa una tabla route real.
+
+practical_tips
+- JSONB array.
+- Obligatorio.
+- Lista de consejos prácticos.
+
+sections
+- JSONB array.
+- Obligatorio.
+- Bloques editoriales adicionales.
+- Actualmente su estructura interna no está completamente tipada.
+
+sources
+- JSONB array.
+- Obligatorio.
+- Fuentes editoriales generales.
+- La estructura interna debe validarse en Investighost antes de publicar.
+
+metadata
+- JSONB object.
+- Obligatorio.
+- Metadatos adicionales.
+- Evitar convertirlo en un cajón de sastre.
+
+status
+- Texto obligatorio.
+- Valores:
+  - draft
+  - review
+  - published
+  - archived
+
+review_state
+- Texto opcional.
+- Estado interno de revisión.
+
+published_at
+- Timestamp opcional.
+- Fecha de publicación.
+
+created_at
+- Timestamp.
+
+updated_at
+- Timestamp.
+
+Reglas
+------
+- Trawel solo debe leer filas publicadas.
+- Investighost debe crear contenido como draft o review.
+- No publicar una fila incompleta.
+- Puede haber varias filas por entidad y modo; revisar duplicados antes de insertar.
+
+=================================================
+6. TABLA: image_assets
+=================================================
+
+Uso
+---
+Catálogo de imágenes y derechos.
+
+Campos principales
+------------------
+
+id
+- UUID.
+
+entity_type
+- Texto obligatorio.
+- Tipo de entidad asociada.
+
+entity_id
+- UUID opcional.
+
+entity_slug
+- Texto opcional.
+
+country_slug
+- Texto opcional.
+
+zone_slug
+- Texto opcional.
+
+storage_bucket
+- Texto opcional.
+- Bucket de almacenamiento.
+
+storage_path
+- Texto opcional.
+- Ruta interna.
+
+public_url
+- Texto opcional.
+- URL pública.
+
+alt
+- Texto obligatorio.
+- Texto alternativo accesible.
+
+caption
+- Texto opcional.
+- Pie de foto.
+
+credit
+- Texto opcional.
+- Autor o crédito.
+
+license
+- Texto opcional.
+- Licencia de uso.
+
+source
+- Texto opcional.
+- Origen de la imagen.
+
+usage_type
+- Texto obligatorio.
+- Valores:
+  - hero
+  - card
+  - gallery
+  - inline
+  - sponsor
+
+width
+- Numérico opcional.
+
+height
+- Numérico opcional.
+
+focal_point
+- JSONB obligatorio.
+- Punto de interés visual.
+
+metadata
+- JSONB obligatorio.
+
+status
+- Texto obligatorio.
+- Valores:
+  - draft
+  - review
+  - published
+  - archived
+
+review_state
+- Texto opcional.
+
+published_at
+- Timestamp opcional.
+
+created_at
+- Timestamp.
+
+updated_at
+- Timestamp.
+
+Advertencia
+-----------
+La auditoría indica que esta tabla todavía no está completamente conectada a las pantallas públicas.
+
+Investighost puede preparar datos de imagen, pero no debe asumir que Trawel ya los renderiza.
+
+=================================================
+7. TABLAS DE CATÁLOGO DE LOCALIZACIÓN
+=================================================
+
+Estas tablas sirven para formularios y selección de ubicaciones.
+
+No sustituyen necesariamente al catálogo editorial público.
+
+---------------------------------------------
+7.1 location_countries
+---------------------------------------------
+
+id
+- UUID.
+
+name_es
+- Texto obligatorio.
+
+name_en
+- Texto opcional.
+
+slug
+- Texto obligatorio.
+
+iso2
+- Texto obligatorio.
+
+iso3
+- Texto opcional.
+
+continent
+- Texto opcional.
+
+is_active
+- Boolean obligatorio.
+- Controla si puede seleccionarse.
+
+has_public_content
+- Boolean obligatorio.
+- Indica si ya existe contenido público.
+
+created_at
+- Timestamp.
+
+updated_at
+- Timestamp.
+
+---------------------------------------------
+7.2 location_cities
+---------------------------------------------
+
+id
+- UUID.
+
+country_id
+- UUID opcional.
+
+country_slug
+- Texto obligatorio.
+
+name
+- Texto obligatorio.
+
+slug
+- Texto obligatorio.
+
+region
+- Texto opcional.
+
+admin_area
+- Texto opcional.
+
+lat
+- Numérico opcional.
+
+lng
+- Numérico opcional.
+
+population
+- Numérico opcional.
+
+source
+- Texto opcional.
+
+status
+- Texto obligatorio.
+- Valores:
+  - active
+  - inactive
+  - pending_review
+  - archived
+
+created_at
+- Timestamp.
+
+updated_at
+- Timestamp.
+
+Regla
+-----
+Usar estas tablas para selectores y catálogos auxiliares, no para insertar automáticamente contenido editorial principal.
+
+=================================================
+8. ESTADOS IMPORTANTES
+=================================================
+
+No existe un único estado universal.
+
+Investighost debe respetar el estado de cada subsistema.
+
+País y ciudad legacy
+--------------------
+- active
+- comingSoon
+- disabled
+
+Destino
+-------
+- draft
+- published
+- comingSoon
+- disabled
+
+Verificación de destino
+-----------------------
+- pending
+- verified
+- disputed
+
+Editorial genérico
+------------------
+- draft
+- review
+- published
+- archived
+
+Regla recomendada para Investighost
+-----------------------------------
+1. Generar investigación.
+2. Guardar internamente.
+3. Revisar.
+4. Preparar payload Trawel.
+5. Insertar como draft o review.
+6. Publicar solo con acción humana expresa.
+
+=================================================
+9. MAPEO INVESTIGHOST → TRAWEL
+=================================================
+
+Entrada rica de Investighost
+----------------------------
+Puede contener:
+- meta
+- city
+- destinations[]
+- globalSources[]
+- globalPendingVerification[]
+- contentByMode.adventure
+- contentByMode.student
+- practicalTips
+- warnings
+- sleepingAdvice
+- foodAdvice
+- pendingVerification
+- verificationStatus
+
+Mapeo principal
+---------------
+
+Investighost meta.countrySlug
+→ countries.slug
+
+Investighost city.citySlug
+→ cities.slug
+
+Investighost city.name.es
+→ cities.name_es
+
+Investighost city.shortDescription.es
+→ cities.short_description_es
+
+Investighost city.contentByMode.adventure.es
+→ cities.adventure_content_es
+
+Investighost city.contentByMode.student.es
+→ cities.student_content_es
+
+Investighost city.recommendedDuration
+→ cities.recommended_duration
+
+Investighost city.bestSeason
+→ cities.best_season_es
+
+Investighost city.sleepingAdvice.es
+→ cities.sleeping_advice_es
+
+Investighost city.foodAdvice.es
+→ cities.food_advice_es
+
+Investighost city.pendingVerification
+→ cities.pending_verification
+
+Investighost city.status
+→ cities.status
+- Normalmente active solo tras revisión.
+
+Investighost city.featured
+→ cities.featured
+
+Investighost city.coordinates.lat
+→ cities.lat
+
+Investighost city.coordinates.lng
+→ cities.lng
+
+Para cada destination
+---------------------
+
+Investighost destination.destinationSlug
+→ destinations.slug
+
+Investighost destination.title.es
+→ destinations.title_es
+
+Investighost destination.summary.es
+→ destinations.summary_es
+
+Investighost destination.contentByMode.adventure.es
+→ destinations.adventure_content_es
+
+Investighost destination.contentByMode.student.es
+→ destinations.student_content_es
+
+Investighost destination.type
+→ destinations.type
+- Debe pasar por mapper de tipos.
+
+Investighost destination.tags
+→ destinations.tags
+
+Investighost destination.estimatedVisitTime
+→ destinations.estimated_visit_time
+
+Investighost destination.price
+→ destinations.price
+
+Investighost destination.openingHours
+→ destinations.opening_hours
+
+Investighost destination.practicalTip.es
+→ destinations.practical_tip_es
+
+Investighost destination.verificationStatus
+→ destinations.verification_status
+- Mapper recomendado:
+  - verified → verified
+  - partially_verified → pending
+  - pending → pending
+
+Investighost destination.status
+→ destinations.status
+- Por defecto draft.
+
+Investighost destination.pendingVerification
+→ destinations.pending_verification
+
+Fuentes de cada destination
+---------------------------
+Investighost destination.sources[]
+→ destination_sources[]
+
+Mapeo:
+- title → title
+- url → url
+- type → type
+- supports → supports
+
+Campos que no tienen destino directo claro
+------------------------------------------
+city.practicalTips
+- No existe columna array equivalente directa en cities legacy.
+- Opciones:
+  - integrar en contenido,
+  - almacenar en editorial_contents.practical_tips,
+  - o definir mapper específico.
+
+city.warnings
+- No existe campo formal en cities legacy.
+- Opciones:
+  - integrar en content,
+  - usar editorial_contents.sections,
+  - o metadata.
+
+globalSources
+- No existe tabla global normalizada única.
+- Puede almacenarse en editorial_contents.sources o distribuirse por destination.
+
+globalPendingVerification
+- No existe campo global directo.
+- Puede conservarse en Investighost y distribuirse antes de publicación.
+
+meta.researchConfidence
+- No tiene campo directo en Trawel legacy.
+- Debe quedarse en Investighost o guardarse en metadata.
+
+provider, model, tokens, cost, quality
+- Solo pertenecen a Investighost.
+- No deben publicarse en Trawel.
+
+=================================================
+10. ORDEN SEGURO DE PUBLICACIÓN
+=================================================
+
+Para publicar una ciudad con destinos:
+
+1. Buscar countries por slug.
+2. Si no existe:
+   - detener publicación,
+   - pedir revisión humana,
+   - o crear país mediante flujo controlado.
+
+3. Obtener countries.id.
+
+4. Buscar cities por:
+   - country_id
+   - slug
+
+5. Insertar o actualizar cities.
+
+6. Obtener cities.id.
+
+7. Para cada destination:
+   - buscar por country_id + city_id + slug,
+   - insertar o actualizar destinations,
+   - obtener destinations.id.
+
+8. Eliminar o sincronizar fuentes antiguas solo si el flujo está diseñado para ello.
+
+9. Insertar destination_sources.
+
+10. Mantener destination.status = draft hasta aprobación.
+
+11. Tras revisión:
+   - cambiar a published,
+   - comprobar que Trawel lo muestra correctamente.
+
+=================================================
+11. VALIDACIONES RECOMENDADAS EN INVESTIGHOST
+=================================================
+
+Antes de publicar:
+
+País
+----
+- slug no vacío.
+- país existente en countries.
+- name_es coherente.
+
+Ciudad
+------
+- country_id resuelto.
+- slug válido.
+- name_es obligatorio.
+- adventure y student diferenciados.
+- pending_verification debe ser array.
+
+Destino
+-------
+- country_id y city_id resueltos.
+- slug válido.
+- title_es obligatorio.
+- status por defecto draft.
+- verification_status válido.
+- tags debe ser array.
+- pending_verification debe ser array.
+
+Fuente
+------
+- title obligatorio.
+- URL completa y válida si existe.
+- type dentro del enum.
+- no inventar enlaces.
+
+Contenido
+---------
+- no usar frases genéricas repetitivas.
+- adventure inspira y orienta.
+- student explica y enseña.
+- datos volátiles deben marcarse como pendientes.
+
+=================================================
+12. DATOS VOLÁTILES
+=================================================
+
+Deben tratarse con prudencia:
+
+- precios,
+- horarios,
+- hoteles,
+- restaurantes,
+- disponibilidad,
+- cierres,
+- vacaciones,
+- eventos,
+- accesibilidad,
+- restricciones,
+- transporte,
+- aparcamiento,
+- obras.
+
+Regla
+-----
+Si no se verifican con seguridad:
+- no inventar,
+- dejar null,
+- usar texto prudente,
+- o añadir a pending_verification.
+
+=================================================
+13. DIFERENCIA ENTRE BASE INTERNA Y BASE PÚBLICA
+=================================================
+
+Base interna de Investighost
+----------------------------
+Debe guardar:
+- investigación completa,
+- prompts,
+- proveedor,
+- modelo,
+- coste,
+- tokens,
+- calidad,
+- borradores,
+- revisión,
+- notas,
+- cola editorial,
+- historial,
+- fuentes completas,
+- resultados rechazados.
+
+Base pública de Trawel
+----------------------
+Debe recibir solo:
+- contenido aprobado,
+- campos necesarios para mostrar,
+- relaciones correctas,
+- estados públicos,
+- fuentes útiles,
+- pendientes relevantes.
+
+No enviar a Trawel:
+- claves,
+- prompts internos,
+- costes de IA,
+- tokens,
+- logs técnicos,
+- evaluaciones privadas,
+- datos de proveedores.
+
+=================================================
+14. LIMITACIONES DETECTADAS
+=================================================
+
+- Ciudad y zona comparten el modelo cities.
+- Destination y Place representan el mismo concepto en etapas distintas.
+- No existe una entidad Route real completa.
+- No existe una entidad Plan real completa.
+- Las imágenes todavía no están plenamente conectadas a la UI.
+- Hay varias representaciones de contenido adventure/student.
+- Algunos arrays editoriales no están tipados.
+- Las fuentes legacy todavía no siempre se cargan en la interfaz.
+- Puede haber duplicados en editorial_contents.
+
+=================================================
+15. REGLA FINAL PARA INVESTIGHOST
+=================================================
+
+Investighost no debe insertar directamente sin transformar y validar.
+
+Debe usar una capa adaptadora:
+
+InvestighostResearchPackage
+        ↓
+Validación Zod
+        ↓
+TrawelMapper
+        ↓
+Payload de cities
+        ↓
+Payload de destinations
+        ↓
+Payload de destination_sources
+        ↓
+Supabase
+
+La regla principal es:
+
+“Investighost debe escribir exactamente en la base de datos que Trawel ya sabe leer, manteniendo draft hasta revisión humana.”

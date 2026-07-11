@@ -1,0 +1,1243 @@
+PROMPT MAESTRO — REINVENCIÓN Y CONSTRUCCIÓN COMPLETA DE INVESTIGHOST
+====================================================================
+
+ROL
+---
+Actúa como arquitecto principal, auditor técnico, programador senior y responsable de ejecución SDD del proyecto Investighost.
+
+No debes tratar este encargo como una orden para generar toda la aplicación de una sola vez.
+
+Debes:
+1. auditar primero,
+2. comparar lo existente con la visión completa,
+3. documentar la brecha,
+4. construir por fases pequeñas,
+5. verificar cada fase,
+6. detenerte en los puntos que requieren decisión humana,
+7. continuar exactamente desde el último punto validado.
+
+Si algo falla, falta una clave, hay una contradicción, un riesgo legal, una migración peligrosa o una decisión de producto no cerrada:
+- DETENTE,
+- explica el problema con claridad,
+- indica qué necesitas,
+- propone opciones,
+- recomienda una,
+- espera intervención humana,
+- y después continúa desde el mismo escalón.
+
+No avances sobre una fase fallida.
+No ocultes errores.
+No simules que una integración funciona si no se ha probado de verdad.
+
+====================================================================
+1. CONTEXTO GENERAL DEL PRODUCTO
+====================================================================
+
+Investighost es el centro privado de operaciones de Trawel.
+
+Trawel es el escaparate público:
+- abre su base de datos,
+- obtiene contenido publicado,
+- muestra países, ciudades, destinos, experiencias y anuncios,
+- permite navegar, descubrir y consultar.
+
+Investighost es la fábrica, oficina y panel de control:
+- investiga destinos,
+- contrasta fuentes,
+- genera contenido,
+- permite editar y revisar,
+- almacena producción,
+- administra cola editorial,
+- publica en la base que Trawel ya sabe leer,
+- modera aportaciones y fotografías de usuarios,
+- gestiona clientes y anunciantes,
+- organiza campañas,
+- controla anuncios y fechas de caducidad,
+- analiza estadísticas,
+- genera informes comerciales,
+- envía comunicaciones permitidas,
+- mantiene trazabilidad completa.
+
+Investighost debe ser fácil de usar por personas no técnicas.
+
+Flujo básico de contenido:
+1. Escribir destino.
+2. Elegir proveedor o estrategia de IA.
+3. Investigar.
+4. Esperar resultado.
+5. Revisar.
+6. Corregir fácilmente.
+7. Guardar en la base interna.
+8. Aprobar.
+9. Añadir a cola.
+10. Publicar en Trawel cuando corresponda.
+
+La producción interna y la publicación externa deben permanecer separadas.
+
+Ejemplo:
+- hoy pueden producirse 30 piezas,
+- pero publicarse 3 o 5 por día,
+- manteniendo una salida constante y controlada.
+
+====================================================================
+2. DOCUMENTOS OBLIGATORIOS A LEER
+====================================================================
+
+Antes de tocar código, lee como mínimo:
+
+- README.md
+- docs/SPEC.md
+- docs/ARCHITECTURE.md
+- docs/DECISIONES.md
+- docs/BITACORA.md
+- docs/TRAWEL_DATABASE_REFERENCE_FOR_INVESTIGHOST.txt
+
+También localiza y lee cualquier documento presente cuyo nombre contenga:
+
+- RESEARCH
+- EDITORIAL
+- PROMPT
+- ACCEPTANCE
+- HANDOFF
+- DATABASE
+- DATA
+- CONTRACT
+- QUEUE
+- PUBLISH
+- PROVIDER
+- CRM
+- CAMPAIGN
+- ANALYTICS
+- ADS
+- MODERATION
+- USER
+- PHOTO
+- SECURITY
+- PRIVACY
+
+Revisa además:
+- package.json,
+- estructura src/,
+- Electron main/preload,
+- renderer,
+- tipos,
+- esquemas Zod,
+- Drizzle,
+- SQLite,
+- servicios de IA,
+- cola editorial,
+- auditoría,
+- persistencia,
+- integración con Trawel,
+- pruebas,
+- scripts,
+- variables de entorno.
+
+====================================================================
+3. METODOLOGÍA SDD OBLIGATORIA
+====================================================================
+
+El proyecto se desarrolla con Spec Driven Development.
+
+Orden obligatorio:
+1. Especificar.
+2. Decidir.
+3. Diseñar.
+4. Implementar.
+5. Probar.
+6. Documentar.
+7. Crear checkpoint.
+8. Continuar.
+
+Documentos vivos mínimos:
+- docs/SPEC.md
+- docs/ARCHITECTURE.md
+- docs/DECISIONES.md
+- docs/BITACORA.md
+- docs/ROADMAP.md
+- docs/ACCEPTANCE_TESTS.md
+- docs/SECURITY_AND_PRIVACY.md
+- docs/TRAWEL_DATABASE_REFERENCE_FOR_INVESTIGHOST.txt
+
+Regla de BITACORA:
+- registrar fecha o sesión,
+- objetivo,
+- archivos tocados,
+- cambios,
+- explicación breve,
+- estado final,
+- problemas,
+- siguiente paso.
+
+Cuando BITACORA.md supere aproximadamente 1000 líneas:
+- congelarla,
+- crear BITACORA2.md,
+- comenzar con un resumen compacto de la anterior,
+- continuar desde allí.
+Repetir con BITACORA3.md, BITACORA4.md, etc.
+
+No reescribas documentos completos sin necesidad.
+No dupliques fuentes de verdad.
+Si un documento deja de ser vigente, márcalo como histórico o sustituido.
+
+====================================================================
+4. DECISIÓN TECNOLÓGICA CANÓNICA
+====================================================================
+
+Mantener TypeScript como lenguaje principal.
+
+STACK PRINCIPAL
+---------------
+Aplicación de escritorio:
+- Electron
+- React
+- TypeScript
+- Vite
+
+Contratos y validación:
+- TypeScript
+- Zod
+
+Persistencia local:
+- SQLite
+- Drizzle ORM
+
+Persistencia cloud y operaciones compartidas:
+- Supabase Postgres
+- Supabase Auth
+- Row Level Security
+- Supabase Storage
+- Supabase Edge Functions
+- Supabase Cron cuando haya tareas que deban ejecutarse aunque la aplicación esté cerrada
+
+Correo:
+- arquitectura desacoplada por proveedor,
+- primer candidato: Resend,
+- correo transaccional para mensajes individuales o avisos,
+- Broadcasts/segmentos para campañas de marketing,
+- webhooks para entregas, aperturas, rebotes, bajas y respuestas cuando el proveedor lo permita.
+
+Investigación web:
+- proveedores de IA con búsqueda web, inicialmente Kimi y OpenAI,
+- arquitectura multi-proveedor,
+- Playwright únicamente cuando sea necesario automatizar una web que no disponga de API adecuada y siempre respetando términos, robots, límites y legalidad.
+
+NO introducir Python, Java u otro runtime principal en el MVP salvo que una necesidad concreta y demostrada no pueda resolverse razonablemente con TypeScript.
+
+Motivo:
+- el proyecto ya está construido en TypeScript,
+- se evita mantener dos ecosistemas,
+- Electron, Node, Supabase, Drizzle, Zod, Resend y Playwright funcionan bien con TypeScript,
+- facilita a Cline/Codex mantener contratos consistentes.
+
+Python podrá evaluarse en el futuro para trabajos especializados de análisis de datos o ML, pero no como dependencia base del producto.
+
+====================================================================
+5. ARQUITECTURA HÍBRIDA OBLIGATORIA
+====================================================================
+
+Investighost no debe depender completamente de que el PC esté encendido.
+
+DIVISIÓN DE RESPONSABILIDADES
+-----------------------------
+
+Aplicación Electron:
+- interfaz de trabajo,
+- edición,
+- revisión,
+- configuración,
+- paneles,
+- operación manual,
+- caché local,
+- trabajo offline parcial,
+- acceso seguro mediante preload e IPC.
+
+SQLite local:
+- borradores locales,
+- caché,
+- historial de trabajo local,
+- colas temporales,
+- datos que no necesitan sincronización inmediata.
+
+Supabase:
+- datos compartidos entre operadores,
+- usuarios y roles,
+- cola editorial compartida,
+- moderación,
+- CRM,
+- anuncios,
+- campañas,
+- analytics,
+- auditoría,
+- sincronización,
+- configuración central.
+
+Edge Functions:
+- operaciones privilegiadas,
+- publicación en Trawel,
+- envío de correos,
+- recepción de webhooks,
+- acceso a secretos,
+- tareas server-side.
+
+Supabase Cron:
+- publicaciones programadas,
+- recordatorios de caducidad,
+- comprobaciones de campañas,
+- digest e informes,
+- tareas recurrentes.
+
+REGLA DE SEGURIDAD
+------------------
+- Nunca exponer service-role keys en renderer.
+- Nunca guardar secretos en SQLite sin cifrado.
+- Renderer sin nodeIntegration.
+- contextIsolation activo.
+- IPC limitado y tipado.
+- Operaciones privilegiadas por Edge Functions o proceso principal seguro.
+- Usuarios remotos deben usar Supabase Auth y RLS, no una clave administrativa compartida.
+
+====================================================================
+6. ROLES DE USUARIO PREVISTOS
+====================================================================
+
+Diseñar como mínimo estos roles, aunque su implementación se haga por fases:
+
+owner
+- control total,
+- configuración,
+- claves,
+- usuarios,
+- permisos,
+- publicación final,
+- informes completos.
+
+admin
+- gestión operativa amplia sin acceso indiscriminado a secretos.
+
+editor
+- generar, editar, guardar y preparar contenido.
+
+reviewer
+- revisar, corregir, aprobar o rechazar.
+
+publisher
+- gestionar cola y publicar contenido aprobado.
+
+moderator
+- revisar aportaciones, reportes y fotografías de usuarios.
+
+sales
+- gestionar clientes, oportunidades, campañas y anuncios.
+
+analyst
+- consultar estadísticas e informes sin modificar contenido.
+
+Una persona puede tener varios roles.
+
+La UX para editor/reviewer debe ser especialmente sencilla para una persona sin conocimientos técnicos.
+
+====================================================================
+7. DOMINIOS FUNCIONALES COMPLETOS
+====================================================================
+
+Investighost debe abarcar estos dominios.
+
+A. INVESTIGACIÓN Y CONTENIDO
+----------------------------
+- destinos,
+- ciudades/zonas,
+- lugares concretos,
+- adventure,
+- student,
+- fuentes,
+- verificación,
+- pendingVerification,
+- tono editorial,
+- borradores,
+- comparación de proveedores,
+- coste y calidad.
+
+B. BIBLIOTECA DE PRODUCCIÓN
+---------------------------
+- todo lo generado,
+- filtros,
+- búsqueda,
+- estados,
+- historial,
+- versiones,
+- notas,
+- duplicados,
+- rechazados,
+- aprobados,
+- publicados.
+
+C. COLA EDITORIAL
+-----------------
+- prioridad,
+- orden,
+- fecha,
+- franja horaria,
+- máximo diario,
+- días permitidos,
+- pausas,
+- reprogramación,
+- errores,
+- reintentos,
+- publicación manual o programada.
+
+D. PUBLICACIÓN EN TRAWEL
+------------------------
+- leer docs/TRAWEL_DATABASE_REFERENCE_FOR_INVESTIGHOST.txt,
+- mapear exactamente cities,
+- destinations,
+- destination_sources,
+- editorial_contents cuando aplique,
+- publicar como draft/review primero,
+- pasar a published solo con aprobación explícita,
+- validar IDs, slugs, FKs, enums y estados,
+- impedir duplicados,
+- registrar payload y respuesta.
+
+E. APORTACIONES DE USUARIOS
+---------------------------
+- mensajes,
+- sugerencias,
+- recomendaciones,
+- reportes,
+- fotos,
+- reclamaciones,
+- aportaciones de lugares,
+- estado de moderación,
+- historial,
+- respuesta al usuario.
+
+F. MODERACIÓN DE FOTOS
+----------------------
+- subida,
+- preview,
+- autor,
+- consentimiento,
+- derechos/licencia,
+- fuente,
+- alt,
+- caption,
+- entidad asociada,
+- calidad,
+- resolución,
+- estado,
+- aprobación/rechazo,
+- motivo,
+- publicación,
+- retirada.
+
+G. CRM DE USUARIOS Y CLIENTES
+-----------------------------
+- usuario o contacto,
+- tipo de contacto,
+- datos básicos,
+- país/zona,
+- intereses,
+- consentimiento,
+- preferencias,
+- fuente del contacto,
+- historial de comunicaciones,
+- notas,
+- etiquetas,
+- segmentos,
+- estado,
+- propietario interno,
+- tareas y seguimientos.
+
+Tipos de contacto:
+- usuario viajero,
+- hotel,
+- apartamento,
+- restaurante,
+- rent-a-car,
+- actividad,
+- spa,
+- museo,
+- comercio,
+- oficina de turismo,
+- agencia,
+- anunciante,
+- partner,
+- lead,
+- cliente.
+
+H. CORREO INDIVIDUAL
+--------------------
+- redactar,
+- plantillas,
+- personalización,
+- adjuntos si procede,
+- enviar a un contacto,
+- guardar borrador,
+- historial,
+- estado,
+- entrega,
+- rebote,
+- respuesta,
+- baja.
+
+I. CAMPAÑAS Y CORREO GRUPAL
+---------------------------
+- campañas informativas,
+- promociones,
+- eventos,
+- campañas B2B,
+- segmentos,
+- audiencias,
+- plantillas,
+- asuntos,
+- preview,
+- programación,
+- pruebas,
+- aprobación,
+- envío,
+- métricas,
+- bajas,
+- rebotes,
+- respuestas,
+- seguimiento.
+
+J. PROSPECCIÓN COMERCIAL
+------------------------
+- leads de hoteles, restaurantes, alquiler de coches, spas y otros negocios,
+- fuente legítima del lead,
+- estado,
+- oportunidad,
+- propuesta,
+- contacto,
+- seguimiento,
+- respuesta,
+- conversión,
+- rechazo,
+- no contactar.
+
+No automatizar campañas comerciales no solicitadas sin validación jurídica y base legal documentada.
+
+K. ANUNCIANTES Y CLIENTES
+-------------------------
+- ficha de cliente,
+- contactos,
+- contrato,
+- producto contratado,
+- zona,
+- placement,
+- creatividad,
+- fechas,
+- precio,
+- estado de pago,
+- notas,
+- renovación,
+- historial.
+
+L. GESTIÓN DE ANUNCIOS
+----------------------
+- anuncio,
+- cliente,
+- campaña,
+- placement,
+- zona geográfica,
+- entidad Trawel,
+- tipo de anuncio,
+- creatividad,
+- enlace,
+- CTA,
+- inicio,
+- fin,
+- duración,
+- estado,
+- prioridad,
+- impresión/clic,
+- aprobación,
+- caducidad,
+- renovación,
+- archivo.
+
+Estados mínimos:
+- draft,
+- pending_review,
+- approved,
+- scheduled,
+- active,
+- paused,
+- expiring,
+- expired,
+- archived,
+- rejected.
+
+M. INVENTARIO Y ZONAS DE EXPOSICIÓN
+-----------------------------------
+- definir placements disponibles en Trawel,
+- página o sección,
+- país,
+- ciudad/zona,
+- destino,
+- formato,
+- tamaño,
+- límites,
+- exclusividad,
+- disponibilidad,
+- precio orientativo,
+- rendimiento.
+
+La conexión exacta con Trawel se estandarizará en una fase posterior con intervención humana.
+
+N. AVISOS DE CADUCIDAD Y RENOVACIÓN
+-----------------------------------
+- alertas internas,
+- correo al cliente,
+- recordatorios configurables,
+- 30/15/7/3/1 días,
+- renovación,
+- reemplazo de creatividad,
+- pausa automática al caducar,
+- historial.
+
+O. ESTADÍSTICAS Y ANALYTICS
+---------------------------
+- páginas vistas,
+- sesiones,
+- países/ciudades/destinos consultados,
+- búsquedas,
+- clics,
+- scroll o interacción relevante,
+- mapa interactivo,
+- CTR de anuncios,
+- impresiones,
+- conversiones si existe trazabilidad,
+- tendencias,
+- crecimiento,
+- fuentes de tráfico si se dispone,
+- periodos comparables.
+
+P. INFORMES COMERCIALES
+-----------------------
+- visitas por zona,
+- interés por destino,
+- tendencias,
+- clics en negocios,
+- rendimiento de anuncios,
+- ocupación de placements,
+- comparación de periodos,
+- exportación PDF/CSV futura,
+- informes presentables a clientes.
+
+No presentar métricas inventadas.
+Distinguir:
+- dato real,
+- estimación,
+- muestra insuficiente,
+- dato no disponible.
+
+Q. CONFIGURACIÓN Y AUDITORÍA
+----------------------------
+- proveedores IA,
+- modelos,
+- límites,
+- costes,
+- claves seguras,
+- proveedor de correo,
+- remitentes,
+- dominios,
+- ritmo editorial,
+- ritmo de campañas,
+- roles,
+- permisos,
+- log de acciones,
+- errores,
+- reintentos.
+
+====================================================================
+8. CUMPLIMIENTO, PRIVACIDAD Y COMUNICACIONES
+====================================================================
+
+Crear docs/SECURITY_AND_PRIVACY.md.
+
+Debe contemplar:
+- consentimiento,
+- base jurídica,
+- minimización,
+- finalidad,
+- retención,
+- derecho de oposición,
+- bajas,
+- supresión,
+- exportación,
+- auditoría,
+- control de acceso,
+- secretos,
+- incidentes.
+
+REGLA DE CAMPAÑAS
+-----------------
+No ejecutar campañas promocionales por email sin:
+- consentimiento o base legal documentada,
+- identificación del remitente,
+- finalidad clara,
+- enlace o mecanismo sencillo de baja,
+- lista de supresión,
+- trazabilidad del consentimiento,
+- validación humana.
+
+Separar:
+- correo transaccional,
+- correo operativo,
+- correo marketing,
+- prospección B2B.
+
+Crear una PAUSA HUMANA LEGAL antes de activar:
+- campañas masivas,
+- prospección,
+- tracking de aperturas,
+- importación de listas,
+- contactos obtenidos de terceros.
+
+En España, las comunicaciones promocionales por correo no solicitadas están restringidas por la LSSI; el sistema debe impedir por defecto envíos sin autorización o una excepción legal validada.
+
+====================================================================
+9. ORDEN MAESTRO DE EJECUCIÓN
+====================================================================
+
+FASE 0 — AUDITORÍA COMPLETA DEL ESTADO ACTUAL
+---------------------------------------------
+Objetivo:
+Comprender qué existe, qué funciona, qué es placeholder, qué está roto y qué falta.
+
+Tareas:
+1. Leer documentación.
+2. Inventariar archivos.
+3. Revisar dependencias.
+4. Revisar arquitectura Electron.
+5. Revisar persistencia.
+6. Revisar schemas.
+7. Revisar IA multi-proveedor.
+8. Revisar cola editorial.
+9. Revisar interfaz.
+10. Revisar bitácora.
+11. Ejecutar:
+    - lint,
+    - typecheck,
+    - tests,
+    - build,
+    - arranque dev cuando sea posible.
+12. Detectar secretos o riesgos.
+13. Comparar estado actual con todos los dominios de este prompt.
+
+Crear:
+- docs/INVESTIGHOST_FULL_AUDIT.md
+- docs/INVESTIGHOST_GAP_MATRIX.md
+- docs/ROADMAP.md
+
+La matriz debe indicar por función:
+- existe,
+- parcial,
+- placeholder,
+- no existe,
+- bloqueada,
+- depende de Trawel,
+- depende de clave,
+- depende de decisión humana.
+
+PAUSA HUMANA 0
+--------------
+DETENTE después de entregar la auditoría.
+
+No implementes todavía el proyecto completo.
+
+Entrega:
+- resumen,
+- riesgos,
+- decisiones pendientes,
+- roadmap propuesto,
+- siguiente fase recomendada.
+
+Espera aprobación humana.
+
+FASE 1 — CONTRATOS Y ARQUITECTURA CANÓNICA
+------------------------------------------
+Objetivo:
+Cerrar el diseño antes de ampliar código.
+
+Crear o consolidar:
+- modelo de dominios,
+- contratos Zod,
+- roles,
+- estados,
+- diagramas,
+- local/cloud split,
+- publicación Trawel,
+- seguridad,
+- compliance,
+- aceptación.
+
+Actualizar:
+- SPEC,
+- ARCHITECTURE,
+- DECISIONES,
+- ROADMAP,
+- ACCEPTANCE_TESTS,
+- SECURITY_AND_PRIVACY.
+
+PAUSA HUMANA 1
+--------------
+Detenerse si hay que decidir:
+- proyecto Supabase,
+- mismo proyecto que Trawel o proyecto separado,
+- usuarios iniciales,
+- roles,
+- proveedor de correo,
+- dominio remitente,
+- política de consentimiento,
+- proveedor analytics.
+
+FASE 2 — FUNDACIÓN SEGURA Y MULTIUSUARIO
+----------------------------------------
+Objetivo:
+Base técnica estable.
+
+Implementar:
+- configuración segura,
+- env validation,
+- Electron IPC seguro,
+- Supabase Auth,
+- roles,
+- RLS,
+- sincronización local/cloud,
+- auditoría,
+- migraciones iniciales,
+- manejo de errores.
+
+PAUSA HUMANA 2
+--------------
+Detenerse si faltan:
+- URL Supabase,
+- anon key,
+- configuración Auth,
+- migraciones aprobadas,
+- usuarios de prueba.
+
+FASE 3 — MOTOR DE INVESTIGACIÓN Y REDACCIÓN
+-------------------------------------------
+Objetivo:
+Investigar de verdad y producir contenido de calidad.
+
+Implementar:
+- Kimi,
+- OpenAI,
+- selector,
+- fallback,
+- compare,
+- auditoría de coste,
+- investigación,
+- fuentes,
+- validación,
+- adventure/student,
+- pendingVerification,
+- prompts canónicos,
+- aceptación.
+
+No publicar aún en Trawel.
+
+PAUSA HUMANA 3
+--------------
+Detenerse si faltan:
+- keys,
+- modelos,
+- endpoints,
+- presupuesto,
+- resultados de prueba,
+- aprobación del contrato editorial.
+
+FASE 4 — BIBLIOTECA, EDICIÓN Y REVISIÓN
+---------------------------------------
+Objetivo:
+Flujo simple no técnico.
+
+Implementar vistas:
+- Nueva investigación,
+- En proceso,
+- Revisión,
+- Biblioteca,
+- Aprobados,
+- Rechazados,
+- Historial.
+
+Acciones:
+- editar,
+- versionar,
+- comparar,
+- aprobar,
+- rechazar,
+- guardar,
+- duplicar,
+- etiquetar.
+
+Criterio UX:
+Una persona no técnica debe completar el flujo sin instrucciones externas.
+
+PAUSA HUMANA 4
+--------------
+Prueba de usabilidad con usuario real.
+Recoger problemas.
+No continuar hasta validar.
+
+FASE 5 — COLA EDITORIAL
+-----------------------
+Implementar:
+- programación,
+- máximo diario,
+- prioridades,
+- calendario,
+- reintentos,
+- pausa,
+- publicación manual,
+- publicación automática futura.
+
+FASE 6 — ADAPTADOR Y PUBLICACIÓN EN TRAWEL
+------------------------------------------
+Usar obligatoriamente:
+docs/TRAWEL_DATABASE_REFERENCE_FOR_INVESTIGHOST.txt
+
+Implementar:
+- mapper,
+- validaciones,
+- resolución de country/city IDs,
+- upsert seguro,
+- destinos,
+- fuentes,
+- estados,
+- idempotencia,
+- log,
+- rollback lógico,
+- prueba en registros controlados.
+
+PAUSA HUMANA 6
+--------------
+Detenerse antes de:
+- conectar a producción,
+- ejecutar primera escritura,
+- cambiar published,
+- sincronizar fuentes destructivamente.
+
+Solicitar:
+- credenciales seguras,
+- confirmación de entorno,
+- slug de prueba,
+- backup,
+- autorización.
+
+FASE 7 — MODERACIÓN DE USUARIOS Y FOTOS
+---------------------------------------
+Implementar:
+- bandejas,
+- detalle,
+- respuesta,
+- aprobación,
+- rechazo,
+- derechos,
+- almacenamiento,
+- asociación a contenido,
+- publicación.
+
+PAUSA HUMANA 7
+--------------
+Validar:
+- tablas reales de Trawel,
+- Storage,
+- políticas,
+- consentimiento de imágenes,
+- flujo de retirada.
+
+FASE 8 — CRM Y CONTACTOS
+------------------------
+Implementar:
+- contactos,
+- segmentos,
+- etiquetas,
+- notas,
+- tareas,
+- historial,
+- consentimientos,
+- supresión,
+- leads,
+- clientes.
+
+FASE 9 — CORREO INDIVIDUAL
+--------------------------
+Implementar:
+- proveedor desacoplado,
+- plantillas,
+- borradores,
+- envío,
+- historial,
+- entrega,
+- rebote,
+- respuesta,
+- errores.
+
+PAUSA HUMANA 9
+--------------
+Faltarán normalmente:
+- API key,
+- dominio verificado,
+- remitente,
+- destinatario de prueba.
+
+No enviar a terceros reales sin aprobación.
+
+FASE 10 — CAMPAÑAS
+------------------
+Implementar:
+- segmentos,
+- plantillas,
+- aprobación,
+- prueba,
+- programación,
+- envío,
+- métricas,
+- bajas,
+- supresión,
+- webhooks.
+
+PAUSA HUMANA 10 — LEGAL OBLIGATORIA
+-----------------------------------
+No activar campañas reales hasta recibir confirmación de:
+- base jurídica,
+- consentimiento,
+- política de privacidad,
+- mecanismo de baja,
+- remitente,
+- listas autorizadas.
+
+FASE 11 — ANUNCIANTES, ANUNCIOS Y PLACEMENTS
+--------------------------------------------
+Implementar:
+- clientes,
+- campañas,
+- anuncios,
+- creatividades,
+- fechas,
+- placements,
+- zonas,
+- contratos,
+- estados,
+- renovaciones,
+- caducidad,
+- alertas.
+
+PAUSA HUMANA 11
+---------------
+Definir con Trawel:
+- nombres de placement,
+- páginas,
+- formatos,
+- tamaños,
+- reglas,
+- límites,
+- endpoints o tablas.
+
+FASE 12 — ANALYTICS
+-------------------
+Implementar:
+- contrato de eventos,
+- ingestión,
+- agregados,
+- dashboards,
+- filtros,
+- zonas de interés,
+- informes.
+
+PAUSA HUMANA 12
+---------------
+Trawel necesitará posiblemente instrumentación mínima.
+No modificar Trawel sin:
+- auditoría,
+- prompt separado,
+- aprobación.
+
+FASE 13 — AUTOMATIZACIÓN CLOUD
+------------------------------
+Implementar con Edge Functions y Cron:
+- cola de publicación,
+- caducidad,
+- renovaciones,
+- recordatorios,
+- campañas programadas,
+- informes periódicos,
+- mantenimiento.
+
+PAUSA HUMANA 13
+---------------
+Verificar:
+- secretos,
+- horarios,
+- zona horaria,
+- cuotas,
+- reintentos,
+- duplicados.
+
+FASE 14 — INFORMES COMERCIALES
+------------------------------
+Implementar:
+- informes por cliente,
+- zona,
+- anuncio,
+- destino,
+- periodo,
+- comparativas,
+- exportación.
+
+FASE 15 — ENDURECIMIENTO Y RELEASE
+----------------------------------
+Implementar:
+- pruebas unitarias,
+- integración,
+- E2E,
+- backups,
+- recuperación,
+- logs,
+- seguridad,
+- rendimiento,
+- accesibilidad,
+- empaquetado,
+- instalador,
+- actualización,
+- documentación.
+
+PAUSA HUMANA 15
+---------------
+No declarar terminado hasta:
+- criterios de aceptación aprobados,
+- flujo real probado,
+- errores conocidos documentados,
+- datos protegidos,
+- backups verificados.
+
+====================================================================
+10. REGLAS DE EJECUCIÓN POR FASE
+====================================================================
+
+Antes de cada fase:
+1. Releer docs relevantes.
+2. Revisar git status.
+3. Proponer checkpoint.
+4. Declarar alcance.
+5. Listar archivos previstos.
+6. Identificar riesgos.
+7. Confirmar dependencias.
+
+Durante:
+- cambios pequeños,
+- código tipado,
+- sin dependencias innecesarias,
+- sin reescribir todo,
+- sin lógica ficticia oculta,
+- sin mocks presentados como reales.
+
+Después:
+1. lint,
+2. typecheck,
+3. tests,
+4. build,
+5. prueba funcional,
+6. revisar git diff,
+7. actualizar BITACORA,
+8. actualizar docs si cambió una decisión,
+9. entregar resumen,
+10. proponer commit en español.
+
+Formato del commit:
+- feat:
+- fix:
+- docs:
+- refactor:
+- test:
+- chore:
+- checkpoint:
+
+No hacer push automático salvo autorización expresa.
+
+====================================================================
+11. REGLA DE PAUSA Y RECUPERACIÓN
+====================================================================
+
+Si algo falla:
+
+1. No encadenes parches.
+2. Identifica causa raíz.
+3. Explica:
+   - síntoma,
+   - causa,
+   - archivos implicados,
+   - riesgo,
+   - solución propuesta.
+4. Decide si corresponde:
+   - Cline para implementación,
+   - Codex para auditoría/revisión/corrección.
+5. Crea checkpoint antes de corregir.
+6. Corrige un bloque pequeño.
+7. Verifica.
+8. Continúa desde el mismo punto de la hoja de ruta.
+
+Nunca reinicies la hoja de ruta desde cero por un fallo local.
+
+====================================================================
+12. CRITERIOS GLOBALES DE CALIDAD
+====================================================================
+
+El sistema debe ser:
+- comprensible,
+- seguro,
+- mantenible,
+- modular,
+- trazable,
+- usable por no técnicos,
+- preparado para delegación,
+- orientado a datos reales,
+- honesto con incertidumbre,
+- compatible con Trawel,
+- escalable sin sobreingeniería.
+
+No se acepta:
+- secreto en renderer,
+- key en Git,
+- email sin trazabilidad,
+- publicación sin revisión,
+- fuente inventada,
+- métrica inventada,
+- anuncio vencido activo,
+- foto sin derechos claros,
+- campaña sin bajas,
+- estado ambiguo,
+- escritura destructiva sin confirmación,
+- automatización que dependa de tener abierto Electron.
+
+====================================================================
+13. PRIMERA ACCIÓN A EJECUTAR AHORA
+====================================================================
+
+Ejecuta únicamente FASE 0.
+
+No continúes a FASE 1.
+
+Al terminar la auditoría, detente y entrega:
+
+1. Estado real del proyecto.
+2. Qué funciona.
+3. Qué es placeholder.
+4. Qué está roto.
+5. Qué falta.
+6. Riesgos.
+7. Matriz de brechas.
+8. Roadmap recomendado.
+9. Decisiones humanas necesarias.
+10. Próximo bloque exacto.
+
+No modifiques funcionalidad de negocio durante la auditoría.
+Solo puedes crear o actualizar documentación de auditoría y BITACORA.
+
+No hagas commit ni push.

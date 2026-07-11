@@ -315,3 +315,21 @@ Las decisiones centrales tomadas hasta ahora son:
 - La hoja de ruta es: Investighost → Rehacer Trawel → Poblar Trawel.
 - El stack inicial de Investighost queda cerrado en Electron + React + TypeScript + Vite + SQLite + Drizzle + Zod.
 - Trawel será rehecho por el propio equipo y su conectividad futura con Investighost se diseñará de forma nativa.
+
+---
+
+## 11. Decisiones de estabilización (FASE 1A)
+
+### Decisión 11.1 — Barra técnica mínima
+
+Cada bloque debe poder ejecutar `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` y, cuando corresponda, `npm run dev`.
+
+Vitest 2 es el runner mínimo por compatibilidad con Vite 5, TypeScript y Node 20. Su configuración queda separada de `vite.config.ts` para no activar Electron en tests unitarios.
+
+### Decisión 11.2 — Normalizar el entorno hijo de desarrollo
+
+`npm run dev` usa `scripts/dev.mjs` para retirar `ELECTRON_RUN_AS_NODE` solo del proceso hijo. No modifica el entorno del usuario y evita que Electron arranque accidentalmente como Node.
+
+### Decisión 11.3 — Un único conjunto mínimo de estados validables
+
+Hasta que FASE 1B cierre los contratos completos, `ResearchStatusSchema` acepta la unión actual de estados de producción y publicación declarada en TypeScript. Una entidad válida por tipos no debe ser rechazada por Zod.

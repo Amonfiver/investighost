@@ -281,3 +281,22 @@ src/
 │   └── trawel/          # Integración futura con Trawel
 └── shared/
     └── types.ts         # Tipos incluyendo multi-proveedor y cola
+```
+
+---
+
+## 10. Fundación técnica estabilizada (FASE 1A)
+
+### Arranque de desarrollo
+
+El proceso main se mantiene compilado como CommonJS y usa imports nombrados de Electron. `npm run dev` pasa por `scripts/dev.mjs`, un lanzador mínimo que elimina `ELECTRON_RUN_AS_NODE` únicamente del entorno hijo antes de iniciar Vite.
+
+Si esa variable heredada vale `1`, Electron se comporta como Node y no expone `app`, `BrowserWindow` ni `ipcMain`. El lanzador no modifica el entorno global ni cambia las garantías del renderer: continúan `contextIsolation: true`, `nodeIntegration: false` y `sandbox: true`.
+
+### Verificación automatizada mínima
+
+- Vitest usa `vitest.config.ts`, separado de la configuración Electron.
+- La suite cubre el contrato Zod de entrada, los estados actuales de producción/publicación y utilidades compartidas.
+- Los comandos canónicos son `npm run lint`, `npm run typecheck` y `npm test`.
+
+`npm run build` compila los tres bundles. En el entorno Windows auditado, el empaquetado posterior sigue bloqueado porque `electron-builder` no puede extraer `winCodeSign` sin privilegio para crear enlaces simbólicos.

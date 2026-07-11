@@ -19,7 +19,13 @@ export const ResearchStatusSchema = z.enum([
   'drafted',
   'under_review',
   'approved',
+  'rejected',
+  'not_published',
+  'queued',
+  'scheduled',
+  'publishing',
   'published',
+  'unpublished',
   'error',
 ])
 

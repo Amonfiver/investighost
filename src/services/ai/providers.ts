@@ -346,6 +346,8 @@ export class OpenAIProvider extends BaseAIProvider {
   supportsStructured = true
   
   async generateText(_prompt: string, _options?: unknown): Promise<string> {
+    void _prompt
+    void _options
     if (!this.isAvailable) {
       throw new Error('OpenAI not configured - set OPENAI_API_KEY')
     }
@@ -354,6 +356,8 @@ export class OpenAIProvider extends BaseAIProvider {
   }
   
   async generateStructured<T>(_prompt: string, _schema: unknown): Promise<T> {
+    void _prompt
+    void _schema
     if (!this.isAvailable) {
       throw new Error('OpenAI not configured - set OPENAI_API_KEY')
     }
@@ -361,6 +365,7 @@ export class OpenAIProvider extends BaseAIProvider {
   }
   
   async searchAndSummarize(_query: string): Promise<string> {
+    void _query
     if (!this.isAvailable) {
       throw new Error('OpenAI not configured - set OPENAI_API_KEY')
     }
@@ -379,6 +384,8 @@ export class LocalProvider extends BaseAIProvider {
   supportsStructured = true
   
   async generateText(_prompt: string, _options?: unknown): Promise<string> {
+    void _prompt
+    void _options
     if (!this.isAvailable) {
       throw new Error('Local provider not configured - set LOCAL_API_URL')
     }
@@ -386,6 +393,8 @@ export class LocalProvider extends BaseAIProvider {
   }
   
   async generateStructured<T>(_prompt: string, _schema: unknown): Promise<T> {
+    void _prompt
+    void _schema
     if (!this.isAvailable) {
       throw new Error('Local provider not configured - set LOCAL_API_URL')
     }
@@ -393,6 +402,7 @@ export class LocalProvider extends BaseAIProvider {
   }
   
   async searchAndSummarize(_query: string): Promise<string> {
+    void _query
     throw new Error('Local provider does not support web search')
   }
 }
@@ -430,9 +440,9 @@ export class ProviderFactory {
   }
   
   getAvailableProviders(): AIProvider[] {
-    return Array.from(this.providers.entries())
-      .filter(([_, provider]) => provider.isAvailable)
-      .map(([name, _]) => name)
+    return Array.from(this.providers.values())
+      .filter(provider => provider.isAvailable)
+      .map(provider => provider.name)
   }
   
   getHealthStatus(): ProviderHealth[] {

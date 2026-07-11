@@ -39,6 +39,7 @@ export interface PublishingResult {
 export async function publishToTrawel(
   _draft: EditorialDraft
 ): Promise<PublishingResult> {
+  void _draft
   // TODO: Implementar integración real con Trawel cuando esté disponible
   console.warn('[Publishing] publishToTrawel not yet implemented')
   return {
@@ -54,6 +55,7 @@ export async function publishToTrawel(
 export async function previewInTrawel(
   _draft: EditorialDraft
 ): Promise<{ previewUrl?: string; previewHtml?: string }> {
+  void _draft
   return {
     previewHtml: '<p>Preview not available yet</p>'
   }

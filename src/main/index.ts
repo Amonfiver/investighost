@@ -20,13 +20,11 @@
  *   - Integrado sistema de config multi-proveedor
  */
 
-import electron from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import dotenv from 'dotenv'
-
-const { app, BrowserWindow, ipcMain } = electron
 
 // ============================================
 // CARGA CONFIGURACIÓN DESDE .ENV

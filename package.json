@@ -5,11 +5,13 @@
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
     "build": "tsc && vite build && electron-builder",
     "build:vite": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
@@ -41,7 +43,8 @@
     "npm-run-all": "^4.1.5",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
-    "vite-plugin-electron": "^0.29.0"
+    "vite-plugin-electron": "^0.29.0",
+    "vitest": "^2.1.9"
   },
   "build": {
     "appId": "com.investighost.app",

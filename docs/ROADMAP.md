@@ -1,6 +1,6 @@
 # Roadmap recomendado de Investighost
 
-Estado: propuesta resultante de FASE 0; requiere aprobación humana antes de ejecutar FASE 1.
+Estado: FASE 1A ejecutada el 2026-07-11; pendiente aprobación humana antes de FASE 1B.
 
 ## Principios de secuencia
 
@@ -12,13 +12,13 @@ Estado: propuesta resultante de FASE 0; requiere aprobación humana antes de eje
 
 ## Fases propuestas
 
-### 0. Auditoría — completada, pendiente de aceptación
+### 0. Auditoría — completada y aceptada
 
 Entregables: auditoría, matriz, roadmap y BITACORA2. Salida: PAUSA HUMANA 0.
 
-### 1A. Estabilización de la fundación
+### 1A. Estabilización de la fundación — completada
 
-Corregir el arranque Electron y lint; definir scripts canónicos de typecheck/test; incorporar pruebas mínimas del main/preload/config/validación sin ampliar negocio; hacer reproducible `build:vite` y documentar el requisito Windows del packaging.
+Arranque Electron y lint corregidos; scripts canónicos y 21 pruebas mínimas añadidos. La compilación Vite es reproducible. El instalador continúa bloqueado por privilegios de symlinks de Windows y queda documentado como incidencia de entorno/release.
 
 ### 1B. Contratos y arquitectura canónica
 
@@ -62,8 +62,7 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 
 ## Orden inmediato recomendado
 
-1. Aprobación humana de FASE 0.
-2. FASE 1A: arranque/lint/tests/build reproducibles.
-3. FASE 1B: contratos y decisiones canónicas.
-4. Pausa humana antes de migraciones, Supabase o cualquier funcionalidad nueva.
-
+1. Revisar y aceptar la entrega de FASE 1A.
+2. Iniciar FASE 1B: contratos y arquitectura canónica.
+3. Resolver en FASE 1B las decisiones humanas de Supabase, roles, seguridad, Trawel y compliance.
+4. Mantener pausa humana antes de migraciones, credenciales o funcionalidad nueva.

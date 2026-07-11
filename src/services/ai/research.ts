@@ -336,7 +336,7 @@ export async function researchWithAI(
   })
   
   // 4. Generar borrador editorial mejorado
-  const draft = generateHonestEditorialDraft(result, parsedData, researchText)
+  const draft = generateHonestEditorialDraft(result, parsedData)
   
   console.log('🤖 [researchWithAI] Draft generated:', {
     id: draft.id,
@@ -362,8 +362,7 @@ export async function researchWithAI(
 
 function generateHonestEditorialDraft(
   result: ResearchResult, 
-  parsedData: Record<string, unknown>,
-  _researchText: string
+  parsedData: Record<string, unknown>
 ): EditorialDraft {
   const { destination, summary, places, activities, tips } = result
   const hasWebSources = result.sources.some(source => !source.url.startsWith('internal://'))
@@ -585,7 +584,7 @@ async function researchWithCompactWebBundle(
     generatedAt: new Date(),
   }
 
-  const draft = generateHonestEditorialDraft(result, parsedData, JSON.stringify(compactSources))
+  const draft = generateHonestEditorialDraft(result, parsedData)
 
   console.log('🤖 [researchWithAI] Compact web result built:', {
     id: result.id,

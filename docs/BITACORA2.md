@@ -46,3 +46,72 @@ Auditoría documental completada. No se tocó código, arquitectura, dependencia
 ### Siguiente paso
 
 Esperar aprobación humana de la auditoría. Después, y solo con aprobación, iniciar FASE 1A de estabilización y contratos; no avanzar automáticamente.
+
+---
+
+## Sesión 19 — FASE 1A: estabilización y contratos de la fundación
+
+### Fecha
+
+2026-07-11
+
+### Objetivo
+
+Estabilizar la base técnica sin añadir funcionalidad de producto: corregir arranque Electron y lint, crear una suite mínima, alinear el contrato mínimo de estados y verificar todos los comandos obligatorios.
+
+### Archivos tocados
+
+- `src/main/index.ts`
+- `src/modules/publishing/index.ts`
+- `src/services/ai/providers.ts`
+- `src/services/ai/research.ts`
+- `src/utils/validation.ts`
+- `scripts/dev.mjs`
+- `tests/validation.test.ts`
+- `tests/helpers.test.ts`
+- `vitest.config.ts`
+- `package.json` y `package-lock.json`
+- `docs/ARCHITECTURE.md`
+- `docs/DECISIONES.md`
+- `docs/ROADMAP.md`
+- `docs/BITACORA2.md`
+
+### Fallos reproducidos y causas
+
+- Lint: 15 parámetros/destructuraciones no usados en placeholders.
+- Tests: faltaban script, runner y archivos de prueba.
+- Dev: `ELECTRON_RUN_AS_NODE=1` heredado hacía que Electron se ejecutara como Node y no expusiera `app`.
+- Packaging: Windows impide crear los symlinks incluidos en `winCodeSign`.
+
+### Cambios
+
+- Import nombrado del API Electron.
+- Lanzador que limpia `ELECTRON_RUN_AS_NODE` solo para el hijo de Vite.
+- Parámetros placeholder marcados con `void` e iteración de proveedores simplificada, sin desactivar ESLint.
+- Scripts `typecheck` y `test`, Vitest 2 y configuración aislada.
+- 21 tests para entrada, estados y utilidades.
+- `ResearchStatusSchema` alineado con la unión TypeScript actual.
+- Sin cambios en aislamiento Electron, producto, APIs externas ni persistencia.
+
+### Verificación
+
+- `npm run lint`: pasa, 0 errores.
+- `npm run typecheck`: pasa.
+- `npm test`: pasan 2 archivos y 21 tests.
+- `npm run dev`: pasa; npm y Electron seguían vivos tras 12 segundos, sin stderr. Se detuvieron deliberadamente tras verificar.
+- `npm run build`: TypeScript y Vite pasan; `electron-builder` falla por privilegios de symlinks al extraer `winCodeSign`.
+
+### Riesgos pendientes
+
+- Packaging Windows aún no genera instalador en este entorno.
+- `npm install` reporta 27 vulnerabilidades transitivas: 2 low, 9 moderate, 14 high y 2 critical. Requieren auditoría específica, no `audit fix --force` automático.
+- La suite mínima no cubre IPC, main, proveedores ni E2E.
+- Persistencia sigue en memoria y los contratos completos quedan para FASE 1B.
+
+### Estado final
+
+FASE 1A completada dentro de alcance. Arranque dev, lint, typecheck y tests quedan verdes. Build compilado; packaging bloqueado por el entorno Windows y documentado.
+
+### Siguiente paso
+
+PAUSA HUMANA. Tras aprobación, ejecutar únicamente FASE 1B — contratos y arquitectura canónica; no iniciar migraciones, Supabase ni dominios nuevos.

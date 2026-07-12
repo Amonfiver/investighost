@@ -1,33 +1,31 @@
-# Plan de Supabase Storage — FASE 2A
+# Plan de Supabase Storage local — decisión 2C-A
 
-Estado: diseño **NO EJECUTADO**.
+Supabase Storage local es el único almacén de archivos del MVP durante desarrollo. No se guardan adjuntos en carpetas operativas propias de Electron ni se usa SQLite para sus metadatos. PostgreSQL conserva bucket, path, hash, tamaño, MIME, estado, propietario, derechos y retención.
 
-| Bucket lógico | Público | Contenido | MIME inicial | Máximo inicial | Retención propuesta |
-|---|---:|---|---|---:|---|
-| `investighost-uploads-private` | no | cargas de operador sin aprobar | jpeg/png/webp/pdf | 20 MB | 30 días o hasta clasificar |
-| `investighost-photos-pending` | no | fotos de usuarios en moderación | jpeg/png/webp | 15 MB | 90 días tras decisión, sujeto a retirada/legal |
-| `trawel-images-approved` | lectura pública controlada | imágenes aprobadas | jpeg/png/webp/avif | 15 MB | mientras licencia/finalidad siga vigente |
-| `investighost-ad-creatives` | no por defecto | creatividades | jpeg/png/webp/gif/mp4 | 25 MB imagen; 100 MB vídeo | contrato + plazo legal |
-| `investighost-reports-private` | no | PDF/CSV de informes | pdf/csv | 25 MB | 30 días, configurable |
-| `investighost-temporary` | no | transformaciones/chunks | tipos estrictamente necesarios | 50 MB | 24 h |
+## Buckets lógicos
 
-Los nombres son propuestos; `trawel-images-approved` debe contrastarse con buckets productivos existentes para no duplicar.
+| Bucket | Acceso | Uso inicial |
+|---|---|---|
+| `uploads-private` | privado | adjuntos de trabajo |
+| `photos-pending` | privado | fotos sin moderar |
+| `images-approved` | lectura pública controlada | imágenes aprobadas/publicables |
+| `ad-creatives` | privado hasta aprobación | creatividades |
+| `exports-private` | privado y temporal | informes/exportaciones |
+| `temporary-private` | privado y TTL corto | procesamiento transitorio |
 
-## Seguridad y ciclo de vida
+Los nombres finales deberán comprobar colisiones con Trawel antes de una migración remota.
 
-- Paths no contienen email/nombre: `{environment}/{entityType}/{entityId}/{uuid}-{variant}`.
-- Upload usa sesión autenticada o signed upload de corta duración; nunca bucket público de escritura.
-- Se valida extensión, MIME declarado, magic bytes, tamaño y dimensiones; escaneo antimalware server-side antes de promoción.
-- La aprobación crea/copia un objeto inmutable hacia el bucket aprobado y una fila `image_assets`; nunca se hace público el objeto pendiente.
-- Signed URLs cortas para privado. Public URLs solo tras derechos, consentimiento, alt, crédito/licencia y revisión.
-- Reemplazos usan nueva key/version; la retirada despublica la fila y revoca/elimina derivados según obligaciones.
-- Job de huérfanos compara objetos y metadatos; cuarentena antes de borrar. Temporales expiran automáticamente.
-- RLS de `storage.objects` limita bucket/prefijo/rol; moderador no puede acceder a informes o creatividades ajenas.
+## Controles
 
-## Decisiones pendientes
+- Denegación por defecto; acceso por usuario/rol y prefijos no adivinables.
+- Allowlist inicial JPEG, PNG, WebP y PDF; límite inicial 20 MB, ambos configurables por caso.
+- Validación de extensión, MIME declarado, magic bytes, tamaño y SHA-256; nunca ejecutar contenido.
+- Nombre remoto no determina el path. Se usa UUID y se bloquea path traversal.
+- Un conjunto payload+archivos es indivisible para considerar una importación verificada.
+- Promoción a público solo tras moderación, derechos/licencia, alt/caption y auditoría.
+- Retirada debe invalidar acceso público y conservar evidencia mínima según política.
+- Jobs idempotentes eliminan huérfanos y temporales conforme a retención documentada.
 
-Confirmar buckets existentes de Trawel, CDN/transformaciones, tamaños reales, antivirus, política de retirada, retenciones y licencias admitidas antes de FASE 7/11.
+## Backup y producción
 
-## Descarga local de contribuciones — FASE 2B
-
-Los adjuntos del buzón temporal se guardan fuera de SQLite bajo el `userData` de Electron. La ruta usa un identificador remoto saneado y un UUID generado localmente; nunca el nombre remoto. Se admiten inicialmente JPEG, PNG, WebP y PDF hasta 20 MB por archivo, se verifica tamaño y SHA-256 y no se ejecuta contenido. El borrado remoto solo puede ocurrir después de verificar todos los archivos indivisibles y un backup reciente. En 2B todo origen y borrado es mock.
+Antes de permitir borrado de un origen debe existir backup y restauración probada de PostgreSQL y objetos de Storage local. Los backups SQLite de FASE 2B quedan sustituidos. Ningún bucket, objeto o policy del proyecto real de Trawel se consulta o modifica sin aprobación humana explícita.

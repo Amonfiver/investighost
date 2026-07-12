@@ -8,9 +8,9 @@ Fuente ejecutable: `src/shared/contracts.ts`. TypeScript inferido desde Zod es l
 - IDs internos: UUID generados por Investighost/Supabase. Los IDs Trawel siempre se resuelven; nunca se inventan.
 - Fechas: UTC en almacenamiento; la zona del usuario solo afecta presentación.
 - Ownership: toda entidad mutable tiene actor propietario o responsable; toda operación privilegiada genera `AuditLog`.
-- Local/cloud/public: `L` SQLite local, `C` área privada del Supabase compartido y `T` tablas/vistas públicas del mismo Supabase. `T` no contiene la fuente maestra interna ni implica otra base productiva.
+- Local/privado/público: `L` Supabase local (PostgreSQL + Storage), `C` futura área privada del Supabase compartido y `T` tablas/vistas públicas del mismo Supabase productivo. Durante el MVP solo `L` está operativo; producción permanece desconectada.
 - Sensibilidad: `—` ordinario; `P` personal; `S` secreto/operativo; `L` legal/consentimiento.
-- Retención por defecto: contenido/auditoría 5 años; datos de contacto mientras exista finalidad más plazos legales; telemetría detallada 13 meses; caché local 30 días; borradores locales hasta sincronización + 30 días. Requiere validación legal antes de producción.
+- Retención propuesta: contenido/auditoría 5 años; datos de contacto mientras exista finalidad más plazos legales; telemetría detallada 13 meses; temporales de Storage según TTL; borradores según política editorial. Requiere validación legal antes de producción.
 - Todos los inputs se validan con Zod antes de persistir. Estados y transiciones están en `STATE_MACHINES.md`.
 
 ## Entidades

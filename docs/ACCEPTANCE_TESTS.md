@@ -52,3 +52,21 @@ FASE 2B no comienza hasta aceptación humana de este gate y confirmación de org
 - UI muestra resumen, estados, errores y reintento individual usando IPC limitado.
 - Tests obligatorios: red, corrupción, hash distinto, duplicado, borrado fallido, retry individual y lote parcial.
 - Solo adaptador mock; cero conexión o borrado real.
+
+## Gate documental de FASE 2C-A
+
+- Supabase local figura como única persistencia y Storage local como almacén de archivos del MVP.
+- SQLite queda explícitamente fuera de fallback, caché, cola, outbox y modo offline.
+- `SQLITE_SYNC_STRATEGY.md` está marcado histórico/deprecado y apunta al documento sustituto.
+- Los controles reutilizables de FASE 2B se separan de sus adaptadores SQLite.
+- Existe plan de transición y criterio verificable de retirada completa.
+- Producción Trawel permanece desconectada y exige autorización humana explícita futura.
+- No se modifican TypeScript, React, Electron, tests ni SQL en esta fase.
+
+## Gate futuro de FASE 2C-B
+
+- `supabase db reset` reconstruye el entorno local con migraciones versionadas y seeds sintéticos.
+- Jobs, reintentos, idempotencia, auditoría y contribuciones sobreviven reinicios en PostgreSQL.
+- Archivos y checksums se verifican en Storage local; backup y restauración se prueban.
+- No quedan imports, dependencias, configuración, schemas, repositorios ni rutas runtime SQLite.
+- Lint, typecheck, tests y build pasan sin conexión a producción.

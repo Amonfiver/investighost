@@ -1,31 +1,22 @@
-# Fronteras de datos: SQLite y Supabase compartido
+# Fronteras de datos: Supabase local y futuro Trawel
 
-## Decisión canónica
+Estado: actualizado por FASE 2C-A.
 
-SQLite es almacenamiento local de trabajo y caché. El Supabase productivo compartido por Trawel e Investighost es la fuente autoritativa: separa operación privada y superficie pública mediante esquemas, RLS, vistas, estados y filtros. Trawel no es otra base ni existe transferencia entre dos bases productivas. Ninguna cola que deba ejecutarse con Electron cerrado puede depender solo de SQLite.
+Supabase local/PostgreSQL es la única persistencia del MVP y Storage local es el único almacén de archivos. No existe frontera de sincronización SQLite/cloud ni modo offline. El Supabase productivo compartido por Trawel e Investighost es un destino futuro completamente desconectado hasta autorización humana explícita.
 
-| Categoría | SQLite local | Supabase: área privada | Supabase: superficie Trawel |
+| Categoría | Supabase local privado | Proyección compatible Trawel | Producción real |
 |---|---|---|---|
-| Sesión/config no secreta | preferencias, caché | configuración central | nunca |
-| Secretos | nunca sin almacén seguro del SO | Vault/secretos server-side | nunca |
-| Investigación | borrador offline, bundle temporal | requests, runs, sources, results compartidos | solo proyección aprobada en tablas/vistas públicas |
-| Editorial | borradores pendientes de sync | versiones, revisiones, ContentPiece | campos editoriales aprobados |
-| Cola | buffer temporal no autoritativo | cola/attempts autoritativos | estado resultante |
-| Usuarios/roles | sesión mínima | Auth, perfiles, roles, permisos | nunca |
-| Moderación/CRM/campañas/anuncios | caché excluida o cifrada | fuente autoritativa con RLS | solo activos explícitamente publicables |
-| Analytics/auditoría | buffer limitado | eventos/agregados/logs | no logs; solo instrumentación separada aprobada |
+| Investigación y borradores | requests, runs, sources, results, drafts, revisions | solo payload aprobado | desconectada |
+| Editorial/publicación | cola, intentos, auditoría | tablas/vistas en draft/review/published según estado | desconectada |
+| Contribuciones | buzón/job/intentos/decisiones | recibo o contenido aprobado mínimo | desconectada |
+| CRM/campañas | PII y consentimientos bajo RLS | ninguna | desconectada y pausa legal |
+| Archivos | Storage privado; promoción controlada | imágenes aprobadas | desconectada |
 
-## Reglas de sincronización futuras
+## Reglas
 
-- Cada entidad sincronizable lleva UUID, `updatedAt`, versión y tombstone; el algoritmo se diseñará en FASE 2.
-- Conflictos editoriales nunca se resuelven sobrescribiendo silenciosamente: crear nueva versión y pedir revisión.
-- PII no se cachea localmente por defecto. Si una necesidad offline la exige, requiere cifrado con clave del SO y retención corta.
-- Borrar caché no borra la fuente cloud; ejercer supresión elimina/anónimiza todas las copias según política.
-- Trawel no accede a datos internos. Los IDs públicos y resultados de transición se conservan como referencias de publicación.
-
-## Decisiones humanas pendientes
-
-- Región/organización del proyecto Supabase de desarrollo separado; producción compartida ya está decidida.
-- Política exacta offline y cifrado local.
-- Retenciones definitivas y región del proyecto.
-- Propietario de backups, recuperación y resolución de conflictos.
+- Datos internos, prompts, costes, notas, PII y logs nunca entran en una proyección pública.
+- Anon solo lee contenido autorizado; roles internos operan con RLS de denegación por defecto.
+- No se copian datos reales a local; se usan fixtures sintéticos o expresamente autorizados.
+- UUID, versiones, idempotencia, tombstones y estados recuperables siguen siendo útiles, pero dentro de PostgreSQL, no para sincronizar dos motores locales.
+- Las tareas que deban ejecutarse con Electron cerrado requerirán una fase cloud posterior.
+- Un modo offline futuro debe aprobarse y diseñarse como fase separada.

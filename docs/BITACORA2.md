@@ -258,3 +258,36 @@ Sin Supabase, claves, SQL remoto, producción, datos reales, publicación, CRM, 
 ### Riesgos y siguiente paso
 
 Antes de borrado real faltan restauración probada, rotación/retención, cifrado o ACL local, antivirus/magic bytes más robusto, contrato remoto dev y Auth/RLS. FASE 2B queda en PAUSA HUMANA 2B. El siguiente bloque propuesto es FASE 2C: crear Supabase dev y probar únicamente allí el buzón/recibo/borrado con datos ficticios y autorización separada.
+
+---
+
+## Sesión 23 — FASE 2C-A: Supabase local como persistencia única
+
+### Fecha y objetivo
+
+2026-07-12. Reorientar exclusivamente la documentación: Supabase local/PostgreSQL pasa a ser la única persistencia del MVP, Storage local gestiona archivos y SQLite queda fuera del alcance funcional. Sin modificar código, tests ni SQL.
+
+### Documentos
+
+- Creado `INVESTIGHOST_DECISION_SUPABASE_UNICO.md`.
+- Actualizados `ARCHITECTURE.md`, `DECISIONES.md`, `ROADMAP.md`, `PERSISTENCE_ARCHITECTURE.md`, `DATABASE_SCHEMA_PLAN.md`, `SQLITE_SYNC_STRATEGY.md`, `MIGRATION_STRATEGY.md`, `STORAGE_PLAN.md`, `SECURITY_AND_PRIVACY.md`, `STATE_MACHINES.md`, `ACCEPTANCE_TESTS.md` y esta bitácora.
+- La auditoría residual amplió la actualización a `SPEC.md`, `LOCAL_CLOUD_DATA_BOUNDARIES.md` y `DOMAIN_MODEL.md` para eliminar prescripciones vivas contradictorias.
+
+### Decisiones y reutilización
+
+- Un solo motor de persistencia: PostgreSQL/Supabase local, reproducido por migraciones SQL versionadas.
+- Sin SQLite como fallback, caché, outbox, cola u offline. Un modo offline futuro exige fase independiente.
+- SHA-256, Zod, MIME/tamaño, idempotencia, reintentos, aislamiento por registro, estados y borrado condicionado de FASE 2B siguen vigentes sobre PostgreSQL/Storage.
+- El código SQLite existente se conserva solo porque 2C-A prohíbe modificar TypeScript, Electron, tests y SQL; se retirará en 2C-B.
+- Producción Trawel permanece totalmente desconectada.
+
+### Estado
+
+FASE 2C-A queda en PAUSA HUMANA 2C-A. Siguiente fase recomendada: 2C-B, sustitución técnica controlada de SQLite por Supabase local, con datos sintéticos y sin conexión remota.
+
+### Verificación
+
+- `npm run lint`: pasa, 0 errores y 0 warnings.
+- `npm run typecheck`: pasa.
+- `npm test`: pasan 5 archivos y 55 tests.
+- `npm run build`: TypeScript, renderer, main y preload compilan; `electron-builder` falla al extraer `winCodeSign` porque Windows no concede privilegio para crear los symlinks `libcrypto.dylib` y `libssl.dylib`. Es el bloqueo de entorno ya conocido; no se modificó configuración ni código para eludirlo.

@@ -26,12 +26,13 @@
 
 Las transiciones de producción/publicación ejecutables están en `src/shared/contracts.ts`. Las demás quedan documentales hasta su fase de implementación.
 
-## Importación local de contribuciones — FASE 2B
+## Importación de contribuciones — reutilizable en Supabase local
 
 `pending → downloading → verifying → imported → deleting_remote → completed`.
 
 - Un fallo recuperable desde descarga/verificación pasa a `retry_pending`; el reintento vuelve a `downloading` solo para ese registro.
 - Un fallo permanente o el quinto intento pasa a `failed`; requiere acción manual.
-- Un fallo de borrado conserva `deleting_remote` con error y próxima acción; nunca revierte ni duplica la copia local.
-- `completed` exige persistencia, Zod, tamaños, SHA-256, archivos completos, backup reciente y confirmación del borrado mock/remoto.
+- Un fallo de borrado conserva `deleting_remote` con error y próxima acción; nunca revierte ni duplica la copia verificada en PostgreSQL/Storage local.
+- `completed` exige transacción PostgreSQL confirmada, Zod, tamaños, SHA-256, objetos Storage completos, backup reciente y confirmación del borrado mock/remoto.
 - Ningún fallo de job cancela los demás jobs del `ImportBatch`.
+- Los estados sobreviven como lógica de dominio; las tablas SQLite de FASE 2B quedan sustituidas por persistencia Supabase local en la futura FASE 2C-B.

@@ -1,6 +1,6 @@
 # Roadmap recomendado de Investighost
 
-Estado: FASE 2A diseñada el 2026-07-12; PAUSA HUMANA 2A antes de crear Supabase dev.
+Estado: FASE 2C-A documental completada el 2026-07-12; PAUSA HUMANA 2C-A.
 
 ## Principios de secuencia
 
@@ -26,7 +26,7 @@ Modelo de 29 entidades, estados, RBAC, contratos Zod, payload Trawel, frontera d
 
 ### 2. Fundación segura y multiusuario
 
-Persistencia local real, Supabase Auth/RLS, roles, auditoría durable, configuración segura, sincronización y manejo de errores. Migraciones solo tras aprobación. PAUSA HUMANA 2.
+Persistencia única en Supabase local, Auth/RLS, roles, auditoría durable, configuración segura y manejo de errores. Migraciones remotas solo tras aprobación. PAUSA HUMANA 2.
 
 #### 2A. Diseño de persistencia — completada documentalmente
 
@@ -39,6 +39,14 @@ Implementados contratos, cola por registro, SQLite, archivos locales, SHA-256, i
 #### 2C. Entorno dev y contrato remoto — pendiente de autorización
 
 Confirmar organización/región/nombre, crear Supabase dev, capturar baseline DDL sin datos y diseñar/probar el buzón temporal, recibo mínimo, RLS y borrado remoto únicamente en dev. Antes de habilitar delete: restauración local probada y pausa humana.
+
+#### 2C-A. Reorientación a Supabase local único — completada documentalmente
+
+Supabase local pasa a ser la única persistencia del MVP; SQLite queda deprecado y sin rol de fallback/offline. Se conservan los controles de FASE 2B, trasladables a PostgreSQL/Storage. No se modificó código ni SQL y producción permanece desconectada. PAUSA HUMANA 2C-A.
+
+#### 2C-B. Sustitución técnica de SQLite — siguiente fase recomendada
+
+Inventariar y reemplazar repositorios SQLite por PostgreSQL/Storage local, crear migraciones versionadas, migrar tests y runtime, verificar reset/backup/restauración y retirar dependencias/configuración SQLite. Solo datos sintéticos y sin conexión remota. PAUSA HUMANA antes de iniciar y al finalizar.
 
 ### 3. Motor de investigación verificable
 
@@ -74,7 +82,7 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 
 ## Orden inmediato recomendado
 
-1. Revisar y aceptar FASE 2B y su motor local mock.
-2. Confirmar organización, región y nombre del proyecto Supabase dev, y autorizar exportación solo de esquema.
-3. Autorizar FASE 2C para crear/configurar dev y probar allí el contrato remoto sin datos reales.
-4. Mantener producción intacta y el borrado real deshabilitado.
+1. Revisar y aceptar la decisión documental FASE 2C-A.
+2. Autorizar FASE 2C-B, limitada a sustituir SQLite por Supabase local con datos sintéticos.
+3. Verificar migraciones desde cero, repositorios, Storage, backup/restauración y retirada completa de SQLite.
+4. Mantener producción desconectada y todo borrado remoto real deshabilitado.

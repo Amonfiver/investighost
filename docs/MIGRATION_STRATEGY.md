@@ -1,47 +1,47 @@
-# Estrategia y catálogo de migraciones — FASE 2A
+# Estrategia de migraciones PostgreSQL/Supabase — decisión 2C-A
 
-Todas las migraciones de este documento están en estado **NO EJECUTADA**. No se han creado archivos SQL porque falta comparar el esquema productivo real y cerrar región/proyecto dev. El rollback ordinario es lógico o mediante migración forward; restaurar backup queda reservado a incidentes.
+Estado: plan documental. Ninguna migración se crea, cambia o ejecuta en esta fase.
 
-## Proceso
+## Mecanismo único
 
-1. Capturar baseline DDL sin datos y verificar checksum.
-2. Generar migraciones pequeñas, numeradas e inmutables.
-3. Revisar propósito, dependencias, locks, RLS y compatibilidad Trawel.
-4. Aplicar a dev vacío y a una copia sintética; ejecutar tests de contratos/RLS.
-5. Para producción: backup/restauración probada, diff, ventana, autorización humana y observación posterior.
+Las migraciones SQL versionadas de Supabase son la fuente reproducible del esquema del MVP. Deben reconstruir Supabase local desde cero, revisarse en Git y aplicarse primero solo al entorno local. Drizzle/SQLite no mantiene un historial paralelo.
 
-## Orden propuesto
+## Secuencia de transición
 
-| Nº | Migración propuesta | Propósito / dependencias | Rollback lógico | Riesgo y compatibilidad Trawel |
-|---:|---|---|---|---|
-| 01 | extensiones y enums | UUID/funciones y estados; baseline | dejar tipos sin uso o forward | colisión de extensiones/enums; inventariar primero |
-| 02 | usuarios y roles | profiles/RBAC; Auth | desactivar asignaciones/policies | escalada de privilegios; no altera lectura Trawel |
-| 03 | investigación | requests/runs/sources/results/logs; 02 | cerrar escritura, conservar filas | volumen JSON/logs; privado |
-| 04 | editorial y revisión | drafts/sections/revisions/content; 03 | marcar superseded/disabled | estados divergentes; no tocar editorial público aún |
-| 05 | publicación | queue/attempts/steps/rate; 04 | pausar cola | duplicados/transiciones; sin worker ni escritura real |
-| 06 | moderación | contributions/photos/decisions; 02 | cerrar intake, retirar | PII/derechos; no publicar Storage |
-| 07 | CRM | organizations/contacts/consent/suppression/tasks; 02 | bloquear acceso y anonimizar según política | alto riesgo PII/legal; diseño futuro F8 |
-| 08 | campañas | campaigns/audiences/deliveries/comms; 07 | mantener draft/paused | pausa legal; no envío |
-| 09 | publicidad | advertisers/placements/ads/bookings/reminders; 07 | pausar/archivar | contrato placements pendiente |
-| 10 | analytics | events/aggregates/reports; 02 | detener ingestión, conservar agregados | minimización/particionado; proveedor pendiente |
-| 11 | auditoría | audit/sync devices/ops; 02 | cerrar append y preservar evidencia | crecimiento y datos sensibles |
-| 12 | RLS y grants | deny-by-default, funciones helper; 02–11 | política de emergencia revisada, no desactivar globalmente | bloqueo o exposición; matriz completa por rol |
-| 13 | Storage | buckets/policies/metadatos; 06/09/12 | cerrar uploads/despublicar | buckets existentes y objetos huérfanos |
-| 14 | vistas públicas | proyecciones published/active; baseline/12 | retirar vistas y volver a consultas previas | contrato de consultas Trawel |
-| 15 | seeds ficticios dev | roles/permisos y fixtures sintéticos | borrar solo IDs de seed en dev | prohibida en producción mediante guard explícito |
+1. Inventariar tablas, dependencias y rutas runtime SQLite sin retirarlas todavía.
+2. Capturar y contrastar el DDL relevante de Trawel únicamente cuando haya autorización de lectura.
+3. Consolidar una baseline local compatible, sin datos productivos.
+4. Crear migraciones pequeñas para identidad, investigación, editorial, publicación, moderación, CRM, campañas, publicidad, analytics, auditoría, RLS, Storage y vistas.
+5. Convertir las siete entidades de contribuciones de FASE 2B a PostgreSQL y sus archivos a Storage local.
+6. Implementar repositorios Supabase y migrar solo fixtures/datos locales sintéticos que sean útiles; no existe obligación de convertir bases SQLite de desarrollo.
+7. Cambiar runtime y pruebas a Supabase local.
+8. Retirar dependencias, configuración, schemas, repositorios y archivos SQLite.
+9. Verificar reset desde cero, reinicio, integridad, idempotencia, RLS, backup/restauración y gates del proyecto.
 
-## Reglas de producción
+## Orden lógico propuesto
 
-- Nunca ejecutar `db:migrate` genérico contra una URL ambigua.
-- Cada script exige environment y project ref; producción requiere flag de confirmación no reutilizable.
-- No hacer `drop`, rename destructivo o `not null` inmediato sobre columnas pobladas: expandir, backfill validado, contraer en migración posterior.
-- Índices grandes se planifican para minimizar locks. Toda policy nueva se prueba con roles negativos.
-- Migraciones de tablas públicas preservan nombres/campos que Trawel consume; cualquier cambio de contrato se coordina en FASE 6.
+1. extensiones y enums;
+2. usuarios y roles;
+3. investigación;
+4. editorial y revisión;
+5. publicación;
+6. moderación y contribuciones;
+7. CRM;
+8. campañas;
+9. publicidad;
+10. analytics;
+11. auditoría e idempotencia;
+12. RLS y grants;
+13. Storage;
+14. vistas públicas compatibles con Trawel;
+15. seeds ficticios exclusivos de local.
 
-## Criterio de salida de 2A
+Cada migración futura documentará propósito, dependencias, riesgo, locks, compatibilidad Trawel y rollback lógico/forward. Cambios destructivos usarán expand/backfill/contract.
 
-Documentación revisada y comandos locales verdes. La creación del proyecto dev y la materialización de SQL pertenecen a FASE 2B tras confirmación humana.
+## Producción
 
-## Parche de secuencia tras FASE 2B
+No se ejecutará un comando de migración contra una URL ambigua. Producción requerirá credenciales fuera de Electron, project ref allowlisted, diff revisado, backup y restauración probados, ventana, plan de reversión y aprobación humana explícita. Hasta entonces no se conecta ni se toca el Supabase real de Trawel.
 
-FASE 2B se reinterpretó por decisión humana como implementación exclusivamente local del motor de importación verificada. Se amplió el schema Drizzle y el repositorio SQLite inicializa tablas locales en Electron; no se creó ni ejecutó SQL remoto. La creación de Supabase dev queda desplazada al siguiente bloque autorizado y deberá incorporar el contrato del buzón temporal, recibo mínimo y borrado seguro.
+## Salida de la transición
+
+SQLite queda eliminado solo cuando búsqueda de dependencias y referencias runtime no encuentre uso activo, Supabase local se reconstruya con migraciones, los flujos sean durables tras reinicio y todas las verificaciones pasen.

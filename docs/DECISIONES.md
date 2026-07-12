@@ -160,6 +160,8 @@ Este stack permite construir una herramienta local/de escritorio moderna, manten
 ### Consecuencia
 - No se deberán proponer ni introducir tecnologías alternativas en esta fase salvo decisión explícita posterior.
 
+> Estado histórico: la parte SQLite + Drizzle de esta decisión queda sustituida por la Decisión 15. Electron, React, TypeScript, Vite y Zod permanecen.
+
 ## 5. Decisiones sobre método de trabajo
 
 ### Decisión 5.1 — Se trabajará con SDD
@@ -361,6 +363,8 @@ El entorno dev reproducirá estructura relevante y añadirá el esquema privado,
 
 SQLite conserva caché, borradores, outbox y recuperación offline parcial. Roles, PII, consentimientos, campañas, secretos y auditoría histórica no se guardan localmente por defecto. Conflictos editoriales crean versión y revisión; no hay sobrescritura silenciosa.
 
+**Sustituida por Decisión 15.** Se conserva para explicar el diseño de FASE 2A, no para implementación nueva.
+
 ### Decisión 13.4 — Protección contra producción
 
 Variables dev/prod distintas, allowlist de project ref, banner de entorno, scripts separados, bloqueo de escritura productiva durante desarrollo y service role ausente de Electron. Toda migración productiva futura exige backup, diff, revisión y autorización humana.
@@ -380,6 +384,24 @@ Región/organización/nombre final del proyecto dev; autorización para exportar
 - Trawel es buzón temporal para contribuciones pendientes; la revisión ocurre principalmente en Investighost local.
 - Tras persistencia, Zod, archivos, tamaños, SHA-256, transacción y backup verificados, el origen remoto puede eliminarse por registro.
 - SQLite y la carpeta local pasan a ser copia autoritativa de trabajo para esas contribuciones; esta excepción no convierte SQLite en fuente multiusuario general.
+
+**Sustituida por Decisión 15.** Los controles de integridad siguen vigentes, pero la persistencia será PostgreSQL/Storage local.
+
+---
+
+## Decisión 15 — Supabase local es la única persistencia del MVP
+
+### Decisión
+
+Desde FASE 2C-A, PostgreSQL/Supabase es la única tecnología de persistencia. Supabase local es el entorno principal de desarrollo; sus migraciones SQL versionadas reproducen el schema y Storage local guarda archivos. SQLite queda fuera del MVP y no se mantiene como fallback, caché, cola, outbox ni modo offline.
+
+### Motivo y consecuencias
+
+Se elimina la duplicidad de motores, sincronización y recuperación, se acerca desarrollo al stack final compatible con Trawel y se reduce el riesgo de una copia autoritativa en un único equipo. La implementación SQLite de FASE 2B deberá reemplazarse en un bloque técnico posterior. Sus contratos Zod, checksums, idempotencia, reintentos y borrado seguro se reutilizan sobre PostgreSQL/Storage.
+
+Un eventual modo offline requiere una fase futura separada. Esta decisión no autoriza conectar producción: el Supabase real de Trawel permanece totalmente desconectado hasta aprobación humana explícita, backup/restauración, diff y plan de reversión revisados.
+
+Documento detallado: `INVESTIGHOST_DECISION_SUPABASE_UNICO.md`.
 - Un fallo afecta solo al registro/archivo, conserva el remoto, continúa el lote y usa retry acotado.
 - El borrado real queda bloqueado hasta adaptador dev, Auth/RLS, backup/restauración probada y autorización humana. FASE 2B usa exclusivamente mock.
 - La anterior secuencia “2B = crear Supabase dev” se desplaza a FASE 2C; la hoja de ruta no se reinicia.

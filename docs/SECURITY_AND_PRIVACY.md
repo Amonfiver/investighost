@@ -2,7 +2,7 @@
 
 ## Controles obligatorios
 
-- Secretos solo en proceso principal seguro, Vault/Edge Functions o almacén del SO; nunca renderer, repositorio, logs o SQLite plano.
+- Secretos solo en proceso principal seguro, Vault/Edge Functions o almacén del SO; nunca renderer, repositorio, logs ni tablas de aplicación.
 - `contextIsolation: true`, `nodeIntegration: false`, sandbox activo e IPC limitado, tipado y validado con Zod.
 - Service role nunca en cliente. Supabase Auth + RLS obligatorias, mínimo privilegio y separación de roles.
 - Toda operación privilegiada registra actor, acción, entidad, resultado y correlationId; nunca el secreto/payload sensible completo.
@@ -29,7 +29,7 @@ Proyecto/región Supabase, política definitiva de retención, responsable legal
 - Dev nunca recibe PII productiva. Los exports se limitan a DDL y los seeds son ficticios y están bloqueados en producción.
 - Variables, project refs y scripts dev/prod son distintos; una allowlist y banner impiden confundir entornos.
 - Auth se vincula a perfiles/RBAC multirol; denegación por defecto, mínimo privilegio y MFA pendiente para owner/admin.
-- SQLite excluye PII y secretos por defecto. Tokens futuros van al almacén seguro del SO; service role nunca entra en Electron.
+- Supabase local aplica minimización y RLS a PII. Tokens futuros van al almacén seguro del SO; service role nunca entra en Electron.
 - Storage mantiene uploads/fotos pendientes privados, promoción solo tras revisión de derechos y retirada propagable.
 - Logs, outbox y auditoría minimizan payloads, usan correlation/idempotency IDs y tienen retención definida.
 
@@ -43,3 +43,12 @@ Antes de producción siguen pendientes: validación legal de retenciones, proced
 - El conjunto payload+archivos es indivisible para borrar el origen.
 - Backup local verificado precede cualquier borrado; la activación real sigue bloqueada hasta probar restauración, rotación, cifrado/ACL y retención.
 - En 2B los datos son sintéticos y el borrado es mock. No se copiaron contribuciones ni fotos reales.
+
+## Actualización de persistencia — FASE 2C-A
+
+- Supabase local/PostgreSQL y Storage local son la única persistencia del MVP; SQLite y carpetas operativas propias quedan pendientes de retirada técnica.
+- PII, consentimientos, jobs y auditoría usarán RLS/roles y minimización en PostgreSQL; archivos permanecerán privados hasta aprobación.
+- No existe fallback u offline en el MVP. Diseñarlo en el futuro requerirá evaluación separada de cifrado, pérdida, retención y conflictos.
+- Docker/volúmenes locales necesitan ACL, cifrado del disco cuando proceda, backup, restauración y política de borrado verificables.
+- El entorno local solo usa datos sintéticos o expresamente autorizados.
+- Producción Trawel no se conecta ni se consulta. Quedan prohibidas credenciales productivas en `.env`, Electron, logs o repositorio; toda acción futura requiere autorización humana explícita y controles de entorno.

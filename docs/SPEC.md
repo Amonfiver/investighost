@@ -359,11 +359,11 @@ La prioridad es construir:
 La fuente contractual ejecutable es `src/shared/contracts.ts`; el modelo completo está en `DOMAIN_MODEL.md`.
 
 - Producción, revisión y publicación son estados y responsabilidades separados.
-- SQLite es trabajo/caché local; desde V2, el Supabase productivo compartido es la fuente y Trawel consulta solo una proyección pública aprobada.
+- Desde FASE 2C-A, Supabase local/PostgreSQL es la única persistencia del MVP; SQLite no es caché, fallback ni modo offline. En un futuro autorizado, el Supabase productivo compartido será la fuente y Trawel consultará solo una proyección pública aprobada.
 - Ninguna pieza entra en cola sin aprobación humana trazable y ninguna escritura Trawel nace como `published`.
 - PII, consentimientos, secretos, prompts, costes y logs internos nunca se publican.
 - Campañas, prospección, tracking, listas de terceros y primera escritura Trawel conservan pausas humanas obligatorias.
 
 ### Actualización V2 desde FASE 2A
 
-Donde la documentación 1B diga “Supabase Investighost” o “destino Trawel”, debe interpretarse así: existe un único Supabase productivo compartido; los datos privados se aíslan por esquema/RLS y Trawel lee solo contenido autorizado. El proyecto Supabase separado es únicamente de desarrollo. SQLite sigue siendo caché/offline parcial, no fuente compartida.
+Donde la documentación 1B diga “Supabase Investighost” o “destino Trawel”, debe interpretarse así: existe un único Supabase productivo compartido; los datos privados se aíslan por esquema/RLS y Trawel lee solo contenido autorizado. Durante el MVP, todo desarrollo y persistencia operativa ocurre en Supabase local reproducible por migraciones. SQLite queda fuera del MVP.

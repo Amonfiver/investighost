@@ -307,8 +307,8 @@ Si esa variable heredada vale `1`, Electron se comporta como Node y no expone `a
 
 ```text
 Electron renderer → preload/IPC Zod → proceso principal/repositorios
-  → SQLite (borrador, caché, offline parcial)
-  ↔ Supabase compartido Trawel+Investighost (Auth/RLS, áreas privada y pública)
+  → Supabase local (PostgreSQL/Auth/RLS/Storage; persistencia única del MVP)
+  → futuro Supabase compartido Trawel+Investighost, solo tras aprobación humana
   → Edge Function privilegiada → adaptador/payload Zod → tablas Trawel (draft/review)
 ```
 
@@ -318,9 +318,9 @@ Producción agrupa Request/Run/Source/Result/Draft/Revision/ContentPiece. Public
 
 ---
 
-## 12. Actualización vinculante de persistencia (FASE 2A)
+## 12. Actualización de persistencia de FASE 2A — sustituida
 
-La decisión V2 sustituye únicamente la topología de datos descrita en FASE 1B:
+La decisión V2 definió la siguiente topología, hoy histórica por FASE 2C-A:
 
 ```text
 Electron → repositorios → SQLite (cache/offline/outbox)
@@ -332,6 +332,22 @@ Electron → repositorios → SQLite (cache/offline/outbox)
 - Producción tiene una sola base Supabase, no una base Investighost y otra Trawel.
 - Desarrollo usa otro proyecto Supabase, con el esquema relevante y datos ficticios, nunca PII copiada.
 - “Publicar hacia Trawel” significa validar y cambiar/escribir de forma controlada en las tablas compartidas; no transferir entre dos bases productivas.
-- SQLite no es autoritativo y excluye secretos y PII por defecto.
+- SQLite no era autoritativo y excluía secretos y PII por defecto.
 - La arquitectura detallada, RLS, Storage y sync están en `PERSISTENCE_ARCHITECTURE.md`, `RLS_AND_AUTH_PLAN.md`, `STORAGE_PLAN.md` y `SQLITE_SYNC_STRATEGY.md`.
 - FASE 2A es exclusivamente diseño: no hay proyecto, conexión, SQL ejecutado ni escritura productiva.
+
+## 13. Arquitectura vinculante de persistencia — FASE 2C-A
+
+Desde 2026-07-12, Supabase local es el entorno principal de desarrollo y la única persistencia del MVP. PostgreSQL contiene datos, colas, jobs, auditoría e idempotencia; Supabase Storage local contiene archivos. Las migraciones SQL versionadas reproducen el entorno.
+
+```text
+Electron → IPC/contratos → repositorios PostgreSQL → Supabase local
+                                                ├─ base privada + proyección Trawel
+                                                └─ Storage local
+```
+
+- SQLite no forma parte del MVP: no hay fallback, caché, outbox ni modo offline.
+- La implementación SQLite de FASE 2B es legado pendiente de retirada en la siguiente fase técnica.
+- Se reutilizan validación, SHA-256, idempotencia, reintentos, aislamiento por registro y borrado condicionado a verificación.
+- El Supabase real de Trawel continúa desconectado. Cualquier conexión o escritura requiere una autorización humana explícita distinta.
+- `INVESTIGHOST_DECISION_SUPABASE_UNICO.md` y `PERSISTENCE_ARCHITECTURE.md` sustituyen el diseño operativo de `SQLITE_SYNC_STRATEGY.md`, conservado solo como histórico.

@@ -308,10 +308,30 @@ Si esa variable heredada vale `1`, Electron se comporta como Node y no expone `a
 ```text
 Electron renderer → preload/IPC Zod → proceso principal/repositorios
   → SQLite (borrador, caché, offline parcial)
-  ↔ Supabase Investighost (fuente compartida, Auth/RLS, auditoría)
-  → Edge Function privilegiada → adaptador/payload Zod → Trawel (draft/review)
+  ↔ Supabase compartido Trawel+Investighost (Auth/RLS, áreas privada y pública)
+  → Edge Function privilegiada → adaptador/payload Zod → tablas Trawel (draft/review)
 ```
 
 `src/shared/contracts.ts` es la fuente ejecutable para entidades, enums e invariantes. Drizzle y Supabase no se modificarán hasta FASE 2 y aprobación de migraciones.
 
 Producción agrupa Request/Run/Source/Result/Draft/Revision/ContentPiece. Publicación comienza después de aprobación mediante QueueItem/Attempt. Moderación, CRM, campañas, anuncios y analytics comparten identidad, RBAC y AuditLog, pero no mezclan sus estados con el flujo editorial.
+
+---
+
+## 12. Actualización vinculante de persistencia (FASE 2A)
+
+La decisión V2 sustituye únicamente la topología de datos descrita en FASE 1B:
+
+```text
+Electron → repositorios → SQLite (cache/offline/outbox)
+                       ↔ Supabase compartido Trawel+Investighost
+                          ├─ tablas/vistas públicas: contenido autorizado
+                          └─ esquema privado: operación Investighost + Auth/RLS/auditoría
+```
+
+- Producción tiene una sola base Supabase, no una base Investighost y otra Trawel.
+- Desarrollo usa otro proyecto Supabase, con el esquema relevante y datos ficticios, nunca PII copiada.
+- “Publicar hacia Trawel” significa validar y cambiar/escribir de forma controlada en las tablas compartidas; no transferir entre dos bases productivas.
+- SQLite no es autoritativo y excluye secretos y PII por defecto.
+- La arquitectura detallada, RLS, Storage y sync están en `PERSISTENCE_ARCHITECTURE.md`, `RLS_AND_AUTH_PLAN.md`, `STORAGE_PLAN.md` y `SQLITE_SYNC_STRATEGY.md`.
+- FASE 2A es exclusivamente diseño: no hay proyecto, conexión, SQL ejecutado ni escritura productiva.

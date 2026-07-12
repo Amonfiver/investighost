@@ -25,3 +25,17 @@ Evidencia: `tests/contracts.test.ts`. Estos tests verifican contrato, no persist
 ## Gate de FASE 1B
 
 `npm run lint`, `npm run typecheck`, `npm test` y `npm run build:vite` deben pasar. La aceptación humana debe cerrar o aplazar explícitamente las decisiones de Supabase, usuarios/roles, correo, consentimiento y analytics antes de FASE 2.
+
+## Gate documental de FASE 2A
+
+- Una sola base productiva compartida y un Supabase dev separado aparecen sin ambigüedad en arquitectura y decisiones.
+- Cada entidad está clasificada como pública compartida, privada, local, vista, Storage o futura.
+- RLS usa denegación por defecto y contiene casos allow/deny para anon, authenticated y ocho roles.
+- Storage define privacidad, MIME/tamaño, retención, promoción, huérfanos y derechos.
+- Sync especifica autoridad, UUID, versiones, outbox, idempotencia, conflictos, tombstones y limpieza.
+- Las 15 migraciones incluyen propósito/dependencias, rollback lógico, riesgos, compatibilidad y estado **NO EJECUTADA**.
+- Protecciones dev/prod cubren variables distintas, allowlist, banner, scripts, service role y backup.
+- No existen conexiones, SQL ejecutado, claves nuevas, datos reales ni cambios de negocio.
+- Verificación requerida: lint, typecheck, tests y build Vite verdes.
+
+FASE 2B no comienza hasta aceptación humana de este gate y confirmación de organización/región/nombre del proyecto dev.

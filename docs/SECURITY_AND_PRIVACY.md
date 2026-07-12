@@ -23,3 +23,14 @@ Las retenciones provisionales están en `DOMAIN_MODEL.md` y requieren DPO/asesor
 
 Proyecto/región Supabase, política definitiva de retención, responsable legal, base para cada comunicación, proveedor de correo/analytics, cifrado local y procedimiento de derechos. Ninguna de estas decisiones se presume aprobada.
 
+## Controles diseñados en FASE 2A
+
+- Producción compartida se segmenta con esquema privado, RLS y vistas/proyecciones públicas; compartir proyecto no implica compartir acceso.
+- Dev nunca recibe PII productiva. Los exports se limitan a DDL y los seeds son ficticios y están bloqueados en producción.
+- Variables, project refs y scripts dev/prod son distintos; una allowlist y banner impiden confundir entornos.
+- Auth se vincula a perfiles/RBAC multirol; denegación por defecto, mínimo privilegio y MFA pendiente para owner/admin.
+- SQLite excluye PII y secretos por defecto. Tokens futuros van al almacén seguro del SO; service role nunca entra en Electron.
+- Storage mantiene uploads/fotos pendientes privados, promoción solo tras revisión de derechos y retirada propagable.
+- Logs, outbox y auditoría minimizan payloads, usan correlation/idempotency IDs y tienen retención definida.
+
+Antes de producción siguen pendientes: validación legal de retenciones, procedimiento de derechos/incidentes, responsable de backups, MFA/sesiones, antivirus de uploads y auditoría de policies existentes de Trawel.

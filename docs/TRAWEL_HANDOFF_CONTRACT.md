@@ -1,6 +1,6 @@
-# Contrato de handoff hacia Trawel
+# Contrato de publicación para la superficie Trawel
 
-Fuente obligatoria: `TRAWEL_DATABASE_REFERENCE_FOR_INVESTIGHOST.txt`. Contrato Zod: `TrawelHandoffContractSchema`, versión `1.0`. Esta fase no conecta ni escribe Trawel.
+Fuente obligatoria: `TRAWEL_DATABASE_REFERENCE_FOR_INVESTIGHOST.txt`. Contrato Zod: `TrawelHandoffContractSchema`, versión `1.0`. “Handoff” significa una transición validada hacia tablas/vistas públicas del mismo Supabase productivo compartido, no una copia entre bases. Esta fase no conecta ni escribe.
 
 ## Precondiciones
 
@@ -39,4 +39,3 @@ En reintento con misma key y hash se devuelve el resultado previo. Misma key con
 ## Errores parciales
 
 Un fallo deja el attempt `partial` o `failed`, conserva IDs ya creados y no marca published. No hay rollback destructivo automático. El operador recibe detalle por paso y reanuda idempotentemente tras corregir.
-

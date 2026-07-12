@@ -8,7 +8,7 @@ Fuente ejecutable: `src/shared/contracts.ts`. TypeScript inferido desde Zod es l
 - IDs internos: UUID generados por Investighost/Supabase. Los IDs Trawel siempre se resuelven; nunca se inventan.
 - Fechas: UTC en almacenamiento; la zona del usuario solo afecta presentación.
 - Ownership: toda entidad mutable tiene actor propietario o responsable; toda operación privilegiada genera `AuditLog`.
-- Local/cloud/public: `L` SQLite local, `C` Supabase Investighost, `T` payload público Trawel. `T` nunca es fuente maestra interna.
+- Local/cloud/public: `L` SQLite local, `C` área privada del Supabase compartido y `T` tablas/vistas públicas del mismo Supabase. `T` no contiene la fuente maestra interna ni implica otra base productiva.
 - Sensibilidad: `—` ordinario; `P` personal; `S` secreto/operativo; `L` legal/consentimiento.
 - Retención por defecto: contenido/auditoría 5 años; datos de contacto mientras exista finalidad más plazos legales; telemetría detallada 13 meses; caché local 30 días; borradores locales hasta sincronización + 30 días. Requiere validación legal antes de producción.
 - Todos los inputs se validan con Zod antes de persistir. Estados y transiciones están en `STATE_MACHINES.md`.
@@ -51,5 +51,4 @@ Fuente ejecutable: `src/shared/contracts.ts`. TypeScript inferido desde Zod es l
 
 ## Datos que nunca salen de Investighost
 
-Prompts, respuestas crudas no aprobadas, costes/tokens, evaluaciones privadas, errores técnicos, claves, secretos, logs internos, resultados rechazados, notas internas, consentimientos y PII CRM. Trawel recibe únicamente el payload validado descrito en `TRAWEL_HANDOFF_CONTRACT.md`.
-
+Prompts, respuestas crudas no aprobadas, costes/tokens, evaluaciones privadas, errores técnicos, claves, secretos, logs internos, resultados rechazados, notas internas, consentimientos y PII CRM. Trawel consulta únicamente la proyección validada descrita en `TRAWEL_HANDOFF_CONTRACT.md`, dentro del mismo Supabase productivo.

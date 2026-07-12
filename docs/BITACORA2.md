@@ -152,3 +152,60 @@ Sin Supabase/Auth, migraciones, datos reales, APIs nuevas, lógica CRM/campañas
 ### Siguiente paso
 
 PAUSA HUMANA 1: decidir Supabase, usuarios/roles, correo/remitente, política legal/retención, analytics y cifrado local. Solo después autorizar FASE 2.
+
+---
+
+## Sesión 21 — FASE 2A: diseño de persistencia segura
+
+### Fecha y objetivo
+
+2026-07-12. Aplicar la actualización V2 y diseñar persistencia, Supabase dev, tablas, repositorios, Auth/RLS, Storage, sincronización y migraciones sin crear proyectos, conectar APIs, ejecutar SQL ni tocar producción.
+
+### Decisión vinculante aplicada
+
+Una única base Supabase productiva compartida por Trawel e Investighost; un proyecto Supabase separado solo para desarrollo; SQLite como caché/offline parcial. La publicación es una transición controlada dentro de la base compartida, no transferencia entre bases productivas.
+
+### Archivos creados
+
+- `docs/PERSISTENCE_ARCHITECTURE.md`
+- `docs/DATABASE_SCHEMA_PLAN.md`
+- `docs/SUPABASE_DEV_ENVIRONMENT_PLAN.md`
+- `docs/RLS_AND_AUTH_PLAN.md`
+- `docs/STORAGE_PLAN.md`
+- `docs/SQLITE_SYNC_STRATEGY.md`
+- `docs/MIGRATION_STRATEGY.md`
+
+### Archivos actualizados
+
+- `docs/SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONES.md`, `docs/ROADMAP.md`
+- `docs/ACCEPTANCE_TESTS.md`, `docs/SECURITY_AND_PRIVACY.md`
+- `docs/LOCAL_CLOUD_DATA_BOUNDARIES.md`, `docs/DOMAIN_MODEL.md`, `docs/TRAWEL_HANDOFF_CONTRACT.md`
+- `docs/BITACORA2.md`
+
+### Cambios
+
+- Clasificación de tablas públicas existentes, privadas propuestas, vistas, Storage y SQLite local.
+- RBAC/RLS de denegación por defecto para anon, authenticated y ocho roles.
+- Seis buckets lógicos con privacidad, validación, promoción y retención.
+- Sync basada en UUID, versión, outbox, idempotencia, tombstones y conflictos humanos.
+- Catálogo ordenado de 15 migraciones, todas **NO EJECUTADAS**, con rollback lógico, riesgos y compatibilidad.
+- Protecciones dev/prod: variables y scripts separados, allowlist, banner, ausencia de service role en Electron y backup previo.
+
+### Alcance respetado
+
+No se creó Supabase, no se solicitaron/guardaron claves, no se creó ni ejecutó SQL, no se conectaron APIs, no se copiaron datos, no se implementaron dominios ni publicación y no se tocó producción. `src/services/db/schema.ts` quedó sin modificar como esquema SQLite legado pendiente de sustitución controlada.
+
+### Verificación
+
+- `npm run lint`: pasa, 0 errores y 0 warnings.
+- `npm run typecheck`: pasa.
+- `npm test`: pasan 3 archivos y 39 tests.
+- `npm run build:vite`: pasa; renderer, main y preload compilados.
+
+### Riesgos y decisiones pendientes
+
+Confirmar organización, región y nombre dev; autorizar export solo DDL; auditar schema/RLS/buckets productivos reales; cerrar MFA/sesiones, retenciones/cifrado, antivirus y backups. La referencia Trawel es documental y debe contrastarse antes de SQL.
+
+### Estado y siguiente paso
+
+FASE 2A completada documentalmente y en PAUSA HUMANA 2A. Tras aceptación humana: confirmar organización/región/nombre, crear de forma controlada el proyecto Supabase dev y capturar baseline solo de esquema; no conectar producción ni avanzar a dominios.

@@ -1,0 +1,577 @@
+INVESTIGHOST — HOJA DE RUTA ACTUALIZADA V2 Y SIGUIENTE PROMPT
+==============================================================
+
+FECHA DE DECISIÓN
+-----------------
+Aprobado por el jefe del proyecto después de completar la Fase 1B.
+
+ESTADO ACTUAL
+-------------
+Proyecto:
+D:\Proyectos\investighost
+
+Rama:
+feat/investighost-reinvencion
+
+Fases completadas:
+- FASE 0 — Auditoría completa.
+- FASE 1A — Estabilización técnica.
+- FASE 1B — Contratos y arquitectura canónica.
+
+Estado técnico confirmado:
+- Electron arranca en desarrollo.
+- Lint pasa.
+- Typecheck pasa.
+- Tests pasan.
+- Build Vite pasa.
+- Persistencia real todavía pendiente.
+- No hay integración productiva con Supabase.
+- No hay escritura real en Trawel.
+- No se debe tocar todavía la base de producción.
+
+==============================================================
+1. CAMBIO APROBADO EN LA ARQUITECTURA DE DATOS
+==============================================================
+
+DECISIÓN CANÓNICA
+-----------------
+Trawel e Investighost usarán una única base de datos compartida en producción.
+
+No habrá:
+- una base productiva para Investighost,
+- otra base productiva para Trawel,
+- ni sincronización de contenido entre dos bases productivas.
+
+Investighost será el panel privado que:
+- crea,
+- investiga,
+- edita,
+- revisa,
+- aprueba,
+- modera,
+- administra,
+- programa,
+- y publica dentro de la misma base productiva que Trawel consulta.
+
+Trawel:
+- no investiga,
+- no redacta,
+- no modera,
+- no administra campañas,
+- no decide qué aprobar,
+- solo consulta y muestra los registros públicos autorizados.
+
+La visibilidad se controla mediante:
+- estados,
+- RLS,
+- vistas públicas cuando convenga,
+- permisos,
+- y filtros server-side.
+
+Ejemplos:
+- draft: no visible.
+- pending_review: no visible.
+- approved: autorizado internamente, pero no necesariamente publicado.
+- published/active: visible para Trawel.
+- rejected/expired/disabled: no visible.
+
+==============================================================
+2. ENTORNOS APROBADOS
+==============================================================
+
+PRODUCCIÓN
+----------
+Proyecto Supabase actual de Trawel.
+
+Reglas:
+- no se toca durante el desarrollo inicial de Investighost;
+- no se ejecutan migraciones experimentales;
+- no se insertan datos de prueba;
+- no se cambian políticas sin revisión;
+- no se publican contenidos desde Investighost hasta la pausa humana correspondiente;
+- cualquier cambio futuro se aplicará mediante migraciones revisadas y aprobadas.
+
+DESARROLLO
+----------
+Se creará un proyecto Supabase separado de desarrollo.
+
+Propósito:
+- copiar la estructura necesaria de Trawel;
+- probar migraciones;
+- probar RLS;
+- probar Auth;
+- probar Storage;
+- probar colas;
+- probar moderación;
+- probar contenidos;
+- probar anuncios;
+- probar analytics;
+- probar publicación sin afectar Trawel real.
+
+No debe copiarse automáticamente:
+- información personal real;
+- emails reales;
+- consentimientos reales;
+- campañas reales;
+- claves;
+- secretos;
+- datos sensibles;
+- fotos privadas de usuarios.
+
+Datos de desarrollo:
+- ficticios,
+- anonimizados,
+- o expresamente autorizados.
+
+ENTORNO LOCAL
+-------------
+La aplicación Electron podrá seguir usando SQLite para:
+- caché,
+- borradores locales,
+- trabajo offline parcial,
+- recuperación temporal,
+- operaciones aún no sincronizadas.
+
+SQLite no será la fuente de verdad multiusuario.
+
+==============================================================
+3. AJUSTE A LA HOJA DE RUTA
+==============================================================
+
+La hoja de ruta original sigue siendo válida.
+
+Solo se actualiza la interpretación de FASE 2 y FASE 6.
+
+FASE 2
+------
+No debe crear una base productiva independiente de Investighost.
+
+Debe:
+- diseñar y conectar el proyecto Supabase de desarrollo;
+- reproducir de forma controlada el esquema relevante de Trawel;
+- añadir las tablas privadas de Investighost en el entorno de desarrollo;
+- separar acceso público y privado mediante RLS;
+- preparar migraciones futuras compatibles con producción;
+- mantener intacto el proyecto productivo.
+
+FASE 6
+------
+No debe copiar contenido entre dos bases productivas.
+
+Debe:
+- validar el contenido en Investighost;
+- escribir en las tablas compartidas de la base de Trawel;
+- cambiar estados de forma controlada;
+- permitir que Trawel lea lo publicado;
+- registrar cada publicación;
+- evitar duplicados;
+- impedir escrituras parciales o destructivas;
+- probar primero en desarrollo;
+- pasar a producción solo con autorización humana.
+
+==============================================================
+4. PAUSA HUMANA 1 — DECISIONES CERRADAS
+==============================================================
+
+CERRADO
+-------
+1. Base productiva:
+   - una sola base compartida por Trawel e Investighost.
+
+2. Entorno de desarrollo:
+   - proyecto Supabase separado para pruebas.
+
+3. Datos de desarrollo:
+   - no copiar PII real;
+   - usar datos ficticios o anonimizados.
+
+4. Producción:
+   - permanece intacta hasta una migración aprobada.
+
+5. Publicación:
+   - Investighost trabaja sobre estados;
+   - Trawel solo muestra registros autorizados.
+
+==============================================================
+5. PAUSA HUMANA 1 — DECISIONES PROVISIONALES RECOMENDADAS
+==============================================================
+
+REGIÓN
+------
+- Usar en desarrollo una región cercana a los usuarios principales.
+- Cuando se cree el proyecto dev, comprobar la región del proyecto productivo de Trawel.
+- Preferir la misma región o una compatible para reducir diferencias.
+- No crear el proyecto hasta que el jefe confirme la selección visible en Supabase.
+
+ENTORNOS
+--------
+- local
+- development
+- production
+
+No crear staging adicional durante el MVP salvo necesidad demostrada.
+
+USUARIOS INICIALES
+------------------
+Comenzar con:
+- owner: jefe del proyecto.
+
+Más adelante:
+- editor/reviewer para una persona no técnica;
+- roles adicionales cuando exista necesidad real.
+
+No crear múltiples cuentas administrativas al principio.
+
+RETENCIÓN Y CIFRADO LOCAL
+-------------------------
+Regla inicial:
+- no guardar secretos en renderer;
+- no guardar service role en SQLite;
+- evitar PII en SQLite;
+- usar almacenamiento seguro del sistema operativo para tokens o secretos locales cuando sea necesario;
+- limpiar cachés y borradores temporales mediante políticas documentadas;
+- no borrar automáticamente evidencia de auditoría necesaria.
+
+CORREO
+------
+- mantener arquitectura desacoplada;
+- Resend queda como candidato, no como dependencia definitiva;
+- no integrar correo real hasta FASE 9;
+- no enviar campañas hasta la pausa legal de FASE 10.
+
+ANALYTICS
+---------
+- definir primero un contrato de eventos propio;
+- posponer la elección final de proveedor hasta FASE 12;
+- no bloquear FASE 2 por esta decisión;
+- evitar recopilar PII innecesaria.
+
+RESPONSABLE LEGAL
+-----------------
+- El owner actúa provisionalmente como responsable operativo del sistema.
+- Antes de campañas reales debe documentarse:
+  - responsable del tratamiento,
+  - política de privacidad,
+  - procedimiento de derechos,
+  - base jurídica,
+  - bajas,
+  - retención,
+  - lista de supresión.
+
+==============================================================
+6. SIGUIENTE ESCALÓN
+==============================================================
+
+FASE 2A — DISEÑO DE PERSISTENCIA SEGURA Y MIGRACIONES PROPUESTAS
+
+Objetivo:
+- diseñar el proyecto Supabase de desarrollo;
+- comparar el esquema actual de Trawel con los contratos canónicos;
+- proponer migraciones sin ejecutarlas;
+- definir RLS, Auth, Storage y repositorios;
+- diseñar sincronización SQLite/Supabase;
+- preparar la creación controlada del entorno dev.
+
+No conectar todavía producción.
+No ejecutar migraciones.
+No introducir claves.
+No escribir datos reales.
+
+==============================================================
+7. PROMPT PARA CODEX — FASE 2A
+==============================================================
+
+Lee por completo:
+
+- docs/PROMPT_MAESTRO_REINVENCION_INVESTIGHOST.txt
+- docs/INVESTIGHOST_FULL_AUDIT.md
+- docs/INVESTIGHOST_GAP_MATRIX.md
+- docs/ROADMAP.md
+- docs/SPEC.md
+- docs/ARCHITECTURE.md
+- docs/DECISIONES.md
+- docs/BITACORA2.md
+- docs/DOMAIN_MODEL.md
+- docs/LOCAL_CLOUD_DATA_BOUNDARIES.md
+- docs/ROLES_AND_PERMISSIONS.md
+- docs/STATE_MACHINES.md
+- docs/TRAWEL_HANDOFF_CONTRACT.md
+- docs/SECURITY_AND_PRIVACY.md
+- docs/ACCEPTANCE_TESTS.md
+- docs/TRAWEL_DATABASE_REFERENCE_FOR_INVESTIGHOST.txt
+
+Trabaja sobre la rama actual:
+
+feat/investighost-reinvencion
+
+Ejecuta únicamente:
+
+FASE 2A — DISEÑO DE PERSISTENCIA SEGURA Y MIGRACIONES PROPUESTAS
+
+DECISIÓN HUMANA YA APROBADA
+
+La arquitectura de datos queda así:
+
+1. Trawel e Investighost compartirán una única base Supabase en producción.
+2. Investighost administrará borradores, revisión, moderación, CRM, campañas, anuncios, analytics y publicación.
+3. Trawel solo leerá contenido autorizado/publicado.
+4. Durante el desarrollo no se tocará la base productiva de Trawel.
+5. Se creará un proyecto Supabase separado de desarrollo.
+6. El proyecto dev copiará estructura relevante, no datos personales reales.
+7. Las migraciones se diseñarán y probarán primero en dev.
+8. Al final se aplicarán a producción únicamente cambios revisados y aprobados.
+9. No existe transferencia entre dos bases productivas.
+10. SQLite será caché y trabajo offline parcial, nunca fuente multiusuario autoritativa.
+
+OBJETIVO
+
+Diseñar la persistencia completa y segura antes de crear o conectar el proyecto Supabase de desarrollo.
+
+ALCANCE PERMITIDO
+
+- Auditar el schema Drizzle actual.
+- Auditar los contratos Zod actuales.
+- Comparar los contratos con la referencia de Trawel.
+- Diseñar tablas cloud.
+- Diseñar tablas locales.
+- Diseñar repositorios.
+- Diseñar estrategia de sincronización.
+- Diseñar Auth y roles.
+- Diseñar RLS.
+- Diseñar Storage.
+- Proponer migraciones SQL.
+- Crear migraciones como archivos NO EJECUTADOS si están claramente marcadas como propuestas.
+- Crear tests estáticos de contratos o validación de migraciones si no requieren conexión.
+- Actualizar documentación y BITACORA2.
+
+ALCANCE PROHIBIDO
+
+- No crear todavía el proyecto Supabase.
+- No conectar Supabase.
+- No pedir ni guardar claves.
+- No ejecutar migraciones.
+- No tocar producción.
+- No copiar datos reales.
+- No implementar CRM, campañas, anuncios o analytics completos.
+- No implementar publicación real.
+- No hacer commit.
+- No hacer push.
+
+ENTREGABLES DOCUMENTALES
+
+Crear o actualizar como mínimo:
+
+- docs/SUPABASE_DEV_ENVIRONMENT_PLAN.md
+- docs/PERSISTENCE_ARCHITECTURE.md
+- docs/DATABASE_SCHEMA_PLAN.md
+- docs/RLS_AND_AUTH_PLAN.md
+- docs/STORAGE_PLAN.md
+- docs/SQLITE_SYNC_STRATEGY.md
+- docs/MIGRATION_STRATEGY.md
+
+Actualizar:
+
+- docs/ARCHITECTURE.md
+- docs/DECISIONES.md
+- docs/ROADMAP.md
+- docs/ACCEPTANCE_TESTS.md
+- docs/SECURITY_AND_PRIVACY.md
+- docs/BITACORA2.md
+
+REQUISITOS DEL DISEÑO
+
+A. SUPABASE DEV
+
+Definir:
+- nombre recomendado del proyecto dev;
+- región pendiente de confirmación humana;
+- variables de entorno necesarias;
+- separación local/dev/prod;
+- cómo exportar o reproducir el schema relevante de Trawel;
+- cómo cargar datos ficticios;
+- cómo impedir uso accidental de producción.
+
+B. TABLAS
+
+Clasificar cada entidad como:
+- tabla pública compartida con Trawel;
+- tabla privada de Investighost;
+- tabla local SQLite;
+- vista pública;
+- Storage;
+- futuro.
+
+No duplicar sin necesidad:
+- countries,
+- cities,
+- destinations,
+- destination_sources,
+- editorial_contents,
+- image_assets,
+- tablas ya existentes en Trawel.
+
+Diseñar las tablas privadas requeridas para:
+- investigación,
+- revisiones,
+- cola,
+- intentos,
+- moderación,
+- CRM,
+- comunicaciones,
+- campañas,
+- publicidad,
+- analytics,
+- auditoría,
+- usuarios y permisos.
+
+C. RLS Y AUTH
+
+Definir políticas por rol:
+- owner
+- admin
+- editor
+- reviewer
+- publisher
+- moderator
+- sales
+- analyst
+- anon
+- authenticated
+
+Reglas:
+- denegación por defecto;
+- anon solo puede leer contenido público;
+- usuarios públicos solo insertan en colas expresamente permitidas;
+- borradores y PII nunca son públicos;
+- service role solo server-side;
+- operaciones privilegiadas auditadas.
+
+D. STORAGE
+
+Definir buckets:
+- uploads privados;
+- fotos pendientes;
+- imágenes aprobadas;
+- creatividades de anuncios;
+- exportaciones/informes;
+- temporales.
+
+Definir:
+- privacidad;
+- límites;
+- tipos MIME;
+- tamaño;
+- retención;
+- promoción de privado a público;
+- eliminación de huérfanos;
+- derechos y consentimiento.
+
+E. SQLITE Y SINCRONIZACIÓN
+
+Definir:
+- qué se guarda localmente;
+- qué no se guarda localmente;
+- IDs;
+- timestamps;
+- versionado;
+- conflictos;
+- reintentos;
+- offline;
+- idempotencia;
+- limpieza;
+- cifrado o almacenamiento seguro.
+
+F. MIGRACIONES
+
+Proponer orden:
+1. extensiones/enums;
+2. usuarios/roles;
+3. investigación;
+4. editorial/revisión;
+5. publicación;
+6. moderación;
+7. CRM;
+8. campañas;
+9. publicidad;
+10. analytics;
+11. auditoría;
+12. RLS;
+13. Storage;
+14. vistas públicas;
+15. seeds ficticios.
+
+Cada migración propuesta debe:
+- tener propósito;
+- dependencias;
+- rollback lógico;
+- riesgos;
+- compatibilidad con Trawel;
+- estado “NO EJECUTADA”.
+
+G. SEGURIDAD CONTRA PRODUCCIÓN
+
+Diseñar protecciones:
+- nombres de variables distintos;
+- confirmación explícita de entorno;
+- bloqueo de escrituras productivas durante desarrollo;
+- banner visible en UI;
+- allowlist de project ref;
+- scripts separados;
+- sin service role en Electron;
+- backups antes de producción.
+
+VERIFICACIÓN
+
+Ejecuta:
+
+- npm run lint
+- npm run typecheck
+- npm test
+- npm run build:vite
+
+No es necesario:
+- npm run dev;
+- empaquetado;
+- conexión real;
+- migraciones.
+
+PAUSA HUMANA 2A
+
+Al terminar, detente.
+
+Entrega:
+
+1. Arquitectura de persistencia propuesta.
+2. Tablas públicas, privadas y locales.
+3. Plan Supabase dev.
+4. Plan Auth/RLS.
+5. Plan Storage.
+6. Estrategia SQLite/Supabase.
+7. Migraciones propuestas y orden.
+8. Riesgos.
+9. Decisiones humanas restantes.
+10. Resultado de lint.
+11. Resultado de typecheck.
+12. Resultado de tests.
+13. Resultado de build.
+14. Próximo paso exacto para crear el proyecto dev.
+
+No avances a crear Supabase.
+No conectes APIs.
+No ejecutes SQL.
+No hagas commit ni push.
+
+==============================================================
+8. REGLA FINAL
+==============================================================
+
+La hoja de ruta general no se reinicia.
+
+Continuamos desde FASE 2A.
+
+El único cambio estructural aprobado es:
+
+- una base Supabase de producción compartida por Trawel e Investighost;
+- una base Supabase de desarrollo separada para construir y probar;
+- SQLite local para caché y trabajo offline;
+- producción intacta hasta migración aprobada.

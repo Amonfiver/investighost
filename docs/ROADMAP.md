@@ -1,6 +1,6 @@
 # Roadmap recomendado de Investighost
 
-Estado: FASE 1B ejecutada el 2026-07-11; PAUSA HUMANA 1 antes de FASE 2.
+Estado: FASE 2A diseñada el 2026-07-12; PAUSA HUMANA 2A antes de crear Supabase dev.
 
 ## Principios de secuencia
 
@@ -27,6 +27,14 @@ Modelo de 29 entidades, estados, RBAC, contratos Zod, payload Trawel, frontera d
 ### 2. Fundación segura y multiusuario
 
 Persistencia local real, Supabase Auth/RLS, roles, auditoría durable, configuración segura, sincronización y manejo de errores. Migraciones solo tras aprobación. PAUSA HUMANA 2.
+
+#### 2A. Diseño de persistencia — completada documentalmente
+
+Definidos proyecto dev, topología productiva compartida, tablas públicas/privadas/locales, repositorios, Auth/RLS, Storage, sincronización y catálogo de 15 migraciones **NO EJECUTADAS**. Sin proyecto, claves, SQL, conexiones ni datos reales.
+
+#### 2B. Creación controlada del entorno dev — pendiente de autorización
+
+Confirmar organización/región/nombre, crear el proyecto dev, capturar baseline DDL sin datos, configurar secretos dev fuera de Git y materializar/aplicar migraciones revisadas únicamente en dev. No conectar producción.
 
 ### 3. Motor de investigación verificable
 
@@ -62,7 +70,7 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 
 ## Orden inmediato recomendado
 
-1. Revisar y aceptar la entrega de FASE 1B.
-2. Decidir proyecto/región Supabase, usuarios iniciales, roles, correo, consentimiento, analytics y cifrado/retención.
-3. Autorizar por separado FASE 2 y sus migraciones propuestas.
-4. No conectar Trawel ni iniciar dominios comerciales durante FASE 2.
+1. Revisar y aceptar la entrega de FASE 2A.
+2. Confirmar organización, región y nombre del proyecto Supabase dev, y autorizar exportación solo de esquema.
+3. Autorizar por separado FASE 2B para crear/configurar dev y convertir el catálogo en SQL revisado.
+4. Mantener producción sin conexión ni cambios; no iniciar dominios comerciales.

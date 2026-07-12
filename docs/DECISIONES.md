@@ -339,8 +339,36 @@ Hasta que FASE 1B cierre los contratos completos, `ResearchStatusSchema` acepta 
 ## 12. Decisiones canónicas de FASE 1B
 
 - **Fuente contractual:** Zod en `src/shared/contracts.ts`; TypeScript se infiere. Los tipos MVP quedan solo como compatibilidad temporal.
-- **Frontera:** SQLite conserva trabajo/caché; Supabase Investighost será fuente multiusuario; Trawel es destino público derivado.
-- **Supabase:** se recomienda proyecto separado de Trawel; decisión humana obligatoria antes de FASE 2.
+- **Frontera (sustituida por V2/Decisión 13):** SQLite conserva trabajo/caché; la topología cloud se cerró posteriormente como un Supabase productivo compartido.
+- **Supabase (sustituida por V2/Decisión 13):** la recomendación histórica de proyecto productivo separado ya no está vigente.
 - **Estados:** producción/publicación son ortogonales; moderación, campañas, anuncios y verificación tienen enums propios.
 - **Handoff:** resolver IDs, upsert idempotente, crear draft/review, conservar intentos parciales y publicar solo con acción humana.
 - **Privacidad:** PII local excluida por defecto; RLS, supresión, consentimiento y auditoría privilegiada son requisitos obligatorios.
+
+---
+
+## 13. Decisiones vinculantes de FASE 2A (V2)
+
+### Decisión 13.1 — Una única base productiva compartida
+
+Trawel e Investighost compartirán el proyecto Supabase productivo actual de Trawel. Se sustituye la recomendación 1B de “Supabase Investighost separado” y la idea de Trawel como base destino. Investighost gestiona datos privados y públicos; Trawel solo consume filas/vistas autorizadas. No hay sincronización entre dos bases productivas.
+
+### Decisión 13.2 — Proyecto Supabase separado solo para desarrollo
+
+El entorno dev reproducirá estructura relevante y añadirá el esquema privado, RLS/Auth/Storage y migraciones propuestas. Producción permanece intacta. No se copian PII, emails, consentimientos, campañas, secretos ni fotos privadas; se usan fixtures ficticios/anonimizados/autorizados.
+
+### Decisión 13.3 — SQLite no es fuente compartida
+
+SQLite conserva caché, borradores, outbox y recuperación offline parcial. Roles, PII, consentimientos, campañas, secretos y auditoría histórica no se guardan localmente por defecto. Conflictos editoriales crean versión y revisión; no hay sobrescritura silenciosa.
+
+### Decisión 13.4 — Protección contra producción
+
+Variables dev/prod distintas, allowlist de project ref, banner de entorno, scripts separados, bloqueo de escritura productiva durante desarrollo y service role ausente de Electron. Toda migración productiva futura exige backup, diff, revisión y autorización humana.
+
+### Decisión 13.5 — Diseño antes de SQL
+
+En FASE 2A no se crean proyectos ni migraciones SQL materiales: primero se contrasta un export solo de esquema de producción con la referencia documental. El catálogo y orden quedan en `MIGRATION_STRATEGY.md`, todos con estado **NO EJECUTADA**.
+
+### Decisiones todavía humanas
+
+Región/organización/nombre final del proyecto dev; autorización para exportar solo DDL; MFA, invitaciones y sesiones; retenciones/cifrado local; buckets existentes, antivirus y límites; responsable de backups; adopción futura de vistas por Trawel.

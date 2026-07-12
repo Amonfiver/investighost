@@ -39,3 +39,16 @@ Evidencia: `tests/contracts.test.ts`. Estos tests verifican contrato, no persist
 - Verificación requerida: lint, typecheck, tests y build Vite verdes.
 
 FASE 2B no comienza hasta aceptación humana de este gate y confirmación de organización/región/nombre del proyecto dev.
+
+## Gate de FASE 2B — importación local verificada
+
+- Cola y persistencia por registro con `remote_id` e idempotency key únicas.
+- Payload validado con Zod, tamaño y SHA-256; archivos con MIME permitido, tamaño y SHA-256.
+- Nombres remotos no controlan rutas; path traversal queda bloqueado.
+- Error individual no cancela lote ni borra el remoto.
+- Borrado fallido conserva copia local y permite reintentar solo el borrado.
+- Reintentos acotados: inmediato, 30 s, 2 min, 10 min y después manual.
+- Backup verificado obligatorio antes de solicitar borrado.
+- UI muestra resumen, estados, errores y reintento individual usando IPC limitado.
+- Tests obligatorios: red, corrupción, hash distinto, duplicado, borrado fallido, retry individual y lote parcial.
+- Solo adaptador mock; cero conexión o borrado real.

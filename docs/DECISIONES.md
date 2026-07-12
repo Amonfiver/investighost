@@ -372,3 +372,14 @@ En FASE 2A no se crean proyectos ni migraciones SQL materiales: primero se contr
 ### Decisiones todavía humanas
 
 Región/organización/nombre final del proyecto dev; autorización para exportar solo DDL; MFA, invitaciones y sesiones; retenciones/cifrado local; buckets existentes, antivirus y límites; responsable de backups; adopción futura de vistas por Trawel.
+
+---
+
+## 14. Parche vinculante de contribuciones — FASE 2B
+
+- Trawel es buzón temporal para contribuciones pendientes; la revisión ocurre principalmente en Investighost local.
+- Tras persistencia, Zod, archivos, tamaños, SHA-256, transacción y backup verificados, el origen remoto puede eliminarse por registro.
+- SQLite y la carpeta local pasan a ser copia autoritativa de trabajo para esas contribuciones; esta excepción no convierte SQLite en fuente multiusuario general.
+- Un fallo afecta solo al registro/archivo, conserva el remoto, continúa el lote y usa retry acotado.
+- El borrado real queda bloqueado hasta adaptador dev, Auth/RLS, backup/restauración probada y autorización humana. FASE 2B usa exclusivamente mock.
+- La anterior secuencia “2B = crear Supabase dev” se desplaza a FASE 2C; la hoja de ruta no se reinicia.

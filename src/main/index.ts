@@ -125,6 +125,8 @@ ipcMain.handle('ai:get-provider-status', () => {
 import { researchModule } from '@modules/research'
 import * as store from '@modules/persistence/memory-store'
 import { collectWebResearchBundle } from '@services/search'
+import { z } from 'zod'
+import { getContributionImportRuntime } from '@modules/contributions/runtime'
 
 ipcMain.handle('research:create', async (_event, input) => {
   console.log('[IPC] research:create called with:', JSON.stringify(input))
@@ -168,8 +170,22 @@ ipcMain.handle('search:collect', async (_event, input) => {
   return collectWebResearchBundle(input)
 })
 
+ipcMain.handle('contributions:import-pending', async () => {
+  return getContributionImportRuntime().importPending()
+})
+
+ipcMain.handle('contributions:list-jobs', async () => {
+  return getContributionImportRuntime().listJobs()
+})
+
+ipcMain.handle('contributions:retry-job', async (_event, jobId: unknown) => {
+  return getContributionImportRuntime().retryJob(z.string().uuid().parse(jobId))
+})
+
 // Ciclo de vida de la app
 app.whenReady().then(() => {
+  // Inicializa únicamente la persistencia local; no conecta ninguna fuente remota real.
+  getContributionImportRuntime()
   createWindow()
 
   app.on('activate', () => {

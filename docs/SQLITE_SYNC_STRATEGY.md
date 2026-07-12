@@ -45,3 +45,19 @@ Backoff limitado (por ejemplo 2 s a 5 min), pausa tras errores permanentes 4xx, 
 
 Offline/reinicio, duplicado de envío, orden padre-hijo, 401/403/409/429/5xx, reloj incorrecto, tombstone, conflicto concurrente, cambio de usuario/entorno y corrupción/recuperación local.
 
+## Flujo inverso de contribuciones — FASE 2B
+
+El parche arquitectónico distingue este flujo de la sincronización general:
+
+1. listar pendientes del buzón Trawel;
+2. crear `ImportBatch` y un `ContributionImportJob` por `remote_id`;
+3. descargar cada payload/archivo de forma aislada;
+4. normalizar JSON, validar Zod, tamaño, MIME y SHA-256;
+5. persistir `ImportedContribution`, `ContributionFile` e intentos localmente;
+6. crear backup local verificado;
+7. pasar a `deleting_remote` y borrar solo ese conjunto remoto;
+8. completar o conservar `retry_pending`/`deleting_remote` sin detener el lote.
+
+La idempotencia usa `trawel:{remote_id}:v{version}` y unique por `remote_id`. Los retrasos son inmediato, 30 segundos, 2 minutos y 10 minutos; el quinto intento queda manual. Un fallo de archivo no borra el registro remoto. Un fallo de borrado conserva la copia local y reintenta únicamente la eliminación.
+
+Estado implementado: SQLite real en Electron, repositorio en memoria para tests, file store seguro y adaptador mock. El ABI nativo de `better-sqlite3` está compilado para Electron y no se carga desde Vitest/Node.

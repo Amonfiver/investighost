@@ -59,8 +59,15 @@ Antes de adoptarlas se comprobará si Trawel puede cambiar sus consultas; mientr
 | `sync_conflicts` | referencias y versiones, sin payload PII libre | resolución + 30 días |
 | `audit_buffer` | eventos mínimos pendientes | hasta ACK + 7 días |
 | `file_upload_queue` | rutas locales temporales y hash | subida/cancelación + 7 días |
+| `import_batches` | resumen y resultado de cada descarga | historial operativo |
+| `contribution_import_jobs` | cola, estado, hashes, tamaños, retry e idempotencia | historial + política legal |
+| `imported_contributions` | payload normalizado local autoritativo tras importación | finalidad + plazo |
+| `contribution_files` | metadatos/rutas relativas de archivos externos a SQLite | acompaña al registro |
+| `import_attempts` | intento y error por operación/registro | auditoría operativa |
+| `import_conflicts` | diferencias de hash/tamaño/versiones | hasta resolución + plazo |
+| `local_backup_records` | manifiestos de backups locales | rotación aprobada |
 
-No local: roles autoritativos, consentimientos/evidencias, suppression list, CRM/PII, campañas/audiencias, secretos, service role, auditoría histórica ni analytics bruto. Una excepción futura de PII offline exige aprobación, cifrado con clave del SO y nueva evaluación de impacto.
+No local: roles autoritativos, suppression list, CRM general, campañas/audiencias, secretos, service role ni analytics bruto. Excepción vinculante: contribuciones descargadas y sus datos necesarios de moderación viven localmente; exigen minimización, carpeta controlada, backup y retención específica antes de usar datos reales.
 
 ## Constraints transversales propuestas
 
@@ -69,4 +76,3 @@ No local: roles autoritativos, consentimientos/evidencias, suppression list, CRM
 - checks de rangos, fechas, moneda y estados; uniques para slugs, asignaciones RBAC e idempotencia.
 - `updated_at` server-side y `version` incrementada atómicamente.
 - auditoría, revisiones y consentimientos sin borrado físico ordinario; rectificación/anominización según política.
-

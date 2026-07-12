@@ -269,3 +269,91 @@ export const contentPieces = sqliteTable('content_pieces', {
   queuedAt: integer('queued_at', { mode: 'timestamp' }),
   publishedAt: integer('published_at', { mode: 'timestamp' }),
 })
+
+// FASE 2B: importación local verificada de contribuciones, sin SQL remoto.
+export const importBatches = sqliteTable('import_batches', {
+  id: text('id').primaryKey(),
+  status: text('status').notNull(),
+  foundCount: integer('found_count').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  completedAt: integer('completed_at', { mode: 'timestamp' }),
+})
+
+export const contributionImportJobs = sqliteTable('contribution_import_jobs', {
+  id: text('id').primaryKey(),
+  batchId: text('batch_id').notNull().references(() => importBatches.id),
+  remoteId: text('remote_id').notNull().unique(),
+  sourceType: text('source_type').notNull(),
+  remoteCreatedAt: integer('remote_created_at', { mode: 'timestamp' }),
+  localCreatedAt: integer('local_created_at', { mode: 'timestamp' }).notNull(),
+  status: text('status').notNull().default('pending'),
+  attemptCount: integer('attempt_count').notNull().default(0),
+  lastError: text('last_error'),
+  nextRetryAt: integer('next_retry_at', { mode: 'timestamp' }),
+  remoteChecksum: text('remote_checksum'),
+  localChecksum: text('local_checksum'),
+  remotePayloadSize: integer('remote_payload_size'),
+  localPayloadSize: integer('local_payload_size'),
+  downloadedAt: integer('downloaded_at', { mode: 'timestamp' }),
+  verifiedAt: integer('verified_at', { mode: 'timestamp' }),
+  deletedRemoteAt: integer('deleted_remote_at', { mode: 'timestamp' }),
+  completedAt: integer('completed_at', { mode: 'timestamp' }),
+  idempotencyKey: text('idempotency_key').notNull().unique(),
+  version: integer('version').notNull().default(1),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+})
+
+export const importedContributions = sqliteTable('imported_contributions', {
+  id: text('id').primaryKey(),
+  jobId: text('job_id').notNull().references(() => contributionImportJobs.id),
+  remoteId: text('remote_id').notNull().unique(),
+  sourceType: text('source_type').notNull(),
+  payloadJson: text('payload_json').notNull(),
+  payloadSha256: text('payload_sha256').notNull(),
+  payloadSize: integer('payload_size').notNull(),
+  version: integer('version').notNull(),
+  importedAt: integer('imported_at', { mode: 'timestamp' }).notNull(),
+})
+
+export const contributionFiles = sqliteTable('contribution_files', {
+  id: text('id').primaryKey(),
+  contributionId: text('contribution_id').notNull().references(() => importedContributions.id),
+  remoteFileId: text('remote_file_id').notNull(),
+  safeLocalName: text('safe_local_name').notNull(),
+  relativePath: text('relative_path').notNull(),
+  mimeType: text('mime_type').notNull(),
+  size: integer('size').notNull(),
+  sha256: text('sha256').notNull(),
+  verifiedAt: integer('verified_at', { mode: 'timestamp' }).notNull(),
+})
+
+export const importAttempts = sqliteTable('import_attempts', {
+  id: text('id').primaryKey(),
+  jobId: text('job_id').notNull().references(() => contributionImportJobs.id),
+  operation: text('operation').notNull(),
+  outcome: text('outcome').notNull(),
+  errorCode: text('error_code'),
+  errorMessage: text('error_message'),
+  attemptedAt: integer('attempted_at', { mode: 'timestamp' }).notNull(),
+})
+
+export const importConflicts = sqliteTable('import_conflicts', {
+  id: text('id').primaryKey(),
+  jobId: text('job_id').notNull().references(() => contributionImportJobs.id),
+  kind: text('kind').notNull(),
+  expectedValue: text('expected_value'),
+  actualValue: text('actual_value'),
+  resolvedAt: integer('resolved_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+})
+
+export const localBackupRecords = sqliteTable('local_backup_records', {
+  id: text('id').primaryKey(),
+  path: text('path').notNull(),
+  databaseSha256: text('database_sha256'),
+  fileCount: integer('file_count').notNull(),
+  status: text('status').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  verifiedAt: integer('verified_at', { mode: 'timestamp' }),
+})

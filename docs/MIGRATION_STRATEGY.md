@@ -42,3 +42,6 @@ Todas las migraciones de este documento están en estado **NO EJECUTADA**. No se
 
 Documentación revisada y comandos locales verdes. La creación del proyecto dev y la materialización de SQL pertenecen a FASE 2B tras confirmación humana.
 
+## Parche de secuencia tras FASE 2B
+
+FASE 2B se reinterpretó por decisión humana como implementación exclusivamente local del motor de importación verificada. Se amplió el schema Drizzle y el repositorio SQLite inicializa tablas locales en Electron; no se creó ni ejecutó SQL remoto. La creación de Supabase dev queda desplazada al siguiente bloque autorizado y deberá incorporar el contrato del buzón temporal, recibo mínimo y borrado seguro.

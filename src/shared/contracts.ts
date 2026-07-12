@@ -304,6 +304,70 @@ export const PermissionContractSchema = z.object({ id: IdSchema, name: Permissio
 export const RoleContractSchema = z.object({ id: IdSchema, name: RoleNameSchema, permissionNames: z.array(PermissionNameSchema) })
 export const AppUserContractSchema = z.object({ id: IdSchema, authUserId: IdSchema, email: z.string().email(), displayName: NonEmptySchema, roleNames: z.array(RoleNameSchema).min(1), status: z.enum(['invited', 'active', 'suspended', 'disabled']), createdAt: TimestampSchema, updatedAt: TimestampSchema })
 
+export const ContributionImportStatusSchema = z.enum([
+  'pending', 'downloading', 'verifying', 'imported',
+  'deleting_remote', 'completed', 'retry_pending', 'failed',
+])
+
+export const ContributionSourceTypeSchema = z.enum([
+  'message', 'suggestion', 'recommendation', 'report', 'claim', 'photo', 'place',
+])
+
+export const RemoteContributionFileSchema = z.object({
+  remoteFileId: NonEmptySchema.max(200),
+  originalName: NonEmptySchema.max(255),
+  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']),
+  size: z.number().int().positive().max(20 * 1024 * 1024),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+})
+
+export const RemoteContributionSchema = z.object({
+  remoteId: NonEmptySchema.max(200),
+  sourceType: ContributionSourceTypeSchema,
+  remoteCreatedAt: TimestampSchema,
+  content: NonEmptySchema.max(100_000),
+  metadata: z.record(z.unknown()).default({}),
+  payloadSize: z.number().int().positive().max(2 * 1024 * 1024),
+  payloadSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  files: z.array(RemoteContributionFileSchema).max(20),
+  version: z.number().int().positive(),
+})
+
+export const ContributionImportJobSchema = z.object({
+  id: IdSchema,
+  batchId: IdSchema,
+  remoteId: NonEmptySchema.max(200),
+  sourceType: ContributionSourceTypeSchema,
+  status: ContributionImportStatusSchema,
+  attemptCount: z.number().int().nonnegative(),
+  lastError: z.string().max(2000).optional(),
+  nextRetryAt: TimestampSchema.optional(),
+  remoteChecksum: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  localChecksum: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  remotePayloadSize: z.number().int().nonnegative().optional(),
+  localPayloadSize: z.number().int().nonnegative().optional(),
+  downloadedAt: TimestampSchema.optional(),
+  verifiedAt: TimestampSchema.optional(),
+  deletedRemoteAt: TimestampSchema.optional(),
+  completedAt: TimestampSchema.optional(),
+  idempotencyKey: NonEmptySchema.max(300),
+  version: z.number().int().positive(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+})
+
+export const ContributionSyncSummarySchema = z.object({
+  batchId: IdSchema,
+  found: z.number().int().nonnegative(),
+  downloaded: z.number().int().nonnegative(),
+  verified: z.number().int().nonnegative(),
+  deletedRemote: z.number().int().nonnegative(),
+  retrying: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  pending: z.number().int().nonnegative(),
+  jobs: z.array(ContributionImportJobSchema),
+})
+
 const TrawelSourcePayloadSchema = z.object({ title: NonEmptySchema, url: HttpsUrlSchema.optional(), type: z.enum(['official', 'tourism', 'heritage', 'blog', 'reviews', 'restaurant', 'accommodation', 'other']).optional(), supports: z.string().optional() })
 const TrawelDestinationPayloadSchema = z.object({
   slug: SlugSchema, title_es: NonEmptySchema, summary_es: z.string().optional(),
@@ -367,3 +431,9 @@ export type AppUserContract = z.infer<typeof AppUserContractSchema>
 export type RoleContract = z.infer<typeof RoleContractSchema>
 export type PermissionContract = z.infer<typeof PermissionContractSchema>
 export type TrawelHandoffContract = z.infer<typeof TrawelHandoffContractSchema>
+export type ContributionImportStatus = z.infer<typeof ContributionImportStatusSchema>
+export type ContributionSourceType = z.infer<typeof ContributionSourceTypeSchema>
+export type RemoteContributionFile = z.infer<typeof RemoteContributionFileSchema>
+export type RemoteContribution = z.infer<typeof RemoteContributionSchema>
+export type ContributionImportJob = z.infer<typeof ContributionImportJobSchema>
+export type ContributionSyncSummary = z.infer<typeof ContributionSyncSummarySchema>

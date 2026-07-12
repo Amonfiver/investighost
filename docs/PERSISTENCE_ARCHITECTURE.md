@@ -46,3 +46,16 @@ Trawel → vistas/RLS públicas → filas published/active del mismo Supabase pr
 5. Conflictos editoriales crean versión/revisión; no hay last-write-wins silencioso.
 6. Producción permanece bloqueada hasta backup, revisión de diff, autorización y allowlist.
 
+## Parche de contribuciones — FASE 2B
+
+Para contribuciones y adjuntos importados se aplica una excepción explícita al carácter de “caché” de SQLite: después de una importación verificada y del borrado remoto autorizado, SQLite más la carpeta local controlada constituyen la copia de trabajo autoritativa. Trawel funciona como buzón temporal.
+
+```text
+Trawel inbox (mock en 2B) → cola por registro → descarga payload/archivos
+  → Zod + tamaño + SHA-256 → transacción SQLite + carpeta segura
+  → backup local verificado → borrado remoto por registro → revisión local
+```
+
+La implementación está desacoplada mediante `ContributionRemoteSource`, `ContributionLocalRepository`, `ContributionFileStore`, `ContributionIntegrityService`, `ContributionImportQueue`, `ContributionImportService`, `ContributionRetryPolicy` y `ContributionBackupService`. El renderer solo recibe jobs/resúmenes tipados por IPC; nunca rutas arbitrarias.
+
+En FASE 2B la fuente es exclusivamente mock. No existe conexión Supabase/Trawel ni borrado real. Un adaptador real futuro debe demostrar backup y restauración, validación completa y autorización humana antes de habilitar `delete`.

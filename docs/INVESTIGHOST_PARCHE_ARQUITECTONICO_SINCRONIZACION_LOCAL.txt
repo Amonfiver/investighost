@@ -1,0 +1,423 @@
+INVESTIGHOST — PARCHE ARQUITECTÓNICO DE SINCRONIZACIÓN LOCAL DE CONTRIBUCIONES
+================================================================================
+
+PROPÓSITO
+---------
+Este documento actualiza la arquitectura de Investighost con una decisión aprobada por el jefe del proyecto.
+
+Debe leerse como parche oficial sobre la documentación existente.
+
+Tiene prioridad, en todo lo relacionado con contribuciones, moderación y sincronización local, sobre cualquier documento anterior que mantenga las contribuciones completas en Trawel después de ser descargadas.
+
+DOCUMENTOS RELACIONADOS
+-----------------------
+- docs/PROMPT_MAESTRO_REINVENCION_INVESTIGHOST.txt
+- docs/INVESTIGHOST_HOJA_DE_RUTA_V2_Y_PROMPT_FASE_2A.txt
+- docs/PERSISTENCE_ARCHITECTURE.md
+- docs/SQLITE_SYNC_STRATEGY.md
+- docs/DATABASE_SCHEMA_PLAN.md
+- docs/RLS_AND_AUTH_PLAN.md
+- docs/STORAGE_PLAN.md
+- docs/MIGRATION_STRATEGY.md
+- docs/ROADMAP.md
+- docs/DECISIONES.md
+
+1. DECISIÓN ARQUITECTÓNICA
+--------------------------
+
+TRAWEL PRODUCCIÓN
+
+Trawel actúa como buzón temporal para:
+
+- contribuciones de usuarios;
+- sugerencias;
+- reportes;
+- reclamaciones;
+- fotos;
+- adjuntos;
+- aportaciones de lugares;
+- cualquier entrada pendiente de revisión.
+
+Después de una importación local verificada, Trawel no debe conservar la contribución completa ni sus archivos temporales.
+
+Trawel conservará de forma permanente:
+
+- contenido aprobado;
+- contenido publicado;
+- imágenes aprobadas;
+- trazabilidad mínima únicamente cuando sea necesaria y esté justificada.
+
+INVESTIGHOST LOCAL
+
+Investighost será la bandeja principal de trabajo para:
+
+- revisar;
+- editar;
+- corregir;
+- aprobar;
+- rechazar;
+- clasificar;
+- añadir notas;
+- mantener versiones;
+- gestionar fotos y adjuntos;
+- preparar publicación final;
+- registrar decisiones e historial.
+
+SQLite será la base local de trabajo para:
+
+- registros descargados;
+- metadatos;
+- estados;
+- intentos;
+- errores;
+- checksums;
+- decisiones;
+- versiones;
+- outbox;
+- historial de sincronización.
+
+Los archivos pesados se guardarán en una carpeta local controlada, no dentro de SQLite.
+
+2. FLUJO CANÓNICO DE IMPORTACIÓN
+--------------------------------
+
+1. Investighost consulta los pendientes de Trawel.
+2. Crea una cola local por registro.
+3. Procesa cada registro de forma independiente.
+4. Descarga el JSON y sus archivos.
+5. Guarda todo localmente.
+6. Valida estructura y campos.
+7. Calcula checksums SHA-256.
+8. Compara origen y copia local.
+9. Si todo coincide:
+   - confirma la importación local;
+   - elimina los archivos temporales remotos;
+   - elimina el registro remoto;
+   - marca el trabajo como completado.
+10. Si algo no coincide:
+   - no borra nada remoto;
+   - marca solo ese registro como pendiente de reintento;
+   - continúa con el resto del lote.
+11. La revisión humana continúa únicamente en local.
+12. Si el contenido se aprueba:
+   - Investighost prepara el payload final;
+   - publica en Trawel;
+   - registra intento y resultado.
+
+REGLA CRÍTICA
+
+Nunca borrar en remoto antes de confirmar:
+
+- persistencia local completa;
+- validación Zod;
+- archivos descargados;
+- checksums correctos;
+- transacción local confirmada.
+
+3. PROCESAMIENTO AISLADO POR REGISTRO
+-------------------------------------
+
+Un error en un registro:
+
+- no cancela el lote;
+- no reinicia la descarga completa;
+- no vuelve a descargar registros ya verificados;
+- no bloquea los demás registros;
+- no borra el original remoto.
+
+ESTADOS MÍNIMOS
+
+- pending
+- downloading
+- verifying
+- imported
+- deleting_remote
+- completed
+- retry_pending
+- failed
+
+CAMPOS MÍNIMOS DE CONTROL
+
+- id
+- remote_id
+- source_type
+- remote_created_at
+- local_created_at
+- status
+- attempt_count
+- last_error
+- next_retry_at
+- remote_checksum
+- local_checksum
+- remote_payload_size
+- local_payload_size
+- downloaded_at
+- verified_at
+- deleted_remote_at
+- completed_at
+- idempotency_key
+- version
+- created_at
+- updated_at
+
+4. VERIFICACIÓN DE INTEGRIDAD
+-----------------------------
+
+TEXTOS Y JSON
+
+Verificar:
+
+- remote_id;
+- contenido normalizado;
+- tamaño;
+- hash SHA-256;
+- validación de schema;
+- número de archivos asociados;
+- metadatos obligatorios.
+
+ARCHIVOS
+
+Verificar:
+
+- nombre;
+- tamaño;
+- tipo MIME;
+- hash SHA-256;
+- apertura o lectura básica;
+- asociación correcta al registro;
+- número de archivos esperado;
+- ausencia de truncado.
+
+CONTRIBUCIONES CON VARIOS ARCHIVOS
+
+- El conjunto se considera indivisible para el borrado remoto.
+- No se borra el registro remoto hasta que todos los archivos estén verificados.
+- Si falla un archivo, se reintenta únicamente ese archivo o subelemento.
+- El registro no se marca completed hasta terminar todo el conjunto.
+
+5. POLÍTICA DE REINTENTOS
+-------------------------
+
+Propuesta inicial:
+
+- intento 1: inmediato;
+- intento 2: 30 segundos;
+- intento 3: 2 minutos;
+- intento 4: 10 minutos;
+- intento 5: manual.
+
+REGLAS
+
+- reintentar solo el registro o archivo afectado;
+- no repetir el lote completo;
+- aplicar backoff;
+- conservar último error;
+- permitir reintento manual;
+- evitar reintentos infinitos;
+- mostrar estado al usuario;
+- no eliminar remoto tras fallo.
+
+6. BORRADO REMOTO SEGURO
+------------------------
+
+ORDEN
+
+1. Descargar registro.
+2. Descargar archivos.
+3. Persistir todo localmente.
+4. Validar.
+5. Calcular hashes.
+6. Comparar.
+7. Confirmar transacción local.
+8. Eliminar archivos remotos.
+9. Eliminar registro remoto.
+10. Registrar resultado local.
+
+SI FALLA EL BORRADO REMOTO
+
+- conservar la copia local;
+- marcar deleting_remote o retry_pending;
+- reintentar únicamente el borrado;
+- evitar duplicados mediante idempotency_key.
+
+RECIBO TÉCNICO OPCIONAL
+
+Si se conserva una trazabilidad mínima en Trawel, no debe incluir:
+
+- texto completo;
+- fotos;
+- adjuntos;
+- PII innecesaria;
+- contenido de revisión.
+
+Puede incluir únicamente:
+
+- original_id;
+- received_at;
+- downloaded_at;
+- deleted_at;
+- source_type;
+- checksum;
+- status mínimo.
+
+7. EXPERIENCIA DE USUARIO
+-------------------------
+
+BOTÓN PRINCIPAL
+
+Nombre recomendado:
+
+Descargar pendientes
+
+Debe:
+
+- consultar pendientes;
+- crear la cola local;
+- procesar por registro;
+- mostrar progreso;
+- reintentar fallos individuales;
+- confirmar borrado remoto solo tras verificación.
+
+RESUMEN
+
+Mostrar:
+
+- encontrados;
+- descargados;
+- verificados;
+- eliminados de Trawel;
+- reintentando;
+- fallidos;
+- pendientes.
+
+DETALLE DE ERROR
+
+Mostrar:
+
+- remote_id;
+- tipo;
+- mensaje;
+- intento actual;
+- próxima acción;
+- botón de reintento.
+
+8. BACKUP LOCAL OBLIGATORIO
+---------------------------
+
+Como Investighost local se convierte en la única copia de trabajo tras el borrado remoto, debe existir backup local antes de activar la eliminación real.
+
+MÍNIMO
+
+- carpeta de backups;
+- copia diaria de SQLite;
+- copia de archivos asociados;
+- rotación;
+- prueba de restauración;
+- aviso si no existe backup reciente.
+
+Ruta recomendada:
+
+D:\Backups\investighost\
+
+Antes de activar borrado remoto real:
+
+- probar exportación;
+- probar restauración;
+- confirmar que los archivos acompañan al registro;
+- documentar retención.
+
+9. IMPACTO EN LA HOJA DE RUTA
+-----------------------------
+
+FASE 2
+
+Debe incorporar:
+
+- persistencia local robusta;
+- cola de importación;
+- checksums;
+- outbox;
+- reintento por registro;
+- backup local;
+- separación entre payload y archivos.
+
+FASE 6
+
+Debe distinguir dos flujos:
+
+A. Trawel → Investighost
+
+- descarga;
+- verificación;
+- borrado remoto;
+- revisión local.
+
+B. Investighost → Trawel
+
+- aprobación;
+- mapeo;
+- validación;
+- publicación;
+- auditoría.
+
+FASE 7
+
+La moderación de usuarios y fotos debe realizarse principalmente en local después de la importación.
+
+Trawel será buzón temporal, no bandeja de revisión permanente.
+
+10. ARQUITECTURA OBJETIVO PARA LA IMPLEMENTACIÓN
+------------------------------------------------
+
+Interfaces recomendadas:
+
+- ContributionRemoteSource
+- ContributionLocalRepository
+- ContributionFileStore
+- ContributionIntegrityService
+- ContributionImportQueue
+- ContributionImportService
+- ContributionRetryPolicy
+- ContributionBackupService
+
+Entidades recomendadas:
+
+- ImportedContribution
+- ContributionImportJob
+- ContributionFile
+- ImportAttempt
+- ImportConflict
+- ImportBatch
+- LocalBackupRecord
+
+11. SEGURIDAD
+-------------
+
+- usar rutas locales seguras;
+- impedir path traversal;
+- validar MIME;
+- validar tamaño;
+- no ejecutar archivos;
+- no confiar en nombres remotos;
+- no guardar secretos;
+- no exponer filesystem arbitrario al renderer;
+- usar IPC tipado si interviene UI.
+
+12. RESULTADO ESPERADO
+----------------------
+
+El motor local deberá poder:
+
+- recibir una lista simulada;
+- procesar cada registro de forma independiente;
+- descargar payload y archivos simulados;
+- verificar integridad;
+- persistir localmente;
+- reintentar solo los fallos;
+- continuar el lote;
+- simular borrado remoto tras verificación;
+- registrar errores;
+- mostrar un resumen;
+- restaurar desde backup.
+
+Todavía no debe conectarse a Trawel real ni a Supabase real.

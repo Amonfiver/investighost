@@ -34,3 +34,12 @@ Proyecto/región Supabase, política definitiva de retención, responsable legal
 - Logs, outbox y auditoría minimizan payloads, usan correlation/idempotency IDs y tienen retención definida.
 
 Antes de producción siguen pendientes: validación legal de retenciones, procedimiento de derechos/incidentes, responsable de backups, MFA/sesiones, antivirus de uploads y auditoría de policies existentes de Trawel.
+
+## Controles locales de contribuciones — FASE 2B
+
+- Payloads y adjuntos importados pueden contener PII: se minimizan, quedan bajo `userData`, no se muestran rutas al renderer y no se ejecutan archivos.
+- MIME, límites, tamaño y SHA-256 se verifican antes de confirmar la importación.
+- El nombre remoto nunca se usa como nombre local; los paths se resuelven y comprueban dentro de la raíz permitida.
+- El conjunto payload+archivos es indivisible para borrar el origen.
+- Backup local verificado precede cualquier borrado; la activación real sigue bloqueada hasta probar restauración, rotación, cifrado/ACL y retención.
+- En 2B los datos son sintéticos y el borrado es mock. No se copiaron contribuciones ni fotos reales.

@@ -28,3 +28,6 @@ Los nombres son propuestos; `trawel-images-approved` debe contrastarse con bucke
 
 Confirmar buckets existentes de Trawel, CDN/transformaciones, tamaños reales, antivirus, política de retirada, retenciones y licencias admitidas antes de FASE 7/11.
 
+## Descarga local de contribuciones — FASE 2B
+
+Los adjuntos del buzón temporal se guardan fuera de SQLite bajo el `userData` de Electron. La ruta usa un identificador remoto saneado y un UUID generado localmente; nunca el nombre remoto. Se admiten inicialmente JPEG, PNG, WebP y PDF hasta 20 MB por archivo, se verifica tamaño y SHA-256 y no se ejecuta contenido. El borrado remoto solo puede ocurrir después de verificar todos los archivos indivisibles y un backup reciente. En 2B todo origen y borrado es mock.

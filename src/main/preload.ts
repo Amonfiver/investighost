@@ -28,6 +28,11 @@ const electronAPI = {
 
   // Search operations
   collectWebResearch: (input: unknown) => ipcRenderer.invoke('search:collect', input),
+
+  // Importación local verificada. El renderer nunca recibe rutas del filesystem.
+  importPendingContributions: () => ipcRenderer.invoke('contributions:import-pending'),
+  listContributionImportJobs: () => ipcRenderer.invoke('contributions:list-jobs'),
+  retryContributionImportJob: (jobId: string) => ipcRenderer.invoke('contributions:retry-job', jobId),
 }
 
 // Exponer como window.electronAPI

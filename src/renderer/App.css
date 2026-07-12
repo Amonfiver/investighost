@@ -142,6 +142,17 @@ body {
   color: var(--color-text-muted);
 }
 
+.contribution-import { max-width: 1050px; margin: 0 auto; }
+.import-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1.25rem; }
+.import-heading p { color: #64748b; margin-top: .4rem; }
+.sync-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+.sync-summary span { background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: .8rem; }
+.import-jobs { display: grid; gap: .75rem; }
+.import-job { display: flex; justify-content: space-between; gap: 1rem; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem; }
+.import-job p { margin: .3rem 0 0; color: #64748b; }
+.job-actions { display: flex; align-items: center; gap: .75rem; }
+.job-error { color: #b91c1c; display: block; margin-top: .35rem; max-width: 600px; }
+
 .badge-mock {
   background: var(--color-warning);
   color: #000;

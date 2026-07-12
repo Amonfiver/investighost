@@ -209,3 +209,52 @@ Confirmar organización, región y nombre dev; autorizar export solo DDL; audita
 ### Estado y siguiente paso
 
 FASE 2A completada documentalmente y en PAUSA HUMANA 2A. Tras aceptación humana: confirmar organización/región/nombre, crear de forma controlada el proyecto Supabase dev y capturar baseline solo de esquema; no conectar producción ni avanzar a dominios.
+
+---
+
+## Sesión 22 — FASE 2B: motor local de importación verificada
+
+### Fecha y objetivo
+
+2026-07-12. Aplicar el parche arquitectónico Trawel→Investighost e implementar una importación local incremental, idempotente y aislada por registro usando exclusivamente una fuente mock.
+
+### Archivos principales
+
+- Contratos/schema: `src/shared/contracts.ts`, `src/services/db/schema.ts`.
+- Motor: nuevos archivos en `src/modules/contributions/` para interfaces, integridad, cola, repositorios, archivos, retry, backup, mock, servicio y runtime.
+- Electron/UI: `src/main/index.ts`, `src/main/preload.ts`, `src/vite-env.d.ts`, `src/renderer/App.tsx`, `src/renderer/App.css`.
+- Tests: `tests/contribution-import.test.ts`, `tests/contribution-schema.test.ts`, `vitest.config.ts`.
+- Documentos vivos de persistencia, sync, schema, RLS, Storage, migraciones, estados, aceptación, seguridad, roadmap, decisiones y esta bitácora.
+
+### Implementación
+
+- Siete entidades locales: ImportedContribution, ContributionImportJob, ContributionFile, ImportAttempt, ImportConflict, ImportBatch y LocalBackupRecord.
+- Estados `pending`, `downloading`, `verifying`, `imported`, `deleting_remote`, `completed`, `retry_pending`, `failed`.
+- Zod, normalización estable, tamaño y SHA-256 para payload/archivos.
+- Nombres locales UUID, allowlist MIME, límite 20 MB y defensa contra path traversal.
+- Persistencia SQLite/Drizzle, archivos fuera de SQLite, WAL/FKs e índices.
+- Idempotencia por `remote_id` y `trawel:{remote_id}:v{version}`.
+- Backoff por registro: inmediato, 30 s, 2 min, 10 min y después manual.
+- Backup local verificado antes de solicitar borrado; borrado solo mock en esta fase.
+- IPC limitado y UI “Descargar pendientes” con resumen, estados, error y retry individual.
+
+### Incidencia controlada
+
+`better-sqlite3` está compilado para ABI Electron 130 y el Node 22 de Vitest usa ABI 127. No se reinstalaron dependencias. Los tests usan el repositorio en memoria y file store temporal; `npm run dev` y una consulta con Electron/Node 20 verificaron el repositorio SQLite real y sus siete tablas.
+
+### Verificación
+
+- `npm run lint`: pasa.
+- `npm run typecheck`: pasa.
+- `npm test`: pasan 5 archivos y 55 tests.
+- `npm run build:vite`: pasa; renderer, main y preload.
+- `npm run dev`: la app permaneció activa durante la prueba, inicializó SQLite en `userData` y se detuvo deliberadamente; cero procesos residuales.
+- Runtime Electron: confirmó `contribution_files`, `contribution_import_jobs`, `import_attempts`, `import_batches`, `import_conflicts`, `imported_contributions`, `local_backup_records`.
+
+### Alcance respetado
+
+Sin Supabase, claves, SQL remoto, producción, datos reales, publicación, CRM, campañas, anuncios ni analytics. No se hizo commit ni push.
+
+### Riesgos y siguiente paso
+
+Antes de borrado real faltan restauración probada, rotación/retención, cifrado o ACL local, antivirus/magic bytes más robusto, contrato remoto dev y Auth/RLS. FASE 2B queda en PAUSA HUMANA 2B. El siguiente bloque propuesto es FASE 2C: crear Supabase dev y probar únicamente allí el buzón/recibo/borrado con datos ficticios y autorización separada.

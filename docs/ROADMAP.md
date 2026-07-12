@@ -32,9 +32,13 @@ Persistencia local real, Supabase Auth/RLS, roles, auditoría durable, configura
 
 Definidos proyecto dev, topología productiva compartida, tablas públicas/privadas/locales, repositorios, Auth/RLS, Storage, sincronización y catálogo de 15 migraciones **NO EJECUTADAS**. Sin proyecto, claves, SQL, conexiones ni datos reales.
 
-#### 2B. Creación controlada del entorno dev — pendiente de autorización
+#### 2B. Motor local de importación verificada — completado
 
-Confirmar organización/región/nombre, crear el proyecto dev, capturar baseline DDL sin datos, configurar secretos dev fuera de Git y materializar/aplicar migraciones revisadas únicamente en dev. No conectar producción.
+Implementados contratos, cola por registro, SQLite, archivos locales, SHA-256, idempotencia, retry, backup, adaptador mock, IPC y UI mínima. Sin conexión ni borrado real. El parche Trawel→Investighost prevalece para contribuciones.
+
+#### 2C. Entorno dev y contrato remoto — pendiente de autorización
+
+Confirmar organización/región/nombre, crear Supabase dev, capturar baseline DDL sin datos y diseñar/probar el buzón temporal, recibo mínimo, RLS y borrado remoto únicamente en dev. Antes de habilitar delete: restauración local probada y pausa humana.
 
 ### 3. Motor de investigación verificable
 
@@ -70,7 +74,7 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 
 ## Orden inmediato recomendado
 
-1. Revisar y aceptar la entrega de FASE 2A.
+1. Revisar y aceptar FASE 2B y su motor local mock.
 2. Confirmar organización, región y nombre del proyecto Supabase dev, y autorizar exportación solo de esquema.
-3. Autorizar por separado FASE 2B para crear/configurar dev y convertir el catálogo en SQL revisado.
-4. Mantener producción sin conexión ni cambios; no iniciar dominios comerciales.
+3. Autorizar FASE 2C para crear/configurar dev y probar allí el contrato remoto sin datos reales.
+4. Mantener producción intacta y el borrado real deshabilitado.

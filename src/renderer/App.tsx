@@ -11,13 +11,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import './App.css'
 import type { ResearchRequest, ResearchResult, EditorialDraft } from '@shared/types'
+import type { ContributionImportJob, ContributionSyncSummary } from '@shared/contracts'
 
 // ============================================
 // Componente Principal
 // ============================================
 
 export function App(): JSX.Element {
-  const [activeView, setActiveView] = useState<'list' | 'new' | 'detail'>('list')
+  const [activeView, setActiveView] = useState<'list' | 'new' | 'detail' | 'contributions'>('list')
   const [requests, setRequests] = useState<ResearchRequest[]>([])
   const [selectedRequest, setSelectedRequest] = useState<ResearchRequest | null>(null)
   const [selectedResult, setSelectedResult] = useState<ResearchResult | null>(null)
@@ -179,6 +180,13 @@ export function App(): JSX.Element {
         </div>
         
         <div className="header-actions">
+          <button
+            className="btn-secondary"
+            onClick={() => setActiveView('contributions')}
+            disabled={activeView === 'contributions'}
+          >
+            Descargar pendientes
+          </button>
           <button 
             className="btn-primary"
             onClick={() => setActiveView('new')}
@@ -237,6 +245,8 @@ export function App(): JSX.Element {
             kimiConfigured={kimiConfigured}
           />
         )}
+
+        {activeView === 'contributions' && <ContributionImportPanel />}
       </main>
 
       <footer className="app-footer">
@@ -244,7 +254,7 @@ export function App(): JSX.Element {
           {!kimiConfigured && <span className="badge-mock">🔄 SIMULACIÓN</span>}
           {kimiConfigured && <span className="badge-live">🤖 KIMI ACTIVO</span>}
           {' '}| Stack: Electron + React + TypeScript + Vite
-          {' '}| Persistencia: Memoria temporal
+          {' '}| Contribuciones: SQLite local verificado
         </p>
       </footer>
     </div>
@@ -666,5 +676,89 @@ function DraftTab({ draft, kimiConfigured }: { draft: EditorialDraft; kimiConfig
         <button className="btn-primary">Aprobar</button>
       </div>
     </div>
+  )
+}
+
+function ContributionImportPanel(): JSX.Element {
+  const [jobs, setJobs] = useState<ContributionImportJob[]>([])
+  const [summary, setSummary] = useState<ContributionSyncSummary | null>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = useCallback(async () => {
+    setJobs(await window.electronAPI.listContributionImportJobs())
+  }, [])
+
+  useEffect(() => { refresh().catch(current => setError(String(current))) }, [refresh])
+
+  const download = async () => {
+    setIsSyncing(true)
+    setError(null)
+    try {
+      const result = await window.electronAPI.importPendingContributions()
+      setSummary(result)
+      setJobs(result.jobs)
+    } catch (current) {
+      setError(current instanceof Error ? current.message : String(current))
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  const retry = async (jobId: string) => {
+    setIsSyncing(true)
+    setError(null)
+    try {
+      const result = await window.electronAPI.retryContributionImportJob(jobId)
+      setSummary(result)
+      await refresh()
+    } catch (current) {
+      setError(current instanceof Error ? current.message : String(current))
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  return (
+    <section className="contribution-import">
+      <div className="import-heading">
+        <div>
+          <h2>Contribuciones pendientes</h2>
+          <p>Adaptador simulado: descarga, verifica, guarda en SQLite y crea backup antes del borrado mock.</p>
+        </div>
+        <button className="btn-primary" onClick={download} disabled={isSyncing}>
+          {isSyncing ? 'Procesando…' : 'Descargar pendientes'}
+        </button>
+      </div>
+      {error && <div className="error-banner"><strong>Error:</strong> {error}</div>}
+      {summary && (
+        <div className="sync-summary">
+          <span>Encontrados <strong>{summary.found}</strong></span>
+          <span>Descargados <strong>{summary.downloaded}</strong></span>
+          <span>Verificados <strong>{summary.verified}</strong></span>
+          <span>Eliminados mock <strong>{summary.deletedRemote}</strong></span>
+          <span>Reintentando <strong>{summary.retrying}</strong></span>
+          <span>Fallidos <strong>{summary.failed}</strong></span>
+        </div>
+      )}
+      <div className="import-jobs">
+        {jobs.length === 0 && <div className="empty-state">No hay trabajos locales de importación.</div>}
+        {jobs.map(job => (
+          <article className="import-job" key={job.id}>
+            <div>
+              <strong>{job.remoteId}</strong>
+              <p>{job.sourceType} · intento {job.attemptCount}</p>
+              {job.lastError && <small className="job-error">{job.lastError}</small>}
+            </div>
+            <div className="job-actions">
+              <span className={`status-badge status-${job.status}`}>{job.status}</span>
+              {['retry_pending', 'failed', 'deleting_remote'].includes(job.status) && (
+                <button className="btn-secondary" onClick={() => retry(job.id)} disabled={isSyncing}>Reintentar</button>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
   )
 }

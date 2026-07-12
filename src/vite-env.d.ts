@@ -12,6 +12,7 @@ declare module '*.css' {
 }
 
 import type { ResearchRequest, ResearchResult, EditorialDraft, WebResearchBundle } from './shared/types'
+import type { ContributionImportJob, ContributionSyncSummary } from './shared/contracts'
 
 declare global {
   interface Window {
@@ -36,6 +37,9 @@ declare global {
       
       // Search operations
       collectWebResearch: (input: unknown) => Promise<WebResearchBundle>
+      importPendingContributions: () => Promise<ContributionSyncSummary>
+      listContributionImportJobs: () => Promise<ContributionImportJob[]>
+      retryContributionImportJob: (jobId: string) => Promise<ContributionSyncSummary>
     }
   }
 }

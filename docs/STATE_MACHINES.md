@@ -26,3 +26,12 @@
 
 Las transiciones de producción/publicación ejecutables están en `src/shared/contracts.ts`. Las demás quedan documentales hasta su fase de implementación.
 
+## Importación local de contribuciones — FASE 2B
+
+`pending → downloading → verifying → imported → deleting_remote → completed`.
+
+- Un fallo recuperable desde descarga/verificación pasa a `retry_pending`; el reintento vuelve a `downloading` solo para ese registro.
+- Un fallo permanente o el quinto intento pasa a `failed`; requiere acción manual.
+- Un fallo de borrado conserva `deleting_remote` con error y próxima acción; nunca revierte ni duplica la copia local.
+- `completed` exige persistencia, Zod, tamaños, SHA-256, archivos completos, backup reciente y confirmación del borrado mock/remoto.
+- Ningún fallo de job cancela los demás jobs del `ImportBatch`.

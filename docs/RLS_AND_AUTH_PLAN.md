@@ -46,3 +46,6 @@ Por tabla y acción: allow/deny para anon, authenticated sin rol y cada rol; own
 - Falta cerrar MFA, invitaciones, recuperación, duración de sesión y roles delegables por admin.
 - Cualquier función `security definer` requiere revisión específica, permisos `execute` mínimos y auditoría.
 
+## Buzón temporal de contribuciones
+
+El futuro origen remoto debe exponer solo pendientes autorizados al operador y una operación privilegiada e idempotente de borrado posterior a recibo verificado. `anon` nunca lista la bandeja ni descarga archivos ajenos. La inserción pública se realiza por endpoint limitado; la descarga/borrado exige moderator/owner y se audita. FASE 2B no implementa estas policies ni conecta Auth: usa un adaptador mock local.

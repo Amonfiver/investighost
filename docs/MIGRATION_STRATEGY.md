@@ -45,3 +45,7 @@ No se ejecutará un comando de migración contra una URL ambigua. Producción re
 ## Salida de la transición
 
 SQLite queda eliminado solo cuando búsqueda de dependencias y referencias runtime no encuentre uso activo, Supabase local se reconstruya con migraciones, los flujos sean durables tras reinicio y todas las verificaciones pasen.
+
+## Primera migración ejecutada
+
+`supabase/migrations/20260714090000_contributions_supabase_local.sql` es exclusivamente local. Se verificó desde cero con `npx supabase db reset`; `supabase/seed.sql` es repetible tras cada reset. Están prohibidos `supabase link`, `db push` y URLs alojadas. La integración se ejecuta con `RUN_SUPABASE_INTEGRATION=true` y credenciales de `npx supabase status -o env`.

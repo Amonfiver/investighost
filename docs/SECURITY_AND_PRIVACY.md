@@ -52,3 +52,10 @@ Antes de producción siguen pendientes: validación legal de retenciones, proced
 - Docker/volúmenes locales necesitan ACL, cifrado del disco cuando proceda, backup, restauración y política de borrado verificables.
 - El entorno local solo usa datos sintéticos o expresamente autorizados.
 - Producción Trawel no se conecta ni se consulta. Quedan prohibidas credenciales productivas en `.env`, Electron, logs o repositorio; toda acción futura requiere autorización humana explícita y controles de entorno.
+
+## Controles aplicados en FASE 2C-B
+
+- Allowlist exacta de `localhost`, `127.0.0.1` o `::1`; toda URL remota se rechaza antes del runtime.
+- Service role desde entorno únicamente en main; renderer solo recibe estado y resultados.
+- Tablas con RLS sin grants para `anon`/`authenticated`; bucket privado y tipos/tamaños limitados.
+- Seed y mock exclusivamente sintéticos; sin fallback, `supabase link`, `db push`, Edge Functions ni Trawel.

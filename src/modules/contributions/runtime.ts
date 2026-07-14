@@ -1,29 +1,43 @@
-import path from 'node:path'
-import { app } from 'electron'
-import { SqliteContributionLocalRepository } from './sqlite-repository'
 import { Sha256ContributionIntegrityService } from './integrity'
-import { SafeContributionFileStore } from './file-store'
 import { LocalContributionImportQueue } from './queue'
 import { BoundedContributionRetryPolicy } from './retry-policy'
-import { LocalContributionBackupService } from './backup'
 import { MockContributionRemoteSource } from './mock-remote'
 import { ContributionImportService } from './import-service'
+import { SupabaseContributionRepository } from './supabase-repository'
+import { SupabaseContributionFileStore } from './supabase-file-store'
+import { SupabaseDurabilityCheckpointService } from './supabase-backup'
+import { checkLocalSupabase, createLocalSupabaseClientFromEnv, type SupabaseLocalStatus } from '@services/supabase'
 
-let runtime: ContributionImportService | null = null
+let runtimePromise: Promise<ContributionImportService> | null = null
+let status: SupabaseLocalStatus = { connected: false, target: 'Supabase local', error: 'Supabase local todavía no se ha comprobado.' }
 
-export function getContributionImportRuntime(): ContributionImportService {
-  if (runtime) return runtime
-  const root = path.join(app.getPath('userData'), 'contribution-import')
-  const databasePath = path.join(root, 'investighost.db')
-  const repository = new SqliteContributionLocalRepository(databasePath)
+async function initialize(): Promise<ContributionImportService> {
+  const { client, config } = createLocalSupabaseClientFromEnv()
+  status = await checkLocalSupabase(client, config.url)
+  if (!status.connected) throw new Error(status.error)
+  const repository = new SupabaseContributionRepository(client)
   const integrity = new Sha256ContributionIntegrityService()
-  const files = new SafeContributionFileStore(path.join(root, 'files'), integrity)
+  const files = new SupabaseContributionFileStore(client, integrity)
   const source = new MockContributionRemoteSource([
-    { remoteId: 'mock-sugerencia-valencia', content: 'Añadir información accesible sobre los Jardines del Turia.' },
-    { remoteId: 'mock-reporte-morella', sourceType: 'report', content: 'Revisar el horario publicado del castillo.' },
+    { remoteId: 'mock-synthetic-suggestion', content: 'Synthetic accessibility information proposal.' },
+    { remoteId: 'mock-synthetic-report', sourceType: 'report', content: 'Synthetic schedule verification report.' },
   ], integrity)
-  const backup = new LocalContributionBackupService(databasePath, files, path.join(root, 'backups'), repository, integrity, () => repository.checkpoint())
-  runtime = new ContributionImportService(source, repository, files, integrity,
-    new LocalContributionImportQueue(repository), new BoundedContributionRetryPolicy(), backup)
-  return runtime
+  return new ContributionImportService(source, repository, files, integrity,
+    new LocalContributionImportQueue(repository), new BoundedContributionRetryPolicy(),
+    new SupabaseDurabilityCheckpointService(repository))
 }
+
+export async function getContributionImportRuntime(): Promise<ContributionImportService> {
+  runtimePromise ??= initialize().catch(error => {
+    status = { connected: false, target: 'Supabase local', error: error instanceof Error ? error.message : String(error) }
+    runtimePromise = null
+    throw new Error(`SUPABASE_LOCAL_UNAVAILABLE: ${status.error}`)
+  })
+  return runtimePromise
+}
+
+export async function getContributionPersistenceStatus(): Promise<SupabaseLocalStatus> {
+  try { await getContributionImportRuntime() } catch { /* status contiene el error controlado */ }
+  return status
+}
+

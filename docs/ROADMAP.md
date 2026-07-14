@@ -86,3 +86,7 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 2. Autorizar FASE 2C-B, limitada a sustituir SQLite por Supabase local con datos sintéticos.
 3. Verificar migraciones desde cero, repositorios, Storage, backup/restauración y retirada completa de SQLite.
 4. Mantener producción desconectada y todo borrado remoto real deshabilitado.
+
+## Estado FASE 2C-B — 2026-07-14
+
+Implementación completada: contribuciones usa PostgreSQL y Storage de Supabase local mediante migración versionada y seed sintético. El runtime no inicializa SQLite ni ofrece fallback. El código SQLite legado permanece aislado para retirada posterior porque otros módulos aún lo referencian. Próxima subfase recomendada: 2C-C, retirada controlada de dependencias, schemas y adaptadores SQLite residuales, sin ampliar dominios ni conectar producción.

@@ -254,7 +254,7 @@ export function App(): JSX.Element {
           {!kimiConfigured && <span className="badge-mock">🔄 SIMULACIÓN</span>}
           {kimiConfigured && <span className="badge-live">🤖 KIMI ACTIVO</span>}
           {' '}| Stack: Electron + React + TypeScript + Vite
-          {' '}| Contribuciones: SQLite local verificado
+          {' '}| Contribuciones: Supabase local
         </p>
       </footer>
     </div>
@@ -684,12 +684,19 @@ function ContributionImportPanel(): JSX.Element {
   const [summary, setSummary] = useState<ContributionSyncSummary | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [connected, setConnected] = useState(false)
 
   const refresh = useCallback(async () => {
     setJobs(await window.electronAPI.listContributionImportJobs())
   }, [])
 
-  useEffect(() => { refresh().catch(current => setError(String(current))) }, [refresh])
+  useEffect(() => {
+    window.electronAPI.getContributionPersistenceStatus().then(current => {
+      setConnected(current.connected)
+      if (!current.connected) setError(current.error ?? 'Supabase local está desconectado.')
+      else refresh().catch(failure => setError(String(failure)))
+    }).catch(current => setError(String(current)))
+  }, [refresh])
 
   const download = async () => {
     setIsSyncing(true)
@@ -724,9 +731,10 @@ function ContributionImportPanel(): JSX.Element {
       <div className="import-heading">
         <div>
           <h2>Contribuciones pendientes</h2>
-          <p>Adaptador simulado: descarga, verifica, guarda en SQLite y crea backup antes del borrado mock.</p>
+          <p>Adaptador remoto simulado; persistencia y archivos en Supabase local privado.</p>
+          <p><span className={connected ? 'badge-live' : 'badge-mock'}>{connected ? 'Supabase local conectado' : 'Supabase local desconectado'}</span></p>
         </div>
-        <button className="btn-primary" onClick={download} disabled={isSyncing}>
+        <button className="btn-primary" onClick={download} disabled={isSyncing || !connected}>
           {isSyncing ? 'Procesando…' : 'Descargar pendientes'}
         </button>
       </div>
@@ -742,7 +750,7 @@ function ContributionImportPanel(): JSX.Element {
         </div>
       )}
       <div className="import-jobs">
-        {jobs.length === 0 && <div className="empty-state">No hay trabajos locales de importación.</div>}
+        {jobs.length === 0 && <div className="empty-state">No hay trabajos de importación en Supabase local.</div>}
         {jobs.map(job => (
           <article className="import-job" key={job.id}>
             <div>

@@ -37,6 +37,7 @@ declare global {
       
       // Search operations
       collectWebResearch: (input: unknown) => Promise<WebResearchBundle>
+      getContributionPersistenceStatus: () => Promise<{ connected: boolean; target: 'Supabase local'; url?: string; error?: string }>
       importPendingContributions: () => Promise<ContributionSyncSummary>
       listContributionImportJobs: () => Promise<ContributionImportJob[]>
       retryContributionImportJob: (jobId: string) => Promise<ContributionSyncSummary>

@@ -1,0 +1,31 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { ContributionImportJobSchema, type ContributionImportJob } from '@shared/contracts'
+import type { ContributionLocalRepository, ImportAttempt, ImportBatch, ImportConflict, LocalBackupRecord, PersistedContribution } from './types'
+
+type Row = Record<string, unknown>
+const date = (value?: Date): string | null => value?.toISOString() ?? null
+const assertNoError = (error: { message: string } | null, operation: string): void => { if (error) throw new Error(`SUPABASE_${operation}_FAILED: ${error.message}`) }
+
+export class SupabaseContributionRepository implements ContributionLocalRepository {
+  constructor(private readonly client: SupabaseClient) {}
+  async createBatch(batch: ImportBatch): Promise<void> { const { error } = await this.client.from('import_batches').insert({ id: batch.id, status: batch.status, found_count: batch.foundCount, created_at: batch.createdAt.toISOString() }); assertNoError(error, 'CREATE_BATCH') }
+  async completeBatch(batch: ImportBatch): Promise<void> { const { error } = await this.client.from('import_batches').update({ status: batch.status, found_count: batch.foundCount, completed_at: date(batch.completedAt) }).eq('id', batch.id); assertNoError(error, 'COMPLETE_BATCH') }
+
+  async upsertJob(job: ContributionImportJob): Promise<ContributionImportJob> {
+    const row = { id: job.id, batch_id: job.batchId, remote_id: job.remoteId, source_type: job.sourceType, status: job.status, attempt_count: job.attemptCount, last_error: job.lastError ?? null, next_retry_at: date(job.nextRetryAt), remote_checksum: job.remoteChecksum ?? null, local_checksum: job.localChecksum ?? null, remote_payload_size: job.remotePayloadSize ?? null, local_payload_size: job.localPayloadSize ?? null, downloaded_at: date(job.downloadedAt), verified_at: date(job.verifiedAt), deleted_remote_at: date(job.deletedRemoteAt), completed_at: date(job.completedAt), idempotency_key: job.idempotencyKey, version: job.version, created_at: job.createdAt.toISOString(), updated_at: job.updatedAt.toISOString() }
+    const { data, error } = await this.client.from('contribution_import_jobs').upsert(row, { onConflict: 'remote_id' }).select().single(); assertNoError(error, 'UPSERT_JOB'); return this.toJob(data as Row)
+  }
+  async getJobByRemoteId(remoteId: string): Promise<ContributionImportJob | null> { const { data, error } = await this.client.from('contribution_import_jobs').select().eq('remote_id', remoteId).maybeSingle(); assertNoError(error, 'GET_JOB'); return data ? this.toJob(data as Row) : null }
+  async getJob(id: string): Promise<ContributionImportJob | null> { const { data, error } = await this.client.from('contribution_import_jobs').select().eq('id', id).maybeSingle(); assertNoError(error, 'GET_JOB'); return data ? this.toJob(data as Row) : null }
+  async listJobs(): Promise<ContributionImportJob[]> { const { data, error } = await this.client.from('contribution_import_jobs').select().order('updated_at', { ascending: false }); assertNoError(error, 'LIST_JOBS'); return (data ?? []).map(row => this.toJob(row as Row)) }
+
+  async persistVerifiedContribution(contribution: PersistedContribution): Promise<void> {
+    const { error } = await this.client.rpc('persist_verified_contribution', { p_contribution: { id: contribution.id, job_id: contribution.jobId, remote_id: contribution.remote.remoteId, source_type: contribution.remote.sourceType, payload_json: JSON.parse(contribution.normalizedPayload), payload_sha256: contribution.remote.payloadSha256, payload_size: contribution.remote.payloadSize, version: contribution.remote.version, imported_at: contribution.importedAt.toISOString() }, p_files: contribution.files.map(file => ({ id: file.id, remote_file_id: file.remoteFileId, safe_storage_name: file.safeLocalName, storage_path: file.relativePath, mime_type: file.mimeType, size: file.localSize, sha256: file.localSha256, verified_at: contribution.importedAt.toISOString() })) })
+    assertNoError(error, 'PERSIST_CONTRIBUTION')
+  }
+  async addAttempt(attempt: ImportAttempt): Promise<void> { const { error } = await this.client.from('import_attempts').insert({ id: attempt.id, job_id: attempt.jobId, operation: attempt.operation, outcome: attempt.outcome, error_code: attempt.errorCode ?? null, error_message: attempt.errorMessage ?? null, attempted_at: attempt.attemptedAt.toISOString() }); assertNoError(error, 'ADD_ATTEMPT') }
+  async addConflict(conflict: ImportConflict): Promise<void> { const { error } = await this.client.from('import_conflicts').insert({ id: conflict.id, job_id: conflict.jobId, kind: conflict.kind, expected_value: conflict.expectedValue ?? null, actual_value: conflict.actualValue ?? null, created_at: conflict.createdAt.toISOString() }); assertNoError(error, 'ADD_CONFLICT') }
+  async saveBackup(record: LocalBackupRecord): Promise<void> { const { error } = await this.client.from('local_backup_records').insert({ id: record.id, path: record.path, database_sha256: record.databaseSha256 ?? null, file_count: record.fileCount, status: record.status, created_at: record.createdAt.toISOString(), verified_at: date(record.verifiedAt) }); assertNoError(error, 'SAVE_CHECKPOINT') }
+
+  private toJob(row: Row): ContributionImportJob { const optionalDate = (key: string) => row[key] ? new Date(String(row[key])) : undefined; const optional = (key: string) => row[key] == null ? undefined : String(row[key]); const number = (key: string) => row[key] == null ? undefined : Number(row[key]); return ContributionImportJobSchema.parse({ id: row.id, batchId: row.batch_id, remoteId: row.remote_id, sourceType: row.source_type, status: row.status, attemptCount: Number(row.attempt_count), lastError: optional('last_error'), nextRetryAt: optionalDate('next_retry_at'), remoteChecksum: optional('remote_checksum'), localChecksum: optional('local_checksum'), remotePayloadSize: number('remote_payload_size'), localPayloadSize: number('local_payload_size'), downloadedAt: optionalDate('downloaded_at'), verifiedAt: optionalDate('verified_at'), deletedRemoteAt: optionalDate('deleted_remote_at'), completedAt: optionalDate('completed_at'), idempotencyKey: row.idempotency_key, version: Number(row.version), createdAt: new Date(String(row.created_at)), updatedAt: new Date(String(row.updated_at)) }) }
+}

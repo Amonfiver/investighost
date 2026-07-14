@@ -29,3 +29,7 @@ Los nombres finales deberán comprobar colisiones con Trawel antes de una migrac
 ## Backup y producción
 
 Antes de permitir borrado de un origen debe existir backup y restauración probada de PostgreSQL y objetos de Storage local. Los backups SQLite de FASE 2B quedan sustituidos. Ningún bucket, objeto o policy del proyecto real de Trawel se consulta o modifica sin aprobación humana explícita.
+
+## Bucket implementado en FASE 2C-B
+
+`investighost-contributions` se crea por migración con `public=false`, límite 20 MiB y allowlist JPEG/PNG/WebP/PDF. Los paths usan identificador saneado y UUID; el nombre original nunca decide la ruta. SHA-256, MIME y tamaño se verifican antes del upload. La service role local permanece solo en Electron main. El borrado remoto continúa siendo mock y condicionado a persistencia y checkpoint durable.

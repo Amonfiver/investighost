@@ -70,3 +70,11 @@ FASE 2B no comienza hasta aceptación humana de este gate y confirmación de org
 - Archivos y checksums se verifican en Storage local; backup y restauración se prueban.
 - No quedan imports, dependencias, configuración, schemas, repositorios ni rutas runtime SQLite.
 - Lint, typecheck, tests y build pasan sin conexión a producción.
+
+## Evidencia FASE 2C-B
+
+- `supabase db reset` reconstruye siete tablas, constraints, función transaccional, bucket privado y escenarios sintéticos.
+- La configuración acepta solo loopback y falla de forma explícita si falta configuración o servicio.
+- Tests unitarios cubren idempotencia, reintento aislado, archivo/hash erróneo, conflictos, continuidad y borrado condicionado sin Docker.
+- La prueba de integración opt-in escribe y lee contribuciones en Supabase local; no existe fallback SQLite.
+- Renderer informa conectado/desconectado y mantiene el adaptador remoto mock.

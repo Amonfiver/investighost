@@ -43,3 +43,18 @@ SQLite estará eliminado cuando no existan dependencias/runtime/configuración D
 ## Bloqueo de producción
 
 No se guardan credenciales productivas en el entorno local, Electron ni repositorio. Toda futura conexión exige project ref verificado, backup/restauración comprobada, diff revisado y autorización humana específica. 2C-A no conecta, migra, inserta ni borra nada remoto.
+
+## Runtime vigente desde FASE 2C-B
+
+Electron main valida `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`, rechaza hosts no loopback y crea el cliente privilegiado sin exponerlo al preload. El repositorio persiste jobs, lotes, intentos, conflictos y payloads; Storage conserva archivos privados. El remoto sigue siendo mock. Si Supabase local falla, IPC devuelve un error controlado y nunca inicializa SQLite.
+
+`sqlite-repository.ts`, `file-store.ts` y el backup SQLite quedan como legado inactivo de 2B. Drizzle/SQLite sigue referenciado por módulos ajenos y se retirará en una subfase separada.
+
+### Operación local
+
+1. `npx supabase start` arranca el entorno.
+2. `npx supabase status -o env` proporciona `API_URL` y `SERVICE_ROLE_KEY`; mapearlos localmente a `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` sin versionar secretos.
+3. `npx supabase db reset` reconstruye y carga el seed.
+4. `npm test` ejecuta unitarias sin Docker. La integración usa `RUN_SUPABASE_INTEGRATION=true` junto a esas dos variables locales.
+
+Para validar indisponibilidad, detener Supabase y abrir contribuciones: la UI debe mostrar el error y deshabilitar la importación, sin crear base ni archivos SQLite.

@@ -291,3 +291,39 @@ FASE 2C-A queda en PAUSA HUMANA 2C-A. Siguiente fase recomendada: 2C-B, sustituc
 - `npm run typecheck`: pasa.
 - `npm test`: pasan 5 archivos y 55 tests.
 - `npm run build`: TypeScript, renderer, main y preload compilan; `electron-builder` falla al extraer `winCodeSign` porque Windows no concede privilegio para crear los symlinks `libcrypto.dylib` y `libssl.dylib`. Es el bloqueo de entorno ya conocido; no se modificó configuración ni código para eludirlo.
+
+---
+
+## Sesión 24 — FASE 2C-B: primera sustitución técnica de SQLite
+
+### Fecha y auditoría inicial
+
+2026-07-14. `runtime.ts` instanciaba `SqliteContributionLocalRepository`; `sqlite-repository.ts` creaba las siete tablas, `file-store.ts` escribía archivos locales y `backup.ts` copiaba DB/archivos. Los tests de importación usaban memoria y filesystem; el test de schema dependía de Drizzle SQLite. Zod, SHA-256, MIME/tamaño, cola, idempotencia, retry, aislamiento, conflictos, continuidad y mock remoto eran reutilizables sin SQLite.
+
+### Implementación
+
+- Migración versionada para siete tablas, UUID, `timestamptz`, FKs, checks, índices, RLS y función transaccional.
+- Bucket privado `investighost-contributions`, 20 MiB y allowlist JPEG/PNG/WebP/PDF.
+- Seed idempotente y sintético: sin archivo, con archivo, pendiente, retry y lote parcial.
+- Cliente oficial Supabase centralizado; URL solo loopback y service role solo en Electron main.
+- Repositorio PostgreSQL, Storage privado y checkpoint durable sustituyen el runtime SQLite; no hay fallback.
+- UI conserva flujo y muestra conexión/desconexión. Adaptador remoto continúa mock.
+- SQLite legado permanece inactivo en contribuciones; dependencias, Drizzle schemas y adaptadores quedan pendientes porque otros módulos/historia aún los referencian.
+
+### Verificación
+
+- `npx supabase db reset`: pasa repetidamente desde cero; migración y seed aplicados.
+- Integración Supabase local: 7 archivos, 63 tests, todos pasan; persiste y lee contribución sintética.
+- `npm run lint`: pasa.
+- `npm run typecheck`: pasa.
+- `npm test`: 62 pasan y la integración opt-in queda omitida sin Docker.
+- `npm run build`: TypeScript/Vite/main/preload pasan; packaging falla únicamente por el bloqueo conocido de symlinks `winCodeSign` en Windows.
+- `npx supabase status`: entorno local activo; pooler, imgproxy y edge runtime siguen detenidos deliberadamente.
+
+### Riesgos y siguiente paso
+
+El checkpoint durable no sustituye una política externa de backup/restauración de volúmenes PostgreSQL/Storage; el borrado real sigue prohibido y el remoto es mock. Quedan `better-sqlite3`, Drizzle SQLite, repositorio/file store/backup legados y referencias en módulos ajenos. Próxima subfase recomendada: 2C-C, retirada residual controlada y prueba formal de backup/restauración, sin conectar producción.
+
+### Estado
+
+FASE 2C-B completada. Producción no se conectó; no se usaron datos reales; no se hizo commit ni push. PAUSA HUMANA 2C-B.

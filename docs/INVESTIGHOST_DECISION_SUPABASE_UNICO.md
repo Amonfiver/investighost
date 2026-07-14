@@ -100,3 +100,7 @@ Las menciones en prompts, auditorías, bitácoras y este documento pueden perman
 - No copiar PII, archivos privados ni datos reales al entorno local.
 - Toda acción futura sobre producción exige autorización humana explícita, credenciales seguras, project ref verificado, backup/restauración, diff, plan de reversión y prueba previa en entorno autorizado.
 - Una aprobación para diseñar o trabajar en local nunca implica aprobación para producción.
+
+## Aplicación técnica — FASE 2C-B
+
+La decisión ya está activa para contribuciones: runtime, repositorio y archivos usan exclusivamente Supabase local. La migración y seed permiten reconstrucción total. SQLite queda inactivo en este módulo, sin fallback. Sus archivos y dependencias residuales se conservan temporalmente por compatibilidad con otros módulos históricos y se retirarán en la siguiente subfase controlada.

@@ -12,8 +12,7 @@
  *   - Preload script para comunicación segura main/renderer
  * 
  * Limitaciones:
- *   - better-sqlite3 requiere build tools nativas (VS Build Tools en Windows)
- *   - Por ahora la DB está preparada pero no inicializada
+ *   - Contribuciones usa exclusivamente Supabase local desde el proceso principal.
  * 
  * Cambios recientes: 
  *   - Añadido carga de .env y configuración de proveedores
@@ -126,7 +125,7 @@ import { researchModule } from '@modules/research'
 import * as store from '@modules/persistence/memory-store'
 import { collectWebResearchBundle } from '@services/search'
 import { z } from 'zod'
-import { getContributionImportRuntime } from '@modules/contributions/runtime'
+import { getContributionImportRuntime, getContributionPersistenceStatus } from '@modules/contributions/runtime'
 
 ipcMain.handle('research:create', async (_event, input) => {
   console.log('[IPC] research:create called with:', JSON.stringify(input))
@@ -171,21 +170,23 @@ ipcMain.handle('search:collect', async (_event, input) => {
 })
 
 ipcMain.handle('contributions:import-pending', async () => {
-  return getContributionImportRuntime().importPending()
+  return (await getContributionImportRuntime()).importPending()
 })
 
 ipcMain.handle('contributions:list-jobs', async () => {
-  return getContributionImportRuntime().listJobs()
+  return (await getContributionImportRuntime()).listJobs()
 })
 
 ipcMain.handle('contributions:retry-job', async (_event, jobId: unknown) => {
-  return getContributionImportRuntime().retryJob(z.string().uuid().parse(jobId))
+  return (await getContributionImportRuntime()).retryJob(z.string().uuid().parse(jobId))
 })
+
+ipcMain.handle('contributions:persistence-status', () => getContributionPersistenceStatus())
 
 // Ciclo de vida de la app
 app.whenReady().then(() => {
-  // Inicializa únicamente la persistencia local; no conecta ninguna fuente remota real.
-  getContributionImportRuntime()
+  // Valida Supabase local al arrancar; el fallo queda visible y nunca activa SQLite como fallback.
+  getContributionImportRuntime().catch(error => console.error('[Contributions]', error.message))
   createWindow()
 
   app.on('activate', () => {

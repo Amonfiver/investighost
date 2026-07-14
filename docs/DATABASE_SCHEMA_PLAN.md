@@ -36,3 +36,7 @@ Supabase local es la única base del MVP. Las migraciones SQL versionadas deben 
 ## Criterio de aceptación del esquema
 
 Un `supabase db reset` futuro deberá reconstruir tablas, constraints, índices, RLS, Storage y seeds sintéticos sin SQLite ni pasos manuales ocultos. La comparación contra Trawel real y toda aplicación remota permanecen bloqueadas hasta autorización humana.
+
+## Esquema ejecutado en FASE 2C-B
+
+La migración `20260714090000_contributions_supabase_local.sql` crea `import_batches`, `contribution_import_jobs`, `imported_contributions`, `contribution_files`, `import_attempts`, `import_conflicts` y `local_backup_records`. Usa UUID, `timestamptz`, FKs, checks de estados/MIME/SHA-256/tamaño, índices e idempotencia. `persist_verified_contribution(jsonb,jsonb)` hace atómica la escritura de payload y metadatos. RLS queda activa, `anon`/`authenticated` sin permisos y solo `service_role` local accede desde Electron main.

@@ -12,7 +12,7 @@
 
 `submitted → pending_review → approved|rejected`; el autor puede pasar a `withdrawn` antes de publicación; un aprobado puede pasar a `removed` con decisión y motivo auditados.
 
-## Campañas
+## Campañas de comunicación (FASE 10)
 
 `draft → pending_approval → scheduled → sending → sent`; pending/scheduled/sending pueden pasar a `paused` o `failed`; antes de sending puede cancelarse; terminales pueden archivarse. Sin aprobación legal, remitente y baja no se abandona draft.
 
@@ -26,6 +26,12 @@
 
 Las transiciones de producción/publicación ejecutables están en `src/shared/contracts.ts`. Las demás quedan documentales hasta su fase de implementación.
 
+## Automatic / campañas de investigación — futuro
+
+Automatic no define ahora un enum alternativo para producción: cada destino conserva las máquinas canónicas de producción, verificación, revisión y publicación. La futura máquina de orquestación solo gobernará campaña/objetivo (preparación, ejecución, pausa, finalización, retry o fallo) y nunca sustituirá el estado editorial del resultado.
+
+Los nombres orientativos del parche adjunto no se adoptan aún como contrato. Antes se diseñarán transiciones, invariantes de reanudación, bloqueo, idempotencia, límites de coste y parada segura. Publicación seguirá separada y ningún estado de campaña implicará `approved`, `publication_ready` ni `published`.
+
 ## Importación de contribuciones — reutilizable en Supabase local
 
 `pending → downloading → verifying → imported → deleting_remote → completed`.
@@ -35,4 +41,4 @@ Las transiciones de producción/publicación ejecutables están en `src/shared/c
 - Un fallo de borrado conserva `deleting_remote` con error y próxima acción; nunca revierte ni duplica la copia verificada en PostgreSQL/Storage local.
 - `completed` exige transacción PostgreSQL confirmada, Zod, tamaños, SHA-256, objetos Storage completos, backup reciente y confirmación del borrado mock/remoto.
 - Ningún fallo de job cancela los demás jobs del `ImportBatch`.
-- Los estados sobreviven como lógica de dominio; las tablas SQLite de FASE 2B quedan sustituidas por persistencia Supabase local en la futura FASE 2C-B.
+- Los estados sobreviven como lógica de dominio; desde FASE 2C-B la persistencia activa de contribuciones es Supabase local y SQLite queda como legado residual para retirar en 2C-C.

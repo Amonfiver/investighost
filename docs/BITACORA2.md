@@ -327,3 +327,34 @@ El checkpoint durable no sustituye una política externa de backup/restauración
 ### Estado
 
 FASE 2C-B completada. Producción no se conectó; no se usaron datos reales; no se hizo commit ni push. PAUSA HUMANA 2C-B.
+
+---
+
+## Sesión 25 — Parche arquitectónico documental del modo Automatic
+
+### Fecha y objetivo
+
+2026-07-14. Incorporar el rumbo de Automatic sin programarlo, sin alterar el orden inmediato de la hoja de ruta y sin duplicar el pipeline Manual ni la integración Trawel.
+
+### Documentos
+
+- Creado `INVESTIGHOST_PARCHE_ARQUITECTONICO_MODO_AUTOMATIC.md` como referencia equivalente al adjunto recibido.
+- Actualizados `ROADMAP.md`, `ARCHITECTURE.md`, `DOMAIN_MODEL.md`, `STATE_MACHINES.md`, `DATABASE_SCHEMA_PLAN.md`, `PERSISTENCE_ARCHITECTURE.md`, `ACCEPTANCE_TESTS.md`, `DECISIONES.md`, `SPEC.md` y `TRAWEL_DATABASE_REFERENCE_FOR_INVESTIGHOST.txt`.
+- No se modificaron TypeScript, React, Electron, tests, dependencias, configuración Supabase, migraciones ni SQL.
+
+### Consolidación
+
+- Manual invoca una vez el pipeline canónico; Automatic será un orquestador futuro del mismo flujo.
+- Se prohíben prompts, contratos, validadores, resultados, tablas, estados, mappers o publicación paralelos.
+- “Campaña de investigación” queda separada semánticamente de campañas de correo de F10.
+- Las entidades/estados del adjunto quedan orientativos hasta su futura fase SDD.
+- Supabase local sigue siendo la única persistencia y toda mención histórica de SQLite queda subordinada a Decisión 15.
+- Trawel recibe únicamente contenido aprobado mediante mapper, contrato y cola comunes; no se alteró ninguna referencia de esquema.
+
+### Posición y siguiente paso
+
+Automatic queda después de finalizar 2C, completar Manual extremo a extremo, consolidar contratos y probar calidad, trazabilidad, recuperación, retry e idempotencia. Primero será secuencial y luego podrá añadir concurrencia limitada. El siguiente paso inmediato permanece FASE 2C-C: retirada residual SQLite y backup/restauración PostgreSQL/Storage, sin producción.
+
+### Estado
+
+Parche exclusivamente documental validado. `npm run lint` y `npm run typecheck` pasan; `npm test` pasa con 62 tests y omite la integración opt-in; TypeScript/Vite/main/preload compilan y el empaquetado falla únicamente por el bloqueo conocido de symlinks de `winCodeSign` en Windows. Sin commit ni push. PAUSA HUMANA PARCHE AUTOMATIC.

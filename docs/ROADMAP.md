@@ -1,6 +1,6 @@
 # Roadmap recomendado de Investighost
 
-Estado: FASE 2C-A documental completada el 2026-07-12; PAUSA HUMANA 2C-A.
+Estado: FASE 2C-B completada, commiteada y publicada; parche Automatic integrado documentalmente. Siguiente paso: FASE 2C-C.
 
 ## Principios de secuencia
 
@@ -36,17 +36,21 @@ Definidos proyecto dev, topología productiva compartida, tablas públicas/priva
 
 Implementados contratos, cola por registro, SQLite, archivos locales, SHA-256, idempotencia, retry, backup, adaptador mock, IPC y UI mínima. Sin conexión ni borrado real. El parche Trawel→Investighost prevalece para contribuciones.
 
-#### 2C. Entorno dev y contrato remoto — pendiente de autorización
+#### 2C. Consolidación de Supabase local — en curso
 
-Confirmar organización/región/nombre, crear Supabase dev, capturar baseline DDL sin datos y diseñar/probar el buzón temporal, recibo mínimo, RLS y borrado remoto únicamente en dev. Antes de habilitar delete: restauración local probada y pausa humana.
+La decisión posterior sustituyó el proyecto dev remoto por Supabase local único. 2C-A y 2C-B están completadas; 2C-C cerrará retirada SQLite y backup/restauración. El contrato remoto, cualquier borrado real y producción siguen bloqueados.
 
 #### 2C-A. Reorientación a Supabase local único — completada documentalmente
 
 Supabase local pasa a ser la única persistencia del MVP; SQLite queda deprecado y sin rol de fallback/offline. Se conservan los controles de FASE 2B, trasladables a PostgreSQL/Storage. No se modificó código ni SQL y producción permanece desconectada. PAUSA HUMANA 2C-A.
 
-#### 2C-B. Sustitución técnica de SQLite — siguiente fase recomendada
+#### 2C-B. Sustitución técnica de SQLite — completada
 
-Inventariar y reemplazar repositorios SQLite por PostgreSQL/Storage local, crear migraciones versionadas, migrar tests y runtime, verificar reset/backup/restauración y retirar dependencias/configuración SQLite. Solo datos sintéticos y sin conexión remota. PAUSA HUMANA antes de iniciar y al finalizar.
+Contribuciones migradas a PostgreSQL/Storage local con migración, seed, runtime y pruebas. SQLite ya no es persistencia activa de contribuciones; queda legado residual fuera de ese runtime.
+
+#### 2C-C. Retirada residual y recuperación — siguiente paso inmediato
+
+Retirar dependencias, configuración, schemas y adaptadores SQLite restantes; probar backup/restauración de PostgreSQL y Storage; ejecutar búsqueda residual y gates completos. Solo local y datos sintéticos, sin ampliar dominios ni conectar producción.
 
 ### 3. Motor de investigación verificable
 
@@ -59,6 +63,10 @@ CRUD durable, búsqueda, filtros, versiones, edición, aprobación/rechazo, hist
 ### 5. Cola editorial durable
 
 Prioridad, calendario, máximos, pausas, reintentos, idempotencia y operación manual. Preparar ejecución cloud; no publicar todavía.
+
+### Automatic — fase futura condicionada, posterior al Manual estable
+
+No es una fase inmediata ni un pipeline nuevo. Tras finalizar 2C, completar el flujo Manual extremo a extremo (F3–F5), consolidar contratos editoriales y demostrar calidad, trazabilidad, recuperación, reintentos e idempotencia, Automatic podrá orquestar el mismo caso de uso por campañas de investigación. Primero será secuencial; la concurrencia limitada vendrá después. No confundir con campañas de correo de F10. La publicación Trawel permanece separada en F6 y exige aprobación humana.
 
 ### 6. Adaptador Trawel
 
@@ -82,10 +90,9 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 
 ## Orden inmediato recomendado
 
-1. Revisar y aceptar la decisión documental FASE 2C-A.
-2. Autorizar FASE 2C-B, limitada a sustituir SQLite por Supabase local con datos sintéticos.
-3. Verificar migraciones desde cero, repositorios, Storage, backup/restauración y retirada completa de SQLite.
-4. Mantener producción desconectada y todo borrado remoto real deshabilitado.
+1. Ejecutar FASE 2C-C: retirada residual de SQLite y backup/restauración PostgreSQL/Storage.
+2. Mantener producción desconectada y todo borrado remoto real deshabilitado.
+3. Continuar después con el flujo Manual; Automatic permanece bloqueado por sus gates.
 
 ## Estado FASE 2C-B — 2026-07-14
 

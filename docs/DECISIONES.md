@@ -405,3 +405,23 @@ Documento detallado: `INVESTIGHOST_DECISION_SUPABASE_UNICO.md`.
 - Un fallo afecta solo al registro/archivo, conserva el remoto, continúa el lote y usa retry acotado.
 - El borrado real queda bloqueado hasta adaptador dev, Auth/RLS, backup/restauración probada y autorización humana. FASE 2B usa exclusivamente mock.
 - La anterior secuencia “2B = crear Supabase dev” se desplaza a FASE 2C; la hoja de ruta no se reinicia.
+
+---
+
+## Decisión 16 — Manual y Automatic comparten un único pipeline
+
+### Decisión
+
+Manual ejecutará una investigación canónica para un destino. Automatic será, en una fase futura, un orquestador persistente que invoca exactamente ese mismo caso de uso para objetivos de un alcance territorial. No existirán contratos, prompts, validadores, mappers, tablas editoriales, estados de contenido ni rutas de publicación específicos por modo.
+
+Automatic solo podrá comenzar después de finalizar FASE 2C, aceptar el flujo Manual extremo a extremo, consolidar contratos editoriales y probar calidad, trazabilidad, recuperación, reintentos e idempotencia. La primera versión será secuencial; concurrencia limitada vendrá después. La siguiente fase inmediata no cambia: FASE 2C-C.
+
+### Vocabulario y contradicciones resueltas
+
+- “Campaña de investigación” designa la orquestación Automatic; `Campaign` sigue designando campañas de correo de FASE 10. Son dominios distintos y no comparten estados.
+- Los estados y entidades propuestos en el adjunto son orientativos. No sustituyen `ProductionStatus`, `PublicationStatus` ni los contratos Zod actuales; se diseñarán por SDD en su fase.
+- Toda prescripción histórica de SQLite o base temporal queda sustituida por Decisión 15: Automatic usará exclusivamente Supabase local.
+- La automatización editorial nunca implica publicación automática. Aprobación, mapper, contrato, cola y autorización Trawel permanecen separados.
+- No se infieren catálogos territoriales ni cambios del esquema Trawel. Toda fuente territorial deberá ser canónica/versionada y toda integración se contrastará con el esquema real antes de una conexión autorizada.
+
+Documento detallado: `INVESTIGHOST_PARCHE_ARQUITECTONICO_MODO_AUTOMATIC.md`.

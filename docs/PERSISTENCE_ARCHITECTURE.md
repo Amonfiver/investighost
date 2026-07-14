@@ -58,3 +58,7 @@ Electron main valida `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`, rechaza hosts
 4. `npm test` ejecuta unitarias sin Docker. La integración usa `RUN_SUPABASE_INTEGRATION=true` junto a esas dos variables locales.
 
 Para validar indisponibilidad, detener Supabase y abrir contribuciones: la UI debe mostrar el error y deshabilitar la importación, sin crear base ni archivos SQLite.
+
+## Persistencia futura de Automatic
+
+Automatic usará la misma unidad de trabajo PostgreSQL y los mismos repositorios/Storage que Manual. Una campaña solo añadirá orquestación durable y referencias al contenido canónico: checkpoint por destino, snapshot de alcance/configuración, locks, retry, idempotencia, costes y auditoría. No habrá base temporal, SQLite, archivos paralelos ni repositorio editorial Automatic. El diseño físico queda aplazado hasta finalizar 2C y aceptar Manual.

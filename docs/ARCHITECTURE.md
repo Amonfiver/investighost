@@ -351,3 +351,19 @@ Electron → IPC/contratos → repositorios PostgreSQL → Supabase local
 - Se reutilizan validación, SHA-256, idempotencia, reintentos, aislamiento por registro y borrado condicionado a verificación.
 - El Supabase real de Trawel continúa desconectado. Cualquier conexión o escritura requiere una autorización humana explícita distinta.
 - `INVESTIGHOST_DECISION_SUPABASE_UNICO.md` y `PERSISTENCE_ARCHITECTURE.md` sustituyen el diseño operativo de `SQLITE_SYNC_STRATEGY.md`, conservado solo como histórico.
+
+## 14. Un solo pipeline: Manual y Automatic
+
+El flujo descrito en “Visión general” es el pipeline canónico por destino. **Manual** lo invoca una vez. **Automatic**, cuando sus gates futuros estén cerrados, resolverá un alcance territorial y lo invocará repetidamente como orquestador; no tendrá módulos paralelos de investigación, prompts, contratos, validadores, persistencia, calidad ni publicación.
+
+```text
+Manual ───────────────┐
+                     ├→ ResearchDestination → fuentes → estructura → perfiles editoriales
+Automatic/campaña ───┘                         → calidad → Supabase local → revisión humana
+                                                                    ↓ aprobado
+                                         TrawelMapper → contrato → cola → aprobación → Trawel
+```
+
+El nombre `ResearchDestination` es conceptual hasta consolidar el contrato ejecutable. Aventura y Estudiante son perfiles del mismo resultado canónico y deben demostrar diferenciación, cobertura y fuentes. Automatic persistirá progreso por objetivo, permitirá pausa/reanudación, retry e idempotencia y comenzará secuencialmente; la concurrencia llegará solo tras estabilidad.
+
+Las campañas de investigación no son campañas de correo. Comparten identidad, RBAC y `AuditLog`, pero no contenido, estados, tablas ni reglas legales de envío. Automatic queda bloqueado hasta terminar 2C, aceptar el Manual extremo a extremo y consolidar calidad, trazabilidad y recuperación. Véase `INVESTIGHOST_PARCHE_ARQUITECTONICO_MODO_AUTOMATIC.md`.

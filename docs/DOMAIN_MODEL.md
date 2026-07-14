@@ -52,3 +52,9 @@ Fuente ejecutable: `src/shared/contracts.ts`. TypeScript inferido desde Zod es l
 ## Datos que nunca salen de Investighost
 
 Prompts, respuestas crudas no aprobadas, costes/tokens, evaluaciones privadas, errores técnicos, claves, secretos, logs internos, resultados rechazados, notas internas, consentimientos y PII CRM. Trawel consulta únicamente la proyección validada descrita en `TRAWEL_HANDOFF_CONTRACT.md`, dentro del mismo Supabase productivo.
+
+## Vista futura del modo Automatic
+
+Automatic no introduce otro agregado editorial: cada objetivo referencia `ResearchRequest`, `ResearchRun`, `ResearchResult`, `EditorialDraft` y `ContentPiece` existentes. En su fase futura se diseñarán una campaña de investigación, sus objetivos territoriales y sus ejecuciones para guardar únicamente alcance, snapshot, progreso, intentos, costes y enlaces al pipeline canónico; no contenido duplicado.
+
+El término **campaña de investigación** queda reservado a esa orquestación. `Campaign`, `CampaignAudience` y `CampaignDelivery` de la tabla anterior significan exclusivamente campañas de comunicación de F10. Los nombres, campos y contratos Automatic permanecen abiertos hasta su diseño SDD y no son entidades ejecutables en esta fase.

@@ -367,3 +367,10 @@ La fuente contractual ejecutable es `src/shared/contracts.ts`; el modelo complet
 ### Actualización V2 desde FASE 2A
 
 Donde la documentación 1B diga “Supabase Investighost” o “destino Trawel”, debe interpretarse así: existe un único Supabase productivo compartido; los datos privados se aíslan por esquema/RLS y Trawel lee solo contenido autorizado. Durante el MVP, todo desarrollo y persistencia operativa ocurre en Supabase local reproducible por migraciones. SQLite queda fuera del MVP.
+
+## 23. Modos de producción editorial
+
+- **Manual:** una solicitud explícita ejecuta el pipeline canónico para un destino y deja Aventura/Estudiante en revisión.
+- **Automatic:** futura orquestación de ese mismo pipeline para un alcance territorial canónico y versionado. No es automatización total, no publica y no crea una segunda representación editorial.
+
+Ambos modos producirán las mismas solicitudes, fuentes, resultados, borradores, revisiones y piezas. Compartirán prompts, proveedores, validación, calidad, trazabilidad, retry, idempotencia y mapper Trawel. Automatic no entra en el MVP inmediato: requiere 2C finalizada, Manual extremo a extremo aceptado, contratos consolidados y recuperación/calidad probadas. La siguiente fase continúa siendo 2C-C.

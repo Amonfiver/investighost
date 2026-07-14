@@ -1241,3 +1241,13 @@ Supabase
 La regla principal es:
 
 “Investighost debe escribir exactamente en la base de datos que Trawel ya sabe leer, manteniendo draft hasta revisión humana.”
+
+=================================================
+16. NOTA DE INTEGRACIÓN: MODO AUTOMATIC
+=================================================
+
+Manual y Automatic producirán el mismo contenido editorial canónico. Automatic solo orquestará múltiples destinos y no añade tablas, campos, estados ni rutas de escritura en Trawel.
+
+Todo resultado aprobado seguirá la única capa adaptadora descrita en este documento. Campañas, objetivos, progreso, costes, errores, fuentes internas y configuración permanecerán privados en Investighost. La publicación continuará resolviendo IDs, validando slugs/FKs/enums, evitando duplicados, creando `draft`/`review` y exigiendo aprobación humana.
+
+Esta nota no afirma cambios en el esquema real de Trawel. Antes de cualquier conexión o escritura se deberá verificar de nuevo la base real y recibir autorización humana explícita.

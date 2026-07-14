@@ -78,3 +78,7 @@ FASE 2B no comienza hasta aceptación humana de este gate y confirmación de org
 - Tests unitarios cubren idempotencia, reintento aislado, archivo/hash erróneo, conflictos, continuidad y borrado condicionado sin Docker.
 - La prueba de integración opt-in escribe y lee contribuciones en Supabase local; no existe fallback SQLite.
 - Renderer informa conectado/desconectado y mantiene el adaptador remoto mock.
+
+## Gate futuro de Automatic
+
+Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual complete investigación, fuentes, perfiles editoriales, persistencia, calidad, revisión y aprobación con contratos estables. Después deberá demostrar que cada objetivo invoca ese mismo pipeline; el alcance es estable/auditable; una caída no pierde progreso; reanudar no duplica; un fallo no bloquea el resto; costes y errores son visibles; Aventura/Estudiante son diferentes y verificables; y ningún resultado se publica automáticamente. La compatibilidad Trawel se acepta únicamente por el mapper/contrato/cola ya comunes.

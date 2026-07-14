@@ -13,6 +13,7 @@ Supabase local es la única base del MVP. Las migraciones SQL versionadas deben 
 | Catálogo Trawel compatible | `countries`, `cities`, `destinations`, `destination_sources`, `editorial_contents`, `image_assets`, catálogos de localización | lectura pública solo para estados autorizados; escritura privada |
 | Identidad y permisos | perfiles, roles, asignaciones, permisos | privada/RLS |
 | Investigación/editorial | requests, runs, sources, results, drafts, revisions, content pieces | privada/RLS |
+| Automatic futuro | campaña de investigación, objetivos territoriales y ejecuciones; solo orquestación enlazada al modelo editorial canónico | privada/RLS; diseño posterior a Manual estable |
 | Publicación | queue items, attempts, steps, rate config | privada/RLS |
 | Contribuciones/moderación | contributions, import jobs, files, attempts, conflicts, batches, decisions | privada/RLS |
 | CRM/comunicaciones | organizaciones, contactos, consentimientos, supresión, tareas, campañas, entregas | privada/RLS y fase legal |
@@ -40,3 +41,7 @@ Un `supabase db reset` futuro deberá reconstruir tablas, constraints, índices,
 ## Esquema ejecutado en FASE 2C-B
 
 La migración `20260714090000_contributions_supabase_local.sql` crea `import_batches`, `contribution_import_jobs`, `imported_contributions`, `contribution_files`, `import_attempts`, `import_conflicts` y `local_backup_records`. Usa UUID, `timestamptz`, FKs, checks de estados/MIME/SHA-256/tamaño, índices e idempotencia. `persist_verified_contribution(jsonb,jsonb)` hace atómica la escritura de payload y metadatos. RLS queda activa, `anon`/`authenticated` sin permisos y solo `service_role` local accede desde Electron main.
+
+## Reserva de diseño Automatic
+
+Este parche no crea ni especifica tablas. El futuro modelo guardará alcance territorial versionado, configuración, progreso, intentos, costes y enlaces a las entidades editoriales comunes; queda prohibido crear tablas `manual_*`/`automatic_*` o copiar resultados. Sus nombres, constraints, RLS e índices se decidirán por SDD cuando se hayan cerrado los gates Manual. No se presume ninguna tabla territorial nueva ni ningún campo de Trawel.

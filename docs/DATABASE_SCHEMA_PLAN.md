@@ -1,6 +1,6 @@
 # Plan de esquema PostgreSQL/Supabase — decisión 2C-A
 
-Estado: diseño; SQL no modificado ni ejecutado en esta fase.
+Estado: baseline local de contribuciones ejecutada y verificada; el resto continúa como diseño futuro.
 
 ## Fuente estructural
 
@@ -23,7 +23,7 @@ Supabase local es la única base del MVP. Las migraciones SQL versionadas deben 
 
 ## Sustitución del modelo local de FASE 2B
 
-`ImportedContribution`, `ContributionImportJob`, `ContributionFile`, `ImportAttempt`, `ImportConflict`, `ImportBatch` y `LocalBackupRecord` son conceptos reutilizables, pero sus tablas SQLite no son canónicas. En la fase técnica se mapearán a PostgreSQL; `LocalBackupRecord` se reemplazará por evidencia de backup/restauración del entorno Supabase y los paths locales por bucket/path de Storage.
+`ImportedContribution`, `ContributionImportJob`, `ContributionFile`, `ImportAttempt`, `ImportConflict`, `ImportBatch` y `LocalBackupRecord` se mapearon a PostgreSQL en FASE 2C-B. FASE 2C-C retiró sus tablas/adaptadores SQLite y el file store local. `LocalBackupRecord` conserva evidencia lógica del flujo, pero no sustituye los backups/restauraciones reales de PostgreSQL y Storage.
 
 ## Reglas de compatibilidad
 
@@ -36,7 +36,7 @@ Supabase local es la única base del MVP. Las migraciones SQL versionadas deben 
 
 ## Criterio de aceptación del esquema
 
-Un `supabase db reset` futuro deberá reconstruir tablas, constraints, índices, RLS, Storage y seeds sintéticos sin SQLite ni pasos manuales ocultos. La comparación contra Trawel real y toda aplicación remota permanecen bloqueadas hasta autorización humana.
+`supabase db reset` reconstruye tablas, constraints, índices, RLS, Storage y seeds sintéticos sin SQLite ni pasos manuales ocultos; quedó aprobado en CHECKPOINT 8. La comparación contra Trawel real y toda aplicación remota permanecen bloqueadas hasta autorización humana.
 
 ## Esquema ejecutado en FASE 2C-B
 

@@ -31,7 +31,7 @@ export type { MultiProviderConfig, BaseAIProvider }
 
 // ============================================
 // STORE DE AUDITORÍA (temporal en memoria)
-// Se migrará a SQLite en el futuro
+// Cualquier persistencia futura requiere una fase autorizada
 // ============================================
 
 const usageLogs: ProviderUsageLog[] = []

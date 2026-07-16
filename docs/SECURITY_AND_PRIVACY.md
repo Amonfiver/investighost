@@ -59,3 +59,13 @@ Antes de producción siguen pendientes: validación legal de retenciones, proced
 - Service role desde entorno únicamente en main; renderer solo recibe estado y resultados.
 - Tablas con RLS sin grants para `anon`/`authenticated`; bucket privado y tipos/tamaños limitados.
 - Seed y mock exclusivamente sintéticos; sin fallback, `supabase link`, `db push`, Edge Functions ni Trawel.
+
+## Cierre de seguridad de FASE 2C-C
+
+- Todas las pruebas, dumps, restauraciones y objetos usaron datos exclusivamente sintéticos; la limpieza final dejó cero marcadores y cero objetos Storage.
+- No se usaron credenciales remotas. La service role fue exclusivamente local, permaneció en Electron main/runtime privilegiado y no se expuso al renderer, preload público, logs ni documentación.
+- El parser exige `localhost`, `127.0.0.1` o `::1`; las integraciones del CHECKPOINT 8 confirmaron loopback. Producción y Trawel permanecieron desconectados, sin `supabase link` ni `supabase db push`.
+- `investighost-contributions` es privado; acceso autorizado funciona y anon/público quedan bloqueados.
+- Dumps, manifiestos, PNG y scripts temporales se mantuvieron fuera del repositorio y se eliminaron tras verificar restauración.
+
+Riesgos pendientes: Docker puede publicar PostgreSQL en más interfaces aunque las pruebas usaron loopback; deben revisarse bindings/firewall antes de usar datos reales. `npm install` informó 23 vulnerabilidades —2 bajas, 6 moderadas, 13 altas y 2 críticas— y no se ejecutó `npm audit fix`. El empaquetado conserva la limitación de privilegios para symlinks de `winCodeSign`; Electron usa icono por defecto. Los stores en memoria no son durables y permanecen para fases futuras.

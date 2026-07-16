@@ -347,7 +347,7 @@ Electron → IPC/contratos → repositorios PostgreSQL → Supabase local
 ```
 
 - SQLite no forma parte del MVP: no hay fallback, caché, outbox ni modo offline.
-- La implementación SQLite de FASE 2B es legado pendiente de retirada en la siguiente fase técnica.
+- La implementación SQLite de FASE 2B fue retirada completamente en FASE 2C-C. SQLite solo permanece en referencias históricas explícitas.
 - Se reutilizan validación, SHA-256, idempotencia, reintentos, aislamiento por registro y borrado condicionado a verificación.
 - El Supabase real de Trawel continúa desconectado. Cualquier conexión o escritura requiere una autorización humana explícita distinta.
 - `INVESTIGHOST_DECISION_SUPABASE_UNICO.md` y `PERSISTENCE_ARCHITECTURE.md` sustituyen el diseño operativo de `SQLITE_SYNC_STRATEGY.md`, conservado solo como histórico.
@@ -367,3 +367,13 @@ Automatic/campaña ───┘                         → calidad → Supabase
 El nombre `ResearchDestination` es conceptual hasta consolidar el contrato ejecutable. Aventura y Estudiante son perfiles del mismo resultado canónico y deben demostrar diferenciación, cobertura y fuentes. Automatic persistirá progreso por objetivo, permitirá pausa/reanudación, retry e idempotencia y comenzará secuencialmente; la concurrencia llegará solo tras estabilidad.
 
 Las campañas de investigación no son campañas de correo. Comparten identidad, RBAC y `AuditLog`, pero no contenido, estados, tablas ni reglas legales de envío. Automatic queda bloqueado hasta terminar 2C, aceptar el Manual extremo a extremo y consolidar calidad, trazabilidad y recuperación. Véase `INVESTIGHOST_PARCHE_ARQUITECTONICO_MODO_AUTOMATIC.md`.
+
+## 15. Cierre técnico de FASE 2C-C
+
+Supabase local/PostgreSQL es la única persistencia durable del MVP y Supabase Storage local es el único file store operativo. No existe SQLite, Drizzle, base alternativa, fallback, caché durable, outbox durable ni modo offline. Si Supabase local no está disponible, el runtime devuelve un error controlado y no inicializa otra persistencia.
+
+Los stores actuales de investigación, cola editorial, mocks y logs/caché de configuración basados en `Map` o variables de proceso son memoria volátil: se pierden al cerrar la aplicación y no constituyen persistencia durable. Su migración corresponde a fases futuras.
+
+La recuperación quedó verificada por mecanismos separados: PostgreSQL mediante dump custom `-Fc` y restauración real en CHECKPOINT 5; objetos Storage mediante backup/restauración por API en CHECKPOINT 7. `supabase db reset`, aprobado de nuevo en la auditoría del CHECKPOINT 8, demuestra reconstrucción por migración y seed, pero no sustituye ningún backup.
+
+Manual y Automatic siguen siendo futuros. Ambos compartirán el pipeline canónico descrito en la sección 14; FASE 2C-C no implementó ninguno ni conectó Trawel o producción.

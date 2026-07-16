@@ -63,13 +63,16 @@ FASE 2B no comienza hasta aceptación humana de este gate y confirmación de org
 - Producción Trawel permanece desconectada y exige autorización humana explícita futura.
 - No se modifican TypeScript, React, Electron, tests ni SQL en esta fase.
 
-## Gate futuro de FASE 2C-B
+## Gate técnico de FASE 2C-C — aprobado
 
-- `supabase db reset` reconstruye el entorno local con migraciones versionadas y seeds sintéticos.
-- Jobs, reintentos, idempotencia, auditoría y contribuciones sobreviven reinicios en PostgreSQL.
-- Archivos y checksums se verifican en Storage local; backup y restauración se prueban.
-- No quedan imports, dependencias, configuración, schemas, repositorios ni rutas runtime SQLite.
-- Lint, typecheck, tests y build pasan sin conexión a producción.
+- SQLite, Better SQLite y Drizzle están ausentes de dependencias, scripts, configuración, schemas, repositorios y runtime; no existe fallback.
+- `supabase db reset` reconstruye el entorno local con migración y seed sintético: siete tablas, 46 constraints, cinco FKs, 19 índices, dos funciones, siete triggers, RLS en siete tablas y cero secuencias.
+- Backup/restauración PostgreSQL real aprobados en CHECKPOINT 5: dump custom `-Fc`, SHA-256, restauración aislada y estructura verificada.
+- Backup/restauración Storage real aprobados en CHECKPOINT 7: PNG sintético, API, tres hashes/tamaños idénticos, privacidad y limpieza.
+- CHECKPOINT 8 aprobó typecheck, lint, 62/62 tests generales, 1/1 integración y 63/63 total antes y después del reset.
+- Bucket `investighost-contributions` privado, 20 MiB, JPEG/PNG/WebP/PDF y cero objetos tras limpieza.
+- Build aprobado con limitación conocida: TypeScript/Vite/main/preload y `win-unpacked` completados; falla solo la creación de symlinks `winCodeSign`.
+- Producción y Trawel permanecen desconectados; no se usaron credenciales remotas, `supabase link` ni `supabase db push`.
 
 ## Evidencia FASE 2C-B
 

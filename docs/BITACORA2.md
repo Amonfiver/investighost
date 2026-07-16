@@ -358,3 +358,70 @@ Automatic queda después de finalizar 2C, completar Manual extremo a extremo, co
 ### Estado
 
 Parche exclusivamente documental validado. `npm run lint` y `npm run typecheck` pasan; `npm test` pasa con 62 tests y omite la integración opt-in; TypeScript/Vite/main/preload compilan y el empaquetado falla únicamente por el bloqueo conocido de symlinks de `winCodeSign` en Windows. Sin commit ni push. PAUSA HUMANA PARCHE AUTOMATIC.
+
+---
+
+## Sesión 26 — FASE 2C-C: retirada SQLite, recuperación y gates finales
+
+### Fecha y alcance
+
+2026-07-16. Completar exclusivamente FASE 2C-C: retirar el legado operativo SQLite/Drizzle, verificar backup y restauración reales de PostgreSQL y Storage local y cerrar los gates técnicos. Todo se realizó con datos sintéticos, sin conectar producción o Trawel y sin implementar Manual ni Automatic.
+
+### Archivos técnicos
+
+- **Eliminados:** `database/.gitkeep`, `drizzle.config.ts`, `drizzle/migrations/.gitkeep`, `src/modules/contributions/backup.ts`, `src/modules/contributions/file-store.ts`, `src/modules/contributions/sqlite-repository.ts`, `src/modules/persistence/index.ts`, `src/services/db/index.ts` y `src/services/db/schema.ts`.
+- **Modificados:** `.gitignore`, `package.json`, `package-lock.json`, `src/modules/contributions/index.ts`, `src/modules/persistence/memory-store.ts`, `src/modules/publishing/queue.ts`, `src/services/ai/index.ts`, `tests/contribution-import.test.ts` y `vite.config.ts`.
+- **Creado:** `tests/support/contribution-doubles.ts`, con dobles exclusivamente en memoria para contratos neutrales de tests.
+- No se modificó la migración Supabase ni el seed durante esta subfase.
+
+### Dependencias retiradas
+
+Se eliminaron `better-sqlite3`, `@types/better-sqlite3`, `drizzle-orm` y `drizzle-kit`, además de 77 entradas transitivas asociadas al árbol anterior —entre ellas bindings/prebuild, libsql, brocli, esbuild-kit y utilidades relacionadas—. `npm ls --depth=0` terminó sin dependencias directas faltantes o inválidas y no se reintrodujo SQLite o Drizzle.
+
+`npm install` con npm 11.6.2 normalizó metadatos `peer` del lockfile: 24 inserciones y 42 eliminaciones, sin añadir/eliminar paquetes y sin cambiar versiones, URLs `resolved` o integridades de dependencias conservadas. Se aceptó como normalización técnica no funcional.
+
+### PostgreSQL — aprobado en CHECKPOINT 5
+
+- Dump real custom `-Fc` de 30046 bytes, creado fuera del repositorio.
+- SHA-256 calculado y verificado antes de restaurar.
+- Restauración real en un contenedor PostgreSQL aislado.
+- Verificados siete tablas, conteos, 46 constraints, cinco FKs, 19 índices, dos funciones, siete triggers, RLS en siete tablas, cero secuencias y relación/marcador sintéticos.
+- El dump cubre `public`; no incluye Auth, objetos Storage, Vault, roles globales ni todas las ACL/ownership de la plataforma.
+- Contenedor, dump, marcadores y scripts temporales eliminados al terminar.
+
+### Storage — aprobado en CHECKPOINT 7
+
+- PNG sintético válido de 68 bytes y bucket `investighost-contributions` privado.
+- Backup binario por API, manifiesto normalizado y restauración real por API en una ruta separada.
+- SHA-256 del original, backup y restaurado idénticos; también coincidieron los tres tamaños, MIME y metadatos.
+- Acceso autorizado correcto; acceso anon y público rechazados.
+- Objetos, backup, restauración, manifiesto, binarios y scripts temporales limpiados completamente.
+- La prueba cubre un objeto sintético sin concurrencia; no constituye un snapshot global de Storage.
+
+### Auditoría técnica final — aprobada en CHECKPOINT 8
+
+- `npm run typecheck`: pasa antes y después del reset.
+- `npm run lint`: pasa antes y después, cero warnings.
+- Tests generales: 62/62; la integración opt-in es el único skip de la ejecución general.
+- Integración Supabase local: 1/1 antes y después; suite total 63/63.
+- `npx supabase db reset`: pasa; reconstruye migración, seed, siete tablas, 46 constraints, cinco FKs, 19 índices, dos funciones, siete triggers, RLS en siete tablas y cero secuencias.
+- Conteos reconstruidos: `3 / 4 / 2 / 1 / 1 / 0 / 1`; bucket privado, 20 MiB, JPEG/PNG/WebP/PDF y cero objetos.
+- Búsqueda residual: no queda SQLite/Drizzle operativo, otra base, fallback, file store local, outbox o caché durable alternativa.
+- TypeScript, Vite, Electron main/preload y empaquetado hasta `release\win-unpacked\Investighost.exe` pasan.
+- El build falla únicamente al crear los symlinks `libcrypto.dylib` y `libssl.dylib` de `winCodeSign`, limitación preexistente no corregida.
+
+### Seguridad y limitaciones conocidas
+
+- Producción y Trawel permanecieron desconectados; no se usaron credenciales remotas ni datos personales.
+- No se ejecutaron `supabase link` ni `supabase db push`; todas las URLs de integración fueron loopback.
+- La service role utilizada fue exclusivamente local y no se expuso al renderer.
+- `npm install` informó 23 vulnerabilidades: 2 bajas, 6 moderadas, 13 altas y 2 críticas. No se ejecutó `npm audit fix`.
+- Electron conserva icono por defecto y el fallo conocido de symlinks `winCodeSign`.
+- Docker puede publicar PostgreSQL en más interfaces aunque las pruebas usaron loopback; revisar bindings/firewall antes de datos reales.
+- `SupabaseDurabilityCheckpointService` no es un backup real y `supabase db reset` no sustituye backup/restauración.
+- Los stores de investigación, cola editorial, mocks y logs/cachés permanecen en memoria para fases futuras.
+- Las referencias SQLite en prompts, auditorías y entradas anteriores se conservan como historia explícita, no como arquitectura vigente.
+
+### Estado
+
+FASE 2C-C queda técnicamente completada y documentada, pendiente de revisión humana final. Sin commit ni push. No se inicia Manual, no se implementa Automatic y no se avanza a ninguna conexión productiva.

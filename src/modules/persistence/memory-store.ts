@@ -1,12 +1,9 @@
 /**
  * Investighost - Persistencia Temporal en Memoria
  * 
- * Propósito: Almacenamiento temporal mientras SQLite no está operativo
- * Alcance: Solo para desarrollo/demo interna, se sustituirá por SQLite real
- * Estado: TEMPORAL - documentado para reemplazo futuro
- * 
- * NOTA IMPORTANTE: Esta es una solución temporal. Cuando SQLite esté disponible,
- * se reemplazará por la implementación real usando Drizzle ORM.
+ * Propósito: Almacenamiento temporal en memoria
+ * Alcance: Solo para desarrollo/demo interna
+ * Estado: TEMPORAL - cualquier sustitución futura requiere una fase autorizada
  */
 
 import type { ResearchRequest, ResearchResult, EditorialDraft } from '@shared/types'

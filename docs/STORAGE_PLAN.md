@@ -33,3 +33,11 @@ Antes de permitir borrado de un origen debe existir backup y restauración proba
 ## Bucket implementado en FASE 2C-B
 
 `investighost-contributions` se crea por migración con `public=false`, límite 20 MiB y allowlist JPEG/PNG/WebP/PDF. Los paths usan identificador saneado y UUID; el nombre original nunca decide la ruta. SHA-256, MIME y tamaño se verifican antes del upload. La service role local permanece solo en Electron main. El borrado remoto continúa siendo mock y condicionado a persistencia y checkpoint durable.
+
+## Backend y recuperación verificados en CHECKPOINT 7
+
+Supabase Storage local usa el backend `file` sobre un volumen Docker local. Los binarios permanecen fuera de PostgreSQL: `storage.objects` contiene metadatos internos de Storage y `public.contribution_files` conserva metadatos de dominio, relación, bucket/path, MIME, tamaño y SHA-256.
+
+La prueba formal usó un PNG sintético válido de 68 bytes. Se descargó el original por API, se creó un backup binario y manifiesto normalizado fuera del repositorio y se restauró por API en una ruta distinta. Los SHA-256 y tamaños de original, backup y restaurado fueron idénticos; MIME y metadatos fueron coherentes. El bucket privado permitió acceso autorizado y rechazó acceso anónimo/público. Objetos, binarios, manifiesto y scripts temporales se limpiaron.
+
+La recuperación debe usar la API de Storage: no se debe copiar directamente `/mnt` del contenedor ni insertar filas directamente en `storage.objects`. Esta evidencia cubre un objeto sintético sin concurrencia, no un snapshot global consistente de todos los buckets.

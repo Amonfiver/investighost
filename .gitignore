@@ -20,9 +20,6 @@ release
 *.db-journal
 *.sqlite
 *.sqlite3
-database/*.db
-database/*.sqlite
-!database/.gitkeep
 
 # Logs
 logs

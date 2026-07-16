@@ -41,4 +41,4 @@ Los nombres orientativos del parche adjunto no se adoptan aún como contrato. An
 - Un fallo de borrado conserva `deleting_remote` con error y próxima acción; nunca revierte ni duplica la copia verificada en PostgreSQL/Storage local.
 - `completed` exige transacción PostgreSQL confirmada, Zod, tamaños, SHA-256, objetos Storage completos, backup reciente y confirmación del borrado mock/remoto.
 - Ningún fallo de job cancela los demás jobs del `ImportBatch`.
-- Los estados sobreviven como lógica de dominio; desde FASE 2C-B la persistencia activa de contribuciones es Supabase local y SQLite queda como legado residual para retirar en 2C-C.
+- Los estados sobreviven como lógica de dominio; desde FASE 2C-B la persistencia activa de contribuciones es Supabase local y FASE 2C-C retiró completamente el legado operativo SQLite. No se rediseñaron estados ni se introdujo Automatic.

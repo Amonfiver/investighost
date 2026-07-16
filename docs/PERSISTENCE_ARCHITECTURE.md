@@ -1,6 +1,6 @@
-# Arquitectura de persistencia — decisión 2C-A
+# Arquitectura de persistencia — decisión 2C-A, ejecutada en FASE 2C-C
 
-Estado: vinculante para el MVP desde 2026-07-12. Sustituye el reparto SQLite/Supabase de FASE 2A y la excepción local de FASE 2B.
+Estado: vinculante y técnicamente completada desde FASE 2C-C. Sustituye el reparto SQLite/Supabase de FASE 2A y la excepción local de FASE 2B.
 
 ## Topología canónica
 
@@ -34,11 +34,11 @@ Las migraciones de `supabase/migrations/` serán la única forma aceptada de rep
 
 ## Reutilización de FASE 2B
 
-Se conservan como diseño reutilizable: contratos Zod, aislamiento por registro, SHA-256, límites y MIME, idempotencia, backoff acotado, estados observables, auditoría y regla de no borrar origen antes de verificar persistencia completa. Deben reemplazarse los adaptadores SQLite, rutas de archivos locales y backup de SQLite por repositorios PostgreSQL, Storage local y backups/restauración de Supabase local.
+Se conservan como diseño reutilizable: contratos Zod, aislamiento por registro, SHA-256, límites y MIME, idempotencia, backoff acotado, estados observables, auditoría y regla de no borrar origen antes de verificar persistencia completa. En FASE 2C-C, los adaptadores SQLite, rutas de archivos locales y backup de SQLite fueron sustituidos por repositorios PostgreSQL, Storage local y backups/restauración separados de Supabase local.
 
-## Condición de retirada de SQLite
+## Retirada de SQLite completada
 
-SQLite estará eliminado cuando no existan dependencias/runtime/configuración Drizzle-SQLite, repositorios ni rutas SQLite; las migraciones locales creen todo desde cero; reinicio, importación, reintentos y archivos sean durables en Supabase local; y lint, typecheck, tests y build pasen. Esta condición se ejecutará en la siguiente fase técnica, no en 2C-A.
+FASE 2C-C eliminó Better SQLite, Drizzle, configuración, schemas, repositorios, backup y file store SQLite. No quedan imports, rutas runtime, scripts ni fallback activos. Las búsquedas residuales solo encuentran historia, tests negativos, prohibiciones y reglas de `.gitignore`.
 
 ## Bloqueo de producción
 
@@ -48,7 +48,15 @@ No se guardan credenciales productivas en el entorno local, Electron ni reposito
 
 Electron main valida `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`, rechaza hosts no loopback y crea el cliente privilegiado sin exponerlo al preload. El repositorio persiste jobs, lotes, intentos, conflictos y payloads; Storage conserva archivos privados. El remoto sigue siendo mock. Si Supabase local falla, IPC devuelve un error controlado y nunca inicializa SQLite.
 
-`sqlite-repository.ts`, `file-store.ts` y el backup SQLite quedan como legado inactivo de 2B. Drizzle/SQLite sigue referenciado por módulos ajenos y se retirará en una subfase separada.
+`sqlite-repository.ts`, `file-store.ts`, el backup SQLite, los schemas y la configuración Drizzle fueron retirados en FASE 2C-C. Los contratos neutrales de repositorio, integridad, retry e importación se conservan.
+
+## Backup y restauración verificados
+
+- **PostgreSQL — CHECKPOINT 5:** dump custom `-Fc` real de 30046 bytes, SHA-256 verificado y restauración real en un contenedor aislado; se comprobaron siete tablas, conteos, 46 constraints, cinco FKs, 19 índices, dos funciones, siete triggers, RLS en siete tablas y cero secuencias. El contenedor y artefactos temporales se limpiaron.
+- **Alcance PostgreSQL:** el dump cubre el schema `public`. No es un backup completo de la plataforma: excluye Auth, objetos/binarios Storage, Vault, roles globales, ownership/ACL de plataforma y otros schemas gestionados.
+- **Storage — CHECKPOINT 7:** un PNG sintético válido de 68 bytes se respaldó y restauró mediante la API en una ruta separada. SHA-256 y tamaño del original, backup y restaurado fueron idénticos; MIME y metadatos fueron coherentes; la privacidad se verificó y todo se limpió.
+
+`SupabaseDurabilityCheckpointService` registra un checkpoint lógico reciente para el flujo de importación; no crea un dump ni un backup real. `supabase db reset` reconstruye schema y seed, pero tampoco sustituye las pruebas de backup/restauración.
 
 ### Operación local
 
@@ -61,4 +69,4 @@ Para validar indisponibilidad, detener Supabase y abrir contribuciones: la UI de
 
 ## Persistencia futura de Automatic
 
-Automatic usará la misma unidad de trabajo PostgreSQL y los mismos repositorios/Storage que Manual. Una campaña solo añadirá orquestación durable y referencias al contenido canónico: checkpoint por destino, snapshot de alcance/configuración, locks, retry, idempotencia, costes y auditoría. No habrá base temporal, SQLite, archivos paralelos ni repositorio editorial Automatic. El diseño físico queda aplazado hasta finalizar 2C y aceptar Manual.
+Automatic usará la misma unidad de trabajo PostgreSQL y los mismos repositorios/Storage que Manual. Una campaña solo añadirá orquestación durable y referencias al contenido canónico: checkpoint por destino, snapshot de alcance/configuración, locks, retry, idempotencia, costes y auditoría. No habrá base temporal, SQLite, archivos paralelos ni repositorio editorial Automatic. FASE 2C ya está finalizada; el diseño físico continúa aplazado hasta aceptar Manual y autorizar expresamente la fase Automatic.

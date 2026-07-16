@@ -1,3 +1,0 @@
-# Directorio para base de datos SQLite
-# Este archivo mantiene el directorio en git
-# La base de datos real (*.db) está en .gitignore

@@ -24,7 +24,7 @@ import type {
 
 // ============================================
 // STORE TEMPORAL EN MEMORIA
-// Se sustituirá por SQLite cuando esté operativo
+// Cualquier sustitución futura requiere una fase autorizada
 // ============================================
 
 interface QueueStore {

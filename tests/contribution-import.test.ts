@@ -3,13 +3,12 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Sha256ContributionIntegrityService } from '@modules/contributions/integrity'
-import { SafeContributionFileStore } from '@modules/contributions/file-store'
 import { MemoryContributionLocalRepository } from '@modules/contributions/memory-repository'
 import { LocalContributionImportQueue } from '@modules/contributions/queue'
 import { BoundedContributionRetryPolicy } from '@modules/contributions/retry-policy'
-import { MemoryBackupService } from '@modules/contributions/backup'
 import { MockContributionRemoteSource, type MockContributionSeed } from '@modules/contributions/mock-remote'
 import { ContributionImportService } from '@modules/contributions/import-service'
+import { MemoryContributionBackupService, MemoryContributionFileStore } from './support/contribution-doubles'
 
 const temporaryPaths: string[] = []
 
@@ -26,11 +25,11 @@ async function setup(seeds: MockContributionSeed[]) {
   const service = new ContributionImportService(
     remote,
     repository,
-    new SafeContributionFileStore(root, integrity),
+    new MemoryContributionFileStore(root, integrity),
     integrity,
     new LocalContributionImportQueue(repository),
     new BoundedContributionRetryPolicy(),
-    new MemoryBackupService(),
+    new MemoryContributionBackupService(),
   )
   return { service, repository, remote }
 }

@@ -397,7 +397,7 @@ Desde FASE 2C-A, PostgreSQL/Supabase es la única tecnología de persistencia. S
 
 ### Motivo y consecuencias
 
-Se elimina la duplicidad de motores, sincronización y recuperación, se acerca desarrollo al stack final compatible con Trawel y se reduce el riesgo de una copia autoritativa en un único equipo. La implementación SQLite de FASE 2B deberá reemplazarse en un bloque técnico posterior. Sus contratos Zod, checksums, idempotencia, reintentos y borrado seguro se reutilizan sobre PostgreSQL/Storage.
+Se elimina la duplicidad de motores, sincronización y recuperación, se acerca desarrollo al stack final compatible con Trawel y se reduce el riesgo de una copia autoritativa en un único equipo. La implementación SQLite de FASE 2B fue reemplazada y retirada en FASE 2C-C. Sus contratos Zod, checksums, idempotencia, reintentos y borrado seguro se reutilizan sobre PostgreSQL/Storage.
 
 Un eventual modo offline requiere una fase futura separada. Esta decisión no autoriza conectar producción: el Supabase real de Trawel permanece totalmente desconectado hasta aprobación humana explícita, backup/restauración, diff y plan de reversión revisados.
 
@@ -414,7 +414,7 @@ Documento detallado: `INVESTIGHOST_DECISION_SUPABASE_UNICO.md`.
 
 Manual ejecutará una investigación canónica para un destino. Automatic será, en una fase futura, un orquestador persistente que invoca exactamente ese mismo caso de uso para objetivos de un alcance territorial. No existirán contratos, prompts, validadores, mappers, tablas editoriales, estados de contenido ni rutas de publicación específicos por modo.
 
-Automatic solo podrá comenzar después de finalizar FASE 2C, aceptar el flujo Manual extremo a extremo, consolidar contratos editoriales y probar calidad, trazabilidad, recuperación, reintentos e idempotencia. La primera versión será secuencial; concurrencia limitada vendrá después. La siguiente fase inmediata no cambia: FASE 2C-C.
+Automatic solo podrá comenzar después de finalizar FASE 2C, aceptar el flujo Manual extremo a extremo, consolidar contratos editoriales y probar calidad, trazabilidad, recuperación, reintentos e idempotencia. FASE 2C ya está finalizada, pero los demás gates continúan abiertos: Automatic no está iniciado. La primera versión será secuencial; concurrencia limitada vendrá después.
 
 ### Vocabulario y contradicciones resueltas
 
@@ -425,3 +425,19 @@ Automatic solo podrá comenzar después de finalizar FASE 2C, aceptar el flujo M
 - No se infieren catálogos territoriales ni cambios del esquema Trawel. Toda fuente territorial deberá ser canónica/versionada y toda integración se contrastará con el esquema real antes de una conexión autorizada.
 
 Documento detallado: `INVESTIGHOST_PARCHE_ARQUITECTONICO_MODO_AUTOMATIC.md`.
+
+---
+
+## Decisión 17 — Recuperación verificable como gate obligatorio
+
+### Decisión
+
+FASE 2C-C completa técnicamente la Decisión 15: SQLite, Better SQLite y Drizzle quedan retirados y Supabase local/PostgreSQL con Storage local es la única persistencia del MVP. La aceptación de una persistencia durable exige probar tanto backup como restauración, no solo crear artefactos o reconstruir un seed.
+
+PostgreSQL se verificó en CHECKPOINT 5 mediante dump custom `-Fc` y restauración aislada. Storage se verificó separadamente en CHECKPOINT 7 mediante descarga, backup y restauración por API. La auditoría técnica final de regresión y reconstrucción se aprobó en CHECKPOINT 8. `SupabaseDurabilityCheckpointService` es un checkpoint lógico y `supabase db reset` una prueba de reconstrucción; ninguno sustituye un backup real.
+
+### Alcance y consecuencia
+
+El dump PostgreSQL probado cubre `public`, no Auth, Storage, Vault, roles ni ACL de toda la plataforma. La prueba Storage cubre un objeto sintético sin concurrencia, no un snapshot global. Cualquier futura ampliación o conexión productiva deberá definir y volver a probar su alcance de recuperación.
+
+Manual y Automatic no se implementaron en FASE 2C-C. Ambos siguen sometidos a sus fases y gates propios; producción y Trawel permanecen desconectados.

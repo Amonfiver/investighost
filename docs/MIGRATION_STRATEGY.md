@@ -1,6 +1,6 @@
 # Estrategia de migraciones PostgreSQL/Supabase — decisión 2C-A
 
-Estado: plan documental. Ninguna migración se crea, cambia o ejecuta en esta fase.
+Estado: estrategia vigente. La primera migración local está ejecutada y verificada; no se conectó ningún proyecto remoto.
 
 ## Mecanismo único
 
@@ -42,10 +42,16 @@ Cada migración futura documentará propósito, dependencias, riesgo, locks, com
 
 No se ejecutará un comando de migración contra una URL ambigua. Producción requerirá credenciales fuera de Electron, project ref allowlisted, diff revisado, backup y restauración probados, ventana, plan de reversión y aprobación humana explícita. Hasta entonces no se conecta ni se toca el Supabase real de Trawel.
 
-## Salida de la transición
+## Salida de la transición — verificada en FASE 2C-C
 
-SQLite queda eliminado solo cuando búsqueda de dependencias y referencias runtime no encuentre uso activo, Supabase local se reconstruya con migraciones, los flujos sean durables tras reinicio y todas las verificaciones pasen.
+La condición se cumplió en FASE 2C-C: la búsqueda no encontró dependencias ni referencias runtime activas, Supabase local se reconstruyó con migración y seed, los flujos conservaron durabilidad y pasaron los gates aplicables.
 
 ## Primera migración ejecutada
 
 `supabase/migrations/20260714090000_contributions_supabase_local.sql` es exclusivamente local. Se verificó desde cero con `npx supabase db reset`; `supabase/seed.sql` es repetible tras cada reset. Están prohibidos `supabase link`, `db push` y URLs alojadas. La integración se ejecuta con `RUN_SUPABASE_INTEGRATION=true` y credenciales de `npx supabase status -o env`.
+
+## Evidencia de FASE 2C-C
+
+El CHECKPOINT 8 aprobó de nuevo `supabase db reset`: la migración creó siete tablas, 46 constraints, cinco FKs, 19 índices, dos funciones, siete triggers, RLS en siete tablas y cero secuencias; el seed reconstruyó los conteos sintéticos esperados y el bucket privado. Las migraciones Supabase son la única fuente estructural y no existe historial paralelo SQLite/Drizzle.
+
+No se ejecutaron `supabase link` ni `supabase db push`, no se guardó project ref remoto y no se conectó producción. El reset es una prueba de reconstrucción reproducible, no un mecanismo de backup.

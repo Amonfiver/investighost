@@ -1,6 +1,6 @@
 # Roadmap recomendado de Investighost
 
-Estado: FASE 2C-B completada, commiteada y publicada; parche Automatic integrado documentalmente. Siguiente paso: FASE 2C-C.
+Estado: FASE 2C-C completada técnicamente y documentada; pendiente de revisión humana final. Sin commit ni push de FASE 2C-C. Manual y Automatic no están implementados.
 
 ## Principios de secuencia
 
@@ -36,9 +36,9 @@ Definidos proyecto dev, topología productiva compartida, tablas públicas/priva
 
 Implementados contratos, cola por registro, SQLite, archivos locales, SHA-256, idempotencia, retry, backup, adaptador mock, IPC y UI mínima. Sin conexión ni borrado real. El parche Trawel→Investighost prevalece para contribuciones.
 
-#### 2C. Consolidación de Supabase local — en curso
+#### 2C. Consolidación de Supabase local — completada técnicamente
 
-La decisión posterior sustituyó el proyecto dev remoto por Supabase local único. 2C-A y 2C-B están completadas; 2C-C cerrará retirada SQLite y backup/restauración. El contrato remoto, cualquier borrado real y producción siguen bloqueados.
+La decisión posterior sustituyó el proyecto dev remoto por Supabase local único. 2C-A, 2C-B y 2C-C están completadas. SQLite/Drizzle fueron retirados, PostgreSQL es la única base del MVP y Storage local el único file store operativo. El contrato remoto, cualquier borrado real y producción siguen bloqueados.
 
 #### 2C-A. Reorientación a Supabase local único — completada documentalmente
 
@@ -48,9 +48,13 @@ Supabase local pasa a ser la única persistencia del MVP; SQLite queda deprecado
 
 Contribuciones migradas a PostgreSQL/Storage local con migración, seed, runtime y pruebas. SQLite ya no es persistencia activa de contribuciones; queda legado residual fuera de ese runtime.
 
-#### 2C-C. Retirada residual y recuperación — siguiente paso inmediato
+#### 2C-C. Retirada residual y recuperación — completada técnicamente
 
-Retirar dependencias, configuración, schemas y adaptadores SQLite restantes; probar backup/restauración de PostgreSQL y Storage; ejecutar búsqueda residual y gates completos. Solo local y datos sintéticos, sin ampliar dominios ni conectar producción.
+Retiradas dependencias, configuración, schemas y adaptadores SQLite restantes. El backup custom `-Fc` y la restauración real de PostgreSQL se aprobaron en CHECKPOINT 5; el backup y la restauración por API de Storage se aprobaron en CHECKPOINT 7; la auditoría técnica final, reset, reconstrucción, tests y búsquedas residuales se aprobaron en CHECKPOINT 8. Todo se ejecutó en local con datos sintéticos, sin ampliar dominios ni conectar producción.
+
+Gates aprobados: typecheck, lint, 62/62 tests generales, 1/1 integración Supabase, 63/63 total, `supabase db reset`, siete tablas, seed, RLS y bucket privado. El build completa TypeScript, Vite, Electron main/preload y llega a `release\win-unpacked\Investighost.exe`; solo permanece el fallo conocido de symlinks de `winCodeSign`.
+
+Limitaciones conocidas: normalización no funcional del lockfile por npm 11.6.2; 23 vulnerabilidades npm no corregidas; icono Electron por defecto; posible publicación Docker en más interfaces aunque las pruebas usaron loopback; dump PostgreSQL limitado a `public`; prueba Storage sobre un único objeto sintético sin concurrencia; stores de investigación, cola editorial y logs/cachés aún en memoria.
 
 ### 3. Motor de investigación verificable
 
@@ -90,9 +94,9 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 
 ## Orden inmediato recomendado
 
-1. Ejecutar FASE 2C-C: retirada residual de SQLite y backup/restauración PostgreSQL/Storage.
-2. Mantener producción desconectada y todo borrado remoto real deshabilitado.
-3. Continuar después con el flujo Manual; Automatic permanece bloqueado por sus gates.
+1. Obtener revisión humana final de FASE 2C-C y conservar producción desconectada y todo borrado remoto real deshabilitado.
+2. Preparar después, mediante autorización separada, el siguiente bloque del flujo Manual sin darlo por iniciado en este checkpoint.
+3. Mantener Automatic bloqueado hasta que Manual sea estable y cumpla sus gates.
 
 ## Estado FASE 2C-B — 2026-07-14
 

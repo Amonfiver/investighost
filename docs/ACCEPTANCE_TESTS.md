@@ -157,3 +157,16 @@ Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual 
 - Evidencia rota y seguridad sin cubrir bloquean; schema inválido no produce resultados engañosos.
 - Un resultado técnico `passed` deja el borrador en `ready`; `requiresHumanDecision` permanece verdadero.
 - Tests específicos 8/8; RevisIAtor nunca aprueba humanamente ni publica.
+
+## Gate FASE 3H — aprobado técnicamente
+
+- Un operador resuelve un destino o elige una ambigüedad visible desde Electron, sin SQL.
+- Perfiles, profundidad, notas y presupuesto se configuran antes de iniciar.
+- Biblioteca y detalle sobreviven mediante Supabase local; no existe fallback a memoria/SQLite.
+- Fuentes, hechos, lugares, actividades, perfiles, checks, costes y eventos son consultables.
+- Aventura y Estudiante se comparan lado a lado con estructura y utilidad diferentes.
+- Editar o regenerar exige motivo, crea otra versión y conserva la anterior.
+- RevisIAtor debe pasar o advertir antes de entrar en revisión humana.
+- Aprobar/rechazar/solicitar cambios exige `in_review`; ningún botón publica o llama a Trawel.
+- Tests Manual 5/5 e integración Supabase local 1/1 aprobados.
+- Reintento, cancelación y reanudación durable de fallos quedan como gate obligatorio de 3I.

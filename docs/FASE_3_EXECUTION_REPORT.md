@@ -194,7 +194,30 @@ Estado: aprobada técnicamente.
 
 RevisIAtor recomienda y bloquea técnicamente cuando procede, pero no sustituye a un revisor, no publica y no invoca proveedores. Producción, Trawel y Automatic permanecen fuera de alcance. El siguiente escalón es 3H.
 
+## FASE 3H — interfaz Manual completa
+
+Estado: aprobada técnicamente.
+
+### Resultado
+
+- Caso de uso `ManualResearchService` sobre el agregado y repositorio canónicos, sin ruta paralela de UI.
+- Scaffold durable previo a checkpoints, progreso por etapa, lock de ejecución y agregado final en Supabase local.
+- IPC main/preload estrecho: resolución/corrección geográfica, ejecución, biblioteca, detalle, versiones, edición, regeneración, revisión y decisión.
+- Renderer operativo para configuración, progreso, incidencias, fuentes, hechos, lugares, actividades, comparación, RevisIAtor, costes e historial.
+- Edición/regeneración crean versiones enlazadas; aprobación exige la transición humana `ready → in_review → approved`.
+
+### Evidencia
+
+- Tests específicos: 5/5.
+- Integración Manual Supabase local: 1/1; scaffold, checkpoints, resultado, v1/v2, recuperación e higiene aprobados.
+- Gates completos: typecheck, lint, 127/127 tests generales y build Vite/main/preload aprobados; cuatro integraciones locales opt-in omitidas en la suite general.
+- Diseño y mapa de vistas documentados en `FASE_3H_MANUAL_UI.md`.
+
+### Seguridad y límites
+
+El renderer no recibe secretos. Solo se usan Supabase local y proveedores mock. No hay publicación, conexión Trawel/producción, proveedor real o Automatic. La recuperación/reintento/cancelación integral se completa a continuación en 3I.
+
 ## Fases siguientes
 
-- 3H–3I: UI y resiliencia.
+- 3I: resiliencia, costes e idempotencia extremo a extremo.
 - 3J: preparación y detención en aceptación humana Manual.

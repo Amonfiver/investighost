@@ -627,3 +627,28 @@ Solo mock, sin claves o red. RevisIAtor, UI y resiliencia integral siguen en fas
 ### Seguridad y alcance
 
 RevisIAtor nunca aprueba, publica o conecta sistemas. Producción, Trawel y Automatic permanecen desconectados. Siguiente fase: 3H.
+
+---
+
+## Sesión 34 — FASE 3H: interfaz Manual completa
+
+### Fecha y objetivo
+
+2026-07-21. Hacer operable el pipeline canónico desde Electron, con persistencia local, edición/versiones y decisión humana, sin terminal durante el flujo.
+
+### Cambios
+
+- Creado `ManualResearchService`, contratos IPC y runtime Supabase local sin fallback.
+- Añadidos scaffold/progreso, lock, resumen de ejecución e historial de versiones al repositorio.
+- Encadenadas 3C–3G con dos fuentes y proveedores mock deterministas.
+- Sustituida la entrada UI de investigación legado por biblioteca, formulario resuelto, detalle factual, comparación, RevisIAtor, edición/regeneración, decisiones, eventos y costes.
+- Retirados del preload/main activos el IPC legado de investigación/búsqueda y la inicialización de proveedores remotos.
+- Contribuciones locales permanece accesible como módulo separado.
+
+### Verificación
+
+5/5 tests Manual y 1/1 integración Supabase local. La integración persistió scaffold/checkpoints/agregado, creó v2 humana, recuperó historial y eliminó solo su solicitud sintética. Gates completos: typecheck, lint, 127/127 tests generales y build renderer/main/preload aprobados; cuatro integraciones locales opt-in omitidas en la suite general.
+
+### Seguridad y alcance
+
+Secretos únicamente en main; renderer sin cliente Supabase. Solo loopback y mocks, sin proveedor real, producción, Trawel, publicación o Automatic. Siguiente fase: 3I, recuperación, retry, cancelación y resiliencia integral.

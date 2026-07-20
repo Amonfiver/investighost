@@ -11,8 +11,20 @@ declare module '*.css' {
   export default css
 }
 
-import type { ResearchRequest, ResearchResult, EditorialDraft, WebResearchBundle } from './shared/types'
 import type { ContributionImportJob, ContributionSyncSummary } from './shared/contracts'
+import type { ResearchDestinationResult } from './shared/editorial-contracts'
+import type {
+  ManualDestinationCorrection,
+  ManualDestinationQuery,
+  ManualDestinationResolution,
+  ManualDraftDecision,
+  ManualDraftReview,
+  ManualPersistenceStatus,
+  ManualResearchStart,
+  ManualSectionEdit,
+  ManualSectionRegeneration,
+} from './shared/manual-contracts'
+import type { EditorialDraftVersionSummary, EditorialResearchSummary } from './modules/editorial-pipeline/repository'
 
 declare global {
   interface Window {
@@ -21,26 +33,24 @@ declare global {
       getVersion: () => Promise<string>
       getPlatform: () => Promise<string>
       
-      // AI Providers
-      getProviderStatus: () => Promise<{
-        kimi: { configured: boolean; hasKey: boolean }
-        openai: { configured: boolean; hasKey: boolean }
-        debug: boolean
-      }>
-      
-      // Research operations
-      createResearch: (input: unknown) => Promise<ResearchRequest>
-      startResearch: (requestId: string) => Promise<{ started: boolean; requestId: string }>
-      getAllResearch: () => Promise<ResearchRequest[]>
-      getResearchResult: (requestId: string) => Promise<ResearchResult | null>
-      getDraft: (resultId: string) => Promise<EditorialDraft | null>
-      
-      // Search operations
-      collectWebResearch: (input: unknown) => Promise<WebResearchBundle>
       getContributionPersistenceStatus: () => Promise<{ connected: boolean; target: 'Supabase local'; url?: string; error?: string }>
       importPendingContributions: () => Promise<ContributionSyncSummary>
       listContributionImportJobs: () => Promise<ContributionImportJob[]>
       retryContributionImportJob: (jobId: string) => Promise<ContributionSyncSummary>
+
+      // Pipeline Manual canónico
+      getManualPersistenceStatus: () => Promise<ManualPersistenceStatus>
+      getManualActor: () => Promise<string>
+      resolveManualDestination: (input: ManualDestinationQuery) => Promise<ManualDestinationResolution>
+      correctManualDestination: (input: ManualDestinationCorrection) => Promise<ManualDestinationResolution>
+      startManualResearch: (input: ManualResearchStart) => Promise<ResearchDestinationResult>
+      listManualResearch: () => Promise<EditorialResearchSummary[]>
+      getManualResearch: (requestId: string) => Promise<ResearchDestinationResult | null>
+      listManualDraftVersions: (requestId: string) => Promise<EditorialDraftVersionSummary[]>
+      editManualSection: (input: ManualSectionEdit) => Promise<ResearchDestinationResult>
+      regenerateManualSection: (input: ManualSectionRegeneration) => Promise<ResearchDestinationResult>
+      submitManualDraftReview: (input: ManualDraftReview) => Promise<ResearchDestinationResult>
+      decideManualDraft: (input: ManualDraftDecision) => Promise<ResearchDestinationResult>
     }
   }
 }

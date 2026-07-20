@@ -372,7 +372,7 @@ Las campañas de investigación no son campañas de correo. Comparten identidad,
 
 Supabase local/PostgreSQL es la única persistencia durable del MVP y Supabase Storage local es el único file store operativo. No existe SQLite, Drizzle, base alternativa, fallback, caché durable, outbox durable ni modo offline. Si Supabase local no está disponible, el runtime devuelve un error controlado y no inicializa otra persistencia.
 
-Los stores actuales de investigación, cola editorial, mocks y logs/caché de configuración basados en `Map` o variables de proceso son memoria volátil: se pierden al cerrar la aplicación y no constituyen persistencia durable. Su migración corresponde a fases futuras.
+Los módulos históricos de investigación basados en `Map` no constituyen persistencia durable y, desde FASE 3H, ya no están expuestos por main/preload ni forman parte del flujo operativo. Manual usa exclusivamente el repositorio editorial Supabase local; los dobles en memoria quedan limitados a tests.
 
 La recuperación quedó verificada por mecanismos separados: PostgreSQL mediante dump custom `-Fc` y restauración real en CHECKPOINT 5; objetos Storage mediante backup/restauración por API en CHECKPOINT 7. `supabase db reset`, aprobado de nuevo en la auditoría del CHECKPOINT 8, demuestra reconstrucción por migración y seed, pero no sustituye ningún backup.
 
@@ -398,3 +398,5 @@ FASE 3E obliga a transformar documentos aceptados en `ResearchFact`, `ResearchPl
 FASE 3F genera los dos perfiles desde el mismo contexto factual mediante especificaciones versionadas. La regeneración parcial no edita historial: crea otra versión de borrador enlazada y replica las secciones no objetivo. Supabase conserva las versiones; el resultado canónico señala solo la actual por perfil.
 
 FASE 3G añade un evaluador determinista posterior y separado. `RevisiatorService` solo lee dominio canónico y emite `QualityReview`/`QualityCheck`; no llama al generador, no muta borradores y no conoce publicación. El gate humano permanece después de sus resultados.
+
+FASE 3H activa Manual mediante `ManualResearchService`, llamado exclusivamente desde Electron main por IPC. El renderer no conoce el cliente ni la clave local. El servicio persiste un scaffold antes de los checkpoints, adquiere un lock por solicitud y compone los servicios 3C–3G hasta dejar cada perfil en revisión humana. Biblioteca, edición, regeneración, versiones y decisiones vuelven al mismo repositorio Supabase; no se usa el flujo legado en memoria como fallback.

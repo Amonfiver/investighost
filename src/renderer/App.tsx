@@ -1,772 +1,493 @@
-/**
- * Investighost - Componente Principal App (Con Integración Kimi)
- * 
- * Propósito: UI completa del flujo de investigación con soporte para IA real
- * Alcance: Formulario, listado, detalle, configuración y visualización de resultados
- * Estado: Cableado a backend real vía IPC
- * 
- * NOTA: Este componente usa window.electronAPI para comunicarse con el main process
- */
-
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
-import type { ResearchRequest, ResearchResult, EditorialDraft } from '@shared/types'
+import type {
+  EditorialDraftBundle,
+  EditorialProfile,
+  QualityReview,
+  ResearchDestinationResult,
+} from '@shared/editorial-contracts'
 import type { ContributionImportJob, ContributionSyncSummary } from '@shared/contracts'
+import type {
+  ManualDestinationResolution,
+  ManualPersistenceStatus,
+  ManualResearchStart,
+} from '@shared/manual-contracts'
+import type { EditorialDraftVersionSummary, EditorialResearchSummary } from '@modules/editorial-pipeline/repository'
 
-// ============================================
-// Componente Principal
-// ============================================
+type View = 'library' | 'new' | 'detail' | 'contributions'
+type DetailTab = 'overview' | 'sources' | 'facts' | 'places' | 'activities' | 'drafts' | 'quality' | 'history'
+
+const stageLabels: Record<string, string> = {
+  destination_resolution: 'Destino',
+  source_discovery: 'Fuentes',
+  source_reading: 'Lectura',
+  fact_structuring: 'Hechos',
+  profile_generation: 'Perfiles',
+  quality_review: 'RevisIAtor',
+  human_review: 'Revisión humana',
+}
+
+const stateLabels: Record<string, string> = {
+  draft: 'Borrador', queued: 'En cola', researching: 'Investigando', structuring: 'Estructurando',
+  validating: 'Validando', completed: 'Completada', retry_pending: 'Reintento pendiente', failed: 'Fallida', cancelled: 'Cancelada',
+  ready: 'Lista para revisar', in_review: 'En revisión', changes_requested: 'Cambios solicitados', approved: 'Aprobada',
+  rejected: 'Rechazada', archived: 'Archivada', passed: 'Aprobado técnicamente', passed_with_warnings: 'Con advertencias',
+  blocked: 'Bloqueado',
+}
 
 export function App(): JSX.Element {
-  const [activeView, setActiveView] = useState<'list' | 'new' | 'detail' | 'contributions'>('list')
-  const [requests, setRequests] = useState<ResearchRequest[]>([])
-  const [selectedRequest, setSelectedRequest] = useState<ResearchRequest | null>(null)
-  const [selectedResult, setSelectedResult] = useState<ResearchResult | null>(null)
-  const [selectedDraft, setSelectedDraft] = useState<EditorialDraft | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  
-  // Estado de configuración de proveedores
-  const [providerStatus, setProviderStatus] = useState<{
-    kimi: { configured: boolean; hasKey: boolean }
-    openai: { configured: boolean; hasKey: boolean }
-    debug: boolean
-  } | null>(null)
+  const [view, setView] = useState<View>('library')
+  const [status, setStatus] = useState<ManualPersistenceStatus | null>(null)
+  const [actorId, setActorId] = useState('')
+  const [summaries, setSummaries] = useState<EditorialResearchSummary[]>([])
+  const [selectedSummary, setSelectedSummary] = useState<EditorialResearchSummary | null>(null)
+  const [selected, setSelected] = useState<ResearchDestinationResult | null>(null)
+  const [versions, setVersions] = useState<EditorialDraftVersionSummary[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // Cargar solicitudes y estado de proveedores al iniciar
-  const loadRequests = useCallback(async (silent = false): Promise<ResearchRequest[]> => {
-    if (!silent) {
-      console.log('[Renderer] Loading requests via IPC...')
-    }
-    try {
-      const requests = await window.electronAPI.getAllResearch()
-      if (!silent) {
-        console.log('[Renderer] Loaded', requests.length, 'requests')
-      }
-      setRequests(requests)
-      return requests
-    } catch (error) {
-      console.error('[Renderer] Failed to load requests:', error)
-      return []
-    }
-  }, [])
-
-  const loadProviderStatus = useCallback(async () => {
-    try {
-      console.log('[Renderer] Loading provider status...')
-      const status = await window.electronAPI.getProviderStatus()
-      if (status) {
-        console.log('[Renderer] Provider status:', status)
-        setProviderStatus(status)
-      }
-    } catch (error) {
-      console.error('[Renderer] Failed to load provider status:', error)
-    }
+  const refreshLibrary = useCallback(async () => {
+    const items = await window.electronAPI.listManualResearch()
+    setSummaries(items)
+    return items
   }, [])
 
   useEffect(() => {
-    loadRequests()
-    loadProviderStatus()
-  }, [loadRequests, loadProviderStatus])
+    Promise.all([
+      window.electronAPI.getManualPersistenceStatus(),
+      window.electronAPI.getManualActor(),
+    ]).then(async ([nextStatus, nextActor]) => {
+      setStatus(nextStatus)
+      setActorId(nextActor)
+      if (nextStatus.connected) await refreshLibrary()
+    }).catch(reason => setError(errorText(reason)))
+  }, [refreshLibrary])
 
-  const pollResearchUntilSettled = useCallback(async (requestId: string) => {
-    const maxDurationMs = 140_000
-    const intervalMs = 2000
-    const startedAt = Date.now()
-    const activeStatuses: ResearchRequest['status'][] = ['pending', 'researching', 'structured']
-
-    while (Date.now() - startedAt < maxDurationMs) {
-      await new Promise(resolve => setTimeout(resolve, intervalMs))
-
-      const latestRequests = await loadRequests(true)
-      const latestRequest = latestRequests.find(req => req.id === requestId)
-      if (latestRequest) {
-        setSelectedRequest(current => current?.id === requestId ? latestRequest : current)
-      }
-
-      const result = await window.electronAPI.getResearchResult(requestId)
-      if (result) {
-        setSelectedResult(result)
-        const draft = await window.electronAPI.getDraft(result.id)
-        setSelectedDraft(draft)
-      }
-
-      if (!latestRequest || !activeStatuses.includes(latestRequest.status)) {
-        return
-      }
-    }
-
-    const timeoutMessage = 'La investigación superó el tiempo máximo de espera. Revisa la conexión o intenta de nuevo.'
-    setRequests(current => current.map(req => 
-      req.id === requestId 
-        ? { ...req, status: 'error', errorMessage: timeoutMessage, updatedAt: new Date() }
-        : req
-    ))
-    setSelectedRequest(current => 
-      current?.id === requestId 
-        ? { ...current, status: 'error', errorMessage: timeoutMessage, updatedAt: new Date() }
-        : current
-    )
-    console.warn('[Renderer] Research polling timeout:', requestId)
-  }, [loadRequests])
-
-  // Handlers
-  const handleCreateRequest = async (input: unknown) => {
-    console.log('[Renderer] Creating research via IPC:', input)
-    setIsLoading(true)
+  const openResearch = async (summary: EditorialResearchSummary) => {
+    setBusy(true)
+    setError(null)
+    setSelectedSummary(summary)
     try {
-      const request = await window.electronAPI.createResearch(input)
-      console.log('[Renderer] Research created:', request.id)
-      
-      // Recargar lista
-      await loadRequests()
-      setActiveView('list')
-      
-      // Iniciar investigación automáticamente
-      console.log('[Renderer] Starting research via IPC:', request.id)
-      await window.electronAPI.startResearch(request.id)
-      console.log('[Renderer] Research started:', request.id)
-      pollResearchUntilSettled(request.id)
-      
-    } catch (error) {
-      console.error('[Renderer] Research creation failed:', error)
-      alert('Error: ' + (error as Error).message)
+      const [result, history] = await Promise.all([
+        window.electronAPI.getManualResearch(summary.requestId),
+        window.electronAPI.listManualDraftVersions(summary.requestId),
+      ])
+      setSelected(result)
+      setVersions(history)
+      setView('detail')
+    } catch (reason) {
+      setError(errorText(reason))
     } finally {
-      setIsLoading(false)
+      setBusy(false)
     }
   }
 
-  const handleSelectRequest = async (request: ResearchRequest) => {
-    console.log('[Renderer] Selecting request:', request.id)
-    setSelectedRequest(request)
-    setIsLoading(true)
-    
+  const completeStart = async (input: Omit<ManualResearchStart, 'actorId' | 'idempotencyKey'>) => {
+    setBusy(true)
+    setError(null)
     try {
-      console.log('[Renderer] Getting result for:', request.id)
-      const result = await window.electronAPI.getResearchResult(request.id)
-      console.log('[Renderer] Result found:', result ? 'yes' : 'no')
-      setSelectedResult(result)
-      
-      if (result) {
-        console.log('[Renderer] Getting draft for result:', result.id)
-        const draft = await window.electronAPI.getDraft(result.id)
-        console.log('[Renderer] Draft found:', draft ? 'yes' : 'no')
-        setSelectedDraft(draft)
-      }
-    } catch (error) {
-      console.error('[Renderer] Error loading details:', error)
+      const result = await window.electronAPI.startManualResearch({
+        ...input,
+        actorId,
+        idempotencyKey: `manual:${crypto.randomUUID()}`,
+      })
+      setSelected(result)
+      setSelectedSummary(summaryFromResult(result))
+      setVersions(await window.electronAPI.listManualDraftVersions(result.request.id))
+      await refreshLibrary()
+      setView('detail')
+    } catch (reason) {
+      setError(errorText(reason))
+    } finally {
+      setBusy(false)
     }
-    
-    setIsLoading(false)
-    setActiveView('detail')
   }
 
-  const kimiConfigured = providerStatus?.kimi?.configured ?? false
+  const applyResult = async (operation: () => Promise<ResearchDestinationResult>) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await operation()
+      setSelected(result)
+      setSelectedSummary(summaryFromResult(result))
+      setVersions(await window.electronAPI.listManualDraftVersions(result.request.id))
+      await refreshLibrary()
+    } catch (reason) {
+      setError(errorText(reason))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const go = (next: View) => {
+    setError(null)
+    setView(next)
+  }
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1 onClick={() => setActiveView('list')} style={{ cursor: 'pointer' }}>
-          Investighost
-        </h1>
-        <p className="subtitle">Investigación de destinos para Trawel</p>
-        
-        {/* Indicador de estado de Kimi */}
-        <div className="provider-status">
-          {providerStatus && (
-            <span className={`status-indicator ${kimiConfigured ? 'ready' : 'not-ready'}`}>
-              {kimiConfigured ? '🟢 Kimi listo' : '🔴 Kimi no configurado'}
-            </span>
-          )}
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">IG</span>
+          <div><strong>Investighost</strong><small>Pipeline Manual</small></div>
         </div>
-        
-        <div className="header-actions">
-          <button
-            className="btn-secondary"
-            onClick={() => setActiveView('contributions')}
-            disabled={activeView === 'contributions'}
-          >
-            Descargar pendientes
-          </button>
-          <button 
-            className="btn-primary"
-            onClick={() => setActiveView('new')}
-            disabled={activeView === 'new'}
-          >
-            + Nueva investigación
-          </button>
-        </div>
-      </header>
-
-      <main className="app-main">
-        {/* Banner de configuración si Kimi no está listo */}
-        {!kimiConfigured && activeView === 'list' && (
-          <div className="config-banner">
-            <h3>⚠️ Configuración necesaria</h3>
-            <p>
-              Para usar investigación real con Kimi, crea un archivo <code>.env</code> en la raíz del proyecto:
-            </p>
-            <pre>
-              KIMI_API_KEY=sk-tu-clave-aqui
-            </pre>
-            <p>
-              Obtén tu API key en <a href="https://platform.moonshot.cn/" target="_blank" rel="noopener noreferrer">platform.moonshot.cn</a>
-            </p>
-            <p className="note">
-              Sin configuración, la app funcionará en modo simulación con datos de ejemplo.
-            </p>
+        <nav aria-label="Navegación principal">
+          <button className={view === 'library' ? 'nav-active' : ''} onClick={() => go('library')}>Biblioteca</button>
+          <button className={view === 'new' ? 'nav-active' : ''} onClick={() => go('new')}>Nueva investigación</button>
+          <button className={view === 'contributions' ? 'nav-active' : ''} onClick={() => go('contributions')}>Contribuciones</button>
+        </nav>
+        <div className="environment-card">
+          <span className={`connection-dot ${status?.connected ? 'online' : ''}`} aria-hidden="true" />
+          <div>
+            <strong>{status?.connected ? 'Supabase local' : 'Local desconectado'}</strong>
+            <small>Mocks deterministas · sin publicación</small>
           </div>
-        )}
-
-        {activeView === 'list' && (
-          <ResearchList 
-            requests={requests} 
-            onSelect={handleSelectRequest}
-            isLoading={isLoading}
-            kimiConfigured={kimiConfigured}
-          />
-        )}
-        
-        {activeView === 'new' && (
-          <NewResearchForm 
-            onSubmit={handleCreateRequest}
-            onCancel={() => setActiveView('list')}
-            isLoading={isLoading}
-            kimiConfigured={kimiConfigured}
-          />
-        )}
-        
-        {activeView === 'detail' && selectedRequest && (
-          <ResearchDetail 
-            request={selectedRequest}
-            result={selectedResult}
-            draft={selectedDraft}
-            onBack={() => setActiveView('list')}
-            isLoading={isLoading}
-            kimiConfigured={kimiConfigured}
-          />
-        )}
-
-        {activeView === 'contributions' && <ContributionImportPanel />}
-      </main>
-
-      <footer className="app-footer">
-        <p>
-          {!kimiConfigured && <span className="badge-mock">🔄 SIMULACIÓN</span>}
-          {kimiConfigured && <span className="badge-live">🤖 KIMI ACTIVO</span>}
-          {' '}| Stack: Electron + React + TypeScript + Vite
-          {' '}| Contribuciones: Supabase local
-        </p>
-      </footer>
-    </div>
-  )
-}
-
-// ============================================
-// Sub-componentes
-// ============================================
-
-interface ResearchListProps {
-  requests: ResearchRequest[]
-  onSelect: (r: ResearchRequest) => void
-  isLoading: boolean
-  kimiConfigured: boolean
-}
-
-function ResearchList({ requests, onSelect, isLoading, kimiConfigured }: ResearchListProps): JSX.Element {
-  const getStatusLabel = (status: ResearchRequest['status']) => {
-    const labels: Record<string, string> = {
-      pending: '⏳ Pendiente',
-      researching: kimiConfigured ? '🔍 Investigando con Kimi...' : '🔍 Simulando...',
-      structured: '📊 Estructurado',
-      drafted: '📝 Borrador listo',
-      under_review: '👀 En revisión',
-      approved: '✅ Aprobado',
-      published: '🚀 Publicado',
-      error: '❌ Error',
-    }
-    return labels[status] || status
-  }
-
-  const getStatusClass = (status: ResearchRequest['status']) => {
-    return `status-badge status-${status}`
-  }
-
-  if (isLoading && requests.length === 0) {
-    return <div className="loading">Cargando investigaciones...</div>
-  }
-
-  return (
-    <div className="research-list">
-      <h2>Mis investigaciones ({requests.length})</h2>
-      
-      {requests.length === 0 ? (
-        <div className="empty-state">
-          <p>No hay investigaciones todavía.</p>
-          <p>{kimiConfigured ? 'Crea tu primera investigación con Kimi.' : 'Crea tu primera investigación (modo simulación).'}</p>
         </div>
-      ) : (
-        <div className="request-grid">
-          {requests.map(req => (
-            <div 
-              key={req.id} 
-              className="request-card"
-              onClick={() => onSelect(req)}
-            >
-              <div className="request-header">
-                <h3>{req.input.region || req.input.country}</h3>
-                <span className={getStatusClass(req.status)}>
-                  {getStatusLabel(req.status)}
-                </span>
-              </div>
-              <div className="request-body">
-                <p><strong>País:</strong> {req.input.country}</p>
-                {req.input.focus && <p><strong>Enfoque:</strong> {req.input.focus}</p>}
-                <p><strong>Idioma:</strong> {req.input.outputLanguage}</p>
-              </div>
-              <div className="request-footer">
-                <small>{new Date(req.createdAt).toLocaleDateString('es-ES')}</small>
-              </div>
+      </aside>
+
+      <div className="workspace">
+        <header className="topbar">
+          <div>
+            <span className="eyebrow">FASE 3 · FLUJO CANÓNICO</span>
+            <h1>{viewTitle(view, selected)}</h1>
+          </div>
+          <div className="topbar-actions">
+            <span className="safety-pill">Local · Manual · Simulado</span>
+            <button className="button primary" onClick={() => go('new')} disabled={!status?.connected || busy}>Nueva investigación</button>
+          </div>
+        </header>
+
+        <main className="content" aria-busy={busy}>
+          {error && <div className="alert error" role="alert"><strong>No se pudo completar la operación.</strong><span>{error}</span></div>}
+          {!status?.connected && status?.error && (
+            <div className="alert warning" role="status">
+              <strong>Supabase local no está disponible.</strong>
+              <span>{status.error} El flujo Manual no usa una base alternativa.</span>
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+          )}
+          {busy && <div className="progress-banner" role="status"><span className="spinner" />Guardando progreso en Supabase local…</div>}
 
-interface NewResearchFormProps {
-  onSubmit: (input: unknown) => void
-  onCancel: () => void
-  isLoading: boolean
-  kimiConfigured: boolean
-}
-
-function NewResearchForm({ onSubmit, onCancel, isLoading, kimiConfigured }: NewResearchFormProps): JSX.Element {
-  const [formData, setFormData] = useState({
-    country: '',
-    region: '',
-    focus: '',
-    outputLanguage: 'es',
-    userNotes: '',
-  })
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    onSubmit(formData)
-  }
-
-  return (
-    <div className="new-research-form">
-      <h2>Nueva investigación</h2>
-      
-      {!kimiConfigured && (
-        <div className="warning-box">
-          <p>⚠️ <strong>Modo simulación:</strong> No hay Kimi configurado.</p>
-          <p>La investigación usará datos de ejemplo en lugar de IA real.</p>
-        </div>
-      )}
-      
-      <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label htmlFor="country">País *</label>
-          <input
-            id="country"
-            type="text"
-            value={formData.country}
-            onChange={e => setFormData({ ...formData, country: e.target.value })}
-            placeholder="Ej: España, Italia, Japón"
-            required
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="region">Región/Ciudad (opcional)</label>
-          <input
-            id="region"
-            type="text"
-            value={formData.region}
-            onChange={e => setFormData({ ...formData, region: e.target.value })}
-            placeholder="Ej: Valencia, Roma, Tokio"
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="focus">Enfoque (opcional)</label>
-          <input
-            id="focus"
-            type="text"
-            value={formData.focus}
-            onChange={e => setFormData({ ...formData, focus: e.target.value })}
-            placeholder="Ej: gastronomía, cultura, relax"
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="language">Idioma de salida</label>
-          <select
-            id="language"
-            value={formData.outputLanguage}
-            onChange={e => setFormData({ ...formData, outputLanguage: e.target.value })}
-          >
-            <option value="es">Español</option>
-            <option value="en">English</option>
-            <option value="fr">Français</option>
-            <option value="de">Deutsch</option>
-          </select>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="notes">Notas adicionales (opcional)</label>
-          <textarea
-            id="notes"
-            value={formData.userNotes}
-            onChange={e => setFormData({ ...formData, userNotes: e.target.value })}
-            placeholder="Cualquier información adicional relevante..."
-            rows={3}
-          />
-        </div>
-
-        <div className="form-actions">
-          <button type="button" className="btn-secondary" onClick={onCancel}>
-            Cancelar
-          </button>
-          <button type="submit" className="btn-primary" disabled={isLoading}>
-            {isLoading ? 'Creando...' : (kimiConfigured ? 'Investigar con Kimi' : 'Crear (simulación)')}
-          </button>
-        </div>
-      </form>
-    </div>
-  )
-}
-
-interface ResearchDetailProps {
-  request: ResearchRequest
-  result: ResearchResult | null
-  draft: EditorialDraft | null
-  onBack: () => void
-  isLoading: boolean
-  kimiConfigured: boolean
-}
-
-function ResearchDetail({ request, result, draft, onBack, isLoading, kimiConfigured }: ResearchDetailProps): JSX.Element {
-  const [activeTab, setActiveTab] = useState<'overview' | 'places' | 'activities' | 'draft'>('overview')
-
-  if (isLoading) {
-    return <div className="loading">Cargando detalles...</div>
-  }
-
-  const isError = request.status === 'error'
-  const errorMessage = request.errorMessage
-
-  return (
-    <div className="research-detail">
-      <button className="btn-back" onClick={onBack}>← Volver al listado</button>
-      
-      <div className="detail-header">
-        <h2>{request.input.region || request.input.country}</h2>
-        <span className={`status-badge status-${request.status}`}>
-          {request.status}
-        </span>
+          {view === 'library' && (
+            <Library summaries={summaries} connected={Boolean(status?.connected)} onOpen={openResearch} onNew={() => go('new')} />
+          )}
+          {view === 'new' && status?.connected && actorId && (
+            <NewManualResearch actorId={actorId} busy={busy} onStart={completeStart} onCancel={() => go('library')} />
+          )}
+          {view === 'detail' && (
+            selected
+              ? <ResearchWorkspace result={selected} versions={versions} busy={busy} actorId={actorId} applyResult={applyResult} onBack={() => go('library')} />
+              : <IncompleteResearch summary={selectedSummary} onBack={() => go('library')} />
+          )}
+          {view === 'contributions' && <ContributionImportPanel />}
+        </main>
       </div>
-
-      {/* Mensaje de error si lo hay */}
-      {isError && errorMessage && (
-        <div className="error-banner">
-          <h4>❌ Error en la investigación</h4>
-          <p>{errorMessage}</p>
-          {!kimiConfigured && (
-            <p className="hint">
-              ¿No tienes Kimi configurado? Revisa el archivo <code>.env</code> y añade tu KIMI_API_KEY.
-            </p>
-          )}
-          {kimiConfigured && errorMessage?.includes('API key') && (
-            <p className="hint">
-              Parece que hay un problema con la API key. Verifica que sea válida y tenga saldo.
-            </p>
-          )}
-        </div>
-      )}
-
-      {!result ? (
-        <div className="waiting-state">
-          <p>La investigación está en curso...</p>
-          <p>Estado actual: <strong>{request.status}</strong></p>
-          {!kimiConfigured && request.status === 'researching' && (
-            <p className="note">Usando modo simulación (sin IA real)</p>
-          )}
-          {kimiConfigured && request.status === 'researching' && (
-            <p className="note">Consultando con Kimi AI...</p>
-          )}
-        </div>
-      ) : (
-        <>
-          <div className="tabs">
-            <button 
-              className={activeTab === 'overview' ? 'active' : ''}
-              onClick={() => setActiveTab('overview')}
-            >
-              Resumen
-            </button>
-            <button 
-              className={activeTab === 'places' ? 'active' : ''}
-              onClick={() => setActiveTab('places')}
-            >
-              Lugares ({result.places.length})
-            </button>
-            <button 
-              className={activeTab === 'activities' ? 'active' : ''}
-              onClick={() => setActiveTab('activities')}
-            >
-              Actividades ({result.activities.length})
-            </button>
-            <button 
-              className={activeTab === 'draft' ? 'active' : ''}
-              onClick={() => setActiveTab('draft')}
-            >
-              Borrador
-            </button>
-          </div>
-
-          <div className="tab-content">
-            {activeTab === 'overview' && (
-              <OverviewTab result={result} kimiConfigured={kimiConfigured} />
-            )}
-            {activeTab === 'places' && <PlacesTab places={result.places} />}
-            {activeTab === 'activities' && <ActivitiesTab activities={result.activities} />}
-            {activeTab === 'draft' && draft && <DraftTab draft={draft} kimiConfigured={kimiConfigured} />}
-          </div>
-        </>
-      )}
     </div>
   )
 }
 
-function OverviewTab({ result, kimiConfigured }: { 
-  result: ResearchResult; 
-  kimiConfigured: boolean;
+function Library({ summaries, connected, onOpen, onNew }: {
+  summaries: EditorialResearchSummary[]
+  connected: boolean
+  onOpen: (summary: EditorialResearchSummary) => void
+  onNew: () => void
 }): JSX.Element {
+  const completed = summaries.filter(item => item.state === 'completed').length
+  const failures = summaries.filter(item => item.state === 'failed' || item.state === 'retry_pending').length
   return (
-    <div className="overview-tab">
-      <section>
-        <h3>Destino</h3>
-        <p><strong>{result.destination.region}, {result.destination.country}</strong></p>
-        <p>{result.destination.description}</p>
-      </section>
-
-      <section>
-        <h3>Resumen</h3>
-        <p>{result.summary}</p>
-      </section>
-
-      <section>
-        <h3>Confianza de la investigación</h3>
-        <div className="confidence-bar">
-          <div 
-            className="confidence-fill" 
-            style={{ width: `${result.confidence * 100}%` }}
-          />
-          <span>{Math.round(result.confidence * 100)}%</span>
+    <section>
+      <div className="metric-grid" aria-label="Resumen de biblioteca">
+        <Metric label="Investigaciones" value={summaries.length} detail="Persistidas localmente" />
+        <Metric label="Completadas" value={completed} detail="Pendientes o con decisión humana" />
+        <Metric label="Con incidencias" value={failures} detail="Visibles y recuperables" tone={failures ? 'warn' : 'normal'} />
+        <Metric label="Publicaciones" value={0} detail="Bloqueadas por diseño" />
+      </div>
+      <div className="section-heading">
+        <div><span className="eyebrow">BIBLIOTECA LOCAL</span><h2>Investigaciones Manuales</h2></div>
+        <button className="button secondary" onClick={onNew} disabled={!connected}>Crear nueva</button>
+      </div>
+      {summaries.length === 0 ? (
+        <div className="empty-card">
+          <span className="empty-icon">＋</span>
+          <h3>Aún no hay investigaciones</h3>
+          <p>Resuelve un destino del catálogo y ejecuta el pipeline completo sin salir de la aplicación.</p>
+          <button className="button primary" onClick={onNew} disabled={!connected}>Crear la primera</button>
         </div>
-        {!kimiConfigured && (
-          <p className="note">⚠️ Modo simulación - confianza estimada</p>
+      ) : (
+        <div className="research-table" role="list">
+          {summaries.map(summary => (
+            <button className="research-row" key={summary.requestId} onClick={() => onOpen(summary)} role="listitem">
+              <span className="destination-avatar">{initials(summary.destinationQuery)}</span>
+              <span className="research-main"><strong>{summary.destinationQuery}</strong><small>{summary.profiles.map(profileLabel).join(' · ')}</small></span>
+              <span><StateBadge value={summary.state} /></span>
+              <span className="stage-copy"><small>Etapa</small>{stageLabels[summary.stage ?? ''] ?? 'Preparación'}</span>
+              <span className="stage-copy"><small>Coste</small>{formatMoney(summary.actualCost, summary.currency)}</span>
+              <span className="row-arrow" aria-hidden="true">→</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function Metric({ label, value, detail, tone = 'normal' }: { label: string; value: number; detail: string; tone?: 'normal' | 'warn' }): JSX.Element {
+  return <article className={`metric ${tone}`}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>
+}
+
+function NewManualResearch({ actorId, busy, onStart, onCancel }: {
+  actorId: string
+  busy: boolean
+  onStart: (input: Omit<ManualResearchStart, 'actorId' | 'idempotencyKey'>) => Promise<void>
+  onCancel: () => void
+}): JSX.Element {
+  const [query, setQuery] = useState('Morella')
+  const [countryCode, setCountryCode] = useState('ES')
+  const [destinationType, setDestinationType] = useState<ManualResearchStart['destinationType']>('locality')
+  const [profiles, setProfiles] = useState<EditorialProfile[]>(['adventure', 'student'])
+  const [depth, setDepth] = useState<ManualResearchStart['depth']>('standard')
+  const [budgetLimit, setBudgetLimit] = useState(2)
+  const [notes, setNotes] = useState('')
+  const [resolution, setResolution] = useState<ManualDestinationResolution | null>(null)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const [resolving, setResolving] = useState(false)
+
+  const destinationInput = useMemo(() => ({
+    query,
+    countryCode: countryCode.trim() ? countryCode.trim().toUpperCase() : undefined,
+    type: destinationType,
+  }), [countryCode, destinationType, query])
+
+  const resolve = async () => {
+    setResolving(true)
+    setLocalError(null)
+    try { setResolution(await window.electronAPI.resolveManualDestination(destinationInput)) }
+    catch (reason) { setLocalError(errorText(reason)) }
+    finally { setResolving(false) }
+  }
+
+  const choose = async (candidateId: string) => {
+    setResolving(true)
+    setLocalError(null)
+    try {
+      setResolution(await window.electronAPI.correctManualDestination({
+        query: destinationInput,
+        candidateId,
+        actorId,
+        reason: 'Selección explícita desde la interfaz Manual',
+      }))
+    } catch (reason) { setLocalError(errorText(reason)) }
+    finally { setResolving(false) }
+  }
+
+  const toggleProfile = (profile: EditorialProfile) => {
+    setProfiles(current => current.includes(profile) ? current.filter(item => item !== profile) : [...current, profile])
+  }
+
+  const start = async () => {
+    if (resolution?.status !== 'resolved' || profiles.length === 0) return
+    await onStart({
+      destinationQuery: query,
+      countryCode: countryCode.trim() ? countryCode.trim().toUpperCase() : undefined,
+      destinationType,
+      profiles,
+      language: 'es',
+      depth,
+      notes: notes.trim() || undefined,
+      budgetLimit,
+    })
+  }
+
+  return (
+    <section className="new-layout">
+      <div className="form-card">
+        <div className="step-title"><span>1</span><div><h2>Destino canónico</h2><p>Primero comprueba la identidad territorial. Nunca se inventa un destino.</p></div></div>
+        <div className="form-grid three">
+          <label className="field wide"><span>Destino</span><input value={query} onChange={event => { setQuery(event.target.value); setResolution(null) }} placeholder="Morella" /></label>
+          <label className="field"><span>País ISO</span><input value={countryCode} maxLength={2} onChange={event => { setCountryCode(event.target.value); setResolution(null) }} placeholder="ES" /></label>
+          <label className="field"><span>Tipo</span><select value={destinationType} onChange={event => { setDestinationType(event.target.value as ManualResearchStart['destinationType']); setResolution(null) }}><option value="locality">Localidad</option><option value="region">Región</option><option value="country">País</option><option value="zone">Zona</option></select></label>
+        </div>
+        <button className="button secondary" onClick={resolve} disabled={!query.trim() || resolving || busy}>{resolving ? 'Resolviendo…' : 'Resolver destino'}</button>
+        {localError && <div className="inline-error">{localError}</div>}
+        {resolution?.status === 'not_found' && <div className="resolution-card negative"><strong>Sin coincidencia</strong><p>{resolution.reason}</p></div>}
+        {resolution?.status === 'ambiguous' && (
+          <div className="resolution-card ambiguous"><strong>Elige una coincidencia</strong><p>La ambigüedad queda visible y requiere tu decisión.</p><div className="candidate-list">{resolution.candidates.map(candidate => <button key={candidate.entity.id} onClick={() => choose(candidate.entity.id)}><span><strong>{candidate.entity.name}</strong><small>{[...candidate.hierarchy.map(item => item.name), candidate.entity.name].join(' › ')}</small></span><span>{Math.round(candidate.score * 100)}%</span></button>)}</div></div>
         )}
-      </section>
+        {resolution?.status === 'resolved' && (
+          <div className="resolution-card positive"><div><span className="check-icon">✓</span><div><strong>{resolution.entity.name}</strong><p>{[...resolution.hierarchy.map(item => item.name), resolution.entity.name].join(' › ')}</p></div></div><dl><div><dt>Método</dt><dd>{resolution.method}</dd></div><div><dt>Catálogo</dt><dd>{resolution.catalogVersion}</dd></div><div><dt>ID externo</dt><dd>{resolution.entity.externalIds?.geonames ?? 'Local sintético'}</dd></div></dl></div>
+        )}
+      </div>
 
-      <section>
-        <h3>Consejos prácticos</h3>
-        <ul className="tips-list">
-          {result.tips.map((tip, i) => (
-            <li key={i}>{tip}</li>
-          ))}
-        </ul>
-      </section>
-
-      <section>
-        <h3>Fuentes consultadas</h3>
-        <ul className="sources-list">
-          {result.sources.map(source => (
-            <li key={source.id}>
-              <a href={source.url} target="_blank" rel="noopener noreferrer">
-                {source.title}
-              </a>
-              {' '}
-              <small>({source.type}, fiabilidad: {Math.round(source.reliability * 100)}%)</small>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </div>
+      <div className={`form-card ${resolution?.status !== 'resolved' ? 'disabled-card' : ''}`}>
+        <div className="step-title"><span>2</span><div><h2>Perfiles y configuración</h2><p>Los dos perfiles comparten hechos, pero producen decisiones editoriales distintas.</p></div></div>
+        <fieldset className="profile-options" disabled={resolution?.status !== 'resolved'}><legend>Perfiles editoriales</legend>
+          <label className={profiles.includes('adventure') ? 'selected' : ''}><input type="checkbox" checked={profiles.includes('adventure')} onChange={() => toggleProfile('adventure')} /><span className="profile-symbol">A</span><span><strong>Aventura</strong><small>Rutas, esfuerzo, preparación, riesgos y logística.</small></span></label>
+          <label className={profiles.includes('student') ? 'selected' : ''}><input type="checkbox" checked={profiles.includes('student')} onChange={() => toggleProfile('student')} /><span className="profile-symbol student">E</span><span><strong>Estudiante</strong><small>Presupuesto, movilidad, servicios, estudio y vida diaria.</small></span></label>
+        </fieldset>
+        <div className="form-grid">
+          <label className="field"><span>Profundidad</span><select value={depth} onChange={event => setDepth(event.target.value as ManualResearchStart['depth'])} disabled={resolution?.status !== 'resolved'}><option value="standard">Estándar</option><option value="deep">Profunda</option></select></label>
+          <label className="field"><span>Presupuesto máximo simulado (€)</span><input type="number" min="0.1" max="50" step="0.1" value={budgetLimit} onChange={event => setBudgetLimit(Number(event.target.value))} disabled={resolution?.status !== 'resolved'} /></label>
+          <label className="field full"><span>Notas para la investigación</span><textarea rows={3} value={notes} onChange={event => setNotes(event.target.value)} maxLength={2000} disabled={resolution?.status !== 'resolved'} placeholder="Prioridades, límites o contexto editorial…" /></label>
+        </div>
+        <div className="scope-note"><strong>Ejecución segura</strong><span>Mocks locales deterministas · persistencia Supabase local · sin Trawel · sin publicación</span></div>
+        <div className="form-actions"><button className="button ghost" onClick={onCancel}>Cancelar</button><button className="button primary" onClick={start} disabled={busy || resolution?.status !== 'resolved' || profiles.length === 0}>{busy ? 'Ejecutando pipeline…' : 'Iniciar investigación Manual'}</button></div>
+      </div>
+    </section>
   )
 }
 
-function PlacesTab({ places }: { places: ResearchResult['places'] }): JSX.Element {
+function ResearchWorkspace({ result, versions, busy, actorId, applyResult, onBack }: {
+  result: ResearchDestinationResult
+  versions: EditorialDraftVersionSummary[]
+  busy: boolean
+  actorId: string
+  applyResult: (operation: () => Promise<ResearchDestinationResult>) => Promise<void>
+  onBack: () => void
+}): JSX.Element {
+  const [tab, setTab] = useState<DetailTab>('overview')
+  const totalCost = result.usage.reduce((sum, item) => sum + (item.actualCost ?? 0), 0)
+  const tabs: Array<[DetailTab, string, number?]> = [
+    ['overview', 'Resumen'], ['sources', 'Fuentes', result.sources.length], ['facts', 'Hechos', result.facts.length],
+    ['places', 'Lugares', result.places.length], ['activities', 'Actividades', result.activities.length],
+    ['drafts', 'Borradores', result.drafts.length], ['quality', 'RevisIAtor', result.qualityChecks.filter(item => item.result !== 'passed').length],
+    ['history', 'Historial', result.events.length],
+  ]
   return (
-    <div className="places-tab">
-      {places.map(place => (
-        <div key={place.id} className="place-card">
-          <div className="place-header">
-            <h4>{place.name}</h4>
-            <span className="category-badge">{place.category}</span>
-          </div>
-          <p>{place.description}</p>
-          <p><strong>Por qué visitar:</strong> {place.whyVisit}</p>
-          {place.bestFor && <p><strong>Ideal para:</strong> {place.bestFor}</p>}
-          {place.estimatedTime && <p><strong>Tiempo:</strong> {place.estimatedTime}</p>}
-          {place.practicalInfo && (
-            <p className="practical-info">ℹ️ {place.practicalInfo}</p>
-          )}
-        </div>
-      ))}
-    </div>
+    <section className="detail-workspace">
+      <button className="back-link" onClick={onBack}>← Biblioteca</button>
+      <div className="detail-hero">
+        <div><span className="eyebrow">{result.destination.type} · {result.destination.countryCode}</span><h2>{result.destination.name}</h2><p>{result.request.destinationQuerySnapshot} · catálogo {result.destination.sourceVersion}</p></div>
+        <div className="hero-badges"><StateBadge value={result.request.state} /><span className="cost-pill">{formatMoney(totalCost, result.run.currency)}</span></div>
+      </div>
+      <StageTimeline current={result.run.stage} />
+      <div className="detail-tabs" role="tablist" aria-label="Detalle de investigación">{tabs.map(([value, label, count]) => <button key={value} role="tab" aria-selected={tab === value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}>{label}{count !== undefined && <span>{count}</span>}</button>)}</div>
+      <div className="detail-panel">
+        {tab === 'overview' && <Overview result={result} />}
+        {tab === 'sources' && <Sources result={result} />}
+        {tab === 'facts' && <Facts result={result} />}
+        {tab === 'places' && <Places result={result} />}
+        {tab === 'activities' && <Activities result={result} />}
+        {tab === 'drafts' && <Drafts result={result} busy={busy} actorId={actorId} applyResult={applyResult} />}
+        {tab === 'quality' && <Quality result={result} />}
+        {tab === 'history' && <History result={result} versions={versions} />}
+      </div>
+    </section>
   )
 }
 
-function ActivitiesTab({ activities }: { activities: ResearchResult['activities'] }): JSX.Element {
-  return (
-    <div className="activities-tab">
-      {activities.map(activity => (
-        <div key={activity.id} className="activity-card">
-          <div className="activity-header">
-            <h4>{activity.name}</h4>
-            <span className="category-badge">{activity.category}</span>
-          </div>
-          <p>{activity.description}</p>
-          {activity.idealFor && <p><strong>Ideal para:</strong> {activity.idealFor}</p>}
-          {activity.duration && <p><strong>Duración:</strong> {activity.duration}</p>}
-        </div>
-      ))}
-    </div>
-  )
+function StageTimeline({ current }: { current: string }): JSX.Element {
+  const stages = ['destination_resolution', 'source_discovery', 'fact_structuring', 'profile_generation', 'quality_review', 'human_review']
+  const currentIndex = stages.indexOf(current)
+  return <ol className="stage-timeline" aria-label="Progreso del pipeline">{stages.map((stage, index) => <li key={stage} className={index <= currentIndex ? 'done' : ''}><span>{index < currentIndex ? '✓' : index + 1}</span><small>{stageLabels[stage]}</small></li>)}</ol>
 }
 
-function DraftTab({ draft, kimiConfigured }: { draft: EditorialDraft; kimiConfigured: boolean }): JSX.Element {
-  return (
-    <div className="draft-tab">
-      <div className="draft-header">
-        <h3>{draft.title}</h3>
-        <div className="draft-meta">
-          <span className="badge">Tono: {draft.tone}</span>
-          <span className="badge">{draft.wordCount} palabras</span>
-          <span className="badge">Estado: {draft.status}</span>
-          {!kimiConfigured && <span className="badge badge-mock">SIMULADO</span>}
-          {kimiConfigured && <span className="badge badge-live">KIMI</span>}
-        </div>
-      </div>
+function Overview({ result }: { result: ResearchDestinationResult }): JSX.Element {
+  const hierarchy = result.destination.parentId ? 'Identidad jerárquica persistida' : 'Entidad raíz del catálogo'
+  return <div className="overview-grid">
+    <article className="panel-card span-two"><span className="card-kicker">IDENTIDAD CANÓNICA</span><h3>{result.destination.name}</h3><p>{hierarchy}. Resolución <strong>{result.destination.resolutionMethod}</strong>, fuente {result.destination.sourceName}.</p><dl className="definition-grid"><div><dt>ID estable</dt><dd>{result.destination.id}</dd></div><div><dt>Slug</dt><dd>{result.destination.slug}</dd></div><div><dt>Licencia</dt><dd>{result.destination.sourceLicense}</dd></div><div><dt>Versión</dt><dd>{result.destination.sourceVersion}</dd></div></dl></article>
+    <article className="panel-card"><span className="card-kicker">MATERIAL ESTRUCTURADO</span><div className="big-number">{result.facts.length}</div><p>hechos con trazabilidad</p><small>{result.places.length} lugares · {result.activities.length} actividades</small></article>
+    <article className="panel-card"><span className="card-kicker">DECISIÓN EDITORIAL</span><div className="decision-stack">{result.drafts.map(bundle => <div key={bundle.draft.id}><span>{profileLabel(bundle.draft.profile)}</span><StateBadge value={bundle.draft.state} /></div>)}</div><p className="muted">La aplicación no publica tras aprobar.</p></article>
+    <article className="panel-card span-two"><span className="card-kicker">CONFIGURACIÓN</span><dl className="definition-grid"><div><dt>Perfiles</dt><dd>{result.request.profiles.map(profileLabel).join(', ')}</dd></div><div><dt>Profundidad</dt><dd>{result.request.depth}</dd></div><div><dt>Idioma</dt><dd>{result.request.language}</dd></div><div><dt>Presupuesto</dt><dd>{formatMoney(Number(result.request.options.budgetLimit), 'EUR')}</dd></div></dl>{result.request.notes && <p className="note-box">{result.request.notes}</p>}</article>
+  </div>
+}
 
-      <div className="draft-content">
-        <section className="introduction">
-          <h4>Introducción</h4>
-          <p>{draft.introduction}</p>
-        </section>
+function Sources({ result }: { result: ResearchDestinationResult }): JSX.Element {
+  return <div className="card-list">{result.sources.map(source => <article className="data-card" key={source.id}><div className="data-card-heading"><div><span className="card-kicker">{source.sourceType} · {source.territorialScope}</span><h3>{source.title}</h3></div><span className={`status-chip ${source.status}`}>{source.status}</span></div><a href={source.url} target="_blank" rel="noreferrer">{source.url}</a><dl className="definition-grid compact"><div><dt>Fiabilidad</dt><dd>{Math.round(source.reliability * 100)}%</dd></div><div><dt>Actualidad</dt><dd>{source.freshness}</dd></div><div><dt>Editor</dt><dd>{source.publisher ?? 'Sin editor'}</dd></div><div><dt>Captura</dt><dd>{formatDate(source.capturedAt)}</dd></div></dl></article>)}</div>
+}
 
-        {draft.sections.map(section => (
-          <section key={section.id}>
-            <h4>{section.heading}</h4>
-            <div className="section-content">
-              {section.content.split('\n').map((paragraph, i) => (
-                <p key={i}>{paragraph}</p>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+function Facts({ result }: { result: ResearchDestinationResult }): JSX.Element {
+  const sourceById = new Map(result.sources.map(source => [source.id, source]))
+  return <div className="card-list">{result.facts.map(fact => <article className="data-card fact-card" key={fact.id}><div className="data-card-heading"><span className="category-pill">{fact.category}</span><span className="confidence">{Math.round(fact.confidence * 100)}% confianza</span></div><h3>{fact.statement}</h3><div className="trace-row"><span>Fuentes</span>{fact.sourceIds.map(id => <small key={id}>{sourceById.get(id)?.title ?? id}</small>)}</div><div className="tag-row"><span>{fact.volatility}</span><span>{fact.reviewStatus}</span><span>{fact.contradiction === 'none' ? 'sin contradicción' : fact.contradiction}</span></div></article>)}</div>
+}
 
-      <div className="draft-actions">
-        <button className="btn-secondary">Editar borrador</button>
-        <button className="btn-primary">Aprobar</button>
-      </div>
-    </div>
-  )
+function Places({ result }: { result: ResearchDestinationResult }): JSX.Element {
+  return <div className="tile-grid">{result.places.map(place => <article className="panel-card" key={place.id}><span className="card-kicker">{place.category}</span><h3>{place.name}</h3><p>{place.factIds.length} hechos · {place.sourceIds.length} fuentes</p><div className="relevance"><span>Aventura <b style={{ width: `${place.profileRelevance.adventure * 100}%` }} /></span><span>Estudiante <b style={{ width: `${place.profileRelevance.student * 100}%` }} /></span></div><StateBadge value={place.status} /></article>)}</div>
+}
+
+function Activities({ result }: { result: ResearchDestinationResult }): JSX.Element {
+  return <div className="tile-grid">{result.activities.map(activity => <article className="panel-card" key={activity.id}><span className="card-kicker">{activity.audienceProfiles.map(profileLabel).join(' · ')}</span><h3>{activity.name}</h3><p>{activity.durationMinutes ? `${activity.durationMinutes} min` : 'Duración por confirmar'} · coste {activity.costBand}</p><List label="Preparación" values={activity.requirements} /><List label="Accesibilidad" values={activity.accessibility} /><List label="Riesgos" values={activity.riskNotes} /></article>)}</div>
+}
+
+function List({ label, values }: { label: string; values: string[] }): JSX.Element {
+  return <div className="mini-list"><strong>{label}</strong><ul>{values.map(value => <li key={value}>{value}</li>)}</ul></div>
+}
+
+function Drafts({ result, busy, actorId, applyResult }: {
+  result: ResearchDestinationResult
+  busy: boolean
+  actorId: string
+  applyResult: (operation: () => Promise<ResearchDestinationResult>) => Promise<void>
+}): JSX.Element {
+  return <div><div className="comparison-intro"><div><span className="card-kicker">COMPARACIÓN EDITORIAL</span><h3>Dos perfiles, dos utilidades</h3></div><p>Ambos parten de los mismos hechos. La estructura y las decisiones cambian por perfil.</p></div><div className="draft-columns">{result.drafts.map(bundle => <DraftColumn key={bundle.draft.id} bundle={bundle} review={result.qualityReviews.find(item => item.draftId === bundle.draft.id)} requestId={result.request.id} actorId={actorId} busy={busy} applyResult={applyResult} />)}</div></div>
+}
+
+function DraftColumn({ bundle, review, requestId, actorId, busy, applyResult }: {
+  bundle: EditorialDraftBundle
+  review?: QualityReview
+  requestId: string
+  actorId: string
+  busy: boolean
+  applyResult: (operation: () => Promise<ResearchDestinationResult>) => Promise<void>
+}): JSX.Element {
+  const [editing, setEditing] = useState<string | null>(null)
+  const [heading, setHeading] = useState('')
+  const [content, setContent] = useState('')
+  const [reason, setReason] = useState('')
+  const [comment, setComment] = useState('')
+  const openEdit = (section: EditorialDraftBundle['sections'][number]) => { setEditing(section.id); setHeading(section.heading); setContent(section.content); setReason('') }
+  return <article className={`draft-column ${bundle.draft.profile}`}>
+    <header><div><span className="profile-label">{profileLabel(bundle.draft.profile)}</span><h3>{bundle.draft.title}</h3></div><StateBadge value={bundle.draft.state} /></header>
+    <p className="draft-intro">{bundle.draft.introduction}</p>
+    <div className="draft-meta"><span>v{bundle.draft.contentVersion}</span><span>{bundle.draft.promptVersion}</span>{bundle.draft.humanEdited && <span>edición humana</span>}</div>
+    <div className="section-stack">{bundle.sections.map(section => <section key={section.id}><div className="section-heading-inline"><div><span>{section.position + 1}</span><h4>{section.heading}</h4></div>{['ready', 'changes_requested', 'rejected'].includes(bundle.draft.state) && <button className="text-button" onClick={() => openEdit(section)}>Editar</button>}</div><p>{section.content}</p><small>{section.factIds.length} hechos · {section.sourceIds.length} fuentes</small>{editing === section.id && <div className="edit-box"><label className="field"><span>Título</span><input value={heading} onChange={event => setHeading(event.target.value)} /></label><label className="field"><span>Contenido</span><textarea rows={6} value={content} onChange={event => setContent(event.target.value)} /></label><label className="field"><span>Motivo obligatorio</span><input value={reason} onChange={event => setReason(event.target.value)} placeholder="Qué debe cambiar y por qué" /></label><div className="edit-actions"><button className="button ghost" onClick={() => setEditing(null)}>Cerrar</button><button className="button secondary" disabled={busy || !reason.trim()} onClick={() => applyResult(() => window.electronAPI.regenerateManualSection({ requestId, draftId: bundle.draft.id, sectionId: section.id, reason, actorId }))}>Regenerar con mock</button><button className="button primary" disabled={busy || !reason.trim() || content.trim().length < 60} onClick={() => applyResult(() => window.electronAPI.editManualSection({ requestId, draftId: bundle.draft.id, sectionId: section.id, heading, content, reason, actorId }))}>Guardar versión</button></div></div>}</section>)}</div>
+    <footer className="review-actions">
+      <div><span className="card-kicker">REVISIATOR</span>{review ? <StateBadge value={review.outcome} /> : <span>Sin revisión</span>}</div>
+      {bundle.draft.state === 'ready' && <button className="button primary" disabled={busy || !review || !['passed', 'passed_with_warnings'].includes(review.outcome)} onClick={() => applyResult(() => window.electronAPI.submitManualDraftReview({ requestId, draftId: bundle.draft.id, actorId }))}>Iniciar revisión humana</button>}
+      {bundle.draft.state === 'in_review' && <div className="decision-box"><label className="field"><span>Comentario de decisión</span><textarea rows={3} value={comment} onChange={event => setComment(event.target.value)} /></label><div><button className="button danger" disabled={busy || !comment.trim()} onClick={() => applyResult(() => window.electronAPI.decideManualDraft({ requestId, draftId: bundle.draft.id, actorId, decision: 'rejected', comment }))}>Rechazar</button><button className="button secondary" disabled={busy || !comment.trim()} onClick={() => applyResult(() => window.electronAPI.decideManualDraft({ requestId, draftId: bundle.draft.id, actorId, decision: 'changes_requested', comment }))}>Solicitar cambios</button><button className="button success" disabled={busy || !comment.trim()} onClick={() => applyResult(() => window.electronAPI.decideManualDraft({ requestId, draftId: bundle.draft.id, actorId, decision: 'approved', comment }))}>Aprobar</button></div></div>}
+      {bundle.draft.state === 'approved' && <div className="no-publish-note">✓ Aprobado para biblioteca. No se ha publicado ni enviado a Trawel.</div>}
+    </footer>
+  </article>
+}
+
+function Quality({ result }: { result: ResearchDestinationResult }): JSX.Element {
+  return <div className="quality-layout">{result.drafts.map(bundle => { const review = result.qualityReviews.find(item => item.draftId === bundle.draft.id); const checks = result.qualityChecks.filter(item => item.reviewId === review?.id); return <article className="quality-column" key={bundle.draft.id}><header><div><span className="profile-label">{profileLabel(bundle.draft.profile)}</span><h3>Revisión v{bundle.draft.contentVersion}</h3></div>{review && <StateBadge value={review.outcome} />}</header><div className="check-list">{checks.map(check => <div className={`check-row ${check.result}`} key={check.id}><span>{check.result === 'passed' ? '✓' : check.result === 'warning' ? '!' : '×'}</span><div><strong>{check.code}</strong><p>{check.evidence}</p>{check.correction && <small>Corrección: {check.correction}</small>}</div><em>{check.severity}</em></div>)}</div></article> })}<div className="human-gate"><strong>La decisión sigue siendo humana</strong><p>RevisIAtor recomienda, advierte o bloquea. Nunca aprueba por la persona ni publica contenido.</p></div></div>
+}
+
+function History({ result, versions }: { result: ResearchDestinationResult; versions: EditorialDraftVersionSummary[] }): JSX.Element {
+  return <div className="history-grid"><section><div className="section-heading compact"><div><span className="card-kicker">VERSIONES</span><h3>Historial editorial</h3></div></div><div className="version-list">{versions.map(version => <article key={version.id}><span className={`version-dot ${version.humanEdited ? 'human' : ''}`} /><div><strong>{profileLabel(version.profile)} · v{version.contentVersion}</strong><p>{version.title}</p><small>{version.reason ?? 'Generación inicial'} · {formatDate(version.updatedAt)}</small></div><StateBadge value={version.state} /></article>)}</div></section><section><div className="section-heading compact"><div><span className="card-kicker">AUDITORÍA</span><h3>Eventos del pipeline</h3></div></div><div className="event-list">{[...result.events].reverse().map(event => <article key={event.id}><span>{formatTime(event.occurredAt)}</span><div><strong>{event.type}</strong><small>{event.stage ? stageLabels[event.stage] : 'Sistema'} · {event.correlationId}</small></div></article>)}</div><div className="cost-breakdown"><h4>Uso y costes</h4>{result.usage.map(item => <div key={item.id}><span>{item.cause}</span><span>{item.providerId}</span><strong>{formatMoney(item.actualCost, item.currency)}</strong></div>)}</div></section></div>
+}
+
+function IncompleteResearch({ summary, onBack }: { summary: EditorialResearchSummary | null; onBack: () => void }): JSX.Element {
+  return <section><button className="back-link" onClick={onBack}>← Biblioteca</button><div className="empty-card incident"><span className="empty-icon">!</span><h2>{summary?.destinationQuery ?? 'Investigación incompleta'}</h2><StateBadge value={summary?.state ?? 'failed'} /><p>{summary?.errorMessage ?? 'La ejecución no dispone todavía de un agregado editorial completo.'}</p><dl className="definition-grid"><div><dt>Etapa</dt><dd>{stageLabels[summary?.stage ?? ''] ?? 'Desconocida'}</dd></div><div><dt>Código</dt><dd>{summary?.errorCode ?? 'Sin código'}</dd></div></dl><p className="muted">La recuperación y el reintento seguro se habilitan en el siguiente gate de resiliencia.</p></div></section>
 }
 
 function ContributionImportPanel(): JSX.Element {
   const [jobs, setJobs] = useState<ContributionImportJob[]>([])
   const [summary, setSummary] = useState<ContributionSyncSummary | null>(null)
-  const [isSyncing, setIsSyncing] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
-
-  const refresh = useCallback(async () => {
-    setJobs(await window.electronAPI.listContributionImportJobs())
-  }, [])
-
-  useEffect(() => {
-    window.electronAPI.getContributionPersistenceStatus().then(current => {
-      setConnected(current.connected)
-      if (!current.connected) setError(current.error ?? 'Supabase local está desconectado.')
-      else refresh().catch(failure => setError(String(failure)))
-    }).catch(current => setError(String(current)))
-  }, [refresh])
-
-  const download = async () => {
-    setIsSyncing(true)
-    setError(null)
-    try {
-      const result = await window.electronAPI.importPendingContributions()
-      setSummary(result)
-      setJobs(result.jobs)
-    } catch (current) {
-      setError(current instanceof Error ? current.message : String(current))
-    } finally {
-      setIsSyncing(false)
-    }
-  }
-
-  const retry = async (jobId: string) => {
-    setIsSyncing(true)
-    setError(null)
-    try {
-      const result = await window.electronAPI.retryContributionImportJob(jobId)
-      setSummary(result)
-      await refresh()
-    } catch (current) {
-      setError(current instanceof Error ? current.message : String(current))
-    } finally {
-      setIsSyncing(false)
-    }
-  }
-
-  return (
-    <section className="contribution-import">
-      <div className="import-heading">
-        <div>
-          <h2>Contribuciones pendientes</h2>
-          <p>Adaptador remoto simulado; persistencia y archivos en Supabase local privado.</p>
-          <p><span className={connected ? 'badge-live' : 'badge-mock'}>{connected ? 'Supabase local conectado' : 'Supabase local desconectado'}</span></p>
-        </div>
-        <button className="btn-primary" onClick={download} disabled={isSyncing || !connected}>
-          {isSyncing ? 'Procesando…' : 'Descargar pendientes'}
-        </button>
-      </div>
-      {error && <div className="error-banner"><strong>Error:</strong> {error}</div>}
-      {summary && (
-        <div className="sync-summary">
-          <span>Encontrados <strong>{summary.found}</strong></span>
-          <span>Descargados <strong>{summary.downloaded}</strong></span>
-          <span>Verificados <strong>{summary.verified}</strong></span>
-          <span>Eliminados mock <strong>{summary.deletedRemote}</strong></span>
-          <span>Reintentando <strong>{summary.retrying}</strong></span>
-          <span>Fallidos <strong>{summary.failed}</strong></span>
-        </div>
-      )}
-      <div className="import-jobs">
-        {jobs.length === 0 && <div className="empty-state">No hay trabajos de importación en Supabase local.</div>}
-        {jobs.map(job => (
-          <article className="import-job" key={job.id}>
-            <div>
-              <strong>{job.remoteId}</strong>
-              <p>{job.sourceType} · intento {job.attemptCount}</p>
-              {job.lastError && <small className="job-error">{job.lastError}</small>}
-            </div>
-            <div className="job-actions">
-              <span className={`status-badge status-${job.status}`}>{job.status}</span>
-              {['retry_pending', 'failed', 'deleting_remote'].includes(job.status) && (
-                <button className="btn-secondary" onClick={() => retry(job.id)} disabled={isSyncing}>Reintentar</button>
-              )}
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
-  )
+  const refresh = useCallback(async () => setJobs(await window.electronAPI.listContributionImportJobs()), [])
+  useEffect(() => { window.electronAPI.getContributionPersistenceStatus().then(current => { setConnected(current.connected); if (current.connected) return refresh(); setError(current.error ?? 'Supabase local desconectado') }).catch(reason => setError(errorText(reason))) }, [refresh])
+  const download = async () => { setSyncing(true); setError(null); try { const next = await window.electronAPI.importPendingContributions(); setSummary(next); setJobs(next.jobs) } catch (reason) { setError(errorText(reason)) } finally { setSyncing(false) } }
+  const retry = async (jobId: string) => { setSyncing(true); setError(null); try { setSummary(await window.electronAPI.retryContributionImportJob(jobId)); await refresh() } catch (reason) { setError(errorText(reason)) } finally { setSyncing(false) } }
+  return <section><div className="section-heading"><div><span className="eyebrow">MÓDULO LOCAL EXISTENTE</span><h2>Contribuciones pendientes</h2><p>Adaptador remoto simulado y archivos privados en Supabase local.</p></div><button className="button primary" onClick={download} disabled={syncing || !connected}>{syncing ? 'Procesando…' : 'Descargar pendientes'}</button></div>{error && <div className="alert error">{error}</div>}{summary && <div className="metric-grid compact"><Metric label="Encontradas" value={summary.found} detail="en origen mock" /><Metric label="Descargadas" value={summary.downloaded} detail="en local" /><Metric label="Verificadas" value={summary.verified} detail="integridad correcta" /><Metric label="Fallidas" value={summary.failed} detail="visibles" tone={summary.failed ? 'warn' : 'normal'} /></div>}<div className="card-list">{jobs.map(job => <article className="data-card" key={job.id}><div className="data-card-heading"><div><strong>{job.remoteId}</strong><p>{job.sourceType} · intento {job.attemptCount}</p></div><StateBadge value={job.status} /></div>{job.lastError && <p className="inline-error">{job.lastError}</p>}{['failed', 'retry_pending'].includes(job.status) && <button className="button secondary" onClick={() => retry(job.id)} disabled={syncing}>Reintentar</button>}</article>)}</div></section>
 }
+
+function StateBadge({ value }: { value: string }): JSX.Element {
+  return <span className={`state-badge state-${value}`}>{stateLabels[value] ?? value.replaceAll('_', ' ')}</span>
+}
+
+function viewTitle(view: View, selected: ResearchDestinationResult | null): string {
+  if (view === 'new') return 'Nueva investigación'
+  if (view === 'detail') return selected?.destination.name ?? 'Detalle de ejecución'
+  if (view === 'contributions') return 'Contribuciones'
+  return 'Biblioteca editorial'
+}
+
+function profileLabel(profile: EditorialProfile): string { return profile === 'adventure' ? 'Aventura' : 'Estudiante' }
+function initials(value: string): string { return value.split(/\s+/).slice(0, 2).map(item => item[0]?.toUpperCase()).join('') }
+function formatMoney(value?: number, currency = 'EUR'): string { return value === undefined ? '—' : new Intl.NumberFormat('es-ES', { style: 'currency', currency }).format(value) }
+function formatDate(value: Date | string): string { return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
+function formatTime(value: Date | string): string { return new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(value)) }
+function errorText(reason: unknown): string { return reason instanceof Error ? reason.message : String(reason) }
+function summaryFromResult(result: ResearchDestinationResult): EditorialResearchSummary { return { requestId: result.request.id, destinationId: result.destination.id, destinationQuery: result.request.destinationQuerySnapshot, profiles: result.request.profiles, state: result.request.state, version: result.request.version, stage: result.run.stage, runState: result.run.state, errorCode: result.run.errorCode, errorMessage: result.run.errorMessage, actualCost: result.run.actualCost, currency: result.run.currency, createdAt: result.request.createdAt, updatedAt: result.request.updatedAt } }

@@ -8,6 +8,8 @@ import {
   EditorialRepositoryError,
   type EditorialResearchRepository,
   type EditorialResearchSummary,
+  type EditorialDraftVersionSummary,
+  type EditorialExecutionScaffold,
   type EditorialStageCheckpoint,
 } from './repository'
 
@@ -18,6 +20,95 @@ const iso = (value?: Date): string | null => value?.toISOString() ?? null
 
 export class SupabaseEditorialResearchRepository implements EditorialResearchRepository {
   constructor(private readonly client: SupabaseClient) {}
+
+  async saveScaffold(scaffold: EditorialExecutionScaffold): Promise<void> {
+    const { destination, request, run } = scaffold
+    try {
+      await this.upsert('geographic_entities', {
+        id: destination.id,
+        parent_id: destination.parentId ?? null,
+        entity_type: destination.type,
+        name: destination.name,
+        normalized_name: destination.normalizedName,
+        country_code: destination.countryCode,
+        region_code: destination.regionCode ?? null,
+        slug: destination.slug,
+        latitude: destination.coordinates?.latitude ?? null,
+        longitude: destination.coordinates?.longitude ?? null,
+        source_name: destination.sourceName,
+        source_version: destination.sourceVersion,
+        source_license: destination.sourceLicense,
+        source_snapshot_id: destination.sourceSnapshotId ?? null,
+        source_checked_at: iso(destination.sourceCheckedAt),
+        status: destination.status,
+        resolution_method: destination.resolutionMethod,
+        version: destination.version,
+        created_at: destination.createdAt.toISOString(),
+        updated_at: destination.updatedAt.toISOString(),
+      })
+      await this.upsertMany('geographic_aliases', destination.aliases.map(alias => ({
+        id: randomUUID(),
+        entity_id: destination.id,
+        alias,
+        normalized_alias: normalizeText(alias),
+        source_version: destination.sourceVersion,
+      })), 'entity_id,normalized_alias')
+      await this.upsertMany('geographic_external_ids', Object.entries(destination.externalIds ?? {}).map(([provider, externalId]) => ({
+        entity_id: destination.id,
+        provider,
+        external_id: externalId,
+        source_snapshot_id: destination.sourceSnapshotId ?? null,
+      })), 'provider,external_id')
+      await this.updateExecution(request, run)
+    } catch (error) {
+      if (error instanceof EditorialRepositoryError) throw error
+      throw new EditorialRepositoryError('PERSISTENCE_ERROR', error instanceof Error ? error.message : String(error), error)
+    }
+  }
+
+  async updateExecution(request: EditorialExecutionScaffold['request'], run: EditorialExecutionScaffold['run']): Promise<void> {
+    await this.upsert('editorial_research_requests', {
+      id: request.id,
+      destination_id: request.destinationId,
+      destination_query_snapshot: request.destinationQuerySnapshot,
+      profiles: request.profiles,
+      language: request.language,
+      depth: request.depth,
+      notes: request.notes ?? null,
+      options: request.options,
+      configuration_version: request.configurationVersion,
+      idempotency_key: request.idempotencyKey,
+      actor_id: request.actorId,
+      state: request.state,
+      version: request.version,
+      created_at: request.createdAt.toISOString(),
+      updated_at: request.updatedAt.toISOString(),
+    })
+    await this.upsert('editorial_research_runs', {
+      id: run.id,
+      request_id: run.requestId,
+      stage: run.stage,
+      provider_id: run.providerId,
+      model: run.model,
+      prompt_version: run.promptVersion,
+      contract_version: run.contractVersion,
+      attempt: run.attempt,
+      estimated_cost: run.estimatedCost,
+      actual_cost: run.actualCost ?? null,
+      currency: run.currency,
+      input_units: run.inputUnits,
+      output_units: run.outputUnits,
+      started_at: iso(run.startedAt),
+      completed_at: iso(run.completedAt),
+      error_code: run.errorCode ?? null,
+      error_message: run.errorMessage ?? null,
+      recovery_from_run_id: run.recoveryFromRunId ?? null,
+      cancelled_by: run.cancelledBy ?? null,
+      state: run.state,
+      created_at: run.createdAt.toISOString(),
+      updated_at: run.updatedAt.toISOString(),
+    })
+  }
 
   async save(candidate: ResearchDestinationResult): Promise<void> {
     const result = ResearchDestinationResultSchema.parse(candidate)
@@ -150,19 +241,64 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
   }
 
   async list(limit = 100): Promise<EditorialResearchSummary[]> {
-    const { data, error } = await this.client
+    const boundedLimit = Math.min(Math.max(limit, 1), 500)
+    const requestsResult = await this.client
       .from('editorial_research_requests')
       .select('id,destination_id,destination_query_snapshot,profiles,state,version,created_at,updated_at')
       .order('updated_at', { ascending: false })
-      .limit(Math.min(Math.max(limit, 1), 500))
-    this.assertNoError(error, 'LIST_REQUESTS')
-    return (data ?? []).map(row => ({
+      .limit(boundedLimit)
+    this.assertNoError(requestsResult.error, 'LIST_REQUESTS')
+    const requestIds = (requestsResult.data ?? []).map(row => String(row.id))
+    const runsResult = requestIds.length === 0
+      ? { data: [] as Row[], error: null }
+      : await this.client.from('editorial_research_runs')
+        .select('request_id,stage,state,error_code,error_message,actual_cost,currency,updated_at')
+        .in('request_id', requestIds)
+        .order('updated_at', { ascending: false })
+    this.assertNoError(runsResult.error, 'LIST_RUNS')
+    const latestRuns = new Map<string, Row>()
+    for (const row of runsResult.data as Row[] ?? []) {
+      const requestId = String(row.request_id)
+      if (!latestRuns.has(requestId)) latestRuns.set(requestId, row)
+    }
+    return (requestsResult.data ?? []).map(row => {
+      const run = latestRuns.get(String(row.id))
+      return {
       requestId: String(row.id),
       destinationId: String(row.destination_id),
       destinationQuery: String(row.destination_query_snapshot),
       profiles: row.profiles as Array<'adventure' | 'student'>,
       state: row.state as EditorialResearchSummary['state'],
       version: Number(row.version),
+      stage: run?.stage as EditorialResearchSummary['stage'],
+      runState: run?.state as EditorialResearchSummary['runState'],
+      errorCode: run?.error_code ? String(run.error_code) : undefined,
+      errorMessage: run?.error_message ? String(run.error_message) : undefined,
+      actualCost: run?.actual_cost === null || run?.actual_cost === undefined ? undefined : Number(run.actual_cost),
+      currency: run?.currency ? String(run.currency) : undefined,
+      createdAt: new Date(String(row.created_at)),
+      updatedAt: new Date(String(row.updated_at)),
+      }
+    })
+  }
+
+  async listDraftVersions(requestId: string): Promise<EditorialDraftVersionSummary[]> {
+    const { data, error } = await this.client
+      .from('editorial_drafts')
+      .select('id,request_id,profile,title,content_version,state,previous_draft_id,regeneration_reason,human_edited,created_at,updated_at')
+      .eq('request_id', requestId)
+      .order('content_version', { ascending: false })
+    this.assertNoError(error, 'LIST_DRAFT_VERSIONS')
+    return (data ?? []).map(row => ({
+      id: String(row.id),
+      requestId: String(row.request_id),
+      profile: row.profile as EditorialDraftVersionSummary['profile'],
+      title: String(row.title),
+      contentVersion: Number(row.content_version),
+      state: row.state as EditorialDraftVersionSummary['state'],
+      previousDraftId: row.previous_draft_id ? String(row.previous_draft_id) : undefined,
+      reason: row.regeneration_reason ? String(row.regeneration_reason) : undefined,
+      humanEdited: Boolean(row.human_edited),
       createdAt: new Date(String(row.created_at)),
       updatedAt: new Date(String(row.updated_at)),
     }))

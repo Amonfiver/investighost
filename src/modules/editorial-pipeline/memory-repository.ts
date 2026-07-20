@@ -3,6 +3,8 @@ import {
   EditorialRepositoryError,
   type EditorialResearchRepository,
   type EditorialResearchSummary,
+  type EditorialDraftVersionSummary,
+  type EditorialExecutionScaffold,
   type EditorialStageCheckpoint,
 } from './repository'
 
@@ -17,6 +19,17 @@ export class MemoryEditorialResearchRepository implements EditorialResearchRepos
   private readonly requestByIdempotencyKey = new Map<string, string>()
   private readonly checkpoints = new Map<string, EditorialStageCheckpoint>()
   private readonly locks = new Map<string, MemoryLock>()
+  private readonly scaffolds = new Map<string, EditorialExecutionScaffold>()
+  private readonly draftVersions = new Map<string, EditorialDraftVersionSummary>()
+
+  async saveScaffold(scaffold: EditorialExecutionScaffold): Promise<void> {
+    this.scaffolds.set(scaffold.request.id, structuredClone(scaffold))
+  }
+
+  async updateExecution(request: EditorialExecutionScaffold['request'], run: EditorialExecutionScaffold['run']): Promise<void> {
+    const scaffold = this.scaffolds.get(request.id)
+    if (scaffold) this.scaffolds.set(request.id, structuredClone({ ...scaffold, request, run }))
+  }
 
   async save(candidate: ResearchDestinationResult): Promise<void> {
     const result = ResearchDestinationResultSchema.parse(candidate)
@@ -32,6 +45,22 @@ export class MemoryEditorialResearchRepository implements EditorialResearchRepos
 
     this.results.set(result.request.id, structuredClone(result))
     this.requestByIdempotencyKey.set(result.request.idempotencyKey, result.request.id)
+    this.scaffolds.set(result.request.id, structuredClone({ destination: result.destination, request: result.request, run: result.run }))
+    for (const { draft } of result.drafts) {
+      this.draftVersions.set(draft.id, {
+        id: draft.id,
+        requestId: draft.requestId,
+        profile: draft.profile,
+        title: draft.title,
+        contentVersion: draft.contentVersion,
+        state: draft.state,
+        previousDraftId: draft.previousDraftId,
+        reason: draft.regenerationReason,
+        humanEdited: draft.humanEdited,
+        createdAt: draft.createdAt,
+        updatedAt: draft.updatedAt,
+      })
+    }
   }
 
   async getByRequestId(requestId: string): Promise<ResearchDestinationResult | null> {
@@ -45,19 +74,32 @@ export class MemoryEditorialResearchRepository implements EditorialResearchRepos
   }
 
   async list(limit = 100): Promise<EditorialResearchSummary[]> {
-    return [...this.results.values()]
+    return [...this.scaffolds.values()]
       .sort((left, right) => right.request.updatedAt.getTime() - left.request.updatedAt.getTime())
       .slice(0, limit)
-      .map(result => ({
-        requestId: result.request.id,
-        destinationId: result.request.destinationId,
-        destinationQuery: result.request.destinationQuerySnapshot,
-        profiles: [...result.request.profiles],
-        state: result.request.state,
-        version: result.request.version,
-        createdAt: new Date(result.request.createdAt),
-        updatedAt: new Date(result.request.updatedAt),
+      .map(scaffold => ({
+        requestId: scaffold.request.id,
+        destinationId: scaffold.request.destinationId,
+        destinationQuery: scaffold.request.destinationQuerySnapshot,
+        profiles: [...scaffold.request.profiles],
+        state: scaffold.request.state,
+        version: scaffold.request.version,
+        stage: scaffold.run.stage,
+        runState: scaffold.run.state,
+        errorCode: scaffold.run.errorCode,
+        errorMessage: scaffold.run.errorMessage,
+        actualCost: scaffold.run.actualCost,
+        currency: scaffold.run.currency,
+        createdAt: new Date(scaffold.request.createdAt),
+        updatedAt: new Date(scaffold.request.updatedAt),
       }))
+  }
+
+  async listDraftVersions(requestId: string): Promise<EditorialDraftVersionSummary[]> {
+    return [...this.draftVersions.values()]
+      .filter(draft => draft.requestId === requestId)
+      .sort((left, right) => right.contentVersion - left.contentVersion || left.profile.localeCompare(right.profile))
+      .map(draft => structuredClone(draft))
   }
 
   async saveCheckpoint(checkpoint: EditorialStageCheckpoint): Promise<void> {

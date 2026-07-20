@@ -58,3 +58,5 @@ Las transiciones ejecutables viven en `src/shared/editorial-contracts.ts` y sus 
 La resolución geográfica previa no añade un estado de investigación implícito. Produce uno de tres resultados explícitos: `resolved`, `ambiguous` o `not_found`. Solo `resolved` permite crear/continuar la solicitud; `ambiguous` espera una elección humana entre candidatos visibles y `not_found` exige corregir la consulta o importar un snapshot versionado.
 
 RevisIAtor no ejecuta una transición de `EditorialDraft`. Sus outcomes (`passed`, `passed_with_warnings`, `changes_requested`, `blocked`, `rejected`) pertenecen a `QualityReview`. Incluso `passed` deja el borrador en `ready`; solo una acción humana posterior puede llevarlo a `in_review`/`approved` según el flujo permitido.
+
+FASE 3H expone esas transiciones en la UI. `ready → in_review` exige un resultado RevisIAtor `passed|passed_with_warnings`; `in_review → approved|changes_requested|rejected` exige comentario y actor humanos. Editar/regenerar un borrador devuelto o rechazado crea una nueva versión `ready`. Ninguna transición editorial conduce a publicación.

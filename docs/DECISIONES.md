@@ -581,3 +581,23 @@ Un resultado `passed` no cambia el estado a `approved`, no constituye aprobació
 - Automatic, Trawel y publicación no reciben ninguna autorización de RevisIAtor.
 
 Documento: `FASE_3G_REVISIATOR.md`.
+
+---
+
+## Decisión 25 — La UI Manual invoca el agregado canónico desde Electron main
+
+### Decisión
+
+La interfaz Manual no usa el módulo de investigación legado ni crea contratos de presentación paralelos. `ManualResearchService` compone resolución, fuentes, hechos, perfiles y RevisIAtor y persiste el mismo `ResearchDestinationResult` de 3A–3G.
+
+Supabase local solo se abre en Electron main. El renderer recibe por IPC datos y acciones validados, nunca URL/clave privilegiada. Antes del procesamiento factual se guardan destino, solicitud y ejecución para soportar checkpoints y visibilidad de fallos.
+
+### Consecuencias
+
+- Biblioteca, detalle, ediciones, versiones y decisiones leen/escriben el repositorio editorial Supabase.
+- Editar/regenerar no sobrescribe historial: crea un borrador completo enlazado.
+- La revisión humana es una acción separada de RevisIAtor y exige transición explícita.
+- El camino de éxito es operable sin SQL; resiliencia de fallos/reinicio se completa en 3I.
+- Aprobar no publica y no concede acceso a Trawel, producción o Automatic.
+
+Documento: `FASE_3H_MANUAL_UI.md`.

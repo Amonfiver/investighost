@@ -3,7 +3,7 @@
  * 
  * Propósito: Puente seguro entre main process y renderer
  * Alcance: Expone API segura a window.electronAPI
- * Estado: Actualizado con estado de proveedores AI
+ * Estado: Superficie activa limitada a Manual local, contribuciones e información de app.
  * 
  * NOTA: Este archivo se ejecuta en contexto aislado, no tiene acceso a Node.js
  */
@@ -16,24 +16,25 @@ const electronAPI = {
   getVersion: () => ipcRenderer.invoke('app:get-version'),
   getPlatform: () => ipcRenderer.invoke('app:get-platform'),
   
-  // AI Providers
-  getProviderStatus: () => ipcRenderer.invoke('ai:get-provider-status'),
-  
-  // Research operations
-  createResearch: (input: unknown) => ipcRenderer.invoke('research:create', input),
-  startResearch: (requestId: string) => ipcRenderer.invoke('research:start', requestId),
-  getAllResearch: () => ipcRenderer.invoke('research:get-all'),
-  getResearchResult: (requestId: string) => ipcRenderer.invoke('research:get-result', requestId),
-  getDraft: (resultId: string) => ipcRenderer.invoke('research:get-draft', resultId),
-
-  // Search operations
-  collectWebResearch: (input: unknown) => ipcRenderer.invoke('search:collect', input),
-
   // Importación en Supabase local. La clave privilegiada permanece en main.
   getContributionPersistenceStatus: () => ipcRenderer.invoke('contributions:persistence-status'),
   importPendingContributions: () => ipcRenderer.invoke('contributions:import-pending'),
   listContributionImportJobs: () => ipcRenderer.invoke('contributions:list-jobs'),
   retryContributionImportJob: (jobId: string) => ipcRenderer.invoke('contributions:retry-job', jobId),
+
+  // Flujo Manual canónico; el renderer nunca recibe credenciales de Supabase.
+  getManualPersistenceStatus: () => ipcRenderer.invoke('manual:persistence-status'),
+  getManualActor: () => ipcRenderer.invoke('manual:get-actor'),
+  resolveManualDestination: (input: unknown) => ipcRenderer.invoke('manual:resolve-destination', input),
+  correctManualDestination: (input: unknown) => ipcRenderer.invoke('manual:correct-destination', input),
+  startManualResearch: (input: unknown) => ipcRenderer.invoke('manual:start', input),
+  listManualResearch: () => ipcRenderer.invoke('manual:list'),
+  getManualResearch: (requestId: string) => ipcRenderer.invoke('manual:get', requestId),
+  listManualDraftVersions: (requestId: string) => ipcRenderer.invoke('manual:list-draft-versions', requestId),
+  editManualSection: (input: unknown) => ipcRenderer.invoke('manual:edit-section', input),
+  regenerateManualSection: (input: unknown) => ipcRenderer.invoke('manual:regenerate-section', input),
+  submitManualDraftReview: (input: unknown) => ipcRenderer.invoke('manual:submit-review', input),
+  decideManualDraft: (input: unknown) => ipcRenderer.invoke('manual:decide', input),
 }
 
 // Exponer como window.electronAPI

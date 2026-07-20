@@ -6,7 +6,6 @@
  * 
  * Decisiones técnicas:
  *   - Carga variables de entorno desde .env al inicio
- *   - Inicializa configuración de proveedores de IA
  *   - Usa electron-is-dev para detectar modo desarrollo
  *   - Carga Vite dev server en desarrollo, archivos estáticos en producción
  *   - Preload script para comunicación segura main/renderer
@@ -15,8 +14,7 @@
  *   - Contribuciones usa exclusivamente Supabase local desde el proceso principal.
  * 
  * Cambios recientes: 
- *   - Añadido carga de .env y configuración de proveedores
- *   - Integrado sistema de config multi-proveedor
+ *   - El pipeline Manual activo usa exclusivamente proveedores mock locales.
  */
 
 import { app, BrowserWindow, ipcMain } from 'electron'
@@ -47,21 +45,6 @@ console.log('[Main] Loading .env from:', envPath)
 
 const dotenvResult = dotenv.config({ path: envPath })
 console.log(`[Main] dotenv loaded: ${dotenvResult.parsed ? Object.keys(dotenvResult.parsed).length : 0} variables`)
-
-// Cargar configuración de la app
-import { loadConfig, getProviderConfigStatus } from '@services/config'
-import { createProviderConfigFromEnv, initializeProviderFactory } from '@services/ai/providers'
-
-// Inicializar configuración (esto debe hacerse antes de cualquier otra cosa)
-loadConfig()
-initializeProviderFactory(createProviderConfigFromEnv())
-
-// Log de estado de proveedores
-const providerStatus = getProviderConfigStatus()
-console.log('[Main] Provider status:', {
-  kimi: providerStatus.kimi.configured ? '✅ configured' : '❌ not configured',
-  openai: providerStatus.openai.configured ? '✅ configured' : '❌ not configured',
-})
 
 const shouldOpenDevTools = process.env.OPEN_DEVTOOLS === 'true'
 
@@ -115,59 +98,13 @@ ipcMain.handle('app:get-platform', () => {
   return process.platform
 })
 
-// Nuevo: Verificar estado de configuración de proveedores
-ipcMain.handle('ai:get-provider-status', () => {
-  return getProviderConfigStatus()
-})
-
-// Research handlers - conectan UI con backend real
-import { researchModule } from '@modules/research'
-import * as store from '@modules/persistence/memory-store'
-import { collectWebResearchBundle } from '@services/search'
 import { z } from 'zod'
 import { getContributionImportRuntime, getContributionPersistenceStatus } from '@modules/contributions/runtime'
-
-ipcMain.handle('research:create', async (_event, input) => {
-  console.log('[IPC] research:create called with:', JSON.stringify(input))
-  const request = await researchModule.createRequest(input)
-  console.log('[IPC] research:create returned:', request.id)
-  return request
-})
-
-ipcMain.handle('research:start', async (_event, requestId) => {
-  console.log('[IPC] research:start called for:', requestId)
-  // Iniciar investigación en background (no esperamos a que termine)
-  researchModule.startResearch(requestId).catch(err => {
-    console.error('[IPC] research:start failed:', err.message)
-  })
-  console.log('[IPC] research:start initiated for:', requestId)
-  return { started: true, requestId }
-})
-
-ipcMain.handle('research:get-all', async () => {
-  return researchModule.getAllRequests()
-})
-
-ipcMain.handle('research:get-result', async (_event, requestId) => {
-  const result = await researchModule.getResult(requestId)
-  if (result) {
-    console.log('[IPC] research:get-result found for:', requestId)
-  }
-  return result
-})
-
-ipcMain.handle('research:get-draft', async (_event, resultId) => {
-  const draft = await store.getDraftByResultId(resultId)
-  if (draft) {
-    console.log('[IPC] research:get-draft found for resultId:', resultId)
-  }
-  return draft
-})
-
-ipcMain.handle('search:collect', async (_event, input) => {
-  console.log('[IPC] search:collect called')
-  return collectWebResearchBundle(input)
-})
+import {
+  getManualPersistenceStatus,
+  getManualResearchRuntime,
+  MANUAL_LOCAL_ACTOR_ID,
+} from '@modules/editorial-pipeline/manual-runtime'
 
 ipcMain.handle('contributions:import-pending', async () => {
   return (await getContributionImportRuntime()).importPending()
@@ -183,10 +120,54 @@ ipcMain.handle('contributions:retry-job', async (_event, jobId: unknown) => {
 
 ipcMain.handle('contributions:persistence-status', () => getContributionPersistenceStatus())
 
+// Pipeline Manual canónico. Toda persistencia y toda clave privilegiada permanecen en main.
+ipcMain.handle('manual:persistence-status', () => getManualPersistenceStatus())
+
+ipcMain.handle('manual:get-actor', () => MANUAL_LOCAL_ACTOR_ID)
+
+ipcMain.handle('manual:resolve-destination', async (_event, input: unknown) => {
+  return (await getManualResearchRuntime()).resolveDestination(input as never)
+})
+
+ipcMain.handle('manual:correct-destination', async (_event, input: unknown) => {
+  return (await getManualResearchRuntime()).correctDestination(input as never)
+})
+
+ipcMain.handle('manual:start', async (_event, input: unknown) => {
+  return (await getManualResearchRuntime()).start(input as never)
+})
+
+ipcMain.handle('manual:list', async () => (await getManualResearchRuntime()).list())
+
+ipcMain.handle('manual:get', async (_event, requestId: unknown) => {
+  return (await getManualResearchRuntime()).get(z.string().uuid().parse(requestId))
+})
+
+ipcMain.handle('manual:list-draft-versions', async (_event, requestId: unknown) => {
+  return (await getManualResearchRuntime()).listDraftVersions(z.string().uuid().parse(requestId))
+})
+
+ipcMain.handle('manual:edit-section', async (_event, input: unknown) => {
+  return (await getManualResearchRuntime()).editSection(input as never)
+})
+
+ipcMain.handle('manual:regenerate-section', async (_event, input: unknown) => {
+  return (await getManualResearchRuntime()).regenerateSection(input as never)
+})
+
+ipcMain.handle('manual:submit-review', async (_event, input: unknown) => {
+  return (await getManualResearchRuntime()).submitForReview(input as never)
+})
+
+ipcMain.handle('manual:decide', async (_event, input: unknown) => {
+  return (await getManualResearchRuntime()).decide(input as never)
+})
+
 // Ciclo de vida de la app
 app.whenReady().then(() => {
   // Valida Supabase local al arrancar; el fallo queda visible y nunca activa SQLite como fallback.
   getContributionImportRuntime().catch(error => console.error('[Contributions]', error.message))
+  getManualResearchRuntime().catch(error => console.error('[Manual]', error.message))
   createWindow()
 
   app.on('activate', () => {

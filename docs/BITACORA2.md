@@ -553,3 +553,27 @@ Nueve pruebas cubren éxito, URL duplicada, contenido espejo, enlace roto, dos f
 ### Seguridad y alcance
 
 No se llamó ni configuró proveedor real; el nuevo contrato no contiene API keys. Producción, Trawel, Automatic y publicación siguieron desconectados. Siguiente fase: 3E.
+
+---
+
+## Sesión 31 — FASE 3E: estructuración factual
+
+### Fecha y objetivo
+
+2026-07-21. Convertir fuentes aceptadas en hechos, lugares y actividades trazables, validar contradicciones/duplicados y demostrar persistencia parcial/reanudación.
+
+### Cambios
+
+- Creado puerto factual neutral, schemas de propuestas y mock determinista.
+- Implementadas claves/valores normalizados, IDs deterministas, confianza ponderada, volatilidad, vigencia y validación Zod.
+- Duplicados acumulan fuentes; valores incompatibles permanecen como hechos `confirmed/disputed`.
+- Lugares/actividades fusionan evidencia y rechazan claves factuales ausentes.
+- Checkpoint idempotente con hash, índice factual, orden de fuentes y siguiente posición después de cada documento.
+
+### Verificación
+
+8/8 pruebas: trazabilidad, fusión, contradicción, IDs, checkpoints, caída/reanudación sin reprocesar, incompatibilidad de fuente, referencia ausente, cancelación y cero fuentes. Gates completos: typecheck, lint, 106/106 tests generales y build Vite/main/preload aprobados.
+
+### Seguridad y alcance
+
+Solo mock, sin red o credenciales. No se generó todavía prosa editorial definitiva y no se conectaron producción/Trawel ni Automatic. Siguiente fase: 3F.

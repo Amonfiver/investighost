@@ -121,7 +121,31 @@ Estado: aprobada técnicamente.
 
 No se realizó ninguna llamada de proveedor real ni se leyeron/guardaron API keys. Los cuerpos leídos quedan efímeros para la estructuración de 3E; no se persisten como secretos o blobs opacos. Producción, Trawel, Automatic y publicación permanecen fuera de alcance. El siguiente escalón es 3E.
 
+## FASE 3E — estructuración factual
+
+Estado: aprobada técnicamente.
+
+### Resultado
+
+- Puerto factual neutral y mock determinista para convertir documentos aceptados en hechos, lugares y actividades canónicos.
+- Claves/valores normalizados, IDs deterministas, confianza ponderada, volatilidad, vigencia y Zod final.
+- Duplicados fusionados con todas sus fuentes; contradicciones preservadas como confirmadas/disputadas.
+- Lugares y actividades solo aceptan claves factuales existentes y fusionan sus relaciones sin perder evidencia.
+- Checkpoint con hash después de cada fuente; reanudación exige mismo contrato, intento y orden de fuentes.
+
+### Evidencia
+
+- Tests específicos: 8/8.
+- Caída sintética en segunda fuente y reanudación sin volver a invocar la primera.
+- Casos negativos: checkpoint incompatible, referencia factual ausente, cero fuentes aceptadas y cancelación.
+- Gates completos: typecheck, lint, 106/106 tests generales y build Vite/main/preload aprobados; tres integraciones opt-in omitidas en la suite general.
+- Diseño e invariantes documentados en `FASE_3E_FACTUAL_STRUCTURING.md`.
+
+### Seguridad y límites
+
+La masa documental no produce texto definitivo: primero se estructura y traza. Solo existe proveedor factual mock, sin red o claves. Producción, Trawel, Automatic y publicación siguen fuera de alcance. El siguiente escalón es 3F.
+
 ## Fases siguientes
 
-- 3E–3I: hechos, perfiles, calidad, UI y resiliencia.
+- 3F–3I: perfiles, calidad, UI y resiliencia.
 - 3J: preparación y detención en aceptación humana Manual.

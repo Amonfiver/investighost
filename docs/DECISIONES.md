@@ -521,3 +521,23 @@ FASE 3D implementa exclusivamente `MockEditorialSourceProvider`. `SourceAcquisit
 - Automatic y publicación continúan bloqueados.
 
 Documento: `FASE_3D_SOURCE_PROVIDERS.md`.
+
+---
+
+## Decisión 22 — La evidencia factual precede al texto editorial
+
+### Decisión
+
+Ningún perfil editorial se genera directamente desde una masa documental. `FactualStructuringService` convierte primero fuentes aceptadas en hechos, lugares y actividades normalizados, validados y trazables. Las relaciones y contradicciones se conservan; el sistema no elige silenciosamente una variante.
+
+El procesamiento es incremental. Cada fuente completa produce un checkpoint con hash, contrato, orden y posición. Reanudar exige coincidencia exacta y conserva IDs deterministas, por lo que una caída no obliga a regenerar el parcial aprobado técnicamente.
+
+### Consecuencias
+
+- Duplicado significa misma clave+valor y acumula fuentes; contradicción significa misma clave con valores diferentes.
+- Lugares y actividades no existen sin hechos fuente válidos.
+- Consejos/advertencias se modelan como hechos o riesgos trazables, no como relleno editorial.
+- El mock factual es el único adaptador actual; un proveedor futuro usa el mismo contrato.
+- Automatic, publicación y Trawel siguen bloqueados.
+
+Documento: `FASE_3E_FACTUAL_STRUCTURING.md`.

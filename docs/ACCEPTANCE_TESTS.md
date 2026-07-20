@@ -126,3 +126,14 @@ Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual 
 - URLs equivalentes se deduplican; contenido espejo se conserva como duplicado enlazado; enlaces rotos son `unavailable`.
 - Uso y costes se reconcilian por intento; eventos no incluyen consultas, cuerpos o credenciales.
 - Tests específicos 9/9; ningún proveedor editorial real fue llamado o configurado.
+
+## Gate FASE 3E — aprobado técnicamente
+
+- Solo fuentes aceptadas/leídas entran en estructuración; cero fuentes produce un error explícito.
+- Cada hecho conserva fuentes, confianza, categoría, volatilidad, vigencia y estado de revisión válidos.
+- Duplicados clave/valor se fusionan; valores incompatibles se conservan como contradicción disputada.
+- Lugares y actividades rechazan hechos inexistentes y mantienen relaciones completas de evidencia.
+- IDs son deterministas para igual solicitud/clave/valor y toda salida pasa Zod canónico.
+- Se guarda checkpoint con hash tras cada fuente y una caída se reanuda sin reprocesar fuentes completadas.
+- Contrato, intento, orden de fuentes o hash incompatibles bloquean la reanudación.
+- Tests específicos 8/8; no se genera texto editorial desde documentos sin estructura.

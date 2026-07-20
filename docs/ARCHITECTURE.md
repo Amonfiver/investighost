@@ -392,3 +392,5 @@ La trazabilidad ejecutable es `EditorialSection → ResearchFact → ResearchSou
 FASE 3C fija la identidad territorial antes de investigar. `GeographicResolver` consume un repositorio local respaldado por el snapshot GeoNames versionado y devuelve resolución, ambigüedad o ausencia; nunca genera destinos. Alias, búsqueda tolerante, jerarquía y correcciones humanas comparten UUID canónico y procedencia auditable.
 
 FASE 3D sitúa `EditorialSourceProvider` entre el pipeline y cualquier adquisición. Descubrimiento, lectura y evaluación comparten timeout, cancelación, retry, límites, coste y circuit breaker; el único adaptador de esta fase es un mock sin red. Los resultados entran al dominio como fuentes y uso, no como objetos específicos de OpenAI/Kimi/Brave.
+
+FASE 3E obliga a transformar documentos aceptados en `ResearchFact`, `ResearchPlace` y `ResearchActivity` antes de redactar. La clave factual permite fusionar duplicados y mantener valores contradictorios. Checkpoints con hash separan fuentes ya procesadas de pendientes y hacen la etapa reanudable.

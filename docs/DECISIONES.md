@@ -501,3 +501,23 @@ La resolución es local y determinista. Nombre, aliases, filtros y jerarquía pr
 - La decisión no autoriza proveedor editorial real, Automatic, producción o Trawel.
 
 Documento: `FASE_3C_GEOGRAPHY.md`.
+
+---
+
+## Decisión 21 — Proveedores de fuentes detrás de un puerto neutral
+
+### Decisión
+
+Descubrimiento, lectura y evaluación de fuentes se ejecutan mediante `EditorialSourceProvider`. El dominio solo conoce candidatos, documentos, evaluaciones, `ResearchSource`, uso y eventos. Credenciales, SDKs, headers y particularidades de un proveedor quedan fuera del contrato y del renderer.
+
+FASE 3D implementa exclusivamente `MockEditorialSourceProvider`. `SourceAcquisitionService` aplica límites, ejecución secuencial, timeout/cancelación, retry/backoff, presupuesto, deduplicación y circuit breaker antes de que cualquier proveedor futuro pueda considerarse autorizable.
+
+### Consecuencias
+
+- Cambiar o añadir proveedor no cambia contratos ni persistencia editorial.
+- Un enlace roto, contrato inválido o fallo agotado se representa honestamente; no se inventa evidencia.
+- Consultas y cuerpos no entran en eventos auditables; las credenciales nunca entran en PostgreSQL.
+- La activación de un proveedor real exige autorización y configuración posterior en main; no está implícita en esta decisión.
+- Automatic y publicación continúan bloqueados.
+
+Documento: `FASE_3D_SOURCE_PROVIDERS.md`.

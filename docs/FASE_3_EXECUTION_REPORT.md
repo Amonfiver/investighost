@@ -97,7 +97,31 @@ Estado: aprobada técnicamente.
 
 El snapshot se adquirió desde un dump público sin credenciales. El runtime es local y no depende de la red. No hubo conexión a producción/Trawel, proyecto remoto, Automatic o publicación. El siguiente escalón es 3D, contratos desacoplados de proveedores sobre mocks deterministas.
 
+## FASE 3D — proveedores y adquisición de fuentes
+
+Estado: aprobada técnicamente.
+
+### Resultado
+
+- Puerto `EditorialSourceProvider` desacoplado para descubrimiento, lectura y evaluación.
+- Orquestador con timeout, `AbortSignal`, cancelación, retry/backoff acotado, límites, presupuesto y circuit breaker.
+- Normalización/deduplicación de URLs, detección de contenido espejo y clasificación de enlaces rotos.
+- Uso/costes y eventos auditables por intento, sin consultas, cuerpos o secretos en logs/payloads.
+- `MockEditorialSourceProvider` determinista, único proveedor nuevo y siempre marcado como simulación.
+- Salidas compatibles con `ResearchSource`, `ProviderUsage` y `ResearchEvent`; un adaptador autorizado futuro no cambia el dominio.
+
+### Evidencia
+
+- Tests específicos: 9/9.
+- Casos: éxito, deduplicación, espejo, enlace roto, retry, timeout, cancelación, presupuesto, límites, circuit breaker y redacción.
+- Gates completos: typecheck, lint, 98/98 tests generales y build Vite/main/preload aprobados; tres integraciones opt-in omitidas en la suite general.
+- Diseño y límites documentados en `FASE_3D_SOURCE_PROVIDERS.md`.
+
+### Seguridad y límites
+
+No se realizó ninguna llamada de proveedor real ni se leyeron/guardaron API keys. Los cuerpos leídos quedan efímeros para la estructuración de 3E; no se persisten como secretos o blobs opacos. Producción, Trawel, Automatic y publicación permanecen fuera de alcance. El siguiente escalón es 3E.
+
 ## Fases siguientes
 
-- 3D–3I: proveedores, hechos, perfiles, calidad, UI y resiliencia.
+- 3E–3I: hechos, perfiles, calidad, UI y resiliencia.
 - 3J: preparación y detención en aceptación humana Manual.

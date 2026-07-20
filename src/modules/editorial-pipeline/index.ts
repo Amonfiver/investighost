@@ -1,5 +1,7 @@
 export * from './repository'
 export * from './memory-repository'
 export * from './geography'
+export * from './source-providers'
+export * from './mock-source-provider'
 export * from './supabase-geography-repository'
 export * from './supabase-repository'

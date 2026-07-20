@@ -117,3 +117,12 @@ Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual 
 - Una corrección humana solo acepta candidatos visibles, queda ligada a actor/versión y no se reutiliza automáticamente en otra versión.
 - Tests de resolución/snapshot 11/11 e integraciones locales 2/2.
 - Reset, lint SQL y limpieza de integración aprobados; no quedan solicitudes, correcciones o destinos de test huérfanos.
+
+## Gate FASE 3D — aprobado técnicamente
+
+- Descubrimiento, lectura y evaluación dependen de un puerto neutral sin secretos ni tipos específicos de proveedor.
+- El mock completa el flujo y queda marcado inequívocamente como simulación.
+- Timeout, cancelación, retry/backoff, intentos, límites, presupuesto y circuit breaker tienen conducta/código probado.
+- URLs equivalentes se deduplican; contenido espejo se conserva como duplicado enlazado; enlaces rotos son `unavailable`.
+- Uso y costes se reconcilian por intento; eventos no incluyen consultas, cuerpos o credenciales.
+- Tests específicos 9/9; ningún proveedor editorial real fue llamado o configurado.

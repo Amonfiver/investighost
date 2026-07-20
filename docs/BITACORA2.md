@@ -529,3 +529,27 @@ La prueba de limpieza integral descubrió que FKs `RESTRICT` de tablas puente im
 - Seed limpio: 8 entidades, 7 aliases, 3 IDs externos, 1 snapshot, 4 artefactos, 0 correcciones y 0 solicitudes.
 
 Sin credenciales, proyecto remoto, producción, Trawel, Automatic o publicación. Siguiente fase: 3D.
+
+---
+
+## Sesión 30 — FASE 3D: proveedores y adquisición de fuentes
+
+### Fecha y objetivo
+
+2026-07-21. Desacoplar descubrimiento, lectura y evaluación de fuentes y probar sus controles operativos exclusivamente con simulación.
+
+### Cambios
+
+- Creado `EditorialSourceProvider` y contratos Zod de candidatos, documentos y evaluación.
+- Creado `SourceAcquisitionService` con timeout/abort, cancelación, retry/backoff, límites, presupuesto y circuit breaker.
+- Añadidas normalización y deduplicación de URL, detección de contenido espejo, clasificación de enlace roto y truncado controlado.
+- Integrados `ResearchSource`, `ProviderUsage` y `ResearchEvent`; eventos sin consulta, cuerpo o secreto.
+- Implementado `MockEditorialSourceProvider` determinista con fallos/latencia configurables y `simulation = true`.
+
+### Verificación
+
+Nueve pruebas cubren éxito, URL duplicada, contenido espejo, enlace roto, dos fallos transitorios, timeout, cancelación, presupuesto, límites, circuit breaker, conciliación de coste y redacción. 9/9 aprobadas. Gates completos: typecheck, lint, 98/98 tests generales y build Vite/main/preload aprobados.
+
+### Seguridad y alcance
+
+No se llamó ni configuró proveedor real; el nuevo contrato no contiene API keys. Producción, Trawel, Automatic y publicación siguieron desconectados. Siguiente fase: 3E.

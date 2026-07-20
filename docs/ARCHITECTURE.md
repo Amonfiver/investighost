@@ -377,3 +377,14 @@ Los stores actuales de investigación, cola editorial, mocks y logs/caché de co
 La recuperación quedó verificada por mecanismos separados: PostgreSQL mediante dump custom `-Fc` y restauración real en CHECKPOINT 5; objetos Storage mediante backup/restauración por API en CHECKPOINT 7. `supabase db reset`, aprobado de nuevo en la auditoría del CHECKPOINT 8, demuestra reconstrucción por migración y seed, pero no sustituye ningún backup.
 
 Manual y Automatic siguen siendo futuros. Ambos compartirán el pipeline canónico descrito en la sección 14; FASE 2C-C no implementó ninguno ni conectó Trawel o producción.
+
+## 16. Dominio editorial cerrado en FASE 3A
+
+`src/shared/editorial-contracts.ts` define el contrato neutral `ResearchDestination`: entrada idempotente, identidad geográfica versionada y un resultado con ejecuciones, fuentes, hechos, lugares, actividades, perfiles editoriales, calidad, costes y eventos.
+
+```text
+consulta → destino canónico → solicitud/ejecución → fuentes → hechos
+  → lugares/actividades → Aventura + Estudiante → RevisIAtor → revisión humana
+```
+
+La trazabilidad ejecutable es `EditorialSection → ResearchFact → ResearchSource`. Las relaciones importantes se materializarán con FKs en 3B; JSONB se reserva para snapshots/opciones/metadatos controlados. Manual y cualquier invocador futuro usan el mismo contrato. No existe código de Automatic ni conexión/publicación Trawel.

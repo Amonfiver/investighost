@@ -1,6 +1,6 @@
 # Roadmap recomendado de Investighost
 
-Estado: FASE 2C-C completada técnicamente y documentada; pendiente de revisión humana final. Sin commit ni push de FASE 2C-C. Manual y Automatic no están implementados.
+Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A completada técnicamente el 2026-07-21. FASE 3B es el siguiente escalón. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia
 
@@ -56,9 +56,9 @@ Gates aprobados: typecheck, lint, 62/62 tests generales, 1/1 integración Supaba
 
 Limitaciones conocidas: normalización no funcional del lockfile por npm 11.6.2; 23 vulnerabilidades npm no corregidas; icono Electron por defecto; posible publicación Docker en más interfaces aunque las pruebas usaron loopback; dump PostgreSQL limitado a `public`; prueba Storage sobre un único objeto sintético sin concurrencia; stores de investigación, cola editorial y logs/cachés aún en memoria.
 
-### 3. Motor de investigación verificable
+### 3. Pipeline Manual canónico — V3 vigente
 
-Consolidar Brave/Kimi, añadir proveedor alternativo aprobado, estrategia de retry/fallback, extracción/contraste según legalidad, trazabilidad de fuentes, coste real y aceptación editorial. Sin publicar. PAUSA HUMANA 3.
+La ejecución se rige por `INVESTIGHOST_HOJA_DE_RUTA_CANONICA_V3.md`. 3A consolidó el dominio ejecutable, la trazabilidad fuente→hecho→texto, las máquinas de estado y el plan físico. El orden autorizado continúa por 3B–3I y prepara 3J, donde se detiene para aceptación humana. No se conecta producción/Trawel, no se publica y no se implementa Automatic.
 
 ### 4. Biblioteca, edición y revisión
 
@@ -92,11 +92,12 @@ Clientes, placements y anuncios tras contrato con Trawel; instrumentación analy
 
 Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendimiento, packaging, firma, instalador, actualización y criterios de release.
 
-## Orden inmediato recomendado
+## Orden inmediato vigente
 
-1. Obtener revisión humana final de FASE 2C-C y conservar producción desconectada y todo borrado remoto real deshabilitado.
-2. Preparar después, mediante autorización separada, el siguiente bloque del flujo Manual sin darlo por iniciado en este checkpoint.
-3. Mantener Automatic bloqueado hasta que Manual sea estable y cumpla sus gates.
+1. FASE 3B — migraciones y repositorios editoriales locales.
+2. FASE 3C–3I — continuar en el orden canónico V3.
+3. FASE 3J — preparar escenarios y detenerse en el gate humano Manual.
+4. Mantener Automatic y FASE 4 bloqueados.
 
 ## Estado FASE 2C-B — 2026-07-14
 

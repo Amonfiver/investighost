@@ -58,3 +58,9 @@ Prompts, respuestas crudas no aprobadas, costes/tokens, evaluaciones privadas, e
 Automatic no introduce otro agregado editorial: cada objetivo referencia `ResearchRequest`, `ResearchRun`, `ResearchResult`, `EditorialDraft` y `ContentPiece` existentes. En su fase futura se diseñarán una campaña de investigación, sus objetivos territoriales y sus ejecuciones para guardar únicamente alcance, snapshot, progreso, intentos, costes y enlaces al pipeline canónico; no contenido duplicado.
 
 El término **campaña de investigación** queda reservado a esa orquestación. `Campaign`, `CampaignAudience` y `CampaignDelivery` de la tabla anterior significan exclusivamente campañas de comunicación de F10. Los nombres, campos y contratos Automatic permanecen abiertos hasta su diseño SDD y no son entidades ejecutables en esta fase.
+
+## Consolidación V3 — FASE 3A
+
+La fuente ejecutable del nuevo pipeline editorial es `src/shared/editorial-contracts.ts`. Añade `GeographicEntity`, `EditorialResearchRequest`, `EditorialResearchRun`, `ResearchSource`, `ResearchFact`, `ResearchPlace`, `ResearchActivity`, `EditorialDraft`, `EditorialSection`, `QualityReview`, `QualityCheck`, `ProviderUsage` y `ResearchEvent`.
+
+Los contratos de FASE 1B permanecen para los dominios futuros y compatibilidad histórica. Para FASE 3 prevalecen los contratos V3: perfiles Aventura/Estudiante, evidencia obligatoria, versionado, idempotencia, ambigüedad geográfica y etapas recuperables. La matriz completa de ownership/ciclo de vida está en `FASE_3A_DOMAIN_DESIGN.md`.

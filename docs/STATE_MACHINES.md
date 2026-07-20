@@ -42,3 +42,15 @@ Los nombres orientativos del parche adjunto no se adoptan aún como contrato. An
 - `completed` exige transacción PostgreSQL confirmada, Zod, tamaños, SHA-256, objetos Storage completos, backup reciente y confirmación del borrado mock/remoto.
 - Ningún fallo de job cancela los demás jobs del `ImportBatch`.
 - Los estados sobreviven como lógica de dominio; desde FASE 2C-B la persistencia activa de contribuciones es Supabase local y FASE 2C-C retiró completamente el legado operativo SQLite. No se rediseñaron estados ni se introdujo Automatic.
+
+## Pipeline editorial V3 — FASE 3A
+
+Investigación: `draft → queued → researching → structuring → validating → completed`, con ramas `retry_pending`, `failed` y `cancelled`.
+
+Borrador: `generating → ready → in_review → approved`, con `changes_requested → generating`, `rejected` y `archived`. `ready` no salta a aprobación.
+
+Ejecución: `queued → running → checkpointed|completed`, con `retry_pending`, `failed` y `cancelled` por etapa.
+
+RevisIAtor devuelve `passed`, `passed_with_warnings`, `changes_requested`, `blocked` o `rejected`; nunca cambia por sí mismo a aprobación humana ni a publicación.
+
+Las transiciones ejecutables viven en `src/shared/editorial-contracts.ts` y sus invariantes se prueban en `tests/editorial-contracts.test.ts`.

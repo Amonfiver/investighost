@@ -425,3 +425,40 @@ Se eliminaron `better-sqlite3`, `@types/better-sqlite3`, `drizzle-orm` y `drizzl
 ### Estado
 
 FASE 2C-C queda técnicamente completada y documentada, pendiente de revisión humana final. Sin commit ni push. No se inicia Manual, no se implementa Automatic y no se avanza a ninguna conexión productiva.
+
+---
+
+## Sesión 27 — Formalización V3 y FASE 3A
+
+### Fecha y objetivo
+
+2026-07-21. Formalizar íntegramente la Hoja de Ruta Canónica V3 y cerrar el dominio editorial antes de crear persistencia física.
+
+### Preflight
+
+- Rama `feat/investighost-reinvencion`, base `996e098`, upstream 0/0 y árbol limpio.
+- Los 38 falsos cambios LF/CRLF se restauraron con autorización; blobs exactos a `HEAD`, sin untracked.
+- Prompt Maestro V3: 1.820 líneas; Hoja V3: 458 líneas.
+- 21 fuentes internas obligatorias: 5.601 líneas, leídas íntegramente.
+- Gates base: typecheck, lint, 62/62 tests y build Vite/main/preload aprobados.
+- Docker Desktop estaba detenido; Supabase local no fue necesario para el gate documental/contractual 3A.
+
+### Cambios
+
+- Formalizada V3 en `INVESTIGHOST_HOJA_DE_RUTA_CANONICA_V3.md` con fecha real.
+- Creado `src/shared/editorial-contracts.ts` y reexportado desde la fuente contractual.
+- Definidos identidad geográfica, solicitud, ejecución, fuentes, hechos, lugares, actividades, perfiles, secciones, calidad, uso/costes y eventos.
+- Cerradas máquinas de estado, ownership, ciclos de vida, trazabilidad, versionado e idempotencia.
+- Creado `FASE_3A_DOMAIN_DESIGN.md` con matriz de gaps y planes de tablas, migración, repositorios y tests.
+- Creado `FASE_3_EXECUTION_REPORT.md` como informe acumulado 3A–3J.
+- Actualizados arquitectura, dominio, estados, schema, decisiones, aceptación, roadmap y bitácora.
+
+### Verificación
+
+- Tests específicos del dominio editorial: 5/5.
+- Typecheck tras consolidar contratos: aprobado.
+- Gates completos se ejecutan antes del commit lógico.
+
+### Seguridad y alcance
+
+Sin credenciales remotas, producción, Trawel, migraciones, proveedor real, Automatic ni publicación. Siguiente fase: 3B, migración y repositorios exclusivamente sobre Supabase local.

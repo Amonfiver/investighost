@@ -85,3 +85,13 @@ FASE 2B no comienza hasta aceptación humana de este gate y confirmación de org
 ## Gate futuro de Automatic
 
 Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual complete investigación, fuentes, perfiles editoriales, persistencia, calidad, revisión y aprobación con contratos estables. Después deberá demostrar que cada objetivo invoca ese mismo pipeline; el alcance es estable/auditable; una caída no pierde progreso; reanudar no duplica; un fallo no bloquea el resto; costes y errores son visibles; Aventura/Estudiante son diferentes y verificables; y ningún resultado se publica automáticamente. La compatibilidad Trawel se acepta únicamente por el mapper/contrato/cola ya comunes.
+
+## Gate FASE 3A — aprobado técnicamente
+
+- La entrada neutral representa un destino, perfiles, idioma, profundidad, opciones, actor e idempotencia.
+- El resultado representa identidad, solicitud, ejecución, fuentes, hechos, lugares, actividades, perfiles, calidad, costes y eventos.
+- Los contratos rechazan fuentes inexistentes en hechos y hechos/fuentes inexistentes en secciones.
+- Los contratos rechazan contenido idéntico entre Aventura y Estudiante.
+- Máquinas de estado y ausencia de salto `ready → approved` quedan probadas.
+- Ownership, ciclos de vida, tablas, migración, repositorios y tests de 3B están documentados.
+- Cero Automatic, publicación, Trawel, producción o proveedor real obligatorio.

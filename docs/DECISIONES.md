@@ -441,3 +441,25 @@ PostgreSQL se verificó en CHECKPOINT 5 mediante dump custom `-Fc` y restauraci�
 El dump PostgreSQL probado cubre `public`, no Auth, Storage, Vault, roles ni ACL de toda la plataforma. La prueba Storage cubre un objeto sintético sin concurrencia, no un snapshot global. Cualquier futura ampliación o conexión productiva deberá definir y volver a probar su alcance de recuperación.
 
 Manual y Automatic no se implementaron en FASE 2C-C. Ambos siguen sometidos a sus fases y gates propios; producción y Trawel permanecen desconectados.
+
+---
+
+## Decisión 18 — Dominio editorial V3 y contrato neutral por destino
+
+### Decisión
+
+La Hoja de Ruta Canónica V3 queda formalizada el 2026-07-21 y pasa a ser la guía operativa vigente. El contrato ejecutable del pipeline por destino vive en `src/shared/editorial-contracts.ts`: identidad geográfica, solicitud, ejecución, fuentes, hechos, lugares, actividades, borradores Aventura/Estudiante, secciones, calidad, uso/coste y eventos.
+
+La entrada no contiene un modo Manual/Automatic. Manual será el primer invocador; una futura orquestación solo podrá llamar el mismo contrato. Se prohíben entidades, tablas, prompts, validadores, resultados y rutas editoriales paralelas.
+
+### Invariantes vinculantes
+
+- Cada hecho referencia una o más fuentes existentes.
+- Cada sección referencia hechos y fuentes existentes.
+- Aventura y Estudiante se diferencian por contenido y utilidad.
+- Solicitudes, ejecuciones, borradores y secciones son versionadas e idempotentes donde corresponde.
+- RevisIAtor produce evidencia y recomendaciones, nunca aprobación humana ni publicación.
+- La persistencia física de 3B será exclusivamente PostgreSQL/Supabase local; JSONB no sustituirá relaciones importantes.
+- Automatic, publicación, Trawel y producción permanecen fuera del alcance autorizado.
+
+Documento de diseño: `FASE_3A_DOMAIN_DESIGN.md`.

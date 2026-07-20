@@ -481,3 +481,23 @@ La migración `20260721010000_editorial_pipeline.sql` crea 23 tablas con relacio
 - El catálogo geográfico local y versionado es la base de 3C; los homónimos no se resuelven silenciosamente.
 - No hay tablas, repositorios o persistencia específicos para Manual o Automatic.
 - Toda aplicación remota continúa prohibida hasta otra autorización; 3B se verificó solo con reset e integración loopback.
+
+---
+
+## Decisión 20 — GeoNames versionado como identidad geográfica MVP
+
+### Decisión
+
+GeoNames Gazetteer es la fuente geográfica canónica inicial. Investighost consume snapshots descargables y fijados por versión, fecha y SHA-256; nunca consulta una lista territorial improvisada por IA. El snapshot MVP `geonames-2026-07-20` cubre España, Comunitat Valenciana y Morella, y se atribuye bajo Creative Commons Attribution 4.0.
+
+La resolución es local y determinista. Nombre, aliases, filtros y jerarquía producen el mismo UUID mientras no cambie la versión del catálogo. Un empate devuelve alternativas visibles; una corrección humana solo puede elegir una de ellas y queda versionada con actor. Una ausencia devuelve `not_found`, nunca una entidad inventada.
+
+### Consecuencias
+
+- IDs externos, procedencia, artefactos, hashes y fecha de comprobación se persisten de forma normalizada.
+- Los fixtures sintéticos están identificados como CC0 y no se mezclan con datos GeoNames reales.
+- El runtime no depende de la API GeoNames ni de red.
+- Actualizar el catálogo exige un nuevo snapshot, hashes, migración/seed y regresión de estabilidad/ambigüedad.
+- La decisión no autoriza proveedor editorial real, Automatic, producción o Trawel.
+
+Documento: `FASE_3C_GEOGRAPHY.md`.

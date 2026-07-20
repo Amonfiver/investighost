@@ -51,3 +51,7 @@ Este parche no crea ni especifica tablas. El futuro modelo guardará alcance ter
 La migración `20260721010000_editorial_pipeline.sql` añadió, sin alterar las tablas de contribuciones: `geographic_entities`, `geographic_aliases`, `editorial_research_requests`, `editorial_research_runs`, `research_sources`, `research_facts` y sus joins, `research_places`/`research_activities` y joins, `editorial_drafts`, `editorial_sections` y joins, `quality_reviews`, `quality_checks`, `provider_usage`, `research_events`, `stage_checkpoints` y `execution_locks`.
 
 Las 23 tablas usan UUID, FKs, checks, índices de consulta, RLS, timestamps, idempotencia y versión optimista. JSONB queda restringido a opciones/snapshots/metadatos/eventos/checkpoints justificados. `supabase db reset`, lint de base y una integración de ida/vuelta aprobaron el esquema exclusivamente local. No se crearon tablas Manual/Automatic ni objetos Trawel.
+
+## Extensión geográfica ejecutada en FASE 3C
+
+La migración `20260721020000_geography_resolution.sql` añade `geographic_source_snapshots`, `geographic_source_artifacts`, `geographic_external_ids` y `geographic_resolution_corrections`, además de procedencia/fecha en `geographic_entities`. Las relaciones editoriales dependientes corrigen sus cascadas para permitir borrar el agregado completo sin huérfanos. El seed limpio contiene 8 entidades, 7 aliases, 3 IDs externos, un snapshot y cuatro artefactos.

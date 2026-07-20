@@ -54,6 +54,10 @@ La condición se cumplió en FASE 2C-C: la búsqueda no encontró dependencias n
 
 `supabase/migrations/20260721010000_editorial_pipeline.sql` crea las 23 tablas normalizadas del pipeline editorial, triggers de actualización, RLS/grants y funciones de lock. El mismo reset local aplicó ambas migraciones y cargó el catálogo territorial sintético; `supabase db lint --level warning` no encontró errores. La integración opt-in persistió, reconstruyó y eliminó un agregado editorial completo. No se aplicó ningún cambio remoto.
 
+## Tercera migración ejecutada — FASE 3C
+
+`supabase/migrations/20260721020000_geography_resolution.sql` normaliza snapshots, artefactos, IDs externos y correcciones humanas de geografía, y añade procedencia a las entidades. También corrige FKs de relaciones dependientes para que el borrado del agregado sea completo. Reset, lint y dos integraciones aprobaron; la base quedó sin solicitudes, correcciones o destinos de test huérfanos.
+
 ## Evidencia de FASE 2C-C
 
 El CHECKPOINT 8 aprobó de nuevo `supabase db reset`: la migración creó siete tablas, 46 constraints, cinco FKs, 19 índices, dos funciones, siete triggers, RLS en siete tablas y cero secuencias; el seed reconstruyó los conteos sintéticos esperados y el bucket privado. Las migraciones Supabase son la única fuente estructural y no existe historial paralelo SQLite/Drizzle.

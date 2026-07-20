@@ -23,7 +23,9 @@ integration('Supabase local editorial repository', () => {
     const restored = await repository.findByIdempotencyKey(fixture.request.idempotencyKey)
     expect(restored).toEqual(fixture)
 
-    await client.from('editorial_research_requests').delete().eq('id', requestId)
-    await client.from('geographic_entities').delete().eq('id', destinationId)
+    const { error: requestCleanupError } = await client.from('editorial_research_requests').delete().eq('id', requestId)
+    expect(requestCleanupError).toBeNull()
+    const { error: destinationCleanupError } = await client.from('geographic_entities').delete().eq('id', destinationId)
+    expect(destinationCleanupError).toBeNull()
   })
 })

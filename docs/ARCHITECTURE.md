@@ -388,3 +388,5 @@ consulta → destino canónico → solicitud/ejecución → fuentes → hechos
 ```
 
 La trazabilidad ejecutable es `EditorialSection → ResearchFact → ResearchSource`. FASE 3B materializó las relaciones importantes con FKs y tablas puente en Supabase local; JSONB se reserva para snapshots/opciones/metadatos controlados. El repositorio neutral dispone de adaptador PostgreSQL y doble de tests, sin fallback durable. Manual y cualquier invocador futuro usan el mismo contrato. No existe código de Automatic ni conexión/publicación Trawel.
+
+FASE 3C fija la identidad territorial antes de investigar. `GeographicResolver` consume un repositorio local respaldado por el snapshot GeoNames versionado y devuelve resolución, ambigüedad o ausencia; nunca genera destinos. Alias, búsqueda tolerante, jerarquía y correcciones humanas comparten UUID canónico y procedencia auditable.

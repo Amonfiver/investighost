@@ -76,3 +76,5 @@ Automatic usará la misma unidad de trabajo PostgreSQL y los mismos repositorios
 `EditorialResearchRepository` es el puerto único del agregado V3. `SupabaseEditorialResearchRepository` normaliza sus entidades y relaciones en 23 tablas PostgreSQL, reconstruye el resultado desde un checkpoint validado y expone idempotencia, listado, checkpoints y locks. `MemoryEditorialResearchRepository` existe solo como doble de tests; no es fallback ni persistencia de runtime.
 
 La migración y el seed se reconstruyeron con `supabase db reset`; RLS quedó activa en todas las tablas editoriales y solo `service_role` local conserva acceso. La integración de ida/vuelta usa URL loopback y credenciales efímeras de `supabase status -o env`. Producción, Trawel y cualquier proyecto remoto permanecen desconectados.
+
+FASE 3C añade procedencia geográfica normalizada y correcciones humanas versionadas. `SupabaseGeographyCatalogRepository` es el adaptador de runtime; su equivalente en memoria es solo un doble. La resolución no realiza llamadas de red: consume exclusivamente el snapshot importado en PostgreSQL local.

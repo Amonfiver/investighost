@@ -60,7 +60,7 @@ Estado: aprobada técnicamente.
 
 - `supabase db reset`: aprobado; aplica las dos migraciones y el seed sin pasos manuales ocultos.
 - `supabase db lint --level warning`: cero errores de esquema.
-- Inventario local: 23/23 tablas editoriales, RLS activa en 23/23, 9 entidades geográficas y 5 aliases de seed.
+- Inventario local tras reset: 23/23 tablas editoriales, RLS activa en 23/23, 8 entidades geográficas y 4 aliases de seed.
 - Tests de contrato/schema/repositorio: 16/16.
 - Integración real local: 1/1; escribe, reconstruye idénticamente y limpia un agregado sintético completo.
 - Gates completos: typecheck, lint, 78/78 tests generales y build Vite/main/preload aprobados; las dos integraciones opt-in quedan omitidas en la suite general y la editorial se ejecutó aparte.
@@ -70,7 +70,34 @@ Estado: aprobada técnicamente.
 
 No se ejecutaron `supabase link` ni `supabase db push`; no se usó project ref, credencial remota, producción o Trawel. No se creó persistencia alternativa, implementación Automatic ni publicación. El siguiente escalón es 3C, identidad geográfica determinista sobre este catálogo local.
 
+## FASE 3C — identidad geográfica canónica
+
+Estado: aprobada técnicamente.
+
+### Resultado
+
+- GeoNames queda elegido como fuente gratuita, descargable y versionable bajo CC BY 4.0.
+- Snapshot `geonames-2026-07-20` fijado con cuatro hashes y alcance España → Comunitat Valenciana → Morella.
+- Tres IDs GeoNames importados; fixtures homónimos CC0 permanecen separados y explícitos.
+- Resolución determinista exacta, por alias, tolerante y por jerarquía; resultados `resolved`, `ambiguous` y `not_found`.
+- Correcciones humanas persistentes por consulta y versión; nunca se selecciona un homónimo silenciosamente.
+- Procedencia, artefactos, IDs externos, última comprobación y correcciones normalizados en Supabase local.
+- Corregidas las FKs de tablas puente detectadas por la prueba de limpieza integral del agregado.
+
+### Evidencia
+
+- Tests específicos: 11/11.
+- Integraciones reales locales: geografía/corrección 1/1 y agregado/limpieza 1/1.
+- `supabase db reset` y `supabase db lint --level warning`: aprobados.
+- Gates completos: typecheck, lint, 89/89 tests generales y build Vite/main/preload aprobados; las tres integraciones opt-in se omiten en la suite general y las dos aplicables a 3C aprobaron aparte.
+- Estado limpio tras integración: 8 entidades, 7 aliases, 3 IDs externos, 1 snapshot, 4 artefactos, 0 correcciones y 0 solicitudes.
+- Diseño, algoritmo, fuente y hashes documentados en `FASE_3C_GEOGRAPHY.md`.
+
+### Seguridad y límites
+
+El snapshot se adquirió desde un dump público sin credenciales. El runtime es local y no depende de la red. No hubo conexión a producción/Trawel, proyecto remoto, Automatic o publicación. El siguiente escalón es 3D, contratos desacoplados de proveedores sobre mocks deterministas.
+
 ## Fases siguientes
 
-- 3C–3I: identidad, proveedores, hechos, perfiles, calidad, UI y resiliencia.
+- 3D–3I: proveedores, hechos, perfiles, calidad, UI y resiliencia.
 - 3J: preparación y detención en aceptación humana Manual.

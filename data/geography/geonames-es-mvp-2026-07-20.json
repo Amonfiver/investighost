@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "investighost-geography-snapshot-v1",
+  "provider": "GeoNames",
+  "sourceVersion": "geonames-2026-07-20",
+  "sourceLicense": "Creative Commons Attribution 4.0",
+  "sourceUrl": "https://download.geonames.org/export/dump/",
+  "acquiredAt": "2026-07-21T00:37:57+02:00",
+  "scope": "MVP: Spain > Comunitat Valenciana > Morella",
+  "artifacts": [
+    {
+      "name": "ES.zip",
+      "sha256": "7eabc21e26b96136e6228080eb9fdfb937a58badcae89378fa44488662780069",
+      "upstreamLastModified": "2026-07-20T01:26:59Z"
+    },
+    {
+      "name": "alternateNames-ES.zip",
+      "sha256": "1e648d98ef18163595dc70c615f4ccdbb0f8692b8a81389a9aa5d0ae53050ecf",
+      "upstreamLastModified": "2026-07-20T01:35:23Z"
+    },
+    {
+      "name": "admin1CodesASCII.txt",
+      "sha256": "34784457b76b988a669dff7c3e4b104e4902c0875643cff019281ac79dfa2992",
+      "upstreamLastModified": "2026-07-20T01:32:12Z"
+    },
+    {
+      "name": "countryInfo.txt",
+      "sha256": "93bafc525813f22e4711ff9ed6d626343094ce48c26388dc7c49189b3d7d5512",
+      "upstreamLastModified": "2026-07-20T01:32:12Z"
+    }
+  ],
+  "entities": [
+    {
+      "localId": "70000000-0000-4000-8000-000000000001",
+      "geonameId": "2510769",
+      "type": "country",
+      "name": "España",
+      "aliases": ["España", "Spain"],
+      "countryCode": "ES",
+      "slug": "espana",
+      "coordinates": { "latitude": 40, "longitude": -4 }
+    },
+    {
+      "localId": "70000000-0000-4000-8000-000000000002",
+      "geonameId": "2593113",
+      "parentId": "70000000-0000-4000-8000-000000000001",
+      "type": "region",
+      "name": "Comunitat Valenciana",
+      "aliases": ["Comunitat Valenciana", "Valencia", "Valencian Community"],
+      "countryCode": "ES",
+      "regionCode": "60",
+      "slug": "comunitat-valenciana",
+      "coordinates": { "latitude": 39.5, "longitude": -0.75 }
+    },
+    {
+      "localId": "70000000-0000-4000-8000-000000000003",
+      "geonameId": "3116121",
+      "parentId": "70000000-0000-4000-8000-000000000002",
+      "type": "locality",
+      "name": "Morella",
+      "aliases": ["Morella", "Morella, España"],
+      "countryCode": "ES",
+      "regionCode": "60",
+      "slug": "morella",
+      "coordinates": { "latitude": 40.61966, "longitude": -0.09892 }
+    }
+  ]
+}

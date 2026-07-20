@@ -54,3 +54,5 @@ Ejecución: `queued → running → checkpointed|completed`, con `retry_pending`
 RevisIAtor devuelve `passed`, `passed_with_warnings`, `changes_requested`, `blocked` o `rejected`; nunca cambia por sí mismo a aprobación humana ni a publicación.
 
 Las transiciones ejecutables viven en `src/shared/editorial-contracts.ts` y sus invariantes se prueban en `tests/editorial-contracts.test.ts`.
+
+La resolución geográfica previa no añade un estado de investigación implícito. Produce uno de tres resultados explícitos: `resolved`, `ambiguous` o `not_found`. Solo `resolved` permite crear/continuar la solicitud; `ambiguous` espera una elección humana entre candidatos visibles y `not_found` exige corregir la consulta o importar un snapshot versionado.

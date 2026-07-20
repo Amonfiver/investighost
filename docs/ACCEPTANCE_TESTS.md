@@ -106,3 +106,14 @@ Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual 
 - La integración local real aprueba 1/1: persiste, reconstruye idénticamente y limpia un agregado completo.
 - El doble en memoria no se usa como fallback de runtime; no existe otra persistencia durable.
 - Producción/Trawel siguen desconectados y no se ejecutaron `supabase link` ni `supabase db push`.
+
+## Gate FASE 3C — aprobado técnicamente
+
+- Fuente GeoNames, licencia CC BY 4.0, versión, alcance, fecha, URLs y hashes quedan fijados en un snapshot revisable.
+- España, Comunitat Valenciana y Morella conservan UUID local e ID GeoNames; los fixtures sintéticos están separados.
+- La misma entrada y versión resuelven al mismo UUID mediante nombre exacto o alias.
+- La búsqueda tolera un typo acotado, pero una entrada ausente devuelve `not_found` y no crea destinos.
+- Los homónimos devuelven `ambiguous`; la jerarquía explícita puede resolverlos sin selección silenciosa.
+- Una corrección humana solo acepta candidatos visibles, queda ligada a actor/versión y no se reutiliza automáticamente en otra versión.
+- Tests de resolución/snapshot 11/11 e integraciones locales 2/2.
+- Reset, lint SQL y limpieza de integración aprobados; no quedan solicitudes, correcciones o destinos de test huérfanos.

@@ -485,10 +485,47 @@ Sin credenciales remotas, producción, Trawel, migraciones, proveedor real, Auto
 - Docker Desktop/Supabase se utilizaron solo localmente mediante loopback.
 - `supabase db reset`: aprobado con ambas migraciones y seed.
 - `supabase db lint --level warning`: cero errores.
-- Inventario: 23 tablas editoriales, RLS en 23/23, 9 entidades geográficas y 5 aliases.
+- Inventario tras reset limpio: 23 tablas editoriales, RLS en 23/23, 8 entidades geográficas y 4 aliases.
 - Tests específicos: 16/16; integración Supabase editorial: 1/1 efectiva.
 - Gates completos: typecheck, lint, 78/78 tests generales y build Vite/main/preload aprobados; la integración editorial opt-in se ejecutó aparte y aprobó 1/1.
 
 ### Seguridad y alcance
 
 No se usaron credenciales remotas, project ref, producción ni Trawel; no se ejecutaron `supabase link` o `supabase db push`. No se implementaron Automatic, publicación ni FASE 4. El siguiente escalón es FASE 3C.
+
+---
+
+## Sesión 29 — FASE 3C: identidad geográfica canónica
+
+### Fecha y objetivo
+
+2026-07-21. Elegir y fijar una fuente geográfica canónica, importar el alcance MVP y resolver nombres, aliases, typos, jerarquía, homónimos y correcciones humanas de forma determinista.
+
+### Fuente y persistencia
+
+- Elegido GeoNames Gazetteer, dump público UTF-8 y licencia CC BY 4.0.
+- Fijado snapshot `geonames-2026-07-20` con alcance España → Comunitat Valenciana → Morella, cuatro artefactos y SHA-256.
+- Importados GeoNames `2510769`, `2593113` y `3116121`; Testland/San Pedro permanecen fixtures CC0 separados.
+- Añadidas tablas normalizadas de snapshot, artefactos, IDs externos y correcciones humanas, más fecha de comprobación y FK de snapshot.
+- RLS de denegación por defecto y acceso exclusivo local aplicados a los cuatro objetos nuevos.
+
+### Resolución
+
+- Normalización Unicode/diacríticos/puntuación, slug estable, exacto, alias, Levenshtein tolerante y contexto jerárquico.
+- Resultados explícitos `resolved`, `ambiguous` y `not_found`; cero creación de destinos.
+- Una corrección solo puede elegir una alternativa mostrada y queda ligada a consulta, actor y versión de catálogo.
+- Implementados repositorio Supabase y doble en memoria sin fallback.
+
+### Hallazgo y corrección
+
+La prueba de limpieza integral descubrió que FKs `RESTRICT` de tablas puente impedían borrar un agregado solicitado en cascada. La migración 3C las cambió a cascada de la relación dependiente y la integración confirmó limpieza completa: 0 solicitudes y ningún destino de test huérfano.
+
+### Verificación
+
+- Resolución/snapshot: 11/11 tests.
+- Integraciones locales efectivas: 2/2.
+- Reset desde cero y lint PostgreSQL: aprobados.
+- Gates completos: typecheck, lint, 89/89 tests generales y build Vite/main/preload aprobados.
+- Seed limpio: 8 entidades, 7 aliases, 3 IDs externos, 1 snapshot, 4 artefactos, 0 correcciones y 0 solicitudes.
+
+Sin credenciales, proyecto remoto, producción, Trawel, Automatic o publicación. Siguiente fase: 3D.

@@ -30,21 +30,31 @@ on conflict (id) do nothing;
 
 insert into public.geographic_entities (
   id,parent_id,entity_type,name,normalized_name,country_code,region_code,slug,
-  latitude,longitude,source_name,source_version,source_license,status,resolution_method,version
+  latitude,longitude,source_name,source_version,source_license,source_snapshot_id,source_checked_at,
+  status,resolution_method,version
 ) values
-('70000000-0000-4000-8000-000000000001',null,'country','España','espana','ES',null,'espana',null,null,'Investighost representative fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
-('70000000-0000-4000-8000-000000000002','70000000-0000-4000-8000-000000000001','region','Comunitat Valenciana','comunitat valenciana','ES','VC','comunitat-valenciana',null,null,'Investighost representative fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
-('70000000-0000-4000-8000-000000000003','70000000-0000-4000-8000-000000000002','locality','Morella','morella','ES','VC','morella',40.6199,-0.1016,'Investighost representative fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
-('70000000-0000-4000-8000-000000000010',null,'country','Testland','testland','ZZ',null,'testland',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
-('70000000-0000-4000-8000-000000000011','70000000-0000-4000-8000-000000000010','region','Norte','norte','ZZ','N','norte',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
-('70000000-0000-4000-8000-000000000012','70000000-0000-4000-8000-000000000010','region','Sur','sur','ZZ','S','sur',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
-('70000000-0000-4000-8000-000000000013','70000000-0000-4000-8000-000000000011','locality','San Pedro','san pedro','ZZ','N','san-pedro-norte',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
-('70000000-0000-4000-8000-000000000014','70000000-0000-4000-8000-000000000012','locality','San Pedro','san pedro','ZZ','S','san-pedro-sur',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1)
+('70000000-0000-4000-8000-000000000001',null,'country','España','espana','ES',null,'espana',40,-4,'GeoNames','geonames-2026-07-20','Creative Commons Attribution 4.0','72000000-0000-4000-8000-000000000001','2026-07-21T00:37:57+02:00','active','exact',1),
+('70000000-0000-4000-8000-000000000002','70000000-0000-4000-8000-000000000001','region','Comunitat Valenciana','comunitat valenciana','ES','60','comunitat-valenciana',39.5,-0.75,'GeoNames','geonames-2026-07-20','Creative Commons Attribution 4.0','72000000-0000-4000-8000-000000000001','2026-07-21T00:37:57+02:00','active','exact',1),
+('70000000-0000-4000-8000-000000000003','70000000-0000-4000-8000-000000000002','locality','Morella','morella','ES','60','morella',40.61966,-0.09892,'GeoNames','geonames-2026-07-20','Creative Commons Attribution 4.0','72000000-0000-4000-8000-000000000001','2026-07-21T00:37:57+02:00','active','exact',1),
+('70000000-0000-4000-8000-000000000010',null,'country','Testland','testland','ZZ',null,'testland',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture',null,'2026-07-21T00:00:00Z','active','exact',1),
+('70000000-0000-4000-8000-000000000011','70000000-0000-4000-8000-000000000010','region','Norte','norte','ZZ','N','norte',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture',null,'2026-07-21T00:00:00Z','active','exact',1),
+('70000000-0000-4000-8000-000000000012','70000000-0000-4000-8000-000000000010','region','Sur','sur','ZZ','S','sur',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture',null,'2026-07-21T00:00:00Z','active','exact',1),
+('70000000-0000-4000-8000-000000000013','70000000-0000-4000-8000-000000000011','locality','San Pedro','san pedro','ZZ','N','san-pedro-norte',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture',null,'2026-07-21T00:00:00Z','active','exact',1),
+('70000000-0000-4000-8000-000000000014','70000000-0000-4000-8000-000000000012','locality','San Pedro','san pedro','ZZ','S','san-pedro-sur',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture',null,'2026-07-21T00:00:00Z','active','exact',1)
 on conflict (id) do nothing;
 
 insert into public.geographic_aliases (id,entity_id,alias,normalized_alias,source_version) values
-('71000000-0000-4000-8000-000000000001','70000000-0000-4000-8000-000000000003','Morella','morella','2026-07-v1'),
-('71000000-0000-4000-8000-000000000002','70000000-0000-4000-8000-000000000003','Morella, España','morella espana','2026-07-v1'),
+('71000000-0000-4000-8000-000000000001','70000000-0000-4000-8000-000000000003','Morella','morella','geonames-2026-07-20'),
+('71000000-0000-4000-8000-000000000002','70000000-0000-4000-8000-000000000003','Morella, España','morella espana','geonames-2026-07-20'),
 ('71000000-0000-4000-8000-000000000003','70000000-0000-4000-8000-000000000013','San Pedro','san pedro','2026-07-v1'),
-('71000000-0000-4000-8000-000000000004','70000000-0000-4000-8000-000000000014','San Pedro','san pedro','2026-07-v1')
+('71000000-0000-4000-8000-000000000004','70000000-0000-4000-8000-000000000014','San Pedro','san pedro','2026-07-v1'),
+('71000000-0000-4000-8000-000000000005','70000000-0000-4000-8000-000000000001','Spain','spain','geonames-2026-07-20'),
+('71000000-0000-4000-8000-000000000006','70000000-0000-4000-8000-000000000002','Valencia','valencia','geonames-2026-07-20'),
+('71000000-0000-4000-8000-000000000007','70000000-0000-4000-8000-000000000002','Valencian Community','valencian community','geonames-2026-07-20')
 on conflict (id) do nothing;
+
+insert into public.geographic_external_ids (entity_id,provider,external_id,source_snapshot_id) values
+('70000000-0000-4000-8000-000000000001','geonames','2510769','72000000-0000-4000-8000-000000000001'),
+('70000000-0000-4000-8000-000000000002','geonames','2593113','72000000-0000-4000-8000-000000000001'),
+('70000000-0000-4000-8000-000000000003','geonames','3116121','72000000-0000-4000-8000-000000000001')
+on conflict (entity_id,provider) do nothing;

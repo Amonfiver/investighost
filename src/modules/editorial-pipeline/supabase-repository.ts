@@ -37,6 +37,8 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
         source_name: result.destination.sourceName,
         source_version: result.destination.sourceVersion,
         source_license: result.destination.sourceLicense,
+        source_snapshot_id: result.destination.sourceSnapshotId ?? null,
+        source_checked_at: iso(result.destination.sourceCheckedAt),
         status: result.destination.status,
         resolution_method: result.destination.resolutionMethod,
         version: result.destination.version,
@@ -51,6 +53,13 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
         normalized_alias: normalizeText(alias),
         source_version: result.destination.sourceVersion,
       })), 'entity_id,normalized_alias')
+
+      await this.upsertMany('geographic_external_ids', Object.entries(result.destination.externalIds ?? {}).map(([provider, externalId]) => ({
+        entity_id: result.destination.id,
+        provider,
+        external_id: externalId,
+        source_snapshot_id: result.destination.sourceSnapshotId ?? null,
+      })), 'provider,external_id')
 
       await this.upsert('editorial_research_requests', {
         id: result.request.id,

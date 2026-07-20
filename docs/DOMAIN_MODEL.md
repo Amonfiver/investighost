@@ -66,3 +66,5 @@ La fuente ejecutable del nuevo pipeline editorial es `src/shared/editorial-contr
 Los contratos de FASE 1B permanecen para los dominios futuros y compatibilidad histórica. Para FASE 3 prevalecen los contratos V3: perfiles Aventura/Estudiante, evidencia obligatoria, versionado, idempotencia, ambigüedad geográfica y etapas recuperables. La matriz completa de ownership/ciclo de vida está en `FASE_3A_DOMAIN_DESIGN.md`.
 
 FASE 3B materializa estas entidades en tablas normalizadas de Supabase local y valida que todos los identificadores del agregado pertenecen a la misma solicitud, ejecución y destino antes de persistir. Checkpoints y locks son infraestructura de recuperación compartida, no entidades de un modo Manual/Automatic.
+
+FASE 3C separa `GeographicEntity` de su procedencia versionada (`GeographicSourceSnapshot`/artefactos), IDs externos y decisiones de resolución humana. El resultado de resolución tiene tres salidas explícitas: resuelto, ambiguo o ausente. Una corrección pertenece a la consulta normalizada y versión del catálogo, no modifica silenciosamente la identidad fuente.

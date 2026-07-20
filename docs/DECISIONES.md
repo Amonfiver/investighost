@@ -561,3 +561,23 @@ Toda regeneración parcial crea un borrador completo nuevo enlazado al anterior.
 - RevisIAtor 3G evaluará ambos perfiles, pero no los aprobará humanamente.
 
 Documento: `FASE_3F_EDITORIAL_PROFILES.md`.
+
+---
+
+## Decisión 24 — RevisIAtor recomienda, nunca decide por la persona
+
+### Decisión
+
+RevisIAtor es un motor determinista y versionado separado del proveedor editorial. Produce revisiones y checks persistibles con evidencia y corrección, y puede pasar, advertir, solicitar cambios, bloquear o rechazar técnicamente.
+
+Un resultado `passed` no cambia el estado a `approved`, no constituye aprobación editorial y no habilita publicación. La persona revisora conserva siempre la decisión y `requiresHumanDecision` es una invariante del resultado.
+
+### Consecuencias
+
+- Generador y revisor automático no comparten decisiones ocultas.
+- Repetir reglas sobre la misma versión produce IDs estables.
+- La trazabilidad rota y los riesgos de seguridad pueden bloquear el flujo antes del gate humano.
+- Las advertencias quedan visibles; no se silencian para mejorar una puntuación.
+- Automatic, Trawel y publicación no reciben ninguna autorización de RevisIAtor.
+
+Documento: `FASE_3G_REVISIATOR.md`.

@@ -396,3 +396,5 @@ FASE 3D sitúa `EditorialSourceProvider` entre el pipeline y cualquier adquisici
 FASE 3E obliga a transformar documentos aceptados en `ResearchFact`, `ResearchPlace` y `ResearchActivity` antes de redactar. La clave factual permite fusionar duplicados y mantener valores contradictorios. Checkpoints con hash separan fuentes ya procesadas de pendientes y hacen la etapa reanudable.
 
 FASE 3F genera los dos perfiles desde el mismo contexto factual mediante especificaciones versionadas. La regeneración parcial no edita historial: crea otra versión de borrador enlazada y replica las secciones no objetivo. Supabase conserva las versiones; el resultado canónico señala solo la actual por perfil.
+
+FASE 3G añade un evaluador determinista posterior y separado. `RevisiatorService` solo lee dominio canónico y emite `QualityReview`/`QualityCheck`; no llama al generador, no muta borradores y no conoce publicación. El gate humano permanece después de sus resultados.

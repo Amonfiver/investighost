@@ -170,7 +170,31 @@ Estado: aprobada técnicamente.
 
 Solo se usó el proveedor editorial mock. No hubo claves, llamadas reales, producción, Trawel, publicación o Automatic. El siguiente escalón es 3G.
 
+## FASE 3G — RevisIAtor y calidad
+
+Estado: aprobada técnicamente.
+
+### Resultado
+
+- Motor determinista `revisiator-v1`, independiente de generación y sin red.
+- Diecisiete reglas por perfil para schema, cobertura, trazabilidad, fuentes, contradicciones, duplicados, clichés, relleno, geografía, idioma, coherencia, diferenciación, volatilidad y seguridad.
+- Checks persistibles con evidencia/corrección y outcomes `passed`, `passed_with_warnings`, `changes_requested`, `blocked` o `rejected`.
+- IDs de revisión/check deterministas por borrador/versión/regla.
+- `requiresHumanDecision = true`; ningún borrador cambia a aprobado.
+
+### Evidencia
+
+- Tests específicos: 8/8.
+- Gates completos: typecheck, lint, 122/122 tests generales y build Vite/main/preload aprobados; tres integraciones locales opt-in omitidas en la suite general.
+- Caso limpio: 34 checks, dos perfiles aprobados técnicamente y estados `ready` intactos.
+- Casos de warning, cambios, bloqueo, rechazo e input inválido cubiertos.
+- Diseño y precedencia documentados en `FASE_3G_REVISIATOR.md`.
+
+### Seguridad y límites
+
+RevisIAtor recomienda y bloquea técnicamente cuando procede, pero no sustituye a un revisor, no publica y no invoca proveedores. Producción, Trawel y Automatic permanecen fuera de alcance. El siguiente escalón es 3H.
+
 ## Fases siguientes
 
-- 3G–3I: calidad, UI y resiliencia.
+- 3H–3I: UI y resiliencia.
 - 3J: preparación y detención en aceptación humana Manual.

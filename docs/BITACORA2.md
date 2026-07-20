@@ -604,3 +604,26 @@ Solo mock, sin red o credenciales. No se generó todavía prosa editorial defini
 ### Seguridad y alcance
 
 Solo mock, sin claves o red. RevisIAtor, UI y resiliencia integral siguen en fases 3G–3I. Producción, Trawel y Automatic permanecen desconectados.
+
+---
+
+## Sesión 33 — FASE 3G: RevisIAtor
+
+### Fecha y objetivo
+
+2026-07-21. Implementar controles de calidad deterministas, con evidencia y sin sustituir la decisión humana.
+
+### Cambios
+
+- Creado `RevisiatorService` y versión de reglas `revisiator-v1`.
+- Implementados 17 checks por perfil: schema, cobertura, trazabilidad, fuentes, contradicciones, duplicados, clichés, relleno, geografía, idioma, coherencia, diferenciación, volatilidad, seguridad y gate humano.
+- IDs de review/check deterministas y outcomes con precedencia explícita.
+- Motor independiente: sin proveedor, red, mutación de borrador o publicación.
+
+### Verificación
+
+8/8 tests. Caso limpio con 34 checks y dos `passed`; warnings por evidencia; cambios por geografía/volatilidad/duplicación; bloqueo por trazabilidad; rechazo por perfil no solicitado; schema inválido controlado. Los estados permanecen `ready` y la decisión humana pendiente. Gates completos: typecheck, lint, 122/122 tests generales y build Vite/main/preload aprobados; tres integraciones locales opt-in omitidas en la suite general.
+
+### Seguridad y alcance
+
+RevisIAtor nunca aprueba, publica o conecta sistemas. Producción, Trawel y Automatic permanecen desconectados. Siguiente fase: 3H.

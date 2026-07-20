@@ -147,3 +147,13 @@ Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual 
 - Regenerar una sección exige motivo, crea una versión enlazada y deja las demás secciones intactas.
 - El borrador anterior permanece inmutable y consultable; Supabase conserva v1/v2.
 - Tests específicos 8/8, reset/lint SQL e integración de historial 1/1 aprobados.
+
+## Gate FASE 3G — aprobado técnicamente
+
+- RevisIAtor es independiente del generador, determinista y versionado.
+- Cada perfil recibe checks de schema, cobertura, trazabilidad, fuentes, contradicción, duplicado, clichés, relleno, geografía, idioma, coherencia, diferenciación, volatilidad y seguridad.
+- Cada check conserva severidad, evidencia, corrección, responsable y regla.
+- La precedencia produce `passed`, `passed_with_warnings`, `changes_requested`, `blocked` y `rejected` en escenarios probados.
+- Evidencia rota y seguridad sin cubrir bloquean; schema inválido no produce resultados engañosos.
+- Un resultado técnico `passed` deja el borrador en `ready`; `requiresHumanDecision` permanece verdadero.
+- Tests específicos 8/8; RevisIAtor nunca aprueba humanamente ni publica.

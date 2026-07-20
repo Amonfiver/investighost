@@ -56,3 +56,5 @@ RevisIAtor devuelve `passed`, `passed_with_warnings`, `changes_requested`, `bloc
 Las transiciones ejecutables viven en `src/shared/editorial-contracts.ts` y sus invariantes se prueban en `tests/editorial-contracts.test.ts`.
 
 La resolución geográfica previa no añade un estado de investigación implícito. Produce uno de tres resultados explícitos: `resolved`, `ambiguous` o `not_found`. Solo `resolved` permite crear/continuar la solicitud; `ambiguous` espera una elección humana entre candidatos visibles y `not_found` exige corregir la consulta o importar un snapshot versionado.
+
+RevisIAtor no ejecuta una transición de `EditorialDraft`. Sus outcomes (`passed`, `passed_with_warnings`, `changes_requested`, `blocked`, `rejected`) pertenecen a `QualityReview`. Incluso `passed` deja el borrador en `ready`; solo una acción humana posterior puede llevarlo a `in_review`/`approved` según el flujo permitido.

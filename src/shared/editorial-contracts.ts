@@ -474,6 +474,7 @@ export type CanonicalEditorialDraft = z.infer<typeof EditorialDraftSchema>
 export type EditorialSection = z.infer<typeof EditorialSectionSchema>
 export type QualityCheck = z.infer<typeof QualityCheckSchema>
 export type QualityReview = z.infer<typeof QualityReviewSchema>
+export type QualityOutcome = z.infer<typeof QualityOutcomeSchema>
 export type ProviderUsage = z.infer<typeof ProviderUsageSchema>
 export type ResearchEvent = z.infer<typeof ResearchEventSchema>
 export type EditorialDraftBundle = z.infer<typeof EditorialDraftBundleSchema>

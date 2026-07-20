@@ -70,3 +70,9 @@ Para validar indisponibilidad, detener Supabase y abrir contribuciones: la UI de
 ## Persistencia futura de Automatic
 
 Automatic usará la misma unidad de trabajo PostgreSQL y los mismos repositorios/Storage que Manual. Una campaña solo añadirá orquestación durable y referencias al contenido canónico: checkpoint por destino, snapshot de alcance/configuración, locks, retry, idempotencia, costes y auditoría. No habrá base temporal, SQLite, archivos paralelos ni repositorio editorial Automatic. FASE 2C ya está finalizada; el diseño físico continúa aplazado hasta aceptar Manual y autorizar expresamente la fase Automatic.
+
+## Persistencia editorial vigente desde FASE 3B
+
+`EditorialResearchRepository` es el puerto único del agregado V3. `SupabaseEditorialResearchRepository` normaliza sus entidades y relaciones en 23 tablas PostgreSQL, reconstruye el resultado desde un checkpoint validado y expone idempotencia, listado, checkpoints y locks. `MemoryEditorialResearchRepository` existe solo como doble de tests; no es fallback ni persistencia de runtime.
+
+La migración y el seed se reconstruyeron con `supabase db reset`; RLS quedó activa en todas las tablas editoriales y solo `service_role` local conserva acceso. La integración de ida/vuelta usa URL loopback y credenciales efímeras de `supabase status -o env`. Producción, Trawel y cualquier proyecto remoto permanecen desconectados.

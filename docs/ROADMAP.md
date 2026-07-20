@@ -1,6 +1,6 @@
 # Roadmap recomendado de Investighost
 
-Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A completada técnicamente el 2026-07-21. FASE 3B es el siguiente escalón. Automatic continúa bloqueado y no implementado.
+Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A y FASE 3B completadas técnicamente el 2026-07-21. FASE 3C es el siguiente escalón. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia
 
@@ -58,7 +58,7 @@ Limitaciones conocidas: normalización no funcional del lockfile por npm 11.6.2;
 
 ### 3. Pipeline Manual canónico — V3 vigente
 
-La ejecución se rige por `INVESTIGHOST_HOJA_DE_RUTA_CANONICA_V3.md`. 3A consolidó el dominio ejecutable, la trazabilidad fuente→hecho→texto, las máquinas de estado y el plan físico. El orden autorizado continúa por 3B–3I y prepara 3J, donde se detiene para aceptación humana. No se conecta producción/Trawel, no se publica y no se implementa Automatic.
+La ejecución se rige por `INVESTIGHOST_HOJA_DE_RUTA_CANONICA_V3.md`. 3A consolidó dominio, trazabilidad y estados; 3B materializó 23 tablas normalizadas, repositorios, RLS, seed, checkpoints y locks en Supabase local. El orden autorizado continúa por 3C–3I y prepara 3J, donde se detiene para aceptación humana. No se conecta producción/Trawel, no se publica y no se implementa Automatic.
 
 ### 4. Biblioteca, edición y revisión
 
@@ -94,8 +94,8 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 
 ## Orden inmediato vigente
 
-1. FASE 3B — migraciones y repositorios editoriales locales.
-2. FASE 3C–3I — continuar en el orden canónico V3.
+1. FASE 3C — identidad geográfica determinista y ambigüedad explícita.
+2. FASE 3D–3I — continuar en el orden canónico V3.
 3. FASE 3J — preparar escenarios y detenerse en el gate humano Manual.
 4. Mantener Automatic y FASE 4 bloqueados.
 

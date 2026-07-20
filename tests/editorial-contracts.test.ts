@@ -225,6 +225,12 @@ describe('canonical editorial domain', () => {
     expect(ResearchDestinationResultSchema.safeParse(result).success).toBe(false)
   })
 
+  it('rejects cross-aggregate identifiers before persistence', () => {
+    const result = buildResult()
+    result.sources[0].runId = id(999)
+    expect(ResearchDestinationResultSchema.safeParse(result).success).toBe(false)
+  })
+
   it('rejects duplicated editorial content between Adventure and Student', () => {
     const result = buildResult()
     result.drafts[1].sections[0] = {

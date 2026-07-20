@@ -462,3 +462,33 @@ FASE 2C-C queda técnicamente completada y documentada, pendiente de revisión h
 ### Seguridad y alcance
 
 Sin credenciales remotas, producción, Trawel, migraciones, proveedor real, Automatic ni publicación. Siguiente fase: 3B, migración y repositorios exclusivamente sobre Supabase local.
+
+---
+
+## Sesión 28 — FASE 3B: persistencia editorial local
+
+### Fecha y objetivo
+
+2026-07-21. Materializar el dominio editorial de 3A en Supabase local con esquema normalizado, repositorios, seed y prueba de integración, sin conexión remota.
+
+### Cambios
+
+- Creada `20260721010000_editorial_pipeline.sql` con 23 tablas editoriales/geográficas, tablas puente, constraints, índices, triggers, RLS, grants y funciones de lock.
+- Ampliado `supabase/seed.sql` con Morella, una jerarquía territorial sintética y dos localidades homónimas `San Pedro`.
+- Implementados el puerto `EditorialResearchRepository`, el adaptador Supabase y un doble exclusivamente en memoria para tests.
+- Añadidos checkpoints, locks, idempotencia, control de versión y reconstrucción validada del agregado.
+- Reforzado `ResearchDestinationResultSchema` para rechazar IDs cruzados de solicitud, ejecución, destino, fuentes, hechos, lugares, actividades, borradores, revisiones, uso y eventos.
+- Añadidas pruebas unitarias, de forma SQL y una integración opt-in real.
+
+### Verificación local
+
+- Docker Desktop/Supabase se utilizaron solo localmente mediante loopback.
+- `supabase db reset`: aprobado con ambas migraciones y seed.
+- `supabase db lint --level warning`: cero errores.
+- Inventario: 23 tablas editoriales, RLS en 23/23, 9 entidades geográficas y 5 aliases.
+- Tests específicos: 16/16; integración Supabase editorial: 1/1 efectiva.
+- Gates completos: typecheck, lint, 78/78 tests generales y build Vite/main/preload aprobados; la integración editorial opt-in se ejecutó aparte y aprobó 1/1.
+
+### Seguridad y alcance
+
+No se usaron credenciales remotas, project ref, producción ni Trawel; no se ejecutaron `supabase link` o `supabase db push`. No se implementaron Automatic, publicación ni FASE 4. El siguiente escalón es FASE 3C.

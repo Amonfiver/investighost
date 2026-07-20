@@ -1,6 +1,6 @@
 # Plan de esquema PostgreSQL/Supabase — decisión 2C-A
 
-Estado: baseline local de contribuciones ejecutada y verificada; el resto continúa como diseño futuro.
+Estado: baselines locales de contribuciones y pipeline editorial ejecutadas y verificadas; el resto continúa como diseño futuro.
 
 ## Fuente estructural
 
@@ -46,8 +46,8 @@ La migración `20260714090000_contributions_supabase_local.sql` crea `import_bat
 
 Este parche no crea ni especifica tablas. El futuro modelo guardará alcance territorial versionado, configuración, progreso, intentos, costes y enlaces a las entidades editoriales comunes; queda prohibido crear tablas `manual_*`/`automatic_*` o copiar resultados. Sus nombres, constraints, RLS e índices se decidirán por SDD cuando se hayan cerrado los gates Manual. No se presume ninguna tabla territorial nueva ni ningún campo de Trawel.
 
-## Plan editorial cerrado en FASE 3A
+## Esquema editorial ejecutado en FASE 3B
 
-La migración 3B añadirá, sin alterar las tablas de contribuciones: `geographic_entities`, `geographic_aliases`, `editorial_research_requests`, `editorial_research_runs`, `research_sources`, `research_facts` y sus joins, `research_places`/`research_activities` y joins, `editorial_drafts`, `editorial_sections` y joins, `quality_reviews`, `quality_checks`, `provider_usage`, `research_events`, `stage_checkpoints` y `execution_locks`.
+La migración `20260721010000_editorial_pipeline.sql` añadió, sin alterar las tablas de contribuciones: `geographic_entities`, `geographic_aliases`, `editorial_research_requests`, `editorial_research_runs`, `research_sources`, `research_facts` y sus joins, `research_places`/`research_activities` y joins, `editorial_drafts`, `editorial_sections` y joins, `quality_reviews`, `quality_checks`, `provider_usage`, `research_events`, `stage_checkpoints` y `execution_locks`.
 
-UUID, FKs, checks, índices de consultas, RLS, timestamps, idempotencia y versión optimista son obligatorios. JSONB queda restringido a opciones/snapshots/metadatos/eventos/checkpoints justificados. No se crean tablas Manual/Automatic ni objetos Trawel.
+Las 23 tablas usan UUID, FKs, checks, índices de consulta, RLS, timestamps, idempotencia y versión optimista. JSONB queda restringido a opciones/snapshots/metadatos/eventos/checkpoints justificados. `supabase db reset`, lint de base y una integración de ida/vuelta aprobaron el esquema exclusivamente local. No se crearon tablas Manual/Automatic ni objetos Trawel.

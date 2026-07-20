@@ -37,12 +37,40 @@ Estado: aprobada técnicamente.
 
 ### Evidencia
 
-- Tests específicos de contrato: 5/5.
+- Tests específicos de contrato: 6/6, incluida integridad entre identificadores del agregado.
 - Typecheck tras contratos: aprobado.
-- Gates completos y hash del commit se registrarán al cerrar la fase.
+- Gates completos: typecheck, lint, 67/67 tests generales y build Vite/main/preload aprobados.
+- Commit lógico y upstream sincronizado: `f8df50c feat: completar fase 3a y consolidar dominio editorial`.
+
+## FASE 3B — persistencia editorial en Supabase local
+
+Estado: aprobada técnicamente.
+
+### Resultado
+
+- Migración versionada `20260721010000_editorial_pipeline.sql` aplicada desde cero sobre Supabase local.
+- Veintitrés tablas normalizadas cubren geografía, solicitudes, ejecuciones, fuentes, hechos, lugares, actividades, perfiles, calidad, uso, eventos, checkpoints y locks.
+- Las relaciones fuente→hecho→lugar/actividad/sección usan FKs y tablas puente; JSONB queda limitado a opciones, metadatos, payloads y snapshots justificados.
+- UUID, `timestamptz`, checks, índices, RLS de denegación por defecto y acceso exclusivo de `service_role` local quedan aplicados.
+- Repositorio neutral, doble en memoria y adaptador Supabase implementados con idempotencia, control de versión, checkpoints y locks.
+- Seed local y repetible con Morella, jerarquía territorial sintética y homónimos `San Pedro` para probar ambigüedad futura.
+- La validación del agregado rechaza relaciones cruzadas antes de persistir.
+
+### Evidencia
+
+- `supabase db reset`: aprobado; aplica las dos migraciones y el seed sin pasos manuales ocultos.
+- `supabase db lint --level warning`: cero errores de esquema.
+- Inventario local: 23/23 tablas editoriales, RLS activa en 23/23, 9 entidades geográficas y 5 aliases de seed.
+- Tests de contrato/schema/repositorio: 16/16.
+- Integración real local: 1/1; escribe, reconstruye idénticamente y limpia un agregado sintético completo.
+- Gates completos: typecheck, lint, 78/78 tests generales y build Vite/main/preload aprobados; las dos integraciones opt-in quedan omitidas en la suite general y la editorial se ejecutó aparte.
+- Docker Desktop se usó solo mediante el daemon local; URL y claves efímeras fueron exclusivamente loopback.
+
+### Seguridad y límites
+
+No se ejecutaron `supabase link` ni `supabase db push`; no se usó project ref, credencial remota, producción o Trawel. No se creó persistencia alternativa, implementación Automatic ni publicación. El siguiente escalón es 3C, identidad geográfica determinista sobre este catálogo local.
 
 ## Fases siguientes
 
-- 3B: migración y repositorios editoriales en Supabase local.
 - 3C–3I: identidad, proveedores, hechos, perfiles, calidad, UI y resiliencia.
 - 3J: preparación y detención en aceptación humana Manual.

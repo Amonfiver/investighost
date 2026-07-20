@@ -463,3 +463,21 @@ La entrada no contiene un modo Manual/Automatic. Manual será el primer invocado
 - Automatic, publicación, Trawel y producción permanecen fuera del alcance autorizado.
 
 Documento de diseño: `FASE_3A_DOMAIN_DESIGN.md`.
+
+---
+
+## Decisión 19 — Persistencia editorial normalizada y única
+
+### Decisión
+
+Desde FASE 3B, el agregado editorial V3 se persiste exclusivamente en PostgreSQL/Supabase local mediante `EditorialResearchRepository`. La implementación de runtime es `SupabaseEditorialResearchRepository`; el adaptador en memoria es solo un doble de tests y no constituye fallback.
+
+La migración `20260721010000_editorial_pipeline.sql` crea 23 tablas con relaciones explícitas, RLS y acceso restringido a `service_role` local. JSONB se admite únicamente para opciones, metadatos, eventos y checkpoints que no sustituyen relaciones consultables. La idempotency key, la versión optimista, los checkpoints y los locks forman parte del mismo modelo neutral.
+
+### Consecuencias
+
+- Toda relación fuente→hecho→lugar/actividad/sección tiene FK o tabla puente.
+- Un agregado con identificadores cruzados se rechaza antes de escribir.
+- El catálogo geográfico local y versionado es la base de 3C; los homónimos no se resuelven silenciosamente.
+- No hay tablas, repositorios o persistencia específicos para Manual o Automatic.
+- Toda aplicación remota continúa prohibida hasta otra autorización; 3B se verificó solo con reset e integración loopback.

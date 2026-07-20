@@ -64,3 +64,5 @@ El término **campaña de investigación** queda reservado a esa orquestación. 
 La fuente ejecutable del nuevo pipeline editorial es `src/shared/editorial-contracts.ts`. Añade `GeographicEntity`, `EditorialResearchRequest`, `EditorialResearchRun`, `ResearchSource`, `ResearchFact`, `ResearchPlace`, `ResearchActivity`, `EditorialDraft`, `EditorialSection`, `QualityReview`, `QualityCheck`, `ProviderUsage` y `ResearchEvent`.
 
 Los contratos de FASE 1B permanecen para los dominios futuros y compatibilidad histórica. Para FASE 3 prevalecen los contratos V3: perfiles Aventura/Estudiante, evidencia obligatoria, versionado, idempotencia, ambigüedad geográfica y etapas recuperables. La matriz completa de ownership/ciclo de vida está en `FASE_3A_DOMAIN_DESIGN.md`.
+
+FASE 3B materializa estas entidades en tablas normalizadas de Supabase local y valida que todos los identificadores del agregado pertenecen a la misma solicitud, ejecución y destino antes de persistir. Checkpoints y locks son infraestructura de recuperación compartida, no entidades de un modo Manual/Automatic.

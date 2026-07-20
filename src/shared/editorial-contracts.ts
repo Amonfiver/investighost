@@ -353,6 +353,15 @@ export const ResearchDestinationResultSchema = z.object({
   usage: z.array(ProviderUsageSchema),
   events: z.array(ResearchEventSchema).min(1),
 }).superRefine((value, context) => {
+  const addIntegrityIssue = (path: (string | number)[], message: string) => {
+    context.addIssue({ code: z.ZodIssueCode.custom, path, message })
+  }
+  if (value.request.destinationId !== value.destination.id) {
+    addIntegrityIssue(['request', 'destinationId'], 'La solicitud no pertenece al destino del agregado')
+  }
+  if (value.run.requestId !== value.request.id) {
+    addIntegrityIssue(['run', 'requestId'], 'La ejecución no pertenece a la solicitud del agregado')
+  }
   const requestedProfiles = new Set(value.request.profiles)
   const draftProfiles = value.drafts.map(bundle => bundle.draft.profile)
   if (new Set(draftProfiles).size !== draftProfiles.length) {
@@ -365,17 +374,75 @@ export const ResearchDestinationResultSchema = z.object({
   }
   const knownSourceIds = new Set(value.sources.map(source => source.id))
   const knownFactIds = new Set(value.facts.map(fact => fact.id))
+  const knownPlaceIds = new Set(value.places.map(place => place.id))
+  const knownDraftIds = new Set(value.drafts.map(bundle => bundle.draft.id))
+  const knownReviewIds = new Set(value.qualityReviews.map(review => review.id))
+  for (const source of value.sources) {
+    if (source.runId !== value.run.id) {
+      addIntegrityIssue(['sources'], 'Una fuente pertenece a otra ejecución')
+    }
+    if (source.duplicateOfId && !knownSourceIds.has(source.duplicateOfId)) {
+      addIntegrityIssue(['sources'], 'Una fuente duplicada referencia una fuente inexistente')
+    }
+  }
   for (const fact of value.facts) {
+    if (fact.requestId !== value.request.id || fact.destinationId !== value.destination.id) {
+      addIntegrityIssue(['facts'], 'Un hecho pertenece a otra solicitud o destino')
+    }
     if (fact.sourceIds.some(sourceId => !knownSourceIds.has(sourceId))) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ['facts'], message: 'Un hecho referencia una fuente inexistente' })
+      addIntegrityIssue(['facts'], 'Un hecho referencia una fuente inexistente')
+    }
+  }
+  for (const place of value.places) {
+    if (place.requestId !== value.request.id || place.destinationId !== value.destination.id) {
+      addIntegrityIssue(['places'], 'Un lugar pertenece a otra solicitud o destino')
+    }
+    if (place.factIds.some(factId => !knownFactIds.has(factId)) || place.sourceIds.some(sourceId => !knownSourceIds.has(sourceId))) {
+      addIntegrityIssue(['places'], 'Un lugar referencia hechos o fuentes inexistentes')
+    }
+    if (place.duplicateOfId && !knownPlaceIds.has(place.duplicateOfId)) {
+      addIntegrityIssue(['places'], 'Un lugar duplicado referencia un lugar inexistente')
+    }
+  }
+  for (const activity of value.activities) {
+    if (activity.requestId !== value.request.id || activity.destinationId !== value.destination.id) {
+      addIntegrityIssue(['activities'], 'Una actividad pertenece a otra solicitud o destino')
+    }
+    if (activity.factIds.some(factId => !knownFactIds.has(factId)) || activity.sourceIds.some(sourceId => !knownSourceIds.has(sourceId))) {
+      addIntegrityIssue(['activities'], 'Una actividad referencia hechos o fuentes inexistentes')
     }
   }
   for (const bundle of value.drafts) {
+    if (bundle.draft.requestId !== value.request.id || bundle.draft.runId !== value.run.id) {
+      addIntegrityIssue(['drafts'], 'Un borrador pertenece a otra solicitud o ejecución')
+    }
     for (const section of bundle.sections) {
+      if (section.draftId !== bundle.draft.id) {
+        addIntegrityIssue(['drafts'], 'Una sección pertenece a otro borrador')
+      }
       if (section.factIds.some(factId => !knownFactIds.has(factId)) || section.sourceIds.some(sourceId => !knownSourceIds.has(sourceId))) {
-        context.addIssue({ code: z.ZodIssueCode.custom, path: ['drafts'], message: 'Una sección perdió la trazabilidad fuente→hecho→texto' })
+        addIntegrityIssue(['drafts'], 'Una sección perdió la trazabilidad fuente→hecho→texto')
       }
     }
+  }
+  for (const review of value.qualityReviews) {
+    if (!knownDraftIds.has(review.draftId)) {
+      addIntegrityIssue(['qualityReviews'], 'Una revisión pertenece a un borrador inexistente')
+    }
+    if (review.checkIds.some(checkId => !value.qualityChecks.some(check => check.id === checkId && check.reviewId === review.id))) {
+      addIntegrityIssue(['qualityReviews'], 'Una revisión referencia un control inexistente o ajeno')
+    }
+  }
+  for (const check of value.qualityChecks) {
+    if (!knownReviewIds.has(check.reviewId)) {
+      addIntegrityIssue(['qualityChecks'], 'Un control pertenece a una revisión inexistente')
+    }
+  }
+  if (value.usage.some(usage => usage.runId !== value.run.id)) {
+    addIntegrityIssue(['usage'], 'Un registro de uso pertenece a otra ejecución')
+  }
+  if (value.events.some(event => event.requestId !== value.request.id || (event.runId && event.runId !== value.run.id))) {
+    addIntegrityIssue(['events'], 'Un evento pertenece a otra solicitud o ejecución')
   }
   const adventure = value.drafts.find(bundle => bundle.draft.profile === 'adventure')
   const student = value.drafts.find(bundle => bundle.draft.profile === 'student')

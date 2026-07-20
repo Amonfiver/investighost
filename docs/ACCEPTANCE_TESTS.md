@@ -95,3 +95,14 @@ Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual 
 - Máquinas de estado y ausencia de salto `ready → approved` quedan probadas.
 - Ownership, ciclos de vida, tablas, migración, repositorios y tests de 3B están documentados.
 - Cero Automatic, publicación, Trawel, producción o proveedor real obligatorio.
+
+## Gate FASE 3B — aprobado técnicamente
+
+- La migración editorial crea 23 tablas normalizadas con UUID, FKs, checks, índices, timestamps y relaciones fuente→hecho→texto explícitas.
+- RLS está activa en 23/23 tablas; `anon` y `authenticated` no reciben acceso y el repositorio privilegiado queda en Electron/main local.
+- `supabase db reset` aplica ambas migraciones y un seed geográfico sintético y repetible.
+- `supabase db lint --level warning` termina sin errores.
+- Contratos, schema y repositorio aprueban 16/16 tests; cubren ida/vuelta, idempotencia, versión, checkpoints, locks e identificadores cruzados.
+- La integración local real aprueba 1/1: persiste, reconstruye idénticamente y limpia un agregado completo.
+- El doble en memoria no se usa como fallback de runtime; no existe otra persistencia durable.
+- Producción/Trawel siguen desconectados y no se ejecutaron `supabase link` ni `supabase db push`.

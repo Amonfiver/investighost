@@ -387,4 +387,4 @@ consulta → destino canónico → solicitud/ejecución → fuentes → hechos
   → lugares/actividades → Aventura + Estudiante → RevisIAtor → revisión humana
 ```
 
-La trazabilidad ejecutable es `EditorialSection → ResearchFact → ResearchSource`. Las relaciones importantes se materializarán con FKs en 3B; JSONB se reserva para snapshots/opciones/metadatos controlados. Manual y cualquier invocador futuro usan el mismo contrato. No existe código de Automatic ni conexión/publicación Trawel.
+La trazabilidad ejecutable es `EditorialSection → ResearchFact → ResearchSource`. FASE 3B materializó las relaciones importantes con FKs y tablas puente en Supabase local; JSONB se reserva para snapshots/opciones/metadatos controlados. El repositorio neutral dispone de adaptador PostgreSQL y doble de tests, sin fallback durable. Manual y cualquier invocador futuro usan el mismo contrato. No existe código de Automatic ni conexión/publicación Trawel.

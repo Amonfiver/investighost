@@ -27,3 +27,24 @@ on conflict (id) do nothing;
 insert into public.local_backup_records (id,path,file_count,status,created_at,verified_at) values
 ('60000000-0000-4000-8000-000000000001','supabase-local://synthetic-snapshot',1,'verified','2026-01-01T10:01:00Z','2026-01-01T10:01:00Z')
 on conflict (id) do nothing;
+
+insert into public.geographic_entities (
+  id,parent_id,entity_type,name,normalized_name,country_code,region_code,slug,
+  latitude,longitude,source_name,source_version,source_license,status,resolution_method,version
+) values
+('70000000-0000-4000-8000-000000000001',null,'country','España','espana','ES',null,'espana',null,null,'Investighost representative fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
+('70000000-0000-4000-8000-000000000002','70000000-0000-4000-8000-000000000001','region','Comunitat Valenciana','comunitat valenciana','ES','VC','comunitat-valenciana',null,null,'Investighost representative fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
+('70000000-0000-4000-8000-000000000003','70000000-0000-4000-8000-000000000002','locality','Morella','morella','ES','VC','morella',40.6199,-0.1016,'Investighost representative fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
+('70000000-0000-4000-8000-000000000010',null,'country','Testland','testland','ZZ',null,'testland',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
+('70000000-0000-4000-8000-000000000011','70000000-0000-4000-8000-000000000010','region','Norte','norte','ZZ','N','norte',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
+('70000000-0000-4000-8000-000000000012','70000000-0000-4000-8000-000000000010','region','Sur','sur','ZZ','S','sur',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
+('70000000-0000-4000-8000-000000000013','70000000-0000-4000-8000-000000000011','locality','San Pedro','san pedro','ZZ','N','san-pedro-norte',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1),
+('70000000-0000-4000-8000-000000000014','70000000-0000-4000-8000-000000000012','locality','San Pedro','san pedro','ZZ','S','san-pedro-sur',null,null,'Investighost synthetic geography fixture','2026-07-v1','CC0 synthetic fixture','active','exact',1)
+on conflict (id) do nothing;
+
+insert into public.geographic_aliases (id,entity_id,alias,normalized_alias,source_version) values
+('71000000-0000-4000-8000-000000000001','70000000-0000-4000-8000-000000000003','Morella','morella','2026-07-v1'),
+('71000000-0000-4000-8000-000000000002','70000000-0000-4000-8000-000000000003','Morella, España','morella espana','2026-07-v1'),
+('71000000-0000-4000-8000-000000000003','70000000-0000-4000-8000-000000000013','San Pedro','san pedro','2026-07-v1'),
+('71000000-0000-4000-8000-000000000004','70000000-0000-4000-8000-000000000014','San Pedro','san pedro','2026-07-v1')
+on conflict (id) do nothing;

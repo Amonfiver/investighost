@@ -246,6 +246,8 @@ export const EditorialDraftSchema = z.object({
   promptVersion: NonEmptyTextSchema.max(80),
   contentVersion: z.number().int().positive(),
   state: EditorialDraftStateSchema,
+  previousDraftId: UuidSchema.optional(),
+  regenerationReason: z.string().trim().min(1).max(1000).optional(),
   humanEdited: z.boolean(),
   createdBy: UuidSchema,
   updatedBy: UuidSchema,

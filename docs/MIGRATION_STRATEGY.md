@@ -58,6 +58,10 @@ La condición se cumplió en FASE 2C-C: la búsqueda no encontró dependencias n
 
 `supabase/migrations/20260721020000_geography_resolution.sql` normaliza snapshots, artefactos, IDs externos y correcciones humanas de geografía, y añade procedencia a las entidades. También corrige FKs de relaciones dependientes para que el borrado del agregado sea completo. Reset, lint y dos integraciones aprobaron; la base quedó sin solicitudes, correcciones o destinos de test huérfanos.
 
+## Cuarta migración ejecutada — FASE 3F
+
+`supabase/migrations/20260721030000_editorial_history.sql` enlaza cada versión regenerada con el borrador anterior y conserva el motivo. Reset/lint e integración local verificaron dos versiones, referencia v2→v1, reconstrucción de la actual y borrado completo del agregado.
+
 ## Evidencia de FASE 2C-C
 
 El CHECKPOINT 8 aprobó de nuevo `supabase db reset`: la migración creó siete tablas, 46 constraints, cinco FKs, 19 índices, dos funciones, siete triggers, RLS en siete tablas y cero secuencias; el seed reconstruyó los conteos sintéticos esperados y el bucket privado. Las migraciones Supabase son la única fuente estructural y no existe historial paralelo SQLite/Drizzle.

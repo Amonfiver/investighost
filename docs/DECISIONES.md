@@ -541,3 +541,23 @@ El procesamiento es incremental. Cada fuente completa produce un checkpoint con 
 - Automatic, publicación y Trawel siguen bloqueados.
 
 Documento: `FASE_3E_FACTUAL_STRUCTURING.md`.
+
+---
+
+## Decisión 23 — Los perfiles se diferencian por estructura y decisión
+
+### Decisión
+
+Aventura y Estudiante comparten hechos, fuentes, lugares, actividades, proveedor y persistencia, pero aplican especificaciones editoriales versionadas distintas. La diferenciación mínima es estructural y funcional, no una reescritura tonal: ruta/dificultad/preparación frente a presupuesto/vida diaria/estudio/trámites.
+
+Toda regeneración parcial crea un borrador completo nuevo enlazado al anterior. El historial es inmutable; solo la sección objetivo cambia su contenido y versión, y el motivo queda registrado en borrador/sección.
+
+### Consecuencias
+
+- No existen pipelines ni entidades separadas por perfil.
+- Cada sección mantiene hechos y fuentes; una referencia ajena bloquea el borrador.
+- Las versiones de prompt forman parte de cada borrador/sección.
+- Coste de borrador y regeneración se audita por separado.
+- RevisIAtor 3G evaluará ambos perfiles, pero no los aprobará humanamente.
+
+Documento: `FASE_3F_EDITORIAL_PROFILES.md`.

@@ -55,3 +55,7 @@ Las 23 tablas usan UUID, FKs, checks, índices de consulta, RLS, timestamps, ide
 ## Extensión geográfica ejecutada en FASE 3C
 
 La migración `20260721020000_geography_resolution.sql` añade `geographic_source_snapshots`, `geographic_source_artifacts`, `geographic_external_ids` y `geographic_resolution_corrections`, además de procedencia/fecha en `geographic_entities`. Las relaciones editoriales dependientes corrigen sus cascadas para permitir borrar el agregado completo sin huérfanos. El seed limpio contiene 8 entidades, 7 aliases, 3 IDs externos, un snapshot y cuatro artefactos.
+
+## Historial editorial ejecutado en FASE 3F
+
+La migración `20260721030000_editorial_history.sql` añade `previous_draft_id` y `regeneration_reason` a `editorial_drafts`, con índice parcial para recorrer versiones. La unicidad `(request_id, profile, content_version)` existente conserva una versión por perfil/número; las secciones siguen perteneciendo a un borrador concreto.

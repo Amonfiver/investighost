@@ -394,3 +394,5 @@ FASE 3C fija la identidad territorial antes de investigar. `GeographicResolver` 
 FASE 3D sitúa `EditorialSourceProvider` entre el pipeline y cualquier adquisición. Descubrimiento, lectura y evaluación comparten timeout, cancelación, retry, límites, coste y circuit breaker; el único adaptador de esta fase es un mock sin red. Los resultados entran al dominio como fuentes y uso, no como objetos específicos de OpenAI/Kimi/Brave.
 
 FASE 3E obliga a transformar documentos aceptados en `ResearchFact`, `ResearchPlace` y `ResearchActivity` antes de redactar. La clave factual permite fusionar duplicados y mantener valores contradictorios. Checkpoints con hash separan fuentes ya procesadas de pendientes y hacen la etapa reanudable.
+
+FASE 3F genera los dos perfiles desde el mismo contexto factual mediante especificaciones versionadas. La regeneración parcial no edita historial: crea otra versión de borrador enlazada y replica las secciones no objetivo. Supabase conserva las versiones; el resultado canónico señala solo la actual por perfil.

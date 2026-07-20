@@ -145,7 +145,32 @@ Estado: aprobada técnicamente.
 
 La masa documental no produce texto definitivo: primero se estructura y traza. Solo existe proveedor factual mock, sin red o claves. Producción, Trawel, Automatic y publicación siguen fuera de alcance. El siguiente escalón es 3F.
 
+## FASE 3F — generación Aventura y Estudiante
+
+Estado: aprobada técnicamente.
+
+### Resultado
+
+- Especificaciones ejecutables `adventure-v1` y `student-v1` con propósitos, prioridades, tono, estructura, longitudes y prohibiciones diferentes.
+- Puerto de generación neutral y proveedor mock determinista sin red.
+- Validación fuente→hecho→sección, IDs/versiones deterministas, coste, presupuesto y cancelación.
+- Diferenciación estructural: ruta/destacados frente a presupuesto/vida diaria/estudio.
+- Regeneración parcial con motivo, nueva versión, enlace al borrador anterior y secciones no objetivo intactas.
+- Migración de historial y persistencia Supabase de v1/v2 verificadas.
+
+### Evidencia
+
+- Tests específicos: 8/8.
+- `supabase db reset` y `supabase db lint --level warning`: aprobados con la cuarta migración.
+- Integración editorial local: 1/1; conserva dos versiones enlazadas, reconstruye la actual y limpia el agregado.
+- Gates completos: typecheck, lint, 114/114 tests generales y build Vite/main/preload aprobados; tres integraciones opt-in omitidas en la suite general.
+- Diseño documentado en `FASE_3F_EDITORIAL_PROFILES.md`.
+
+### Seguridad y límites
+
+Solo se usó el proveedor editorial mock. No hubo claves, llamadas reales, producción, Trawel, publicación o Automatic. El siguiente escalón es 3G.
+
 ## Fases siguientes
 
-- 3F–3I: perfiles, calidad, UI y resiliencia.
+- 3G–3I: calidad, UI y resiliencia.
 - 3J: preparación y detención en aceptación humana Manual.

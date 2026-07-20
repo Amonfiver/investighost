@@ -137,3 +137,13 @@ Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual 
 - Se guarda checkpoint con hash tras cada fuente y una caída se reanuda sin reprocesar fuentes completadas.
 - Contrato, intento, orden de fuentes o hash incompatibles bloquean la reanudación.
 - Tests específicos 8/8; no se genera texto editorial desde documentos sin estructura.
+
+## Gate FASE 3F — aprobado técnicamente
+
+- Aventura y Estudiante usan especificaciones/versiones y secciones obligatorias diferentes.
+- Aventura cubre destacados/ruta/preparación; Estudiante cubre presupuesto/vida diaria/estudio.
+- Cada sección enlaza exclusivamente hechos existentes y fuentes pertenecientes a esos hechos.
+- Longitudes, expresiones prohibidas, IDs/versiones, coste, presupuesto y cancelación están validados.
+- Regenerar una sección exige motivo, crea una versión enlazada y deja las demás secciones intactas.
+- El borrador anterior permanece inmutable y consultable; Supabase conserva v1/v2.
+- Tests específicos 8/8, reset/lint SQL e integración de historial 1/1 aprobados.

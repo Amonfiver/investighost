@@ -577,3 +577,30 @@ No se llamó ni configuró proveedor real; el nuevo contrato no contiene API key
 ### Seguridad y alcance
 
 Solo mock, sin red o credenciales. No se generó todavía prosa editorial definitiva y no se conectaron producción/Trawel ni Automatic. Siguiente fase: 3F.
+
+---
+
+## Sesión 32 — FASE 3F: perfiles editoriales e historial
+
+### Fecha y objetivo
+
+2026-07-21. Generar Aventura/Estudiante desde hechos comunes con utilidad distinta y demostrar regeneración parcial versionada.
+
+### Cambios
+
+- Añadidas especificaciones `adventure-v1`/`student-v1` con estructura, prioridades, tono, longitudes y prohibiciones.
+- Creado puerto de generación, servicio validador y mock determinista.
+- Aplicadas trazabilidad por sección, IDs/versiones, coste/presupuesto y cancelación.
+- Regeneración parcial crea versión nueva, enlaza anterior, registra motivo y conserva secciones no objetivo.
+- Cuarta migración añade historial físico a `editorial_drafts`; repositorio actualizado.
+
+### Verificación
+
+- 8/8 tests específicos.
+- Reset y lint SQL aprobados.
+- Integración Supabase 1/1: v1 y v2 enlazadas, resultado actual reconstruido y limpieza total.
+- Gates completos: typecheck, lint, 114/114 tests generales y build Vite/main/preload aprobados.
+
+### Seguridad y alcance
+
+Solo mock, sin claves o red. RevisIAtor, UI y resiliencia integral siguen en fases 3G–3I. Producción, Trawel y Automatic permanecen desconectados.

@@ -126,7 +126,7 @@ interface FactAccumulator {
 export class FactualStructuringService {
   constructor(
     private readonly provider: FactualStructuringProvider,
-    private readonly repository: Pick<EditorialResearchRepository, 'saveCheckpoint' | 'getLatestCheckpoint'>,
+    private readonly repository: Pick<EditorialResearchRepository, 'saveCheckpoint' | 'getStageCheckpoint'>,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
@@ -350,7 +350,7 @@ export class FactualStructuringService {
   }
 
   private async restoreCheckpoint(input: FactualStructuringInput, sourceIds: string[]) {
-    const checkpoint = await this.repository.getLatestCheckpoint(input.requestId)
+    const checkpoint = await this.repository.getStageCheckpoint(input.requestId, 'fact_structuring', input.attempt)
     if (!checkpoint || checkpoint.runId !== input.runId || checkpoint.stage !== 'fact_structuring' || checkpoint.attempt !== input.attempt) return null
     if (sha256(checkpoint.snapshot) !== checkpoint.snapshotHash) {
       throw new FactualStructuringError('CHECKPOINT_MISMATCH', 'La huella del checkpoint factual no coincide')

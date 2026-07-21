@@ -25,6 +25,7 @@ export const ManualResearchStartSchema = z.object({
   depth: ResearchDepthSchema.default('standard'),
   notes: z.string().trim().max(2000).optional(),
   budgetLimit: z.number().min(0.1).max(50).default(2),
+  maxAttempts: z.number().int().min(1).max(5).default(3),
   idempotencyKey: z.string().trim().min(1).max(200),
   actorId: UuidSchema,
 }).superRefine((value, context) => {
@@ -70,6 +71,11 @@ export const ManualDraftDecisionSchema = z.object({
   actorId: UuidSchema,
   decision: z.enum(['approved', 'changes_requested', 'rejected']),
   comment: z.string().trim().min(1).max(2000),
+})
+
+export const ManualExecutionActionSchema = z.object({
+  requestId: UuidSchema,
+  actorId: UuidSchema,
 })
 
 export interface ManualResolutionCandidate {
@@ -135,3 +141,4 @@ export type ManualSectionEdit = z.infer<typeof ManualSectionEditSchema>
 export type ManualSectionRegeneration = z.infer<typeof ManualSectionRegenerationSchema>
 export type ManualDraftReview = z.infer<typeof ManualDraftReviewSchema>
 export type ManualDraftDecision = z.infer<typeof ManualDraftDecisionSchema>
+export type ManualExecutionAction = z.infer<typeof ManualExecutionActionSchema>

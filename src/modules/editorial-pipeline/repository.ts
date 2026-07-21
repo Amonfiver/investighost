@@ -3,6 +3,7 @@ import type {
   EditorialResearchRequest,
   EditorialResearchRun,
   GeographicEntity,
+  ResearchEvent,
   ResearchDestinationResult,
   ResearchStage,
 } from '@shared/editorial-contracts'
@@ -62,6 +63,19 @@ export interface EditorialDraftVersionSummary {
   updatedAt: Date
 }
 
+export interface EditorialExecutionControl {
+  requestId: string
+  maxAttempts: number
+  budgetLimit: number
+  spentCost: number
+  cancelRequestedAt?: Date
+  cancelledBy?: string
+  nextRetryAt?: Date
+  lastHeartbeatAt?: Date
+  createdAt: Date
+  updatedAt: Date
+}
+
 export interface EditorialStageCheckpoint {
   id: string
   requestId: string
@@ -76,6 +90,12 @@ export interface EditorialStageCheckpoint {
 export interface EditorialResearchRepository {
   saveScaffold(scaffold: EditorialExecutionScaffold): Promise<void>
   updateExecution(request: EditorialResearchRequest, run: EditorialResearchRun): Promise<void>
+  getScaffold(requestId: string): Promise<EditorialExecutionScaffold | null>
+  findScaffoldByIdempotencyKey(idempotencyKey: string): Promise<EditorialExecutionScaffold | null>
+  listRuns(requestId: string): Promise<EditorialResearchRun[]>
+  saveExecutionControl(control: EditorialExecutionControl): Promise<void>
+  getExecutionControl(requestId: string): Promise<EditorialExecutionControl | null>
+  appendEvents(events: ResearchEvent[]): Promise<void>
   save(result: ResearchDestinationResult): Promise<void>
   getByRequestId(requestId: string): Promise<ResearchDestinationResult | null>
   findByIdempotencyKey(idempotencyKey: string): Promise<ResearchDestinationResult | null>
@@ -83,6 +103,8 @@ export interface EditorialResearchRepository {
   listDraftVersions(requestId: string): Promise<EditorialDraftVersionSummary[]>
   saveCheckpoint(checkpoint: EditorialStageCheckpoint): Promise<void>
   getLatestCheckpoint(requestId: string): Promise<EditorialStageCheckpoint | null>
+  getStageCheckpoint(requestId: string, stage: ResearchStage, attempt?: number): Promise<EditorialStageCheckpoint | null>
   acquireExecutionLock(requestId: string, lockToken: string, expiresAt: Date, ownerProcess: string): Promise<boolean>
+  renewExecutionLock(requestId: string, lockToken: string, expiresAt: Date): Promise<boolean>
   releaseExecutionLock(requestId: string, lockToken: string): Promise<boolean>
 }

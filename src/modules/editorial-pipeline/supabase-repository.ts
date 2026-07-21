@@ -1,7 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
+  EditorialResearchRequestSchema,
+  EditorialResearchRunSchema,
+  GeographicEntitySchema,
+  ResearchEventSchema,
   ResearchDestinationResultSchema,
+  type EditorialResearchRun,
+  type ResearchEvent,
   type ResearchDestinationResult,
 } from '@shared/editorial-contracts'
 import {
@@ -9,6 +15,7 @@ import {
   type EditorialResearchRepository,
   type EditorialResearchSummary,
   type EditorialDraftVersionSummary,
+  type EditorialExecutionControl,
   type EditorialExecutionScaffold,
   type EditorialStageCheckpoint,
 } from './repository'
@@ -110,6 +117,100 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
     })
   }
 
+  async getScaffold(requestId: string): Promise<EditorialExecutionScaffold | null> {
+    const requestResult = await this.client.from('editorial_research_requests').select('*').eq('id', requestId).maybeSingle()
+    this.assertNoError(requestResult.error, 'GET_SCAFFOLD_REQUEST')
+    if (!requestResult.data) return null
+    const runResult = await this.client.from('editorial_research_runs').select('*').eq('request_id', requestId)
+      .order('attempt', { ascending: false }).limit(1).maybeSingle()
+    this.assertNoError(runResult.error, 'GET_SCAFFOLD_RUN')
+    if (!runResult.data) return null
+    const destinationId = String(requestResult.data.destination_id)
+    const [destinationResult, aliasesResult, externalIdsResult] = await Promise.all([
+      this.client.from('geographic_entities').select('*').eq('id', destinationId).maybeSingle(),
+      this.client.from('geographic_aliases').select('alias').eq('entity_id', destinationId),
+      this.client.from('geographic_external_ids').select('provider,external_id').eq('entity_id', destinationId),
+    ])
+    this.assertNoError(destinationResult.error, 'GET_SCAFFOLD_DESTINATION')
+    this.assertNoError(aliasesResult.error, 'GET_SCAFFOLD_ALIASES')
+    this.assertNoError(externalIdsResult.error, 'GET_SCAFFOLD_EXTERNAL_IDS')
+    if (!destinationResult.data) return null
+    return {
+      request: requestFromRow(requestResult.data as Row),
+      run: runFromRow(runResult.data as Row),
+      destination: destinationFromRows(
+        destinationResult.data as Row,
+        aliasesResult.data as Row[] ?? [],
+        externalIdsResult.data as Row[] ?? [],
+      ),
+    }
+  }
+
+  async findScaffoldByIdempotencyKey(idempotencyKey: string): Promise<EditorialExecutionScaffold | null> {
+    const { data, error } = await this.client.from('editorial_research_requests').select('id')
+      .eq('idempotency_key', idempotencyKey).maybeSingle()
+    this.assertNoError(error, 'FIND_SCAFFOLD_IDEMPOTENCY')
+    return data ? this.getScaffold(String(data.id)) : null
+  }
+
+  async listRuns(requestId: string): Promise<EditorialResearchRun[]> {
+    const { data, error } = await this.client.from('editorial_research_runs').select('*')
+      .eq('request_id', requestId).order('attempt', { ascending: true })
+    this.assertNoError(error, 'LIST_EXECUTION_RUNS')
+    return (data as Row[] ?? []).map(runFromRow)
+  }
+
+  async saveExecutionControl(control: EditorialExecutionControl): Promise<void> {
+    await this.upsert('editorial_execution_controls', {
+      request_id: control.requestId,
+      max_attempts: control.maxAttempts,
+      budget_limit: control.budgetLimit,
+      spent_cost: control.spentCost,
+      cancel_requested_at: iso(control.cancelRequestedAt),
+      cancelled_by: control.cancelledBy ?? null,
+      next_retry_at: iso(control.nextRetryAt),
+      last_heartbeat_at: iso(control.lastHeartbeatAt),
+      created_at: control.createdAt.toISOString(),
+      updated_at: control.updatedAt.toISOString(),
+    }, 'request_id')
+  }
+
+  async getExecutionControl(requestId: string): Promise<EditorialExecutionControl | null> {
+    const { data, error } = await this.client.from('editorial_execution_controls').select('*')
+      .eq('request_id', requestId).maybeSingle()
+    this.assertNoError(error, 'GET_EXECUTION_CONTROL')
+    if (!data) return null
+    return {
+      requestId: String(data.request_id),
+      maxAttempts: Number(data.max_attempts),
+      budgetLimit: Number(data.budget_limit),
+      spentCost: Number(data.spent_cost),
+      cancelRequestedAt: data.cancel_requested_at ? new Date(String(data.cancel_requested_at)) : undefined,
+      cancelledBy: data.cancelled_by ? String(data.cancelled_by) : undefined,
+      nextRetryAt: data.next_retry_at ? new Date(String(data.next_retry_at)) : undefined,
+      lastHeartbeatAt: data.last_heartbeat_at ? new Date(String(data.last_heartbeat_at)) : undefined,
+      createdAt: new Date(String(data.created_at)),
+      updatedAt: new Date(String(data.updated_at)),
+    }
+  }
+
+  async appendEvents(events: ResearchEvent[]): Promise<void> {
+    await this.upsertMany('research_events', events.map(candidate => {
+      const event = ResearchEventSchema.parse(candidate)
+      return {
+        id: event.id,
+        request_id: event.requestId,
+        run_id: event.runId ?? null,
+        event_type: event.type,
+        stage: event.stage ?? null,
+        actor_id: event.actorId ?? null,
+        correlation_id: event.correlationId,
+        payload: event.payload,
+        occurred_at: event.occurredAt.toISOString(),
+      }
+    }))
+  }
+
   async save(candidate: ResearchDestinationResult): Promise<void> {
     const result = ResearchDestinationResultSchema.parse(candidate)
 
@@ -194,6 +295,7 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
         created_at: result.run.createdAt.toISOString(),
         updated_at: result.run.updatedAt.toISOString(),
       })
+      for (const previousRun of result.previousRuns) await this.updateExecution(result.request, previousRun)
 
       await this.persistSources(result)
       await this.persistFacts(result)
@@ -221,7 +323,7 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
   }
 
   async getByRequestId(requestId: string): Promise<ResearchDestinationResult | null> {
-    const checkpoint = await this.getLatestCheckpoint(requestId)
+    const checkpoint = await this.getStageCheckpoint(requestId, 'human_review')
     if (!checkpoint) return null
     try {
       return ResearchDestinationResultSchema.parse(reviveDates(checkpoint.snapshot))
@@ -339,6 +441,16 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
     }
   }
 
+  async getStageCheckpoint(requestId: string, stage: EditorialStageCheckpoint['stage'], attempt?: number): Promise<EditorialStageCheckpoint | null> {
+    let query = this.client.from('stage_checkpoints').select().eq('request_id', requestId).eq('stage', stage)
+      .order('created_at', { ascending: false }).limit(1)
+    if (attempt !== undefined) query = query.eq('attempt', attempt)
+    const { data, error } = await query.maybeSingle()
+    this.assertNoError(error, 'GET_STAGE_CHECKPOINT')
+    if (!data) return null
+    return checkpointFromRow(data as Row)
+  }
+
   async acquireExecutionLock(requestId: string, lockToken: string, expiresAt: Date, ownerProcess: string): Promise<boolean> {
     const { data, error } = await this.client.rpc('acquire_editorial_execution_lock', {
       p_request_id: requestId,
@@ -356,6 +468,16 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
       p_lock_token: lockToken,
     })
     this.assertNoError(error, 'RELEASE_LOCK')
+    return data === true
+  }
+
+  async renewExecutionLock(requestId: string, lockToken: string, expiresAt: Date): Promise<boolean> {
+    const { data, error } = await this.client.rpc('renew_editorial_execution_lock', {
+      p_request_id: requestId,
+      p_lock_token: lockToken,
+      p_expires_at: expiresAt.toISOString(),
+    })
+    this.assertNoError(error, 'RENEW_LOCK')
     return data === true
   }
 
@@ -574,6 +696,95 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
 
 function normalizeText(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function requestFromRow(row: Row) {
+  return EditorialResearchRequestSchema.parse({
+    id: row.id,
+    destinationId: row.destination_id,
+    destinationQuerySnapshot: row.destination_query_snapshot,
+    profiles: row.profiles,
+    language: row.language,
+    depth: row.depth,
+    notes: row.notes ?? undefined,
+    options: row.options,
+    configurationVersion: row.configuration_version,
+    idempotencyKey: row.idempotency_key,
+    actorId: row.actor_id,
+    state: row.state,
+    version: row.version,
+    createdAt: new Date(String(row.created_at)),
+    updatedAt: new Date(String(row.updated_at)),
+  })
+}
+
+function runFromRow(row: Row) {
+  return EditorialResearchRunSchema.parse({
+    id: row.id,
+    requestId: row.request_id,
+    stage: row.stage,
+    providerId: row.provider_id,
+    model: row.model,
+    promptVersion: row.prompt_version,
+    contractVersion: row.contract_version,
+    attempt: row.attempt,
+    estimatedCost: Number(row.estimated_cost),
+    actualCost: row.actual_cost === null || row.actual_cost === undefined ? undefined : Number(row.actual_cost),
+    currency: row.currency,
+    inputUnits: Number(row.input_units),
+    outputUnits: Number(row.output_units),
+    startedAt: row.started_at ? new Date(String(row.started_at)) : undefined,
+    completedAt: row.completed_at ? new Date(String(row.completed_at)) : undefined,
+    errorCode: row.error_code ?? undefined,
+    errorMessage: row.error_message ?? undefined,
+    recoveryFromRunId: row.recovery_from_run_id ?? undefined,
+    cancelledBy: row.cancelled_by ?? undefined,
+    state: row.state,
+    createdAt: new Date(String(row.created_at)),
+    updatedAt: new Date(String(row.updated_at)),
+  })
+}
+
+function destinationFromRows(row: Row, aliases: Row[], externalIds: Row[]) {
+  return GeographicEntitySchema.parse({
+    id: row.id,
+    parentId: row.parent_id ?? undefined,
+    type: row.entity_type,
+    name: row.name,
+    normalizedName: row.normalized_name,
+    aliases: aliases.map(item => String(item.alias)),
+    countryCode: row.country_code,
+    regionCode: row.region_code ?? undefined,
+    slug: row.slug,
+    coordinates: row.latitude === null || row.latitude === undefined ? undefined : {
+      latitude: Number(row.latitude), longitude: Number(row.longitude),
+    },
+    sourceName: row.source_name,
+    sourceVersion: row.source_version,
+    sourceLicense: row.source_license,
+    sourceSnapshotId: row.source_snapshot_id ?? undefined,
+    sourceCheckedAt: row.source_checked_at ? new Date(String(row.source_checked_at)) : undefined,
+    externalIds: Object.fromEntries(externalIds.map(item => [String(item.provider), String(item.external_id)])),
+    status: row.status,
+    resolutionMethod: row.resolution_method,
+    ambiguityCandidateIds: [],
+    version: row.version,
+    createdAt: new Date(String(row.created_at)),
+    updatedAt: new Date(String(row.updated_at)),
+  })
+}
+
+function checkpointFromRow(row: Row): EditorialStageCheckpoint {
+  return {
+    id: String(row.id),
+    requestId: String(row.request_id),
+    runId: String(row.run_id),
+    stage: row.stage as EditorialStageCheckpoint['stage'],
+    attempt: Number(row.attempt),
+    snapshot: row.snapshot as Record<string, unknown>,
+    snapshotHash: String(row.snapshot_hash),
+    createdAt: new Date(String(row.created_at)),
+  }
 }
 
 function serialize(value: ResearchDestinationResult): Record<string, unknown> {

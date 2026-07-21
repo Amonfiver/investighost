@@ -19,6 +19,7 @@ import type {
   ManualDestinationResolution,
   ManualDraftDecision,
   ManualDraftReview,
+  ManualExecutionAction,
   ManualPersistenceStatus,
   ManualResearchStart,
   ManualSectionEdit,
@@ -44,6 +45,9 @@ declare global {
       resolveManualDestination: (input: ManualDestinationQuery) => Promise<ManualDestinationResolution>
       correctManualDestination: (input: ManualDestinationCorrection) => Promise<ManualDestinationResolution>
       startManualResearch: (input: ManualResearchStart) => Promise<ResearchDestinationResult>
+      resumeManualResearch: (input: ManualExecutionAction) => Promise<ResearchDestinationResult>
+      retryManualResearch: (input: ManualExecutionAction) => Promise<ResearchDestinationResult>
+      cancelManualResearch: (input: ManualExecutionAction) => Promise<void>
       listManualResearch: () => Promise<EditorialResearchSummary[]>
       getManualResearch: (requestId: string) => Promise<ResearchDestinationResult | null>
       listManualDraftVersions: (requestId: string) => Promise<EditorialDraftVersionSummary[]>

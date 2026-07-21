@@ -29,6 +29,7 @@ integration('Supabase local Manual workflow', () => {
         depth: 'standard',
         notes: 'Integración Manual sintética',
         budgetLimit: 2,
+        maxAttempts: 3,
         idempotencyKey: `manual-integration:${randomUUID()}`,
         actorId: '6fda5d08-9cd0-4d9d-98c1-7ccbfd56ad11',
       })
@@ -58,6 +59,41 @@ integration('Supabase local Manual workflow', () => {
         .eq('request_id', requestId)
       expect(checkpointError).toBeNull()
       expect(checkpointCount).toBeGreaterThanOrEqual(2)
+    } finally {
+      if (requestId) {
+        const { error } = await client.from('editorial_research_requests').delete().eq('id', requestId)
+        expect(error).toBeNull()
+      }
+    }
+  })
+
+  it('serializes accidental concurrent starts with one durable aggregate', async () => {
+    const { client } = createLocalSupabaseClientFromEnv()
+    const repository = new SupabaseEditorialResearchRepository(client)
+    const service = new ManualResearchService(
+      repository,
+      new GeographicResolver(new SupabaseGeographyCatalogRepository(client), 'geonames-2026-07-20'),
+      { ownerProcess: 'manual-supabase-concurrency' },
+    )
+    const idempotencyKey = `manual-concurrency:${randomUUID()}`
+    const candidate = {
+      destinationQuery: 'Morella', countryCode: 'ES', destinationType: 'locality' as const,
+      profiles: ['adventure', 'student'] as const, language: 'es', depth: 'standard' as const,
+      notes: 'Concurrencia accidental sintética', budgetLimit: 2, maxAttempts: 3, idempotencyKey,
+      actorId: '6fda5d08-9cd0-4d9d-98c1-7ccbfd56ad11',
+    }
+    let requestId: string | undefined
+    try {
+      const settled = await Promise.allSettled([service.start(candidate), service.start(candidate)])
+      const completed = settled.filter(item => item.status === 'fulfilled')
+      const rejected = settled.filter(item => item.status === 'rejected')
+      expect(completed).toHaveLength(1)
+      expect(rejected).toHaveLength(1)
+      expect(rejected[0]).toMatchObject({ reason: { code: 'ALREADY_RUNNING' } })
+      if (completed[0].status !== 'fulfilled') throw new Error('Falta ejecución completada')
+      requestId = completed[0].value.request.id
+      expect(await repository.listRuns(requestId)).toHaveLength(1)
+      expect(await repository.findByIdempotencyKey(idempotencyKey)).toEqual(completed[0].value)
     } finally {
       if (requestId) {
         const { error } = await client.from('editorial_research_requests').delete().eq('id', requestId)

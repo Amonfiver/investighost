@@ -84,6 +84,7 @@ function input(idempotencyKey = randomUUID()) {
     depth: 'standard' as const,
     notes: 'Ejecución Manual sintética',
     budgetLimit: 2,
+    maxAttempts: 3,
     idempotencyKey,
     actorId,
   }
@@ -143,7 +144,7 @@ describe('canonical Manual workflow', () => {
   })
 
   it('regenerates one section as one costed and auditable version', async () => {
-    const { service } = setup()
+    const { repository, service } = setup()
     const initial = await service.start(input())
     const adventure = initial.drafts.find(item => item.draft.profile === 'adventure')
     const route = adventure?.sections.find(section => section.kind === 'route')
@@ -161,6 +162,7 @@ describe('canonical Manual workflow', () => {
     expect(next?.sections.find(section => section.kind === 'route')?.heading).toContain('versión revisada')
     expect(next?.sections.find(section => section.kind === 'route')?.content).toContain('revisión parcial')
     expect(regenerated.run.actualCost).toBeCloseTo((initial.run.actualCost ?? 0) + 0.02)
+    expect((await repository.getExecutionControl(initial.request.id))?.spentCost).toBeCloseTo((initial.run.actualCost ?? 0) + 0.02)
     expect(regenerated.usage).toHaveLength(initial.usage.length + 1)
     expect(regenerated.events.at(-1)?.type).toBe('manual.section.regenerated')
   })

@@ -170,3 +170,18 @@ Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual 
 - Aprobar/rechazar/solicitar cambios exige `in_review`; ningún botón publica o llama a Trawel.
 - Tests Manual 5/5 e integración Supabase local 1/1 aprobados.
 - Reintento, cancelación y reanudación durable de fallos quedan como gate obligatorio de 3I.
+
+## Gate FASE 3I — aprobado técnicamente
+
+- Scaffold y control durable existen antes de proveedores; fuentes/documentos, hechos, borradores, calidad y agregado final tienen checkpoints verificables.
+- Reiniciar reanuda el mismo intento; reintentar un fallo crea otro run enlazado y no repite etapas válidas.
+- Checkpoint corrupto, de otro contrato o configuración se rechaza con error explícito.
+- Lock atómico, lease renovable y heartbeat impiden doble ejecución accidental en memoria y Supabase local.
+- Cancelación se persiste antes del abort, identifica actor, termina en estado seguro y libera el lock.
+- Backoff e intentos son acotados; al agotarse exigen intervención explícita.
+- Presupuesto acumulado incluye ejecuciones y regeneraciones; reutilizar checkpoint no duplica coste.
+- Caídas sintéticas de proveedor, base y Electron quedan visibles y recuperables.
+- El Manual guarda documentos acotados en PostgreSQL y no depende de Storage; su indisponibilidad no corta el pipeline.
+- UI e IPC ofrecen reanudar, reintentar y cancelar sin exponer secretos ni requerir terminal.
+- Tests de resiliencia 9/9, Manual 5/5 e integración Manual Supabase 2/2 aprobados; reset, lint SQL, typecheck, lint y build aprobados.
+- Automatic continúa bloqueado hasta aceptación humana expresa de FASE 3J.

@@ -137,6 +137,18 @@ ipcMain.handle('manual:start', async (_event, input: unknown) => {
   return (await getManualResearchRuntime()).start(input as never)
 })
 
+ipcMain.handle('manual:resume', async (_event, input: unknown) => {
+  return (await getManualResearchRuntime()).resume(input as never)
+})
+
+ipcMain.handle('manual:retry', async (_event, input: unknown) => {
+  return (await getManualResearchRuntime()).retry(input as never)
+})
+
+ipcMain.handle('manual:cancel', async (_event, input: unknown) => {
+  return (await getManualResearchRuntime()).cancel(input as never)
+})
+
 ipcMain.handle('manual:list', async () => (await getManualResearchRuntime()).list())
 
 ipcMain.handle('manual:get', async (_event, requestId: unknown) => {

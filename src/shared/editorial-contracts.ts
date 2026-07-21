@@ -347,6 +347,7 @@ export const ResearchDestinationInputSchema = z.object({
 export const ResearchDestinationResultSchema = z.object({
   request: EditorialResearchRequestSchema,
   run: EditorialResearchRunSchema,
+  previousRuns: z.array(EditorialResearchRunSchema).default([]),
   destination: GeographicEntitySchema,
   sources: z.array(ResearchSourceSchema).min(1),
   facts: z.array(ResearchFactSchema).min(1),
@@ -366,6 +367,13 @@ export const ResearchDestinationResultSchema = z.object({
   }
   if (value.run.requestId !== value.request.id) {
     addIntegrityIssue(['run', 'requestId'], 'La ejecución no pertenece a la solicitud del agregado')
+  }
+  const knownRunIds = new Set([value.run.id, ...value.previousRuns.map(run => run.id)])
+  if (knownRunIds.size !== value.previousRuns.length + 1) {
+    addIntegrityIssue(['previousRuns'], 'El historial de ejecuciones contiene identificadores duplicados')
+  }
+  if (value.previousRuns.some(run => run.requestId !== value.request.id)) {
+    addIntegrityIssue(['previousRuns'], 'Una ejecución histórica pertenece a otra solicitud')
   }
   const requestedProfiles = new Set(value.request.profiles)
   const draftProfiles = value.drafts.map(bundle => bundle.draft.profile)
@@ -446,7 +454,7 @@ export const ResearchDestinationResultSchema = z.object({
   if (value.usage.some(usage => usage.runId !== value.run.id)) {
     addIntegrityIssue(['usage'], 'Un registro de uso pertenece a otra ejecución')
   }
-  if (value.events.some(event => event.requestId !== value.request.id || (event.runId && event.runId !== value.run.id))) {
+  if (value.events.some(event => event.requestId !== value.request.id || (event.runId && !knownRunIds.has(event.runId)))) {
     addIntegrityIssue(['events'], 'Un evento pertenece a otra solicitud o ejecución')
   }
   const adventure = value.drafts.find(bundle => bundle.draft.profile === 'adventure')

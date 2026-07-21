@@ -59,6 +59,7 @@ export function buildEditorialFixture(overrides: {
       createdAt: now,
       updatedAt: now,
     },
+    previousRuns: [],
     destination: {
       id: destinationId,
       type: 'country',

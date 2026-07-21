@@ -112,6 +112,23 @@ export function App(): JSX.Element {
       setSelectedSummary(summaryFromResult(result))
       setVersions(await window.electronAPI.listManualDraftVersions(result.request.id))
       await refreshLibrary()
+      setView('detail')
+    } catch (reason) {
+      setError(errorText(reason))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const cancelExecution = async (requestId: string) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await window.electronAPI.cancelManualResearch({ requestId, actorId })
+      await refreshLibrary()
+      setSelected(null)
+      setSelectedSummary(null)
+      setView('library')
     } catch (reason) {
       setError(errorText(reason))
     } finally {
@@ -176,7 +193,14 @@ export function App(): JSX.Element {
           {view === 'detail' && (
             selected
               ? <ResearchWorkspace result={selected} versions={versions} busy={busy} actorId={actorId} applyResult={applyResult} onBack={() => go('library')} />
-              : <IncompleteResearch summary={selectedSummary} onBack={() => go('library')} />
+              : <IncompleteResearch
+                summary={selectedSummary}
+                busy={busy}
+                onResume={requestId => applyResult(() => window.electronAPI.resumeManualResearch({ requestId, actorId }))}
+                onRetry={requestId => applyResult(() => window.electronAPI.retryManualResearch({ requestId, actorId }))}
+                onCancel={cancelExecution}
+                onBack={() => go('library')}
+              />
           )}
           {view === 'contributions' && <ContributionImportPanel />}
         </main>
@@ -246,6 +270,7 @@ function NewManualResearch({ actorId, busy, onStart, onCancel }: {
   const [profiles, setProfiles] = useState<EditorialProfile[]>(['adventure', 'student'])
   const [depth, setDepth] = useState<ManualResearchStart['depth']>('standard')
   const [budgetLimit, setBudgetLimit] = useState(2)
+  const [maxAttempts, setMaxAttempts] = useState(3)
   const [notes, setNotes] = useState('')
   const [resolution, setResolution] = useState<ManualDestinationResolution | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -294,6 +319,7 @@ function NewManualResearch({ actorId, busy, onStart, onCancel }: {
       depth,
       notes: notes.trim() || undefined,
       budgetLimit,
+      maxAttempts,
     })
   }
 
@@ -323,9 +349,10 @@ function NewManualResearch({ actorId, busy, onStart, onCancel }: {
           <label className={profiles.includes('adventure') ? 'selected' : ''}><input type="checkbox" checked={profiles.includes('adventure')} onChange={() => toggleProfile('adventure')} /><span className="profile-symbol">A</span><span><strong>Aventura</strong><small>Rutas, esfuerzo, preparación, riesgos y logística.</small></span></label>
           <label className={profiles.includes('student') ? 'selected' : ''}><input type="checkbox" checked={profiles.includes('student')} onChange={() => toggleProfile('student')} /><span className="profile-symbol student">E</span><span><strong>Estudiante</strong><small>Presupuesto, movilidad, servicios, estudio y vida diaria.</small></span></label>
         </fieldset>
-        <div className="form-grid">
+        <div className="form-grid three">
           <label className="field"><span>Profundidad</span><select value={depth} onChange={event => setDepth(event.target.value as ManualResearchStart['depth'])} disabled={resolution?.status !== 'resolved'}><option value="standard">Estándar</option><option value="deep">Profunda</option></select></label>
           <label className="field"><span>Presupuesto máximo simulado (€)</span><input type="number" min="0.1" max="50" step="0.1" value={budgetLimit} onChange={event => setBudgetLimit(Number(event.target.value))} disabled={resolution?.status !== 'resolved'} /></label>
+          <label className="field"><span>Intentos máximos</span><input type="number" min="1" max="5" step="1" value={maxAttempts} onChange={event => setMaxAttempts(Number(event.target.value))} disabled={resolution?.status !== 'resolved'} /></label>
           <label className="field full"><span>Notas para la investigación</span><textarea rows={3} value={notes} onChange={event => setNotes(event.target.value)} maxLength={2000} disabled={resolution?.status !== 'resolved'} placeholder="Prioridades, límites o contexto editorial…" /></label>
         </div>
         <div className="scope-note"><strong>Ejecución segura</strong><span>Mocks locales deterministas · persistencia Supabase local · sin Trawel · sin publicación</span></div>
@@ -456,8 +483,19 @@ function History({ result, versions }: { result: ResearchDestinationResult; vers
   return <div className="history-grid"><section><div className="section-heading compact"><div><span className="card-kicker">VERSIONES</span><h3>Historial editorial</h3></div></div><div className="version-list">{versions.map(version => <article key={version.id}><span className={`version-dot ${version.humanEdited ? 'human' : ''}`} /><div><strong>{profileLabel(version.profile)} · v{version.contentVersion}</strong><p>{version.title}</p><small>{version.reason ?? 'Generación inicial'} · {formatDate(version.updatedAt)}</small></div><StateBadge value={version.state} /></article>)}</div></section><section><div className="section-heading compact"><div><span className="card-kicker">AUDITORÍA</span><h3>Eventos del pipeline</h3></div></div><div className="event-list">{[...result.events].reverse().map(event => <article key={event.id}><span>{formatTime(event.occurredAt)}</span><div><strong>{event.type}</strong><small>{event.stage ? stageLabels[event.stage] : 'Sistema'} · {event.correlationId}</small></div></article>)}</div><div className="cost-breakdown"><h4>Uso y costes</h4>{result.usage.map(item => <div key={item.id}><span>{item.cause}</span><span>{item.providerId}</span><strong>{formatMoney(item.actualCost, item.currency)}</strong></div>)}</div></section></div>
 }
 
-function IncompleteResearch({ summary, onBack }: { summary: EditorialResearchSummary | null; onBack: () => void }): JSX.Element {
-  return <section><button className="back-link" onClick={onBack}>← Biblioteca</button><div className="empty-card incident"><span className="empty-icon">!</span><h2>{summary?.destinationQuery ?? 'Investigación incompleta'}</h2><StateBadge value={summary?.state ?? 'failed'} /><p>{summary?.errorMessage ?? 'La ejecución no dispone todavía de un agregado editorial completo.'}</p><dl className="definition-grid"><div><dt>Etapa</dt><dd>{stageLabels[summary?.stage ?? ''] ?? 'Desconocida'}</dd></div><div><dt>Código</dt><dd>{summary?.errorCode ?? 'Sin código'}</dd></div></dl><p className="muted">La recuperación y el reintento seguro se habilitan en el siguiente gate de resiliencia.</p></div></section>
+function IncompleteResearch({ summary, busy, onResume, onRetry, onCancel, onBack }: {
+  summary: EditorialResearchSummary | null
+  busy: boolean
+  onResume: (requestId: string) => Promise<void>
+  onRetry: (requestId: string) => Promise<void>
+  onCancel: (requestId: string) => Promise<void>
+  onBack: () => void
+}): JSX.Element {
+  const requestId = summary?.requestId
+  const canRetry = summary?.state === 'failed' || summary?.state === 'retry_pending'
+  const canResume = Boolean(summary && !['completed', 'failed', 'retry_pending', 'cancelled'].includes(summary.state))
+  const canCancel = Boolean(summary && !['completed', 'cancelled'].includes(summary.state))
+  return <section><button className="back-link" onClick={onBack}>← Biblioteca</button><div className="empty-card incident"><span className="empty-icon">!</span><h2>{summary?.destinationQuery ?? 'Investigación incompleta'}</h2><StateBadge value={summary?.state ?? 'failed'} /><p>{summary?.errorMessage ?? 'La ejecución conserva sus checkpoints y puede recuperarse sin repetir etapas terminadas.'}</p><dl className="definition-grid"><div><dt>Etapa</dt><dd>{stageLabels[summary?.stage ?? ''] ?? 'Desconocida'}</dd></div><div><dt>Código</dt><dd>{summary?.errorCode ?? 'Sin código'}</dd></div></dl>{requestId && <div className="form-actions">{canResume && <button className="button primary" disabled={busy} onClick={() => onResume(requestId)}>Reanudar</button>}{canRetry && <button className="button primary" disabled={busy} onClick={() => onRetry(requestId)}>Reintentar etapa</button>}{canCancel && <button className="button ghost" disabled={busy} onClick={() => onCancel(requestId)}>Cancelar ejecución</button>}</div>}<p className="muted">Los reintentos están acotados, respetan el presupuesto restante y quedan auditados.</p></div></section>
 }
 
 function ContributionImportPanel(): JSX.Element {

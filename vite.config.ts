@@ -39,13 +39,15 @@ export default defineConfig({
             sourcemap: true,
             minify: false,
             outDir: 'dist-electron',
-            lib: {
-              entry: 'src/main/index.ts',
-              formats: ['cjs'],
-              fileName: () => 'main.cjs',
-            },
+            lib: false,
             rollupOptions: {
+              input: 'src/main/index.ts',
               external: ['electron'],
+              output: {
+                format: 'cjs',
+                entryFileNames: 'main.cjs',
+                inlineDynamicImports: true,
+              },
             },
           },
         },
@@ -59,13 +61,15 @@ export default defineConfig({
             sourcemap: true,
             minify: false,
             outDir: 'dist-electron',
-            lib: {
-              entry: 'src/main/preload.ts',
-              formats: ['cjs'],
-              fileName: () => 'preload.js',
-            },
+            lib: false,
             rollupOptions: {
+              input: 'src/main/preload.ts',
               external: ['electron'],
+              output: {
+                format: 'cjs',
+                entryFileNames: 'preload.js',
+                inlineDynamicImports: true,
+              },
             },
           },
         },

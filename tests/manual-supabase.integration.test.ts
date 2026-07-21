@@ -101,4 +101,38 @@ integration('Supabase local Manual workflow', () => {
       }
     }
   })
+
+  it('recovers the provider-unavailable acceptance fixture without duplicating the request', async () => {
+    const { client } = createLocalSupabaseClientFromEnv()
+    const repository = new SupabaseEditorialResearchRepository(client)
+    const service = new ManualResearchService(
+      repository,
+      new GeographicResolver(new SupabaseGeographyCatalogRepository(client), 'geonames-2026-07-20'),
+      { ownerProcess: 'manual-supabase-acceptance-retry', retryBackoffMs: [0] },
+    )
+    const idempotencyKey = `manual-acceptance-retry:${randomUUID()}`
+    let requestId: string | undefined
+    try {
+      await expect(service.start({
+        destinationQuery: 'Morella', countryCode: 'ES', destinationType: 'locality',
+        profiles: ['adventure', 'student'], language: 'es', depth: 'standard',
+        notes: 'Fixture 3J de proveedor recuperable', budgetLimit: 2, maxAttempts: 3,
+        simulationScenario: 'provider_unavailable', idempotencyKey,
+        actorId: '6fda5d08-9cd0-4d9d-98c1-7ccbfd56ad11',
+      })).rejects.toMatchObject({ code: 'PERMANENT' })
+      const scaffold = await repository.findScaffoldByIdempotencyKey(idempotencyKey)
+      if (!scaffold) throw new Error('Falta scaffold fallido de aceptación')
+      requestId = scaffold.request.id
+      const recovered = await service.retry({ requestId, actorId: scaffold.request.actorId })
+      expect(recovered.previousRuns).toHaveLength(1)
+      expect(recovered.run).toMatchObject({ attempt: 2, state: 'completed' })
+      expect(await repository.listRuns(requestId)).toHaveLength(2)
+      expect((await repository.list()).filter(item => item.requestId === requestId)).toHaveLength(1)
+    } finally {
+      if (requestId) {
+        const { error } = await client.from('editorial_research_requests').delete().eq('id', requestId)
+        expect(error).toBeNull()
+      }
+    }
+  })
 })

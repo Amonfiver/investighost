@@ -185,3 +185,12 @@ Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual 
 - UI e IPC ofrecen reanudar, reintentar y cancelar sin exponer secretos ni requerir terminal.
 - Tests de resiliencia 9/9, Manual 5/5 e integración Manual Supabase 2/2 aprobados; reset, lint SQL, typecheck, lint y build aprobados.
 - Automatic continúa bloqueado hasta aceptación humana expresa de FASE 3J.
+
+## Gate FASE 3J — preparado, decisión humana pendiente
+
+- El protocolo reproducible está en `FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
+- J01–J17 cubren destino válido/ambiguo/duplicado, fuentes insuficientes/rotas, proveedor no disponible, interrupción/reanudación, regeneración, corrección, rechazo, aprobación, diferenciación, reinicio, coste, historial y fronteras negativas.
+- Los fallos sintéticos se seleccionan desde la UI local y quedan en la configuración durable; no requieren proveedor, Storage o credencial remotos.
+- Preparación técnica verde: 137 tests generales y 6 integraciones locales, incluida caída inicial de proveedor seguida de retry idempotente en Supabase.
+- Solo el jefe puede emitir `APROBADO` o `RECHAZADO`; el estado actual es **sin decisión**.
+- Hasta esa decisión no se implementan Automatic, FASE 4, publicación o Trawel.

@@ -8,6 +8,14 @@ import {
 
 const UuidSchema = z.string().uuid()
 
+export const ManualSimulationScenarioSchema = z.enum([
+  'happy_path',
+  'insufficient_sources',
+  'broken_source',
+  'provider_unavailable',
+  'slow_interruptible',
+])
+
 export const ManualDestinationQuerySchema = z.object({
   query: z.string().trim().min(1).max(300),
   countryCode: z.string().length(2).transform(value => value.toUpperCase()).optional(),
@@ -26,6 +34,7 @@ export const ManualResearchStartSchema = z.object({
   notes: z.string().trim().max(2000).optional(),
   budgetLimit: z.number().min(0.1).max(50).default(2),
   maxAttempts: z.number().int().min(1).max(5).default(3),
+  simulationScenario: ManualSimulationScenarioSchema.optional(),
   idempotencyKey: z.string().trim().min(1).max(200),
   actorId: UuidSchema,
 }).superRefine((value, context) => {
@@ -142,3 +151,4 @@ export type ManualSectionRegeneration = z.infer<typeof ManualSectionRegeneration
 export type ManualDraftReview = z.infer<typeof ManualDraftReviewSchema>
 export type ManualDraftDecision = z.infer<typeof ManualDraftDecisionSchema>
 export type ManualExecutionAction = z.infer<typeof ManualExecutionActionSchema>
+export type ManualSimulationScenario = z.infer<typeof ManualSimulationScenarioSchema>

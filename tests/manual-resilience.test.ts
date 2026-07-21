@@ -81,6 +81,26 @@ function unavailableProviders(destination: GeographicEntity): ManualPipelineProv
 }
 
 describe('Manual resilience, cost and idempotency gate', () => {
+  it('exposes reproducible acceptance fixtures for insufficient, broken and unavailable sources', async () => {
+    const insufficient = setup()
+    await expect(insufficient.service.start(input({ simulationScenario: 'insufficient_sources' })))
+      .rejects.toMatchObject({ code: 'NO_ACCEPTED_SOURCES' })
+    expect((await insufficient.repository.list())[0]).toMatchObject({ state: 'failed', errorCode: 'NO_ACCEPTED_SOURCES' })
+
+    const broken = await setup().service.start(input({ simulationScenario: 'broken_source' }))
+    expect(broken.sources.map(source => source.status)).toEqual(expect.arrayContaining(['accepted', 'unavailable']))
+    expect(broken.request.options.simulationScenario).toBe('broken_source')
+
+    const unavailable = setup()
+    await expect(unavailable.service.start(input({ simulationScenario: 'provider_unavailable' })))
+      .rejects.toMatchObject({ code: 'PERMANENT' })
+    const failed = (await unavailable.repository.list())[0]
+    expect(failed).toMatchObject({ state: 'failed', errorCode: 'PERMANENT' })
+    const retried = await unavailable.service.retry({ requestId: failed.requestId, actorId })
+    expect(retried.run).toMatchObject({ attempt: 2, state: 'completed' })
+    expect(await unavailable.repository.list()).toHaveLength(1)
+  })
+
   it('persists every completed stage, including source documents without depending on Storage', async () => {
     const { repository, service } = setup()
     const result = await service.start(input())

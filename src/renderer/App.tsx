@@ -271,6 +271,7 @@ function NewManualResearch({ actorId, busy, onStart, onCancel }: {
   const [depth, setDepth] = useState<ManualResearchStart['depth']>('standard')
   const [budgetLimit, setBudgetLimit] = useState(2)
   const [maxAttempts, setMaxAttempts] = useState(3)
+  const [simulationScenario, setSimulationScenario] = useState<NonNullable<ManualResearchStart['simulationScenario']>>('happy_path')
   const [notes, setNotes] = useState('')
   const [resolution, setResolution] = useState<ManualDestinationResolution | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -320,6 +321,7 @@ function NewManualResearch({ actorId, busy, onStart, onCancel }: {
       notes: notes.trim() || undefined,
       budgetLimit,
       maxAttempts,
+      simulationScenario,
     })
   }
 
@@ -353,6 +355,7 @@ function NewManualResearch({ actorId, busy, onStart, onCancel }: {
           <label className="field"><span>Profundidad</span><select value={depth} onChange={event => setDepth(event.target.value as ManualResearchStart['depth'])} disabled={resolution?.status !== 'resolved'}><option value="standard">Estándar</option><option value="deep">Profunda</option></select></label>
           <label className="field"><span>Presupuesto máximo simulado (€)</span><input type="number" min="0.1" max="50" step="0.1" value={budgetLimit} onChange={event => setBudgetLimit(Number(event.target.value))} disabled={resolution?.status !== 'resolved'} /></label>
           <label className="field"><span>Intentos máximos</span><input type="number" min="1" max="5" step="1" value={maxAttempts} onChange={event => setMaxAttempts(Number(event.target.value))} disabled={resolution?.status !== 'resolved'} /></label>
+          <label className="field full"><span>Escenario sintético de aceptación</span><select value={simulationScenario} onChange={event => setSimulationScenario(event.target.value as typeof simulationScenario)} disabled={resolution?.status !== 'resolved'}><option value="happy_path">Flujo válido</option><option value="insufficient_sources">Fuentes insuficientes</option><option value="broken_source">Una fuente rota</option><option value="provider_unavailable">Proveedor no disponible en el primer intento</option><option value="slow_interruptible">Ejecución lenta para interrumpir</option></select></label>
           <label className="field full"><span>Notas para la investigación</span><textarea rows={3} value={notes} onChange={event => setNotes(event.target.value)} maxLength={2000} disabled={resolution?.status !== 'resolved'} placeholder="Prioridades, límites o contexto editorial…" /></label>
         </div>
         <div className="scope-note"><strong>Ejecución segura</strong><span>Mocks locales deterministas · persistencia Supabase local · sin Trawel · sin publicación</span></div>
@@ -480,7 +483,8 @@ function Quality({ result }: { result: ResearchDestinationResult }): JSX.Element
 }
 
 function History({ result, versions }: { result: ResearchDestinationResult; versions: EditorialDraftVersionSummary[] }): JSX.Element {
-  return <div className="history-grid"><section><div className="section-heading compact"><div><span className="card-kicker">VERSIONES</span><h3>Historial editorial</h3></div></div><div className="version-list">{versions.map(version => <article key={version.id}><span className={`version-dot ${version.humanEdited ? 'human' : ''}`} /><div><strong>{profileLabel(version.profile)} · v{version.contentVersion}</strong><p>{version.title}</p><small>{version.reason ?? 'Generación inicial'} · {formatDate(version.updatedAt)}</small></div><StateBadge value={version.state} /></article>)}</div></section><section><div className="section-heading compact"><div><span className="card-kicker">AUDITORÍA</span><h3>Eventos del pipeline</h3></div></div><div className="event-list">{[...result.events].reverse().map(event => <article key={event.id}><span>{formatTime(event.occurredAt)}</span><div><strong>{event.type}</strong><small>{event.stage ? stageLabels[event.stage] : 'Sistema'} · {event.correlationId}</small></div></article>)}</div><div className="cost-breakdown"><h4>Uso y costes</h4>{result.usage.map(item => <div key={item.id}><span>{item.cause}</span><span>{item.providerId}</span><strong>{formatMoney(item.actualCost, item.currency)}</strong></div>)}</div></section></div>
+  const runs = [...result.previousRuns, result.run].sort((left, right) => left.attempt - right.attempt)
+  return <div className="history-grid"><section><div className="section-heading compact"><div><span className="card-kicker">VERSIONES</span><h3>Historial editorial</h3></div></div><div className="version-list">{versions.map(version => <article key={version.id}><span className={`version-dot ${version.humanEdited ? 'human' : ''}`} /><div><strong>{profileLabel(version.profile)} · v{version.contentVersion}</strong><p>{version.title}</p><small>{version.reason ?? 'Generación inicial'} · {formatDate(version.updatedAt)}</small></div><StateBadge value={version.state} /></article>)}</div><div className="section-heading compact"><div><span className="card-kicker">EJECUCIONES</span><h3>Intentos y recuperación</h3></div></div><div className="version-list">{runs.map(run => <article key={run.id}><span className="version-dot" /><div><strong>Intento {run.attempt} · {stageLabels[run.stage]}</strong><p>{run.errorMessage ?? (run.recoveryFromRunId ? 'Recuperado desde el intento anterior' : 'Ejecución inicial')}</p><small>{run.errorCode ?? run.contractVersion} · {formatMoney(run.actualCost, run.currency)}</small></div><StateBadge value={run.state} /></article>)}</div></section><section><div className="section-heading compact"><div><span className="card-kicker">AUDITORÍA</span><h3>Eventos del pipeline</h3></div></div><div className="event-list">{[...result.events].reverse().map(event => <article key={event.id}><span>{formatTime(event.occurredAt)}</span><div><strong>{event.type}</strong><small>{event.stage ? stageLabels[event.stage] : 'Sistema'} · {event.correlationId}</small></div></article>)}</div><div className="cost-breakdown"><h4>Uso y costes</h4>{result.usage.map(item => <div key={item.id}><span>{item.cause}</span><span>{item.providerId}</span><strong>{formatMoney(item.actualCost, item.currency)}</strong></div>)}</div></section></div>
 }
 
 function IncompleteResearch({ summary, busy, onResume, onRetry, onCancel, onBack }: {

@@ -1,6 +1,6 @@
 # Roadmap recomendado de Investighost
 
-Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente el 2026-07-21. FASE 3J debe prepararse y detenerse en aceptación humana. Automatic continúa bloqueado y no implementado.
+Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente el 2026-07-21. FASE 3J está preparada y detenida en aceptación humana pendiente. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia
 
@@ -94,8 +94,8 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 
 ## Orden inmediato vigente
 
-1. FASE 3J — preparar escenarios y detenerse en el gate humano Manual.
-2. Esperar aprobación o rechazo expreso del jefe.
+1. Esperar aprobación o rechazo expreso del jefe sobre FASE 3J.
+2. No inferir aceptación a partir de tests técnicos o silencio.
 3. Mantener Automatic y FASE 4 bloqueados.
 
 ## Estado FASE 2C-B — 2026-07-14

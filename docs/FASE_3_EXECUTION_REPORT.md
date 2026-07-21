@@ -217,7 +217,28 @@ Estado: aprobada técnicamente.
 
 El renderer no recibe secretos. Solo se usan Supabase local y proveedores mock. No hay publicación, conexión Trawel/producción, proveedor real o Automatic. La recuperación/reintento/cancelación integral se completa a continuación en 3I.
 
-## Fases siguientes
+## FASE 3I — resiliencia, costes e idempotencia
 
-- 3I: resiliencia, costes e idempotencia extremo a extremo.
-- 3J: preparación y detención en aceptación humana Manual.
+Estado: aprobada técnicamente.
+
+- Checkpoints versionados/hash por etapa, reanudación del mismo intento y reintentos enlazados.
+- Locks con lease renovable, heartbeat, cancelación durable y presupuesto acumulado.
+- Recuperación de caída entre scaffold/control; regeneración usa presupuesto restante.
+- Fallos de proveedor, base, Electron, Storage no requerido, corrupción y concurrencia probados.
+- Migración local `20260721040000_editorial_resilience.sql`, reset y lint SQL aprobados.
+- Evidencia final: 136 tests generales, 5 integraciones locales, typecheck, lint y build aprobados.
+- Commit y upstream: `4833041 feat: completar fase 3i con resiliencia manual`.
+
+## FASE 3J — aceptación humana Manual
+
+Estado: preparada; decisión humana pendiente.
+
+- Protocolo J01–J17 y acta creados en `FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
+- UI local incorpora fixtures seleccionables para fuente insuficiente/rota, proveedor caído una vez y ejecución lenta interrumpible.
+- Historial muestra intentos anteriores, recuperación, error y coste para verificar idempotencia.
+- Preparación verificada con 137 tests generales, 6 integraciones locales, typecheck, lint, build y lint SQL.
+- No se ha marcado ningún escenario como aceptado ni se ha emitido decisión por el jefe.
+
+## Pausa obligatoria
+
+El trabajo se detiene en el gate humano 3J. Automatic, FASE 4, producción, Trawel y publicación permanecen bloqueados.

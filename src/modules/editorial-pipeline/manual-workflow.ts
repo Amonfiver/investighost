@@ -31,6 +31,7 @@ import {
   type ManualResearchStart,
   type ManualSectionEdit,
   type ManualSectionRegeneration,
+  type ManualSimulationScenario,
 } from '@shared/manual-contracts'
 import type {
   EditorialDraftVersionSummary,
@@ -41,7 +42,7 @@ import type {
 } from './repository'
 import { GeographicResolver } from './geography'
 import { MockEditorialSourceProvider } from './mock-source-provider'
-import { SourceAcquisitionService, type EditorialSourceProvider } from './source-providers'
+import { SourceAcquisitionService, SourceProviderError, type EditorialSourceProvider } from './source-providers'
 import { MockFactualStructuringProvider } from './mock-factual-provider'
 import { FactualStructuringService, type FactualProposal, type FactualStructuringProvider } from './factual-structuring'
 import { MockEditorialGenerationProvider } from './mock-editorial-provider'
@@ -89,7 +90,7 @@ export interface ManualPipelineProviders {
 export interface ManualWorkflowDependencies {
   now?: () => Date
   id?: () => string
-  providers?: (destination: GeographicEntity) => ManualPipelineProviders
+  providers?: (destination: GeographicEntity, scenario: ManualSimulationScenario, attempt: number) => ManualPipelineProviders
   ownerProcess?: string
   sleep?: (milliseconds: number) => Promise<void>
   leaseMs?: number
@@ -103,7 +104,7 @@ const CONTRACT_VERSION = '3i-v1'
 export class ManualResearchService {
   private readonly now: () => Date
   private readonly id: () => string
-  private readonly providers: (destination: GeographicEntity) => ManualPipelineProviders
+  private readonly providers: (destination: GeographicEntity, scenario: ManualSimulationScenario, attempt: number) => ManualPipelineProviders
   private readonly ownerProcess: string
   private readonly sleep: (milliseconds: number) => Promise<void>
   private readonly leaseMs: number
@@ -176,7 +177,12 @@ export class ManualResearchService {
       language: input.language,
       depth: input.depth,
       notes: input.notes || undefined,
-      options: { budgetLimit: input.budgetLimit, maxAttempts: input.maxAttempts, simulation: true },
+      options: {
+        budgetLimit: input.budgetLimit,
+        maxAttempts: input.maxAttempts,
+        simulation: true,
+        simulationScenario: input.simulationScenario ?? 'happy_path',
+      },
       configurationVersion: CONFIGURATION_VERSION,
       idempotencyKey: input.idempotencyKey,
       actorId: input.actorId,
@@ -352,7 +358,7 @@ export class ManualResearchService {
     try {
       const control = await this.requireControl(request.id)
       const configurationHash = manualConfigurationHash(request)
-      const providers = this.providers(destination)
+      const providers = this.providers(destination, simulationScenario(request), run.attempt)
       await record(this.event(request, run, run.attempt > 1 ? 'manual.execution.retried' : 'manual.destination.resolved', 'destination_resolution', { attempt: run.attempt }))
 
       const savedSources = await readManualCheckpoint(this.repository, request.id, 'source_reading', ManualSourcesCheckpointSchema, configurationHash)
@@ -632,7 +638,7 @@ export class ManualResearchService {
     }
     const control = await this.ensureControl(result.request)
     this.assertBudget(control.spentCost, 0.02, control.budgetLimit)
-    const generated = await new EditorialGenerationService(this.providers(result.destination).editorial, {
+    const generated = await new EditorialGenerationService(this.providers(result.destination, simulationScenario(result.request), result.run.attempt).editorial, {
       fullDraftCost: 0.08,
       sectionRegenerationCost: 0.02,
       budgetLimit: control.budgetLimit - control.spentCost,
@@ -855,31 +861,52 @@ export class ManualResearchService {
   }
 }
 
-export function createManualMockProviders(destination: GeographicEntity): ManualPipelineProviders {
+export function createManualMockProviders(
+  destination: GeographicEntity,
+  scenario: ManualSimulationScenario = 'happy_path',
+  attempt = 1,
+): ManualPipelineProviders {
   const queries = buildQueries(destination.name)
   const overviewUrl = `https://fixtures.investighost.local/${destination.slug}/official-overview`
   const practicalUrl = `https://fixtures.investighost.local/${destination.slug}/practical-life`
+  const sourceSeeds = [
+    {
+      queries: [queries[0]],
+      url: overviewUrl,
+      title: `${destination.name}: contexto territorial sintético`,
+      publisher: 'Investighost local fixtures',
+      content: `${destination.name} dispone de un contexto territorial, patrimonial y natural que debe verificarse antes de planificar rutas. La preparación y la seguridad dependen de las condiciones locales.`,
+      publishedAt: new Date('2026-07-20T10:00:00.000Z'),
+      evaluation: { accepted: scenario !== 'insufficient_sources', sourceType: 'official' as const, territorialScope: 'destination' as const, freshness: 'current' as const, reliability: 0.95, reason: scenario === 'insufficient_sources' ? 'Fixture rechazado para probar fuentes insuficientes' : 'Fuente oficial sintética local' },
+    },
+    {
+      queries: [queries[1]],
+      url: practicalUrl,
+      title: `${destination.name}: movilidad, costes y servicios sintéticos`,
+      publisher: 'Investighost local fixtures',
+      content: scenario === 'broken_source' || scenario === 'insufficient_sources'
+        ? undefined
+        : `La movilidad, los costes y los servicios de ${destination.name} requieren comprobación práctica. El presupuesto puede cambiar por temporada y conviene consultar accesibilidad y horarios.`,
+      httpStatus: scenario === 'broken_source' || scenario === 'insufficient_sources' ? 404 : 200,
+      publishedAt: new Date('2026-07-20T11:00:00.000Z'),
+      evaluation: { accepted: true, sourceType: 'tourism' as const, territorialScope: 'local' as const, freshness: 'current' as const, reliability: 0.85, reason: 'Fuente turística sintética local' },
+    },
+  ]
+  const source = new MockEditorialSourceProvider(sourceSeeds, {
+    latencyMs: scenario === 'slow_interruptible' ? 1_000 : 0,
+  })
+  const selectedSource: EditorialSourceProvider = scenario === 'provider_unavailable' && attempt === 1
+    ? {
+      id: 'mock-source-provider-unavailable',
+      model: 'deterministic-provider-outage-v1',
+      simulation: true,
+      discover: async () => { throw new SourceProviderError('PERMANENT', 'Proveedor sintético no disponible', false) },
+      read: request => source.read(request),
+      evaluate: request => source.evaluate(request),
+    }
+    : source
   return {
-    source: new MockEditorialSourceProvider([
-      {
-        queries: [queries[0]],
-        url: overviewUrl,
-        title: `${destination.name}: contexto territorial sintético`,
-        publisher: 'Investighost local fixtures',
-        content: `${destination.name} dispone de un contexto territorial, patrimonial y natural que debe verificarse antes de planificar rutas. La preparación y la seguridad dependen de las condiciones locales.`,
-        publishedAt: new Date('2026-07-20T10:00:00.000Z'),
-        evaluation: { accepted: true, sourceType: 'official', territorialScope: 'destination', freshness: 'current', reliability: 0.95, reason: 'Fuente oficial sintética local' },
-      },
-      {
-        queries: [queries[1]],
-        url: practicalUrl,
-        title: `${destination.name}: movilidad, costes y servicios sintéticos`,
-        publisher: 'Investighost local fixtures',
-        content: `La movilidad, los costes y los servicios de ${destination.name} requieren comprobación práctica. El presupuesto puede cambiar por temporada y conviene consultar accesibilidad y horarios.`,
-        publishedAt: new Date('2026-07-20T11:00:00.000Z'),
-        evaluation: { accepted: true, sourceType: 'tourism', territorialScope: 'local', freshness: 'current', reliability: 0.85, reason: 'Fuente turística sintética local' },
-      },
-    ]),
+    source: selectedSource,
     factual: new MockFactualStructuringProvider([
       { sourceUrl: overviewUrl, proposal: overviewProposal(destination.name) },
       { sourceUrl: practicalUrl, proposal: practicalProposal(destination.name) },
@@ -922,6 +949,13 @@ function stageRequestState(stage: ResearchStage): EditorialResearchRequest['stat
   if (stage === 'source_discovery' || stage === 'source_reading') return 'researching'
   if (stage === 'fact_structuring') return 'structuring'
   return 'validating'
+}
+
+function simulationScenario(request: EditorialResearchRequest): ManualSimulationScenario {
+  const value = request.options.simulationScenario
+  return ['happy_path', 'insufficient_sources', 'broken_source', 'provider_unavailable', 'slow_interruptible'].includes(String(value))
+    ? value as ManualSimulationScenario
+    : 'happy_path'
 }
 
 function deterministicUuid(value: string): string {

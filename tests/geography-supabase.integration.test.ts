@@ -11,7 +11,8 @@ integration('Supabase local geography catalog', () => {
     const repository = new SupabaseGeographyCatalogRepository(client)
     const resolver = new GeographicResolver(repository, 'geonames-2026-07-20')
     const actorId = '90000000-0000-4000-8000-000000000099'
-    const correctionInput = { query: 'San Pedro', countryCode: 'ZZ', type: 'locality' as const }
+    // Qualifier keeps the fixture ambiguous while isolating this test from the durable J03 correction for plain "San Pedro".
+    const correctionInput = { query: 'San Pedro, Testland', countryCode: 'ZZ', type: 'locality' as const }
 
     const morella = await resolver.resolve({ query: 'Morela, España', countryCode: 'ES', type: 'locality' })
     expect(morella.status).toBe('resolved')

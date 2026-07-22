@@ -4,6 +4,9 @@ import {
   EditorialProfileSchema,
   ResearchDepthSchema,
   type GeographicEntity,
+  type ResearchDestinationResult,
+  type ResearchFailureClassification,
+  type ResearchStage,
 } from './editorial-contracts'
 
 const UuidSchema = z.string().uuid()
@@ -142,6 +145,23 @@ export interface ManualPersistenceStatus {
   url?: string
   error?: string
 }
+
+export interface ManualResearchIncident {
+  requestId: string
+  runId: string
+  destinationId: string
+  destinationQuery: string
+  profiles: Array<'adventure' | 'student'>
+  stage: ResearchStage
+  errorCode: string
+  errorMessage: string
+  failureClassification: ResearchFailureClassification
+  occurredAt: Date
+}
+
+export type ManualResearchExecutionOutcome =
+  | { status: 'completed'; result: ResearchDestinationResult }
+  | { status: 'failed'; incident: ManualResearchIncident }
 
 export type ManualDestinationQuery = z.infer<typeof ManualDestinationQuerySchema>
 export type ManualResearchStart = z.infer<typeof ManualResearchStartSchema>

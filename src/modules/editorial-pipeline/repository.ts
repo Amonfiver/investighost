@@ -3,6 +3,7 @@ import type {
   EditorialResearchRequest,
   EditorialResearchRun,
   GeographicEntity,
+  ResearchFailureClassification,
   ResearchEvent,
   ResearchDestinationResult,
   ResearchStage,
@@ -28,6 +29,7 @@ export class EditorialRepositoryError extends Error {
 
 export interface EditorialResearchSummary {
   requestId: string
+  runId?: string
   destinationId: string
   destinationQuery: string
   profiles: Array<'adventure' | 'student'>
@@ -37,6 +39,8 @@ export interface EditorialResearchSummary {
   runState?: EditorialResearchRun['state']
   errorCode?: string
   errorMessage?: string
+  failureClassification?: ResearchFailureClassification
+  failedAt?: Date
   actualCost?: number
   currency?: string
   createdAt: Date

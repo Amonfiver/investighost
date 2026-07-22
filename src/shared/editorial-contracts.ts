@@ -34,6 +34,9 @@ export const ResearchStageSchema = z.enum([
 export const ResearchRunStateSchema = z.enum([
   'queued', 'running', 'checkpointed', 'completed', 'retry_pending', 'failed', 'cancelled',
 ])
+export const ResearchFailureClassificationSchema = z.enum([
+  'data_quality', 'provider', 'persistence', 'checkpoint', 'budget', 'cancellation', 'pipeline',
+])
 export const EditorialDraftStateSchema = z.enum([
   'generating', 'ready', 'in_review', 'changes_requested', 'approved', 'rejected', 'archived',
 ])
@@ -138,6 +141,7 @@ export const EditorialResearchRunSchema = z.object({
   completedAt: TimestampSchema.optional(),
   errorCode: z.string().max(120).optional(),
   errorMessage: z.string().max(2000).optional(),
+  failureClassification: ResearchFailureClassificationSchema.optional(),
   recoveryFromRunId: UuidSchema.optional(),
   cancelledBy: UuidSchema.optional(),
   state: ResearchRunStateSchema,
@@ -149,6 +153,9 @@ export const EditorialResearchRunSchema = z.object({
   }
   if (value.state === 'failed' && !value.errorCode) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['errorCode'], message: 'Una ejecución fallida requiere código de error' })
+  }
+  if (value.state === 'failed' && !value.failureClassification) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['failureClassification'], message: 'Una ejecución fallida requiere clasificación' })
   }
 })
 
@@ -469,6 +476,7 @@ export const ResearchDestinationResultSchema = z.object({
 })
 
 export type EditorialProfile = z.infer<typeof EditorialProfileSchema>
+export type ResearchFailureClassification = z.infer<typeof ResearchFailureClassificationSchema>
 export type ResearchState = z.infer<typeof ResearchStateSchema>
 export type ResearchStage = z.infer<typeof ResearchStageSchema>
 export type GeographicEntity = z.infer<typeof GeographicEntitySchema>

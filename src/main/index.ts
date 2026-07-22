@@ -134,7 +134,7 @@ ipcMain.handle('manual:correct-destination', async (_event, input: unknown) => {
 })
 
 ipcMain.handle('manual:start', async (_event, input: unknown) => {
-  return (await getManualResearchRuntime()).start(input as never)
+  return (await getManualResearchRuntime()).startForInterface(input as never)
 })
 
 ipcMain.handle('manual:resume', async (_event, input: unknown) => {
@@ -142,7 +142,7 @@ ipcMain.handle('manual:resume', async (_event, input: unknown) => {
 })
 
 ipcMain.handle('manual:retry', async (_event, input: unknown) => {
-  return (await getManualResearchRuntime()).retry(input as never)
+  return (await getManualResearchRuntime()).retryForInterface(input as never)
 })
 
 ipcMain.handle('manual:cancel', async (_event, input: unknown) => {

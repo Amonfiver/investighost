@@ -109,6 +109,7 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
       completed_at: iso(run.completedAt),
       error_code: run.errorCode ?? null,
       error_message: run.errorMessage ?? null,
+      failure_classification: run.failureClassification ?? null,
       recovery_from_run_id: run.recoveryFromRunId ?? null,
       cancelled_by: run.cancelledBy ?? null,
       state: run.state,
@@ -289,6 +290,7 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
         completed_at: iso(result.run.completedAt),
         error_code: result.run.errorCode ?? null,
         error_message: result.run.errorMessage ?? null,
+        failure_classification: result.run.failureClassification ?? null,
         recovery_from_run_id: result.run.recoveryFromRunId ?? null,
         cancelled_by: result.run.cancelledBy ?? null,
         state: result.run.state,
@@ -354,7 +356,7 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
     const runsResult = requestIds.length === 0
       ? { data: [] as Row[], error: null }
       : await this.client.from('editorial_research_runs')
-        .select('request_id,stage,state,error_code,error_message,actual_cost,currency,updated_at')
+        .select('id,request_id,stage,state,error_code,error_message,failure_classification,actual_cost,currency,completed_at,updated_at')
         .in('request_id', requestIds)
         .order('updated_at', { ascending: false })
     this.assertNoError(runsResult.error, 'LIST_RUNS')
@@ -367,6 +369,7 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
       const run = latestRuns.get(String(row.id))
       return {
       requestId: String(row.id),
+      runId: run?.id ? String(run.id) : undefined,
       destinationId: String(row.destination_id),
       destinationQuery: String(row.destination_query_snapshot),
       profiles: row.profiles as Array<'adventure' | 'student'>,
@@ -376,6 +379,10 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
       runState: run?.state as EditorialResearchSummary['runState'],
       errorCode: run?.error_code ? String(run.error_code) : undefined,
       errorMessage: run?.error_message ? String(run.error_message) : undefined,
+      failureClassification: run?.failure_classification
+        ? run.failure_classification as EditorialResearchSummary['failureClassification']
+        : undefined,
+      failedAt: run?.state === 'failed' && run.completed_at ? new Date(String(run.completed_at)) : undefined,
       actualCost: run?.actual_cost === null || run?.actual_cost === undefined ? undefined : Number(run.actual_cost),
       currency: run?.currency ? String(run.currency) : undefined,
       createdAt: new Date(String(row.created_at)),
@@ -737,6 +744,7 @@ function runFromRow(row: Row) {
     completedAt: row.completed_at ? new Date(String(row.completed_at)) : undefined,
     errorCode: row.error_code ?? undefined,
     errorMessage: row.error_message ?? undefined,
+    failureClassification: row.failure_classification ?? undefined,
     recoveryFromRunId: row.recovery_from_run_id ?? undefined,
     cancelledBy: row.cancelled_by ?? undefined,
     state: row.state,

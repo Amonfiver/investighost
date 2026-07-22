@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const migration = readFileSync(new URL('../supabase/migrations/20260721010000_editorial_pipeline.sql', import.meta.url), 'utf8')
+const failureClassificationMigration = readFileSync(new URL('../supabase/migrations/20260723010000_manual_failure_classification.sql', import.meta.url), 'utf8')
 const seed = readFileSync(new URL('../supabase/seed.sql', import.meta.url), 'utf8')
 
 describe('editorial Supabase schema', () => {
@@ -40,5 +41,11 @@ describe('editorial Supabase schema', () => {
 
   it('does not create mode-specific persistence', () => {
     expect(migration).not.toMatch(/manual_|automatic_/i)
+  })
+
+  it('persists a constrained failure classification and backfills J05', () => {
+    expect(failureClassificationMigration).toContain('add column failure_classification text')
+    expect(failureClassificationMigration).toContain("when error_code = 'NO_ACCEPTED_SOURCES' then 'data_quality'")
+    expect(failureClassificationMigration).toContain("check (state <> 'failed' or failure_classification is not null)")
   })
 })

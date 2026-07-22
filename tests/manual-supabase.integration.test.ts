@@ -135,4 +135,83 @@ integration('Supabase local Manual workflow', () => {
       }
     }
   })
+
+  it('persists and exposes the J05 insufficient-sources incident without duplicating Morella', async () => {
+    const { client } = createLocalSupabaseClientFromEnv()
+    const repository = new SupabaseEditorialResearchRepository(client)
+    const service = new ManualResearchService(
+      repository,
+      new GeographicResolver(new SupabaseGeographyCatalogRepository(client), 'geonames-2026-07-20'),
+      { ownerProcess: 'manual-supabase-j05', retryBackoffMs: [0] },
+    )
+    const idempotencyKey = `manual-j05:${randomUUID()}`
+    const morellaId = '70000000-0000-4000-8000-000000000003'
+    let requestId: string | undefined
+
+    try {
+      const { count: destinationsBefore, error: beforeError } = await client
+        .from('geographic_entities').select('id', { head: true, count: 'exact' }).eq('id', morellaId)
+      expect(beforeError).toBeNull()
+
+      const outcome = await service.startForInterface({
+        destinationQuery: 'Morella', countryCode: 'ES', destinationType: 'locality',
+        profiles: ['adventure', 'student'], language: 'es', depth: 'standard',
+        notes: 'J05 sintético de integración', budgetLimit: 2, maxAttempts: 3,
+        simulationScenario: 'insufficient_sources', idempotencyKey,
+        actorId: '6fda5d08-9cd0-4d9d-98c1-7ccbfd56ad11',
+      })
+      expect(outcome).toMatchObject({
+        status: 'failed',
+        incident: {
+          destinationId: morellaId,
+          stage: 'fact_structuring',
+          errorCode: 'NO_ACCEPTED_SOURCES',
+          failureClassification: 'data_quality',
+        },
+      })
+      if (outcome.status !== 'failed') throw new Error('J05 debía persistir una incidencia')
+      requestId = outcome.incident.requestId
+
+      expect(await repository.getScaffold(requestId)).toMatchObject({
+        request: { id: requestId, destinationId: morellaId, state: 'failed' },
+        run: {
+          id: outcome.incident.runId,
+          stage: 'fact_structuring',
+          state: 'failed',
+          errorCode: 'NO_ACCEPTED_SOURCES',
+          failureClassification: 'data_quality',
+        },
+      })
+      expect((await repository.list()).filter(item => item.requestId === requestId)).toHaveLength(1)
+
+      const { data: failureEvent, error: eventError } = await client.from('research_events')
+        .select('request_id,run_id,event_type,stage,payload,occurred_at')
+        .eq('request_id', requestId).eq('event_type', 'manual.execution.failed').single()
+      expect(eventError).toBeNull()
+      expect(failureEvent).toMatchObject({
+        request_id: requestId,
+        run_id: outcome.incident.runId,
+        stage: 'fact_structuring',
+        payload: {
+          errorCode: 'NO_ACCEPTED_SOURCES',
+          failureClassification: 'data_quality',
+        },
+      })
+
+      const retried = await service.retryForInterface({ requestId, actorId: '6fda5d08-9cd0-4d9d-98c1-7ccbfd56ad11' })
+      expect(retried).toMatchObject({ status: 'failed', incident: { requestId, destinationId: morellaId } })
+      expect(await repository.listRuns(requestId)).toHaveLength(2)
+      expect((await repository.list()).filter(item => item.requestId === requestId)).toHaveLength(1)
+
+      const { count: destinationsAfter, error: afterError } = await client
+        .from('geographic_entities').select('id', { head: true, count: 'exact' }).eq('id', morellaId)
+      expect(afterError).toBeNull()
+      expect(destinationsAfter).toBe(destinationsBefore)
+    } finally {
+      if (requestId) {
+        const { error } = await client.from('editorial_research_requests').delete().eq('id', requestId)
+        expect(error).toBeNull()
+      }
+    }
+  })
 })

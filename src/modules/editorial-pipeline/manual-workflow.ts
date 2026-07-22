@@ -11,6 +11,7 @@ import {
   type GeographicEntity,
   type ResearchDestinationResult,
   type ResearchEvent,
+  type ResearchFailureClassification,
   type ResearchStage,
 } from '@shared/editorial-contracts'
 import {
@@ -28,6 +29,7 @@ import {
   type ManualDraftDecision,
   type ManualDraftReview,
   type ManualExecutionAction,
+  type ManualResearchExecutionOutcome,
   type ManualResearchStart,
   type ManualSectionEdit,
   type ManualSectionRegeneration,
@@ -229,6 +231,21 @@ export class ManualResearchService {
     return this.execute(scaffold, [])
   }
 
+  async startForInterface(candidate: ManualResearchStart): Promise<ManualResearchExecutionOutcome> {
+    let input: ManualResearchStart
+    try {
+      input = ManualResearchStartSchema.parse(candidate)
+    } catch (error) {
+      throw new ManualWorkflowError('INVALID_INPUT', 'La configuración Manual no es válida', error)
+    }
+    try {
+      return { status: 'completed', result: await this.start(input) }
+    } catch (error) {
+      const scaffold = await this.repository.findScaffoldByIdempotencyKey(input.idempotencyKey)
+      return this.executionFailureOutcome(scaffold, error)
+    }
+  }
+
   async resume(candidate: ManualExecutionAction): Promise<ResearchDestinationResult> {
     const input = ManualExecutionActionSchema.parse(candidate)
     const completed = await this.repository.getByRequestId(input.requestId)
@@ -244,6 +261,7 @@ export class ManualResearchService {
     scaffold.run.completedAt = undefined
     scaffold.run.errorCode = undefined
     scaffold.run.errorMessage = undefined
+    scaffold.run.failureClassification = undefined
     scaffold.run.updatedAt = scaffold.request.updatedAt
     await this.repository.updateExecution(scaffold.request, scaffold.run)
     const runs = await this.repository.listRuns(input.requestId)
@@ -287,6 +305,7 @@ export class ManualResearchService {
       completedAt: undefined,
       errorCode: undefined,
       errorMessage: undefined,
+      failureClassification: undefined,
       recoveryFromRunId: scaffold.run.id,
       cancelledBy: undefined,
       createdAt: retriedAt,
@@ -304,6 +323,16 @@ export class ManualResearchService {
     await this.repository.saveScaffold(next)
     await this.repository.saveExecutionControl(nextControl)
     return this.execute(next, previousRuns)
+  }
+
+  async retryForInterface(candidate: ManualExecutionAction): Promise<ManualResearchExecutionOutcome> {
+    const input = ManualExecutionActionSchema.parse(candidate)
+    try {
+      return { status: 'completed', result: await this.retry(input) }
+    } catch (error) {
+      const scaffold = await this.repository.getScaffold(input.requestId)
+      return this.executionFailureOutcome(scaffold, error)
+    }
   }
 
   async cancel(candidate: ManualExecutionAction): Promise<void> {
@@ -531,7 +560,10 @@ export class ManualResearchService {
       return result
     } catch (error) {
       const failedAt = this.now()
-      const cancelled = controller.signal.aborted || errorCode(error) === 'CANCELLED'
+      const code = errorCode(error)
+      const cancelled = controller.signal.aborted || code === 'CANCELLED'
+      const classification = classifyFailure(code)
+      const message = controlledErrorMessage(code, error)
       const failedRequest = EditorialResearchRequestSchema.parse({
         ...request,
         state: cancelled ? 'cancelled' : 'failed',
@@ -545,15 +577,18 @@ export class ManualResearchService {
         actualCost: incurredCost,
         inputUnits: incurredUsage.reduce((sum, item) => sum + item.inputUnits, 0),
         outputUnits: incurredUsage.reduce((sum, item) => sum + item.outputUnits, 0),
-        errorCode: cancelled ? undefined : errorCode(error),
-        errorMessage: cancelled ? undefined : errorMessage(error),
+        errorCode: cancelled ? undefined : code,
+        errorMessage: cancelled ? undefined : message,
+        failureClassification: cancelled ? undefined : classification,
         cancelledBy: cancelled ? (await this.repository.getExecutionControl(request.id))?.cancelledBy ?? request.actorId : undefined,
         completedAt: failedAt,
         updatedAt: failedAt,
       })
       const event = this.event(failedRequest, failedRun, cancelled ? 'manual.execution.cancelled' : 'manual.execution.failed', run.stage, {
         attempt: run.attempt,
-        errorCode: cancelled ? 'CANCELLED' : errorCode(error),
+        errorCode: cancelled ? 'CANCELLED' : code,
+        failureClassification: classification,
+        message: cancelled ? 'La ejecución Manual fue cancelada de forma segura' : message,
       })
       await this.repository.updateExecution(failedRequest, failedRun).catch(() => undefined)
       await this.repository.appendEvents([event]).catch(() => undefined)
@@ -761,6 +796,38 @@ export class ManualResearchService {
     const result = await this.repository.getByRequestId(requestId)
     if (!result) throw new ManualWorkflowError('RESEARCH_NOT_FOUND', 'No existe una investigación completa con ese identificador')
     return result
+  }
+
+  private executionFailureOutcome(
+    scaffold: EditorialExecutionScaffold | null,
+    error: unknown,
+  ): ManualResearchExecutionOutcome {
+    if (
+      !scaffold
+      || scaffold.request.state !== 'failed'
+      || scaffold.run.state !== 'failed'
+      || !scaffold.run.errorCode
+      || !scaffold.run.errorMessage
+      || !scaffold.run.failureClassification
+      || !scaffold.run.completedAt
+    ) {
+      throw error
+    }
+    return {
+      status: 'failed',
+      incident: {
+        requestId: scaffold.request.id,
+        runId: scaffold.run.id,
+        destinationId: scaffold.destination.id,
+        destinationQuery: scaffold.request.destinationQuerySnapshot,
+        profiles: [...scaffold.request.profiles],
+        stage: scaffold.run.stage,
+        errorCode: scaffold.run.errorCode,
+        errorMessage: scaffold.run.errorMessage,
+        failureClassification: scaffold.run.failureClassification,
+        occurredAt: scaffold.run.completedAt,
+      },
+    }
   }
 
   private requireDraft(result: ResearchDestinationResult, draftId: string): EditorialDraftBundle {
@@ -973,4 +1040,21 @@ function errorCode(error: unknown): string {
 
 function errorMessage(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, 2000)
+}
+
+function controlledErrorMessage(code: string, error: unknown): string {
+  if (code === 'NO_ACCEPTED_SOURCES') {
+    return 'No hay fuentes aceptadas y leídas para continuar con la estructuración factual.'
+  }
+  return errorMessage(error)
+}
+
+function classifyFailure(code: string): ResearchFailureClassification {
+  if (code === 'NO_ACCEPTED_SOURCES') return 'data_quality'
+  if (['PERMANENT', 'PROVIDER_UNAVAILABLE', 'TIMEOUT', 'CIRCUIT_OPEN'].includes(code)) return 'provider'
+  if (code.includes('DATABASE') || code.includes('PERSISTENCE') || code.startsWith('SUPABASE_')) return 'persistence'
+  if (code.includes('CHECKPOINT')) return 'checkpoint'
+  if (code.includes('BUDGET') || code.includes('ATTEMPTS')) return 'budget'
+  if (code === 'CANCELLED') return 'cancellation'
+  return 'pipeline'
 }

@@ -101,6 +101,7 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 .research-main strong, .research-main small, .stage-copy small { display: block; }
 .research-main strong { font-size: 14px; }
 .research-main small, .stage-copy small { color: var(--muted); font-size: 10px; }
+.research-main .incident-copy { margin-top: 3px; overflow: hidden; color: var(--red); text-overflow: ellipsis; white-space: nowrap; }
 .stage-copy { font-size: 12px; }
 .row-arrow { color: #91a099; font-size: 18px; }
 
@@ -185,6 +186,7 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 .definition-grid.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .definition-grid dt { color: var(--muted); font-size: 9px; font-weight: 600; text-transform: uppercase; }
 .definition-grid dd { margin: 3px 0 0; overflow-wrap: anywhere; font-size: 10px; font-weight: 600; }
+.definition-grid .technical-id { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-weight: 500; }
 .note-box { margin: 13px 0 0 !important; padding: 10px; background: #f6f8f6; border-radius: 7px; }
 .decision-stack { display: grid; gap: 8px; margin: 13px 0; }
 .decision-stack > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; }

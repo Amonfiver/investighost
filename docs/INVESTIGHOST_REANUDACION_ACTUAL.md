@@ -1,124 +1,182 @@
 # Investighost — punto de reanudación actual
 
-Fecha del punto de reanudación: 2026-07-21 02:54:13 CEST (UTC+02:00)  
-Objetivo: reanudar exclusivamente la aceptación humana de FASE 3J desde J01.
+Fecha de actualización: 2026-07-23 00:41:43 CEST (UTC+02:00)
+Objetivo de reanudación: repetir exclusivamente **J05 — Fuentes insuficientes** después de la corrección técnica del bloqueo observado.
 
-Este documento describe el estado canónico al cerrar la sesión. J01 no se ha ejecutado, ningún escenario J01–J17 tiene decisión humana y este cierre no autoriza trabajo posterior a FASE 3J.
+Este documento es la fuente operativa canónica para la próxima sesión. No autoriza J06, la aprobación automática de J05, el cierre de FASE 3J, FASE 4, Automatic, producción, Trawel, publicación ni proveedores reales.
 
-## 1. Identificación del proyecto
+## 1. Identificación y estado Git de partida
 
-- Proyecto: Investighost.
-- Ruta Windows: `D:\Proyectos\investighost`.
-- Ruta WSL equivalente: `/mnt/d/Proyectos/investighost`.
+- Proyecto: `D:\Proyectos\investighost`.
+- Ruta WSL: `/mnt/d/Proyectos/investighost`.
 - Rama: `feat/investighost-reinvencion`.
-- HEAD funcional previo al commit de este documento: `a1f99d8 fix: alinear formato del proceso main de electron`.
-- Commit documental que contiene este punto: `docs: guardar punto de reanudación de fase 3j`.
+- HEAD inicial de esta corrección: `f877de22bdafb1fe649f956cd1b7c09b820a37a1` (`docs: guardar punto de reanudación de fase 3j`).
 - Upstream: `origin/feat/investighost-reinvencion`.
-- Estado al iniciar el cierre: árbol limpio y upstream sincronizado (`0` commits locales pendientes y `0` remotos pendientes).
-- Estado exigido después del cierre: solo este documento versionado, árbol limpio y upstream sincronizado.
+- Estado inicial comprobado después de `git fetch`: árbol limpio y divergencia `0/0`.
+- Commit nuevo de cierre previsto: `fix: corregir incidencia durable de j05` (el commit que contiene esta actualización; el hash final se entrega en el informe de cierre).
 
-Versiones comprobadas:
+## 2. Estado general vigente
 
-| Componente | Versión |
-|---|---:|
-| Node del entorno de desarrollo | `v22.23.1` |
-| npm | `11.6.2` |
-| Electron | `35.7.5` |
-| Node incorporado por Electron | `22.16.0` |
-| Supabase CLI | `2.109.1` |
-| Docker Server | `29.6.1` |
+- FASE 2C-C: completada.
+- FASE 3A–3I: completadas técnicamente.
+- FASE 3J: en aceptación humana y **no aprobada**.
+- J01–J04: aprobados por decisión humana expresa.
+- J05: rechazado originalmente como bloqueo; corrección técnica implementada, pero **pendiente de repetición y decisión humana**.
+- J06–J17: no autorizados mientras J05 no tenga decisión humana expresa.
+- FASE 4: no iniciada.
+- Automatic: no implementado.
+- Supabase local/PostgreSQL: única persistencia durable estructurada.
+- Supabase Storage local: único file store durable.
+- Producción, Trawel, publicación e IA real: desconectados.
+- No hay SQLite, Drizzle, Better SQLite ni fallback de persistencia.
+- No se han cargado créditos ni usado datos reales.
 
-## 2. Estado general
+## 3. Decisiones humanas acumuladas
 
-- FASE 2C-C: completada y cerrada en `996e098`.
-- FASE 3A–3I: completadas técnicamente y sincronizadas.
-- FASE 3J: preparada; protocolo J01–J17 disponible.
-- FASE 3J: todavía no aprobada ni rechazada.
-- J01: disponible tras corregir el arranque de Electron, pero no ejecutado.
-- FASE 4: no iniciada y no autorizada.
-- Automatic: no implementado y bloqueado hasta aceptación humana expresa.
-- Producción y Trawel: desconectados.
-- Publicación: no implementada en este flujo y nunca automática.
+### J01 — APROBADO
 
-## 3. Commits importantes
+- Morella, ES, Localidad.
+- Resolución exacta y catálogo `geonames-2026-07-20`.
+- Flujo completado con 2 fuentes, 7 hechos, 2 lugares y 2 actividades.
+- Borradores Aventura y Estudiante diferenciados y listos para revisión.
+- Cero publicaciones y cero envíos a Trawel.
 
-| Hash | Mensaje y alcance |
-|---|---|
-| `996e098` | Cierre de FASE 2C-C; Supabase local/PostgreSQL y Storage local quedan como persistencia única. |
-| `f8df50c` | `feat: completar fase 3a y consolidar dominio editorial` |
-| `ef6f712` | `feat: completar fase 3b con persistencia editorial local` |
-| `6c17f27` | `feat: completar fase 3c con identidad geografica canonica` |
-| `bd11e4f` | `feat: completar fase 3d con proveedores de fuentes simulados` |
-| `8628a17` | `feat: completar fase 3e con estructuracion factual trazable` |
-| `e6ab88e` | `feat: completar fase 3f con perfiles e historial editorial` |
-| `effb45f` | `feat: completar fase 3g con revisiator determinista` |
-| `ac96b62` | `feat: completar fase 3h con interfaz manual canonica` |
-| `4833041` | `feat: completar fase 3i con resiliencia manual` |
-| `6716b6f` | `docs: preparar gate humano de fase 3j` |
-| `a1f99d8` | `fix: alinear formato del proceso main de electron` |
+### J02 — APROBADO
 
-El commit inmediatamente posterior a `a1f99d8` debe ser el cierre documental `docs: guardar punto de reanudación de fase 3j` que contiene este archivo.
+- `San Pedro`, país `ZZ`, Localidad.
+- Norte y Sur quedaron visibles.
+- No hubo selección silenciosa.
 
-## 4. Arquitectura vigente
+### J03 — APROBADO
 
-- Supabase local/PostgreSQL es la única persistencia durable de datos estructurados.
-- Supabase Storage local es el único file store durable. El flujo Manual guarda sus documentos acotados en PostgreSQL y no necesita Storage durante su pipeline; esto no crea un file store alternativo.
-- No hay SQLite, Better SQLite, Drizzle, segunda base, fallback silencioso, base temporal paralela ni file store alternativo.
-- `EditorialResearchRepository` es el puerto canónico; el adaptador de runtime usa Supabase local. Los repositorios en memoria son solo dobles de tests, nunca fallback.
-- Manual está implementado de extremo a extremo sobre un único pipeline canónico.
-- Automatic es futuro y deberá reutilizar exactamente el mismo pipeline, entidades, repositorios, validadores y resultados. No existe implementación Automatic actual.
-- RevisIAtor es determinista, recomienda o bloquea técnicamente cuando corresponde, pero nunca sustituye la revisión ni la decisión humana.
-- No hay publicación automática. Aprobar un borrador local tampoco publica ni lo envía a Trawel.
-- Las claves locales permanecen en Electron main; preload y renderer reciben solo una superficie IPC limitada.
+- Selección humana explícita de `Testland › Sur › San Pedro`.
+- Método `human`, catálogo y procedencia conservados.
+- La corrección geográfica durable debe preservarse.
 
-## 5. Resultados técnicos acumulados
+### J04 — APROBADO
 
-Estado técnico comprobado al preparar 3J y al corregir Electron:
+- Se creó una nueva solicitud válida de Morella.
+- Se reutilizó la misma identidad geográfica canónica.
+- No se creó otra entidad Morella.
+- Publicaciones permanecieron en cero.
 
-- Suite general: **137 tests aprobados**; las 6 integraciones opt-in quedan omitidas en esa ejecución general.
-- Integraciones Supabase local ejecutadas separadamente: **6 aprobadas**.
+Observación no bloqueante de J04: repetir Morella volvió a imputar el coste simulado completo de 0,24 EUR. Antes de conectar IA real se deberá ofrecer reutilización de conocimiento, actualización selectiva de datos volátiles, regeneración parcial o rehacer bajo decisión humana. Investighost seguirá siendo la base maestra y Trawel solo una futura base de publicación del contenido aprobado. Este requisito no se implementó durante la corrección J05.
+
+## 4. J05 original — RECHAZADO
+
+Configuración ejecutada:
+
+- Destino: Morella.
+- País ISO: ES.
+- Tipo: Localidad.
+- Perfiles: Aventura y Estudiante.
+- Profundidad: Estándar.
+- Presupuesto: 2 EUR simulados.
+- Intentos máximos: 3.
+- Escenario: `Fuentes insuficientes`.
+
+La interfaz mostró como resultado final:
+
+```text
+Error invoking remote method 'manual:start':
+FactualStructuringError: No hay fuentes aceptadas y leídas para estructurar
+```
+
+La pantalla conservó el formulario y la Biblioteca visible en el renderer siguió mostrando 2 investigaciones, 2 completadas, 0 incidencias y 0 publicaciones. No quedó visible etapa, código, detalle o acción de recuperación. Por decisión humana, J05 quedó rechazado como bloqueo.
+
+## 5. Causa raíz exacta
+
+La inspección directa de PostgreSQL local demostró que el scaffold **no se perdió ni se revirtió**. La ejecución original de J05 ya había persistido:
+
+- request ID: `cfbec723-ad23-4c46-842d-f81367ebfda2`;
+- run ID: `f7cfc76d-3618-4daa-934e-8b24aa14f69d`;
+- destination ID canónico: `70000000-0000-4000-8000-000000000003`;
+- solicitud: `failed`;
+- run: `failed`;
+- etapa: `fact_structuring`;
+- código: `NO_ACCEPTED_SOURCES`;
+- mensaje: `No hay fuentes aceptadas y leídas para estructurar`;
+- coste registrado: 0,07 EUR simulados;
+- evento durable: `manual.execution.failed`.
+
+La causa del bloqueo visible estaba en la frontera IPC/UI:
+
+1. `ManualResearchService.start` persistía el destino, la solicitud y el run antes de ejecutar proveedores.
+2. Persistía el control de resiliencia antes del pipeline.
+3. Guardaba el checkpoint `source_reading` antes de entrar en `fact_structuring`.
+4. `FactualStructuringError(NO_ACCEPTED_SOURCES)` era capturado por `execute`, que actualizaba solicitud/run a `failed`, guardaba código/mensaje/evento y liberaba el lock.
+5. Después de persistir, `execute` relanzaba la excepción técnica.
+6. `manual:start` devolvía directamente esa promesa rechazada a Electron.
+7. `completeStart` capturaba el rechazo únicamente para mostrar `error.message`; no refrescaba Biblioteca ni abría la incidencia durable.
+8. Por ello el renderer conservaba su snapshot anterior de 2 investigaciones aunque PostgreSQL ya contenía 3.
+
+El orden durable previo era correcto; el defecto era que el resultado controlado persistido quedaba oculto y se sustituía visualmente por la excepción IPC cruda. Además faltaba una clasificación de fallo explícita en el run.
+
+## 6. Corrección aplicada exclusivamente para J05
+
+- Se añadió el contrato `ManualResearchExecutionOutcome` con resultados discriminados `completed` o `failed`.
+- Los handlers IPC `manual:start` y `manual:retry` usan ahora métodos orientados a interfaz que devuelven la incidencia persistida cuando existe, sin hacer cruzar J05 como excepción técnica cruda.
+- `NO_ACCEPTED_SOURCES` conserva su código estable y usa el mensaje controlado: `No hay fuentes aceptadas y leídas para continuar con la estructuración factual.`
+- El run y su evento guardan la clasificación durable `data_quality`.
+- Biblioteca se refresca también tras una ejecución fallida.
+- La fila fallida muestra etapa, código y mensaje.
+- La UI abre automáticamente el detalle durable con estado, etapa, código, clasificación, fecha/hora, request ID, run ID y destination ID canónico.
+- El detalle ofrece `Reintentar etapa`, compatible con los contratos actuales.
+- El reintento usa el mismo resultado controlado, mantiene la solicitud y el destino, crea un nuevo run enlazado y no duplica agregados.
+- La migración retrorellena el J05 histórico como `data_quality` y exige clasificación para todo run `failed`.
+- La integración geográfica usa ahora una consulta sintética aislada para no borrar ni falsear la corrección humana durable de J03.
+- Los relojes de los tests Manual ya no caducan artificialmente al pasar la fecha fija del antiguo fixture.
+
+## 7. Migración local
+
+Archivo:
+
+```text
+supabase/migrations/20260723010000_manual_failure_classification.sql
+```
+
+La migración:
+
+- añade `failure_classification` a `editorial_research_runs`;
+- limita los valores permitidos;
+- retrorellena fallos existentes, incluido `NO_ACCEPTED_SOURCES → data_quality`;
+- exige clasificación cuando el run está `failed`.
+
+Se aplicó con `supabase migration up --local`. No se ejecutaron `supabase link`, `supabase db push` ni `supabase db reset`. Las dos investigaciones completadas y la incidencia original J05 se conservaron.
+
+Estado local comprobado después de migrar y limpiar únicamente fixtures temporales de integración:
+
+- solicitudes: 3;
+- completadas: 2;
+- fallidas: 1;
+- filas canónicas de Morella para ID `70000000-0000-4000-8000-000000000003`: 1.
+
+## 8. Pruebas y validaciones realizadas
+
+- Pruebas específicas Manual, resiliencia y schema: 22/22 aprobadas.
+- Integración Manual Supabase local: 4/4 aprobadas, incluido J05 y su reintento sin duplicados.
+- Suite general sin integraciones opt-in: 139 aprobadas y 7 omitidas según diseño.
+- Suite completa con integraciones Supabase locales: 146/146 aprobadas.
 - Typecheck: aprobado.
-- Lint TypeScript/React: aprobado, cero warnings permitidos.
-- Build Vite/renderer/main/preload: aprobado.
-- `supabase db reset --local`: aprobado durante FASE 3I; reconstruyó migraciones y seed sintético, incluida `20260721040000_editorial_resilience.sql`.
-- `supabase db lint --local --level warning`: aprobado sin errores de schema.
-- El cierre documental no volvió a ejecutar tests, reset, migraciones, seed ni lint SQL.
+- ESLint TypeScript/React con cero warnings: aprobado.
+- Build Vite renderer/main/preload: aprobado.
+- `supabase db lint --local --level warning`: aprobado, sin errores de schema.
+- `git diff --check`: aprobado antes de esta actualización documental y debe repetirse antes del commit.
 
-Backups y restauraciones relevantes ya verificados en FASE 2C-C:
+No se ejecutó `supabase db reset` porque borraría el estado humano existente. No se usaron red de proveedores, IA real, créditos, producción, Trawel ni publicación.
 
-- PostgreSQL: dump custom `-Fc` real de 30.046 bytes, SHA-256 verificado y restauración real en contenedor aislado. Se comprobaron tablas, conteos, constraints, FKs, índices, funciones, triggers y RLS; los artefactos temporales se limpiaron.
-- El dump PostgreSQL cubría `public`, no toda la plataforma: no incluía Auth, binarios de Storage, Vault, roles globales ni otros schemas gestionados.
-- Storage local: PNG sintético de 68 bytes respaldado y restaurado por API en otra ruta; SHA-256, tamaño, MIME, metadatos y privacidad coincidieron, y después se limpió.
-- Un `supabase db reset` prueba reconstrucción reproducible, pero no sustituye un backup/restauración real.
+## 9. Estado actual y gate humano
 
-Limitaciones conocidas y estado de seguridad:
+- La corrección técnica de J05 está lista y validada automáticamente.
+- J05 **no está aprobado automáticamente**.
+- FASE 3J sigue rechazada/bloqueada en J05 hasta nueva decisión humana.
+- No se autoriza J06.
+- El protocolo fuente continúa en `docs/FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
+- La próxima acción exclusiva es repetir J05 manualmente.
 
-- La aceptación humana J01–J17 sigue completamente pendiente; la preparación técnica no equivale a aceptación.
-- El flujo actual solo usa catálogo local, fixtures y mocks deterministas. No valida todavía un proveedor real de IA ni conectividad externa.
-- No se ha auditado ni elegido proveedor real de IA, coste real, política de claves o créditos.
-- Electron `35.7.5` resolvió la compatibilidad de Node/WebSocket necesaria para la prueba local, pero esa línea de Electron está fuera de soporte; una actualización de seguridad deberá evaluarse en una tarea futura y separada antes de cualquier uso productivo.
-- El último `npm install` informó 23 vulnerabilidades de dependencias: 2 bajas, 4 moderadas, 14 altas y 3 críticas. No se aplicó `npm audit fix` porque queda fuera de este cierre y podría introducir cambios. Deben auditarse antes de producción.
-- El arranque dev de `vite-plugin-electron` incluye `--no-sandbox`; solo se acepta aquí para la prueba local con datos sintéticos y no constituye configuración productiva.
-- RLS permanece activa y el acceso privilegiado es exclusivamente local/loopback desde main. No hay credenciales productivas en el repositorio ni en el renderer.
-- Producción, Trawel, proyectos Supabase remotos, publicación y datos reales permanecen fuera de alcance.
+## 10. Arranque local desde PowerShell
 
-## 6. Corrección de arranque de Electron
-
-Bloqueo corregido en `a1f99d8`:
-
-- Causa raíz: `vite-plugin-electron` infería formato ESM debido a `"type": "module"`. La configuración añadía `formats: ['cjs']`, pero el merge de Vite concatenaba arrays y terminaba generando ES y CJS hacia el mismo nombre. La salida ESM podía sobrescribir `main.cjs` y `preload.js`, dejando imports ESM dentro de archivos cargados como CommonJS.
-- Corrección: se desactivó el modo `build.lib` para main y preload; se definieron `rollupOptions.input` y una única salida `format: 'cjs'`, con `main.cjs`, `preload.js` e `inlineDynamicImports`.
-- No se cambió el tipo de módulo global del proyecto.
-- Electron se actualizó de `33.4.11` a `35.7.5`; su Node incorporado pasó a `22.16.0`, con WebSocket nativo compatible con el cliente local de Supabase.
-- Archivos modificados: `vite.config.ts`, `package.json` y `package-lock.json`.
-- Verificación del artefacto: main y preload contienen `require("electron")`, no imports/exports ESM de nivel superior.
-- Verificación real: `npm run dev` abrió una única ventana titulada `Investighost` en el renderer de `http://localhost:5173`.
-- Main, preload, context bridge, IPC y renderer funcionaron. La UI mostró `Supabase local`, el banner `Local · Manual · Simulado` y habilitó `Nueva investigación`.
-- No se ejecutó J01 durante esa comprobación.
-
-## 7. Cómo abrir Investighost mañana desde PowerShell
-
-Ejecutar exactamente este bloque en **PowerShell**:
+Ejecutar en PowerShell:
 
 ```powershell
 cd D:\Proyectos\investighost
@@ -147,127 +205,68 @@ $env:SUPABASE_SERVICE_ROLE_KEY = $supabaseVars["SERVICE_ROLE_KEY"]
 npm run dev
 ```
 
-Notas operativas:
+Mantener abierta esa terminal. No abrir dos instancias. Confirmar `Supabase local`, `Local · Manual · Simulado` y `Publicaciones: 0`.
 
-- No usar `set -a`, `eval` ni `export` en PowerShell.
-- Mantener abierta la terminal mientras se usa Investighost.
-- Pulsar `Ctrl+C` en esa terminal para detener el entorno.
-- No ejecutar el bloque dos veces ni abrir dos instancias de `npm run dev`.
-- En la ventana, verificar el indicador `Supabase local`; no continuar si muestra `Local desconectado`.
+## 11. Instrucciones exactas para repetir J05
 
-## 8. Situación de IA
-
-- El flujo sometido a aceptación es **Local · Manual · Simulado**.
-- No consume IA real.
-- No requiere API key ni créditos.
-- Usa mocks y fixtures locales deterministas.
-- Todavía no se ha auditado ni elegido un proveedor real.
-- No cargar créditos todavía.
-- La auditoría de proveedor, coste, privacidad y claves se hará después de las pruebas simuladas o cuando exista una autorización explícita.
-
-## 9. Gate humano actual
-
-- Documento fuente: `docs/FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
-- Escenarios obligatorios: J01–J17.
-- Ningún escenario puede aprobarse automáticamente.
-- Estado del acta: **sin decisión**.
-- FASE 3J: ni aprobada ni rechazada.
-- Siguiente escenario exacto: **J01 — Destino válido**.
-- No avanzar a J02 sin una decisión humana expresa sobre J01.
-
-## 10. J01 — siguiente paso exacto
-
-No ejecutar hasta que el jefe esté presente y confirme cada resultado visible.
-
-1. Abrir la ventana de Investighost y confirmar `Supabase local`, `Local · Manual · Simulado` y `Publicaciones: 0`.
-2. Pulsar `Nueva investigación`.
-3. Configurar el destino:
+1. Abrir Investighost con el bloque anterior.
+2. En Biblioteca comprobar el estado conservado previo a repetir: 3 investigaciones, 2 completadas, 1 incidencia y 0 publicaciones.
+3. Pulsar `Nueva investigación`.
+4. Configurar:
    - Destino: `Morella`.
    - País ISO: `ES`.
    - Tipo: `Localidad`.
-4. Pulsar `Resolver destino`.
-5. Comprobar antes de ejecutar:
-   - Estado resuelto: `Morella`.
-   - Jerarquía: `España › Comunitat Valenciana › Morella`.
-   - Método: `exact`.
-   - Catálogo: `geonames-2026-07-20`.
-   - ID externo GeoNames: `3116121`.
-6. Mantener ambos perfiles seleccionados: `Aventura` y `Estudiante`.
+5. Pulsar `Resolver destino` y comprobar:
+   - Morella resuelta;
+   - jerarquía `España › Comunitat Valenciana › Morella`;
+   - método `exact`;
+   - catálogo `geonames-2026-07-20`;
+   - GeoNames `3116121`.
+6. Mantener Aventura y Estudiante.
 7. Profundidad: `Estándar`.
 8. Presupuesto máximo simulado: `2` EUR.
 9. Intentos máximos: `3`.
-10. Escenario sintético: `Flujo válido`.
-11. Nota opcional: dejarla vacía o escribir `J01 — flujo válido de aceptación humana`.
-12. Solo cuando el jefe esté listo, pulsar `Iniciar investigación Manual`.
+10. Escenario sintético: `Fuentes insuficientes`.
+11. Pulsar `Iniciar investigación Manual`.
+12. Comprobar que no aparece `Error invoking remote method 'manual:start'` ni `FactualStructuringError` como resultado final.
+13. Comprobar que se abre un detalle durable con:
+    - estado `Fallida`;
+    - etapa `Hechos` (`fact_structuring`);
+    - código `NO_ACCEPTED_SOURCES`;
+    - clasificación `Calidad de datos` (`data_quality`);
+    - mensaje controlado;
+    - request ID;
+    - run ID;
+    - destination ID `70000000-0000-4000-8000-000000000003`;
+    - acción visible `Reintentar etapa`.
+14. Volver a Biblioteca y comprobar:
+    - 4 investigaciones;
+    - 2 completadas;
+    - 2 incidencias, contando la evidencia original conservada y la nueva repetición;
+    - la nueva fila muestra etapa, código y mensaje;
+    - publicaciones continúa en 0.
+15. No pulsar J06 ni iniciar otro escenario.
+16. Registrar una decisión humana inequívoca sobre J05: `APROBADO` o `RECHAZADO`, con evidencia visible y fecha/hora.
 
-Resultado visible esperado:
+## 12. Restricciones que siguen vigentes
 
-- El pipeline termina sin error y queda esperando revisión humana.
-- La identidad Morella/GeoNames y su procedencia permanecen visibles.
-- Existen dos borradores diferenciados: Aventura y Estudiante.
-- RevisIAtor muestra el resultado técnico, pero no decide por el jefe.
-- La investigación aparece en la biblioteca y conserva fuentes, hechos, costes, versiones e historial.
-- No se publica nada, no se envía nada a Trawel y `Publicaciones` permanece en `0`.
-
-Registro humano por escenario:
-
-```text
-J01 — APROBADO
-Resultado visible: [describir evidencia observada]
-Observaciones: [ninguna o detalle]
-Confirmado por el jefe: [nombre o confirmación escrita]
-Fecha/hora: [AAAA-MM-DD HH:MM]
-```
-
-```text
-J01 — RECHAZADO
-Fallo observado: [descripción concreta]
-Clasificación: [BLOQUEO o DEFECTO]
-Evidencia conservada: [captura, mensaje, request ID si existe]
-Confirmado por el jefe: [nombre o confirmación escrita]
-Fecha/hora: [AAAA-MM-DD HH:MM]
-```
-
-```text
-J01 — OBSERVACIÓN
-Detalle: [descripción concreta]
-Clasificación: [DEFECTO MENOR o MEJORA]
-Compromete datos, persistencia o pipeline: [SÍ/NO]
-El jefe autoriza continuar: [SÍ/NO]
-Fecha/hora: [AAAA-MM-DD HH:MM]
-```
-
-Ningún formato produce una decisión por sí solo: el jefe debe confirmarlo expresamente.
-
-## 11. Qué no hacer
-
-- No avanzar a J02 sin decisión humana expresa sobre J01.
-- No marcar J01 ni ningún otro escenario como aprobado por inferencia técnica.
-- No avanzar a FASE 4.
+- No avanzar a J06 sin decisión humana expresa sobre la repetición de J05.
+- No aprobar J05 por inferencia técnica.
+- No declarar FASE 3J aprobada.
+- No iniciar FASE 4.
 - No implementar Automatic.
-- No conectar producción.
-- No conectar Trawel.
-- No usar credenciales remotas.
-- No ejecutar `supabase link`.
-- No ejecutar `supabase db push`.
-- No cargar créditos de IA.
-- No usar datos reales ni PII.
-- No publicar contenido.
+- No conectar Trawel o producción.
+- No publicar.
+- No usar IA real, datos reales o créditos.
+- No ejecutar `supabase link`, `supabase db push` ni `supabase db reset` sobre el estado humano conservado.
+- No introducir SQLite, Drizzle, Better SQLite, segunda base, file store alternativo ni fallback.
+- No borrar las dos investigaciones completadas ni la corrección humana de J03.
+- No alterar la identidad canónica de Morella.
 
-## 12. Documentos que debe leer mañana Codex
+# SIGUIENTE ACCIÓN OBLIGATORIA Y EXCLUSIVA
 
-Leer en este orden antes de actuar:
+```text
+REPETIR J05 — Fuentes insuficientes
+```
 
-1. `docs/INVESTIGHOST_REANUDACION_ACTUAL.md`.
-2. `docs/FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
-3. `docs/FASE_3_EXECUTION_REPORT.md`.
-4. `docs/FASE_3I_RESILIENCIA_COSTES_IDEMPOTENCIA.md`.
-5. `docs/INVESTIGHOST_HOJA_DE_RUTA_CANONICA_V3.md`.
-
-## 13. Instrucción de reanudación
-
-# SIGUIENTE ACCIÓN OBLIGATORIA
-
-Abrir Investighost en local, ejecutar J01 con el jefe y esperar una decisión humana expresa antes de continuar.
-
-Hasta entonces, FASE 3J permanece pendiente, Automatic y FASE 4 permanecen bloqueados, y producción/Trawel continúan desconectados.
+La aprobación o rechazo de J05 seguirá siendo exclusivamente humano.

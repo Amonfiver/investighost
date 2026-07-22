@@ -6,7 +6,7 @@ import { ManualResearchService } from '@modules/editorial-pipeline/manual-workfl
 import { MemoryEditorialResearchRepository } from '@modules/editorial-pipeline/memory-repository'
 
 const actorId = '6fda5d08-9cd0-4d9d-98c1-7ccbfd56ad11'
-const now = new Date('2026-07-21T14:00:00.000Z')
+const now = new Date()
 
 function catalog(): GeographicCatalogEntry[] {
   const country = GeographicEntitySchema.parse({

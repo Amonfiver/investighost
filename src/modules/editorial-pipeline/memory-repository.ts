@@ -129,6 +129,7 @@ export class MemoryEditorialResearchRepository implements EditorialResearchRepos
       .slice(0, limit)
       .map(scaffold => ({
         requestId: scaffold.request.id,
+        runId: scaffold.run.id,
         destinationId: scaffold.request.destinationId,
         destinationQuery: scaffold.request.destinationQuerySnapshot,
         profiles: [...scaffold.request.profiles],
@@ -138,6 +139,8 @@ export class MemoryEditorialResearchRepository implements EditorialResearchRepos
         runState: scaffold.run.state,
         errorCode: scaffold.run.errorCode,
         errorMessage: scaffold.run.errorMessage,
+        failureClassification: scaffold.run.failureClassification,
+        failedAt: scaffold.run.state === 'failed' ? scaffold.run.completedAt : undefined,
         actualCost: scaffold.run.actualCost,
         currency: scaffold.run.currency,
         createdAt: new Date(scaffold.request.createdAt),

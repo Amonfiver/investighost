@@ -21,6 +21,7 @@ import type {
   ManualDraftReview,
   ManualExecutionAction,
   ManualPersistenceStatus,
+  ManualResearchExecutionOutcome,
   ManualResearchStart,
   ManualSectionEdit,
   ManualSectionRegeneration,
@@ -44,9 +45,9 @@ declare global {
       getManualActor: () => Promise<string>
       resolveManualDestination: (input: ManualDestinationQuery) => Promise<ManualDestinationResolution>
       correctManualDestination: (input: ManualDestinationCorrection) => Promise<ManualDestinationResolution>
-      startManualResearch: (input: ManualResearchStart) => Promise<ResearchDestinationResult>
+      startManualResearch: (input: ManualResearchStart) => Promise<ManualResearchExecutionOutcome>
       resumeManualResearch: (input: ManualExecutionAction) => Promise<ResearchDestinationResult>
-      retryManualResearch: (input: ManualExecutionAction) => Promise<ResearchDestinationResult>
+      retryManualResearch: (input: ManualExecutionAction) => Promise<ManualResearchExecutionOutcome>
       cancelManualResearch: (input: ManualExecutionAction) => Promise<void>
       listManualResearch: () => Promise<EditorialResearchSummary[]>
       getManualResearch: (requestId: string) => Promise<ResearchDestinationResult | null>

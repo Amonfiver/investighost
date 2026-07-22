@@ -12,7 +12,7 @@ import { MemoryEditorialResearchRepository } from '@modules/editorial-pipeline/m
 import type { EditorialStageCheckpoint } from '@modules/editorial-pipeline/repository'
 
 const actorId = '6fda5d08-9cd0-4d9d-98c1-7ccbfd56ad11'
-const now = new Date('2026-07-21T14:00:00.000Z')
+const now = new Date()
 
 function catalog(): GeographicCatalogEntry[] {
   const country = GeographicEntitySchema.parse({
@@ -99,6 +99,50 @@ describe('Manual resilience, cost and idempotency gate', () => {
     const retried = await unavailable.service.retry({ requestId: failed.requestId, actorId })
     expect(retried.run).toMatchObject({ attempt: 2, state: 'completed' })
     expect(await unavailable.repository.list()).toHaveLength(1)
+  })
+
+  it('returns J05 as a controlled durable incident and retries without duplicating its request or destination', async () => {
+    const { repository, service } = setup()
+    const idempotencyKey = randomUUID()
+    const first = await service.startForInterface(input({ idempotencyKey, simulationScenario: 'insufficient_sources' }))
+
+    expect(first).toMatchObject({
+      status: 'failed',
+      incident: {
+        destinationId: '70000000-0000-4000-8000-000000000003',
+        destinationQuery: 'Morella',
+        stage: 'fact_structuring',
+        errorCode: 'NO_ACCEPTED_SOURCES',
+        errorMessage: 'No hay fuentes aceptadas y leídas para continuar con la estructuración factual.',
+        failureClassification: 'data_quality',
+      },
+    })
+    if (first.status !== 'failed') throw new Error('J05 debía producir una incidencia controlada')
+
+    const summaries = await repository.list()
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]).toMatchObject({
+      requestId: first.incident.requestId,
+      runId: first.incident.runId,
+      destinationId: first.incident.destinationId,
+      state: 'failed',
+      runState: 'failed',
+      stage: 'fact_structuring',
+      errorCode: 'NO_ACCEPTED_SOURCES',
+      failureClassification: 'data_quality',
+    })
+
+    const retried = await service.retryForInterface({ requestId: first.incident.requestId, actorId })
+    expect(retried).toMatchObject({
+      status: 'failed',
+      incident: {
+        requestId: first.incident.requestId,
+        destinationId: first.incident.destinationId,
+        errorCode: 'NO_ACCEPTED_SOURCES',
+      },
+    })
+    expect(await repository.list()).toHaveLength(1)
+    expect(await repository.listRuns(first.incident.requestId)).toHaveLength(2)
   })
 
   it('persists every completed stage, including source documents without depending on Storage', async () => {

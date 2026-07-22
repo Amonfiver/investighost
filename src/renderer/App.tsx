@@ -10,6 +10,8 @@ import type { ContributionImportJob, ContributionSyncSummary } from '@shared/con
 import type {
   ManualDestinationResolution,
   ManualPersistenceStatus,
+  ManualResearchExecutionOutcome,
+  ManualResearchIncident,
   ManualResearchStart,
 } from '@shared/manual-contracts'
 import type { EditorialDraftVersionSummary, EditorialResearchSummary } from '@modules/editorial-pipeline/repository'
@@ -33,6 +35,11 @@ const stateLabels: Record<string, string> = {
   ready: 'Lista para revisar', in_review: 'En revisión', changes_requested: 'Cambios solicitados', approved: 'Aprobada',
   rejected: 'Rechazada', archived: 'Archivada', passed: 'Aprobado técnicamente', passed_with_warnings: 'Con advertencias',
   blocked: 'Bloqueado',
+}
+
+const failureLabels: Record<string, string> = {
+  data_quality: 'Calidad de datos', provider: 'Proveedor', persistence: 'Persistencia', checkpoint: 'Checkpoint',
+  budget: 'Límites y presupuesto', cancellation: 'Cancelación', pipeline: 'Pipeline',
 }
 
 export function App(): JSX.Element {
@@ -82,15 +89,50 @@ export function App(): JSX.Element {
     }
   }
 
+  const showIncident = async (incident: ManualResearchIncident) => {
+    const items = await refreshLibrary()
+    setSelected(null)
+    setSelectedSummary(items.find(item => item.requestId === incident.requestId) ?? summaryFromIncident(incident))
+    setVersions([])
+    setView('detail')
+  }
+
   const completeStart = async (input: Omit<ManualResearchStart, 'actorId' | 'idempotencyKey'>) => {
     setBusy(true)
     setError(null)
     try {
-      const result = await window.electronAPI.startManualResearch({
+      const outcome = await window.electronAPI.startManualResearch({
         ...input,
         actorId,
         idempotencyKey: `manual:${crypto.randomUUID()}`,
       })
+      if (outcome.status === 'failed') {
+        await showIncident(outcome.incident)
+        return
+      }
+      const { result } = outcome
+      setSelected(result)
+      setSelectedSummary(summaryFromResult(result))
+      setVersions(await window.electronAPI.listManualDraftVersions(result.request.id))
+      await refreshLibrary()
+      setView('detail')
+    } catch (reason) {
+      setError(errorText(reason))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const applyExecutionOutcome = async (operation: () => Promise<ManualResearchExecutionOutcome>) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const outcome = await operation()
+      if (outcome.status === 'failed') {
+        await showIncident(outcome.incident)
+        return
+      }
+      const { result } = outcome
       setSelected(result)
       setSelectedSummary(summaryFromResult(result))
       setVersions(await window.electronAPI.listManualDraftVersions(result.request.id))
@@ -197,7 +239,7 @@ export function App(): JSX.Element {
                 summary={selectedSummary}
                 busy={busy}
                 onResume={requestId => applyResult(() => window.electronAPI.resumeManualResearch({ requestId, actorId }))}
-                onRetry={requestId => applyResult(() => window.electronAPI.retryManualResearch({ requestId, actorId }))}
+                onRetry={requestId => applyExecutionOutcome(() => window.electronAPI.retryManualResearch({ requestId, actorId }))}
                 onCancel={cancelExecution}
                 onBack={() => go('library')}
               />
@@ -241,7 +283,7 @@ function Library({ summaries, connected, onOpen, onNew }: {
           {summaries.map(summary => (
             <button className="research-row" key={summary.requestId} onClick={() => onOpen(summary)} role="listitem">
               <span className="destination-avatar">{initials(summary.destinationQuery)}</span>
-              <span className="research-main"><strong>{summary.destinationQuery}</strong><small>{summary.profiles.map(profileLabel).join(' · ')}</small></span>
+              <span className="research-main"><strong>{summary.destinationQuery}</strong><small>{summary.profiles.map(profileLabel).join(' · ')}</small>{summary.errorCode && <small className="incident-copy">{summary.errorCode} · {summary.errorMessage}</small>}</span>
               <span><StateBadge value={summary.state} /></span>
               <span className="stage-copy"><small>Etapa</small>{stageLabels[summary.stage ?? ''] ?? 'Preparación'}</span>
               <span className="stage-copy"><small>Coste</small>{formatMoney(summary.actualCost, summary.currency)}</span>
@@ -499,7 +541,7 @@ function IncompleteResearch({ summary, busy, onResume, onRetry, onCancel, onBack
   const canRetry = summary?.state === 'failed' || summary?.state === 'retry_pending'
   const canResume = Boolean(summary && !['completed', 'failed', 'retry_pending', 'cancelled'].includes(summary.state))
   const canCancel = Boolean(summary && !['completed', 'cancelled'].includes(summary.state))
-  return <section><button className="back-link" onClick={onBack}>← Biblioteca</button><div className="empty-card incident"><span className="empty-icon">!</span><h2>{summary?.destinationQuery ?? 'Investigación incompleta'}</h2><StateBadge value={summary?.state ?? 'failed'} /><p>{summary?.errorMessage ?? 'La ejecución conserva sus checkpoints y puede recuperarse sin repetir etapas terminadas.'}</p><dl className="definition-grid"><div><dt>Etapa</dt><dd>{stageLabels[summary?.stage ?? ''] ?? 'Desconocida'}</dd></div><div><dt>Código</dt><dd>{summary?.errorCode ?? 'Sin código'}</dd></div></dl>{requestId && <div className="form-actions">{canResume && <button className="button primary" disabled={busy} onClick={() => onResume(requestId)}>Reanudar</button>}{canRetry && <button className="button primary" disabled={busy} onClick={() => onRetry(requestId)}>Reintentar etapa</button>}{canCancel && <button className="button ghost" disabled={busy} onClick={() => onCancel(requestId)}>Cancelar ejecución</button>}</div>}<p className="muted">Los reintentos están acotados, respetan el presupuesto restante y quedan auditados.</p></div></section>
+  return <section><button className="back-link" onClick={onBack}>← Biblioteca</button><div className="empty-card incident"><span className="empty-icon">!</span><h2>{summary?.destinationQuery ?? 'Investigación incompleta'}</h2><StateBadge value={summary?.state ?? 'failed'} /><p>{summary?.errorMessage ?? 'La ejecución conserva sus checkpoints y puede recuperarse sin repetir etapas terminadas.'}</p><dl className="definition-grid"><div><dt>Etapa</dt><dd>{stageLabels[summary?.stage ?? ''] ?? 'Desconocida'}</dd></div><div><dt>Código</dt><dd>{summary?.errorCode ?? 'Sin código'}</dd></div><div><dt>Clasificación</dt><dd>{failureLabels[summary?.failureClassification ?? ''] ?? 'Sin clasificación'}</dd></div><div><dt>Registrado</dt><dd>{summary?.failedAt ? formatDate(summary.failedAt) : 'Sin fecha'}</dd></div><div><dt>Request ID</dt><dd className="technical-id">{summary?.requestId ?? 'No disponible'}</dd></div><div><dt>Run ID</dt><dd className="technical-id">{summary?.runId ?? 'No disponible'}</dd></div><div><dt>Destino canónico</dt><dd className="technical-id">{summary?.destinationId ?? 'No disponible'}</dd></div></dl>{requestId && <div className="form-actions">{canResume && <button className="button primary" disabled={busy} onClick={() => onResume(requestId)}>Reanudar</button>}{canRetry && <button className="button primary" disabled={busy} onClick={() => onRetry(requestId)}>Reintentar etapa</button>}{canCancel && <button className="button ghost" disabled={busy} onClick={() => onCancel(requestId)}>Cancelar ejecución</button>}</div>}<p className="muted">Los reintentos están acotados, respetan el presupuesto restante y quedan auditados.</p></div></section>
 }
 
 function ContributionImportPanel(): JSX.Element {
@@ -532,4 +574,5 @@ function formatMoney(value?: number, currency = 'EUR'): string { return value ==
 function formatDate(value: Date | string): string { return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
 function formatTime(value: Date | string): string { return new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(value)) }
 function errorText(reason: unknown): string { return reason instanceof Error ? reason.message : String(reason) }
-function summaryFromResult(result: ResearchDestinationResult): EditorialResearchSummary { return { requestId: result.request.id, destinationId: result.destination.id, destinationQuery: result.request.destinationQuerySnapshot, profiles: result.request.profiles, state: result.request.state, version: result.request.version, stage: result.run.stage, runState: result.run.state, errorCode: result.run.errorCode, errorMessage: result.run.errorMessage, actualCost: result.run.actualCost, currency: result.run.currency, createdAt: result.request.createdAt, updatedAt: result.request.updatedAt } }
+function summaryFromResult(result: ResearchDestinationResult): EditorialResearchSummary { return { requestId: result.request.id, runId: result.run.id, destinationId: result.destination.id, destinationQuery: result.request.destinationQuerySnapshot, profiles: result.request.profiles, state: result.request.state, version: result.request.version, stage: result.run.stage, runState: result.run.state, errorCode: result.run.errorCode, errorMessage: result.run.errorMessage, failureClassification: result.run.failureClassification, failedAt: result.run.state === 'failed' ? result.run.completedAt : undefined, actualCost: result.run.actualCost, currency: result.run.currency, createdAt: result.request.createdAt, updatedAt: result.request.updatedAt } }
+function summaryFromIncident(incident: ManualResearchIncident): EditorialResearchSummary { return { requestId: incident.requestId, runId: incident.runId, destinationId: incident.destinationId, destinationQuery: incident.destinationQuery, profiles: incident.profiles, state: 'failed', version: 1, stage: incident.stage, runState: 'failed', errorCode: incident.errorCode, errorMessage: incident.errorMessage, failureClassification: incident.failureClassification, failedAt: incident.occurredAt, createdAt: incident.occurredAt, updatedAt: incident.occurredAt } }

@@ -1,29 +1,32 @@
 # Investighost — punto de reanudación actual
 
-Fecha de actualización: 2026-07-23 01:14:39 CEST (UTC+02:00)
-Objetivo de reanudación: repetir exclusivamente **J06 — Una fuente rota** después de corregir su trazabilidad HTTP 404.
+Fecha de actualización: 2026-07-23 01:31:59 CEST (UTC+02:00)
+Objetivo de reanudación: ejecutar exclusivamente **J09 — Interrupción y reanudación** y esperar después una decisión humana expresa.
 
-Este documento es la fuente operativa canónica para la próxima sesión. No autoriza J07, la aprobación automática de J06, el cierre de FASE 3J, FASE 4, Automatic, producción, Trawel, publicación ni proveedores reales.
+Este documento es la fuente operativa canónica para la próxima sesión. No autoriza J10, la aprobación automática de J09, el cierre de FASE 3J, FASE 4, Automatic, producción, Trawel, publicación ni proveedores reales.
 
 ## 1. Identificación y estado Git de partida
 
 - Proyecto: `D:\Proyectos\investighost`.
 - Ruta WSL: `/mnt/d/Proyectos/investighost`.
 - Rama: `feat/investighost-reinvencion`.
-- HEAD inicial de esta corrección: `df84a5013bbf288d6012455b937c4a2ae42c3f25` (`fix: corregir incidencia durable de j05`).
+- HEAD inicial de este cierre documental: `8e8d14b564541efe90e898f5bb289f09adbb41e9` (`fix: hacer trazable el 404 parcial de j06`).
 - Upstream: `origin/feat/investighost-reinvencion`.
 - Estado inicial comprobado después de `git fetch`: árbol limpio y divergencia `0/0`.
-- Commit de cierre previsto: `fix: hacer trazable el 404 parcial de j06` (el hash final se entrega en el informe de cierre).
+- Commit de cierre previsto: `docs: cerrar gate humano hasta j08` (el hash final se entrega en el informe de cierre).
 
 ## 2. Estado general vigente
 
 - FASE 2C-C: completada.
 - FASE 3A–3I: completadas técnicamente.
 - FASE 3J: en aceptación humana y **no aprobada**.
-- J01–J05: aprobados por decisión humana expresa.
+- J01–J08: aprobados por decisión humana expresa.
 - J05: aprobado tras la corrección durable del commit `df84a5013bbf288d6012455b937c4a2ae42c3f25`.
-- J06: rechazado inicialmente por defecto de trazabilidad; corrección técnica implementada y validada, pero **pendiente de repetición y decisión humana**.
-- J07–J17: no autorizados mientras J06 no tenga decisión humana expresa.
+- J06: aprobado tras la corrección durable del commit `8e8d14b564541efe90e898f5bb289f09adbb41e9`.
+- J07: aprobado; la indisponibilidad del proveedor quedó como incidencia durable y clasificada.
+- J08: aprobado; el reintento recuperó la misma solicitud en un segundo run enlazado.
+- J09: no ejecutado y pendiente de decisión humana.
+- J10–J17: no autorizados mientras J09 no tenga decisión humana expresa.
 - FASE 4: no iniciada.
 - Automatic: no implementado.
 - Supabase local/PostgreSQL: única persistencia durable estructurada.
@@ -55,7 +58,17 @@ Este documento es la fuente operativa canónica para la próxima sesión. No aut
 - Una nueva solicitud de Morella reutilizó la misma identidad geográfica canónica.
 - No se duplicó la entidad y publicaciones permanecieron en cero.
 
-Observación no bloqueante de J04: repetir Morella volvió a imputar el coste simulado completo. Antes de conectar IA real se deberá ofrecer reutilización de conocimiento, actualización selectiva o regeneración parcial bajo decisión humana. Este requisito no forma parte de J06.
+Observación no bloqueante pendiente desde J04: repetir una investigación reutiliza la identidad canónica, pero vuelve a imputar el coste completo. Antes de conectar IA real se deberá:
+
+- reutilizar conocimiento existente;
+- actualizar solo datos volátiles;
+- regenerar un perfil o una sección cuando sea suficiente;
+- rehacer completamente solo bajo decisión humana;
+- no volver a imputar el coste completo cuando se usen datos propios;
+- mantener Investighost como base maestra durable;
+- usar Trawel únicamente como futura base de publicación del contenido aprobado.
+
+Este requisito no se implementa durante el gate de aceptación humana.
 
 ### J05 — APROBADO
 
@@ -64,7 +77,9 @@ Observación no bloqueante de J04: repetir Morella volvió a imputar el coste si
 - La incidencia admite reintento sin duplicar solicitud ni destino.
 - Commit de corrección y aprobación: `df84a5013bbf288d6012455b937c4a2ae42c3f25`.
 
-## 4. J06 original — RECHAZADO
+## 4. J06 — APROBADO tras corrección
+
+J06 fue rechazado inicialmente por el defecto descrito a continuación. La corrección quedó en el commit `8e8d14b564541efe90e898f5bb289f09adbb41e9`, se repitió el escenario y recibió aprobación humana expresa.
 
 Configuración ejecutada:
 
@@ -137,13 +152,48 @@ La tolerancia parcial del pipeline funcionaba; el defecto estaba en la semántic
 - La fuente aceptada continúa visible y alimenta 3 hechos, 1 lugar, 1 actividad y 2 borradores.
 - La ejecución parcial sigue completándose; no se convirtió J06 en fallo global.
 
-## 7. Persistencia y migraciones
+Resultado humano confirmado:
+
+- fuente `UNAVAILABLE` con HTTP 404;
+- código `HTTP_404`;
+- mensaje, etapa, intento, fecha, source ID y run ID visibles;
+- evento `source.unavailable` visible en Historial;
+- pipeline completado con la evidencia válida;
+- J06 **APROBADO**.
+
+## 7. J07 y J08 — APROBADOS
+
+### J07 — Proveedor no disponible
+
+- El primer intento falló de forma controlada.
+- Código durable: `PERMANENT`.
+- Clasificación durable: `provider` (`Proveedor` en la interfaz).
+- Etapa registrada: `source_discovery`.
+- La incidencia quedó visible en Biblioteca.
+- Request ID: `85630509-8ec6-4462-8fe6-9a2c036e7e20`.
+- Run fallido: `f461901e-a4de-4daa-9b6c-4c0ff0e848e7`.
+- J07 **APROBADO** por decisión humana expresa.
+
+### J08 — Reintentar etapa sobre J07
+
+- Se utilizó la acción `Reintentar etapa` sobre la incidencia J07.
+- El intento 1 permaneció fallido y el intento 2 terminó completado.
+- Se conservó la misma solicitud `85630509-8ec6-4462-8fe6-9a2c036e7e20`.
+- Run completado: `d0c91fc6-7c57-4e75-9cee-1838d4ae490f`.
+- El segundo run enlaza `recovery_from_run_id` con `f461901e-a4de-4daa-9b6c-4c0ff0e848e7`.
+- Se conservó la misma identidad canónica de Morella.
+- No hubo duplicación de solicitud ni destino.
+- J08 **APROBADO** por decisión humana expresa.
+
+## 8. Persistencia y migraciones
 
 No hay migración nueva para J06. `research_sources.metadata` ya es un objeto JSONB durable y justificado para metadatos de proveedor; `research_events.payload` ya es el contrato durable de auditoría. La integración local comprobó ambos registros directamente en PostgreSQL.
 
 No se ejecutaron `supabase link`, `supabase db push` ni `supabase db reset`. No se modificó ni eliminó la evidencia humana histórica.
 
-## 8. Archivos modificados
+## 9. Archivos de la corrección J06
+
+Este cierre de sesión no modifica código: solo actualiza `docs/INVESTIGHOST_REANUDACION_ACTUAL.md`. Se conservan como antecedente los archivos de la corrección J06:
 
 - `src/shared/editorial-contracts.ts`: contrato estructurado del fallo de fuente.
 - `src/modules/editorial-pipeline/source-providers.ts`: semántica de éxito, persistencia del 404 y evento `source.unavailable`.
@@ -154,7 +204,7 @@ No se ejecutaron `supabase link`, `supabase db push` ni `supabase db reset`. No 
 - `tests/manual-supabase.integration.test.ts`: persistencia real de fuente/evento y agregado completado.
 - `docs/INVESTIGHOST_REANUDACION_ACTUAL.md`: este punto de reanudación.
 
-## 9. Pruebas y validaciones realizadas
+## 10. Pruebas y validaciones de la corrección J06
 
 - Pruebas específicas `source-acquisition` + `manual-resilience`: 20/20 aprobadas.
 - Integración Manual Supabase local: 5/5 aprobadas, incluida la persistencia J06 HTTP 404.
@@ -166,24 +216,25 @@ No se ejecutaron `supabase link`, `supabase db push` ni `supabase db reset`. No 
 - `npm run build` llegó a compilar y empaquetar la aplicación, pero el paso estándar de `winCodeSign` falló porque el usuario Windows no tiene privilegio para crear dos enlaces simbólicos en la caché externa.
 - Build completo alternativo `npm run build -- --config.win.signAndEditExecutable=false`: aprobado; generó el instalador NSIS sin edición/firma del ejecutable.
 - `supabase db lint --local`: aprobado, sin errores de schema.
-- `git diff --check`: aprobado después de la actualización documental; debe repetirse como comprobación final antes del commit.
+- `git diff --check`: aprobado para este cierre documental J01–J08.
 
 No se usaron proveedores de red, IA real, créditos, datos reales, producción, Trawel ni publicación.
 
-## 10. Estado local conservado y gate humano
+## 11. Estado local conservado y gate humano
 
 Después de limpiar únicamente los fixtures temporales creados por las integraciones, Supabase local conserva:
 
-- 5 solicitudes humanas;
-- 3 completadas;
+- 7 solicitudes humanas;
+- 5 completadas;
 - 2 incidencias J05;
+- 2 ejecuciones del escenario J06, incluida su repetición aprobada;
+- 1 solicitud del escenario J07/J08 con 2 runs enlazados;
 - 1 identidad canónica de Morella para `70000000-0000-4000-8000-000000000003`;
-- la ejecución J06 original rechazada;
 - publicaciones en cero.
 
-La corrección técnica de J06 está lista y validada automáticamente, pero J06 **no está aprobado automáticamente**. FASE 3J sigue abierta y no se autoriza J07. El protocolo fuente continúa en `docs/FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
+J01–J08 están aprobados por decisión humana expresa. J09 todavía no se ha ejecutado. FASE 3J sigue abierta y no se autoriza J10. El protocolo fuente continúa en `docs/FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
 
-## 11. Arranque local desde PowerShell
+## 12. Arranque local desde PowerShell
 
 Ejecutar en PowerShell:
 
@@ -216,61 +267,32 @@ npm run dev
 
 Mantener abierta esa terminal. No abrir dos instancias. Confirmar `Supabase local`, `Local · Manual · Simulado` y `Publicaciones: 0`.
 
-## 12. Instrucciones exactas para repetir J06
+## 13. Protocolo exacto para J09 — Interrupción y reanudación
 
-1. Abrir Investighost con el bloque anterior.
-2. En Biblioteca comprobar el estado conservado previo a repetir: 5 investigaciones, 3 completadas, 2 incidencias y 0 publicaciones.
-3. Pulsar `Nueva investigación`.
-4. Configurar:
-   - Destino: `Morella`.
-   - País ISO: `ES`.
-   - Tipo: `Localidad`.
-5. Pulsar `Resolver destino` y comprobar:
-   - Morella resuelta;
-   - jerarquía `España › Comunitat Valenciana › Morella`;
-   - método `exact`;
-   - catálogo `geonames-2026-07-20`;
-   - GeoNames `3116121`.
-6. Mantener Aventura y Estudiante.
-7. Profundidad: `Estándar`.
-8. Presupuesto máximo simulado: `2` EUR.
-9. Intentos máximos: `3`.
-10. Escenario sintético: `Una fuente rota`.
-11. Pulsar `Iniciar investigación Manual`.
-12. Comprobar que la ejecución termina `Completada` y muestra:
-    - 2 fuentes;
-    - 3 hechos;
-    - 1 lugar;
-    - 1 actividad;
-    - 2 borradores;
-    - coste simulado de 0,23 EUR;
-    - publicaciones en 0.
-13. Abrir `Fuentes` y comprobar:
-    - una fuente `ACCEPTED` con fiabilidad, actualidad, editor y captura;
-    - una fuente `UNAVAILABLE`;
-    - encabezado `HTTP 404`;
-    - código `HTTP_404`;
-    - mensaje controlado completo;
-    - etapa `Lectura` (`source_reading`);
-    - intento `1`;
-    - fecha/hora;
-    - source ID y run ID.
-14. Abrir `Historial` y comprobar:
-    - evento explícito `source.unavailable`;
-    - resumen `HTTP 404`;
-    - el mismo source ID;
-    - intento `1`;
-    - run ID asociado;
-    - solo una lectura exitosa, correspondiente a la fuente aceptada.
-15. Confirmar que la fuente no disponible no aparece como aceptada ni alimenta hechos, y que la fuente válida conserva el resto del resultado.
-16. Volver a Biblioteca y comprobar: 6 investigaciones, 4 completadas, 2 incidencias y 0 publicaciones.
-17. No iniciar J07 ni otro escenario.
-18. Registrar una decisión humana inequívoca sobre J06: `APROBADO` o `RECHAZADO`, con evidencia visible y fecha/hora.
+J09 todavía no se ha ejecutado. En la próxima sesión:
 
-## 13. Restricciones que siguen vigentes
+1. Crear Morella / ES / Localidad.
+2. Mantener Aventura y Estudiante.
+3. Profundidad `Estándar`.
+4. Presupuesto máximo simulado: `2` EUR.
+5. Intentos máximos: `3`.
+6. Seleccionar `Ejecución lenta para interrumpir`.
+7. Iniciar investigación Manual.
+8. Cerrar Electron mientras progresa.
+9. Esperar a que venza el lease si fuera necesario.
+10. Abrir de nuevo.
+11. Verificar el scaffold durable en Biblioteca.
+12. Pulsar `Reanudar`.
+13. Confirmar la continuación desde checkpoint o etapa durable.
+14. Confirmar la finalización sin crear otra solicitud.
+15. Esperar una decisión humana expresa sobre J09.
+16. No avanzar a J10 sin aprobación expresa.
 
-- No avanzar a J07 sin decisión humana expresa sobre la repetición de J06.
-- No aprobar J06 por inferencia técnica.
+## 14. Restricciones que siguen vigentes
+
+- No ejecutar J09 durante este cierre documental.
+- No avanzar a J10 sin decisión humana expresa sobre J09.
+- No aprobar J09 ni ninguna otra prueba por inferencia técnica.
 - No declarar FASE 3J aprobada.
 - No iniciar FASE 4.
 - No implementar Automatic.
@@ -285,7 +307,7 @@ Mantener abierta esa terminal. No abrir dos instancias. Confirmar `Supabase loca
 # SIGUIENTE ACCIÓN OBLIGATORIA Y EXCLUSIVA
 
 ```text
-REPETIR J06 — Una fuente rota
+J09 — Interrupción y reanudación
 ```
 
-La aprobación o rechazo de J06 seguirá siendo exclusivamente humano.
+La aprobación o rechazo de J09 seguirá siendo exclusivamente humano.

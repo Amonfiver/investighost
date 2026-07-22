@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { GeographicEntitySchema, type GeographicEntity, type ResearchStage } from '@shared/editorial-contracts'
+import { GeographicEntitySchema, ResearchSourceFailureSchema, type GeographicEntity, type ResearchStage } from '@shared/editorial-contracts'
 import { GeographicResolver, MemoryGeographyCatalogRepository, type GeographicCatalogEntry } from '@modules/editorial-pipeline/geography'
 import {
   createManualMockProviders,
@@ -90,6 +90,24 @@ describe('Manual resilience, cost and idempotency gate', () => {
     const broken = await setup().service.start(input({ simulationScenario: 'broken_source' }))
     expect(broken.sources.map(source => source.status)).toEqual(expect.arrayContaining(['accepted', 'unavailable']))
     expect(broken.request.options.simulationScenario).toBe('broken_source')
+    expect(broken).toMatchObject({
+      request: { state: 'completed' },
+      run: { stage: 'human_review', state: 'completed' },
+    })
+    expect(broken.facts).toHaveLength(3)
+    expect(broken.places).toHaveLength(1)
+    expect(broken.activities).toHaveLength(1)
+    expect(broken.drafts).toHaveLength(2)
+    const brokenSource = broken.sources.find(source => source.status === 'unavailable')
+    if (!brokenSource) throw new Error('Falta la fuente no disponible de J06')
+    expect(ResearchSourceFailureSchema.parse(brokenSource.metadata.failure)).toMatchObject({
+      errorCode: 'HTTP_404', httpStatus: 404, stage: 'source_reading', attempt: 1, operation: 'reading',
+    })
+    expect(broken.events.find(event => event.type === 'source.unavailable')).toMatchObject({
+      runId: broken.run.id,
+      stage: 'source_reading',
+      payload: { sourceId: brokenSource.id, errorCode: 'HTTP_404', httpStatus: 404, attempt: 1 },
+    })
 
     const unavailable = setup()
     await expect(unavailable.service.start(input({ simulationScenario: 'provider_unavailable' })))

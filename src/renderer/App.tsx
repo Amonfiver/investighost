@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
-import type {
-  EditorialDraftBundle,
-  EditorialProfile,
-  QualityReview,
-  ResearchDestinationResult,
+import {
+  ResearchSourceFailureSchema,
+  type EditorialDraftBundle,
+  type EditorialProfile,
+  type QualityReview,
+  type ResearchDestinationResult,
 } from '@shared/editorial-contracts'
 import type { ContributionImportJob, ContributionSyncSummary } from '@shared/contracts'
 import type {
@@ -463,7 +464,23 @@ function Overview({ result }: { result: ResearchDestinationResult }): JSX.Elemen
 }
 
 function Sources({ result }: { result: ResearchDestinationResult }): JSX.Element {
-  return <div className="card-list">{result.sources.map(source => <article className="data-card" key={source.id}><div className="data-card-heading"><div><span className="card-kicker">{source.sourceType} · {source.territorialScope}</span><h3>{source.title}</h3></div><span className={`status-chip ${source.status}`}>{source.status}</span></div><a href={source.url} target="_blank" rel="noreferrer">{source.url}</a><dl className="definition-grid compact"><div><dt>Fiabilidad</dt><dd>{Math.round(source.reliability * 100)}%</dd></div><div><dt>Actualidad</dt><dd>{source.freshness}</dd></div><div><dt>Editor</dt><dd>{source.publisher ?? 'Sin editor'}</dd></div><div><dt>Captura</dt><dd>{formatDate(source.capturedAt)}</dd></div></dl></article>)}</div>
+  return <div className="card-list">{result.sources.map(source => {
+    const parsedFailure = ResearchSourceFailureSchema.safeParse(source.metadata.failure)
+    const failure = parsedFailure.success ? parsedFailure.data : undefined
+    const legacyErrorCode = typeof source.metadata.errorCode === 'string' ? source.metadata.errorCode : undefined
+    const errorCode = failure?.errorCode ?? legacyErrorCode
+    const legacyStatus = errorCode?.match(/^HTTP_(\d{3})$/)?.[1]
+    const httpStatus = failure?.httpStatus ?? (legacyStatus ? Number(legacyStatus) : undefined)
+    const message = failure?.message ?? (httpStatus
+      ? `La lectura de la fuente devolvió HTTP ${httpStatus}; se marcó como no disponible y el pipeline continuó con la evidencia válida.`
+      : errorCode ? 'La fuente se marcó como no disponible y el pipeline continuó con la evidencia válida.' : undefined)
+    return <article className="data-card" key={source.id}>
+      <div className="data-card-heading"><div><span className="card-kicker">{source.sourceType} · {source.territorialScope}</span><h3>{source.title}</h3></div><span className={`status-chip ${source.status}`}>{source.status}</span></div>
+      <a href={source.url} target="_blank" rel="noreferrer">{source.url}</a>
+      {errorCode && message && <div className="source-failure" role="status"><strong>{httpStatus ? `HTTP ${httpStatus}` : errorCode}</strong><p>{message}</p><dl className="definition-grid failure-details"><div><dt>Código</dt><dd>{errorCode}</dd></div><div><dt>Etapa</dt><dd>{stageLabels[failure?.stage ?? 'source_reading']}</dd></div><div><dt>Intento</dt><dd>{failure?.attempt ?? 'No registrado'}</dd></div><div><dt>Registrado</dt><dd>{formatDate(failure?.occurredAt ?? source.capturedAt)}</dd></div><div><dt>Source ID</dt><dd className="technical-id">{source.id}</dd></div><div><dt>Run ID</dt><dd className="technical-id">{source.runId}</dd></div></dl></div>}
+      <dl className="definition-grid compact"><div><dt>Fiabilidad</dt><dd>{Math.round(source.reliability * 100)}%</dd></div><div><dt>Actualidad</dt><dd>{source.freshness}</dd></div><div><dt>Editor</dt><dd>{source.publisher ?? 'Sin editor'}</dd></div><div><dt>Captura</dt><dd>{formatDate(source.capturedAt)}</dd></div></dl>
+    </article>
+  })}</div>
 }
 
 function Facts({ result }: { result: ResearchDestinationResult }): JSX.Element {
@@ -526,7 +543,7 @@ function Quality({ result }: { result: ResearchDestinationResult }): JSX.Element
 
 function History({ result, versions }: { result: ResearchDestinationResult; versions: EditorialDraftVersionSummary[] }): JSX.Element {
   const runs = [...result.previousRuns, result.run].sort((left, right) => left.attempt - right.attempt)
-  return <div className="history-grid"><section><div className="section-heading compact"><div><span className="card-kicker">VERSIONES</span><h3>Historial editorial</h3></div></div><div className="version-list">{versions.map(version => <article key={version.id}><span className={`version-dot ${version.humanEdited ? 'human' : ''}`} /><div><strong>{profileLabel(version.profile)} · v{version.contentVersion}</strong><p>{version.title}</p><small>{version.reason ?? 'Generación inicial'} · {formatDate(version.updatedAt)}</small></div><StateBadge value={version.state} /></article>)}</div><div className="section-heading compact"><div><span className="card-kicker">EJECUCIONES</span><h3>Intentos y recuperación</h3></div></div><div className="version-list">{runs.map(run => <article key={run.id}><span className="version-dot" /><div><strong>Intento {run.attempt} · {stageLabels[run.stage]}</strong><p>{run.errorMessage ?? (run.recoveryFromRunId ? 'Recuperado desde el intento anterior' : 'Ejecución inicial')}</p><small>{run.errorCode ?? run.contractVersion} · {formatMoney(run.actualCost, run.currency)}</small></div><StateBadge value={run.state} /></article>)}</div></section><section><div className="section-heading compact"><div><span className="card-kicker">AUDITORÍA</span><h3>Eventos del pipeline</h3></div></div><div className="event-list">{[...result.events].reverse().map(event => <article key={event.id}><span>{formatTime(event.occurredAt)}</span><div><strong>{event.type}</strong><small>{event.stage ? stageLabels[event.stage] : 'Sistema'} · {event.correlationId}</small></div></article>)}</div><div className="cost-breakdown"><h4>Uso y costes</h4>{result.usage.map(item => <div key={item.id}><span>{item.cause}</span><span>{item.providerId}</span><strong>{formatMoney(item.actualCost, item.currency)}</strong></div>)}</div></section></div>
+  return <div className="history-grid"><section><div className="section-heading compact"><div><span className="card-kicker">VERSIONES</span><h3>Historial editorial</h3></div></div><div className="version-list">{versions.map(version => <article key={version.id}><span className={`version-dot ${version.humanEdited ? 'human' : ''}`} /><div><strong>{profileLabel(version.profile)} · v{version.contentVersion}</strong><p>{version.title}</p><small>{version.reason ?? 'Generación inicial'} · {formatDate(version.updatedAt)}</small></div><StateBadge value={version.state} /></article>)}</div><div className="section-heading compact"><div><span className="card-kicker">EJECUCIONES</span><h3>Intentos y recuperación</h3></div></div><div className="version-list">{runs.map(run => <article key={run.id}><span className="version-dot" /><div><strong>Intento {run.attempt} · {stageLabels[run.stage]}</strong><p>{run.errorMessage ?? (run.recoveryFromRunId ? 'Recuperado desde el intento anterior' : 'Ejecución inicial')}</p><small>{run.errorCode ?? run.contractVersion} · {formatMoney(run.actualCost, run.currency)}</small></div><StateBadge value={run.state} /></article>)}</div></section><section><div className="section-heading compact"><div><span className="card-kicker">AUDITORÍA</span><h3>Eventos del pipeline</h3></div></div><div className="event-list">{[...result.events].reverse().map(event => { const failureDetail = event.type === 'source.unavailable' ? sourceUnavailableEventDetail(event) : undefined; return <article key={event.id}><span>{formatTime(event.occurredAt)}</span><div><strong>{event.type}</strong>{failureDetail && <small className="event-failure-detail">{failureDetail}</small>}<small>{event.stage ? stageLabels[event.stage] : 'Sistema'} · {event.runId ? `run ${event.runId}` : event.correlationId}</small></div></article> })}</div><div className="cost-breakdown"><h4>Uso y costes</h4>{result.usage.map(item => <div key={item.id}><span>{item.cause}</span><span>{item.providerId}</span><strong>{formatMoney(item.actualCost, item.currency)}</strong></div>)}</div></section></div>
 }
 
 function IncompleteResearch({ summary, busy, onResume, onRetry, onCancel, onBack }: {
@@ -569,6 +586,14 @@ function viewTitle(view: View, selected: ResearchDestinationResult | null): stri
 }
 
 function profileLabel(profile: EditorialProfile): string { return profile === 'adventure' ? 'Aventura' : 'Estudiante' }
+function sourceUnavailableEventDetail(event: ResearchDestinationResult['events'][number]): string {
+  const httpStatus = typeof event.payload.httpStatus === 'number' ? `HTTP ${event.payload.httpStatus}` : undefined
+  const errorCode = typeof event.payload.errorCode === 'string' ? event.payload.errorCode : 'SOURCE_UNAVAILABLE'
+  const message = typeof event.payload.message === 'string' ? event.payload.message : 'Fuente no disponible'
+  const sourceId = typeof event.payload.sourceId === 'string' ? event.payload.sourceId : 'sin source ID'
+  const attempt = typeof event.payload.attempt === 'number' ? `intento ${event.payload.attempt}` : 'intento no registrado'
+  return `${httpStatus ?? errorCode} · ${message} · ${sourceId} · ${attempt}`
+}
 function initials(value: string): string { return value.split(/\s+/).slice(0, 2).map(item => item[0]?.toUpperCase()).join('') }
 function formatMoney(value?: number, currency = 'EUR'): string { return value === undefined ? '—' : new Intl.NumberFormat('es-ES', { style: 'currency', currency }).format(value) }
 function formatDate(value: Date | string): string { return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }

@@ -159,6 +159,17 @@ export const EditorialResearchRunSchema = z.object({
   }
 })
 
+export const ResearchSourceFailureSchema = z.object({
+  errorCode: NonEmptyTextSchema.max(120),
+  httpStatus: z.number().int().min(100).max(599).optional(),
+  message: NonEmptyTextSchema.max(2000),
+  stage: z.literal('source_reading'),
+  occurredAt: TimestampSchema,
+  attempt: z.number().int().positive(),
+  providerId: NonEmptyTextSchema.max(80),
+  operation: z.enum(['reading', 'evaluation']),
+})
+
 export const ResearchSourceSchema = z.object({
   id: UuidSchema,
   runId: UuidSchema,
@@ -178,6 +189,19 @@ export const ResearchSourceSchema = z.object({
   fingerprint: Sha256Schema,
   metadata: z.record(z.unknown()),
   capturedAt: TimestampSchema,
+}).superRefine((value, context) => {
+  if (value.metadata.failure === undefined) return
+  const parsed = ResearchSourceFailureSchema.safeParse(value.metadata.failure)
+  if (!parsed.success) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['metadata', 'failure'], message: 'El fallo de fuente no cumple el contrato durable' })
+    return
+  }
+  if (value.status !== 'unavailable') {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['status'], message: 'Solo una fuente no disponible puede conservar un fallo' })
+  }
+  if (value.metadata.errorCode !== parsed.data.errorCode) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['metadata', 'errorCode'], message: 'El código resumido y el fallo de fuente deben coincidir' })
+  }
 })
 
 export const ResearchFactSchema = z.object({
@@ -482,6 +506,7 @@ export type ResearchStage = z.infer<typeof ResearchStageSchema>
 export type GeographicEntity = z.infer<typeof GeographicEntitySchema>
 export type EditorialResearchRequest = z.infer<typeof EditorialResearchRequestSchema>
 export type EditorialResearchRun = z.infer<typeof EditorialResearchRunSchema>
+export type ResearchSourceFailure = z.infer<typeof ResearchSourceFailureSchema>
 export type ResearchSource = z.infer<typeof ResearchSourceSchema>
 export type ResearchFact = z.infer<typeof ResearchFactSchema>
 export type ResearchPlace = z.infer<typeof ResearchPlaceSchema>

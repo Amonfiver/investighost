@@ -108,7 +108,7 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 .state-badge, .status-chip, .category-pill { display: inline-flex; align-items: center; width: fit-content; padding: 4px 8px; color: #44544e; background: #edf1ef; border: 1px solid #dde4e0; border-radius: 999px; font-size: 9px; font-weight: 700; letter-spacing: .025em; text-transform: uppercase; }
 .state-completed, .state-passed, .state-approved, .state-accepted, .status-chip.accepted { color: #0a6349; background: var(--green-soft); border-color: #c8e3d7; }
 .state-ready, .state-in_review, .state-passed_with_warnings { color: #80601d; background: var(--amber-soft); border-color: #edd5a9; }
-.state-failed, .state-rejected, .state-blocked, .state-changes_requested, .state-retry_pending { color: #923636; background: var(--red-soft); border-color: #efc5c5; }
+.state-failed, .state-rejected, .state-blocked, .state-changes_requested, .state-retry_pending, .status-chip.unavailable { color: #923636; background: var(--red-soft); border-color: #efc5c5; }
 .state-researching, .state-structuring, .state-validating { color: #315f91; background: var(--blue-soft); border-color: #caddef; }
 
 .new-layout { display: grid; gap: 18px; max-width: 1050px; margin: 0 auto; }
@@ -198,6 +198,10 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 .data-card-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 15px; margin-bottom: 10px; }
 .data-card-heading h3 { margin: 4px 0 0; font-size: 14px; }
 .data-card > a { font-size: 10px; }
+.source-failure { margin-top: 12px; padding: 12px; color: #713030; background: var(--red-soft); border: 1px solid #efc5c5; border-radius: 8px; }
+.source-failure > strong { font-size: 12px; }
+.source-failure > p { margin: 4px 0 0; font-size: 10px; line-height: 1.45; }
+.definition-grid.failure-details { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 10px; }
 .fact-card h3 { margin: 8px 0 12px; font: 600 14px Inter, ui-sans-serif, system-ui; letter-spacing: 0; line-height: 1.5; }
 .confidence { color: var(--muted); font-size: 10px; }
 .trace-row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 9px; background: #f5f8f6; border-radius: 7px; }
@@ -273,6 +277,7 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 .event-list strong, .event-list small { display: block; }
 .event-list strong { font-size: 10px; }
 .event-list small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.event-list .event-failure-detail { color: var(--red); font-weight: 600; }
 .cost-breakdown { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .cost-breakdown h4 { font-size: 12px; }
 .cost-breakdown > div { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; padding: 6px 0; font-size: 9px; }
@@ -281,7 +286,7 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 @media (max-width: 1180px) {
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
   .overview-grid { grid-template-columns: repeat(2, 1fr); }
-  .definition-grid.compact { grid-template-columns: repeat(2, 1fr); }
+  .definition-grid.compact, .definition-grid.failure-details { grid-template-columns: repeat(2, 1fr); }
   .research-row { grid-template-columns: 42px minmax(160px, 2fr) minmax(110px, 1fr) minmax(90px, .8fr) 26px; }
   .research-row .stage-copy:nth-last-of-type(1) { display: none; }
   .stage-timeline li { flex-direction: column; justify-content: center; gap: 3px; }

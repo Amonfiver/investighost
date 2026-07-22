@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { MockEditorialSourceProvider, type MockSourceSeed } from '@modules/editorial-pipeline/mock-source-provider'
 import { SourceAcquisitionService } from '@modules/editorial-pipeline/source-providers'
+import { ResearchSourceFailureSchema } from '@shared/editorial-contracts'
 import { buildEditorialFixture } from './support/editorial-fixture'
 
 const officialEvaluation = {
@@ -69,6 +70,32 @@ describe('source provider contracts and acquisition', () => {
     const result = await provider.acquire(input(['Morella historia', 'Morella turismo']))
     expect(result.sources).toHaveLength(2)
     expect(result.sources.map(source => source.status).sort()).toEqual(['accepted', 'unavailable'])
+    const unavailable = result.sources.find(source => source.status === 'unavailable')
+    if (!unavailable) throw new Error('Falta la fuente rota sintética')
+    expect(ResearchSourceFailureSchema.parse(unavailable.metadata.failure)).toEqual({
+      errorCode: 'HTTP_404',
+      httpStatus: 404,
+      message: 'La lectura de la fuente devolvió HTTP 404; se marcó como no disponible y el pipeline continuó con la evidencia válida.',
+      stage: 'source_reading',
+      occurredAt: new Date('2026-07-21T10:00:00.000Z'),
+      attempt: 1,
+      providerId: 'mock-source-provider',
+      operation: 'reading',
+    })
+    const successfulReadings = result.events.filter(event => event.type === 'provider.reading.succeeded')
+    expect(successfulReadings).toHaveLength(1)
+    expect(successfulReadings[0].payload.sourceId).toBe(result.sources.find(source => source.status === 'accepted')?.id)
+    expect(result.events.find(event => event.type === 'source.unavailable')).toMatchObject({
+      runId: unavailable.runId,
+      stage: 'source_reading',
+      payload: {
+        sourceId: unavailable.id,
+        errorCode: 'HTTP_404',
+        httpStatus: 404,
+        message: 'La lectura de la fuente devolvió HTTP 404; se marcó como no disponible y el pipeline continuó con la evidencia válida.',
+        attempt: 1,
+      },
+    })
     expect(result.simulation).toBe(true)
   })
 

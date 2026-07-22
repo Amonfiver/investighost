@@ -3,11 +3,13 @@ import { z } from 'zod'
 import {
   ProviderUsageSchema,
   ResearchEventSchema,
+  ResearchSourceFailureSchema,
   ResearchSourceSchema,
   type GeographicEntity,
   type ProviderUsage,
   type ResearchEvent,
   type ResearchSource,
+  type ResearchSourceFailure,
 } from '@shared/editorial-contracts'
 
 export type SourceProviderOperation = 'discovery' | 'reading' | 'evaluation'
@@ -228,7 +230,9 @@ export class SourceAcquisitionService {
     const contentFingerprints = new Map<string, string>()
     for (const candidate of candidates) {
       if (signal.aborted) throw new SourceProviderError('CANCELLED', 'La adquisición fue cancelada', false)
+      const sourceId = deterministicUuid(`${input.runId}:${normalizeSourceUrl(candidate.url)}`)
       let document: SourceDocument
+      let readAttempt = 1
       try {
         const read = await this.executeOperation(
           'reading',
@@ -237,17 +241,37 @@ export class SourceAcquisitionService {
           signal,
           operationSignal => this.provider.read({ candidate, signal: operationSignal })
             .then(value => SourceDocumentSchema.parse(value)),
+          {
+            recordSuccess: value => value.status === 'read' && Boolean(value.content),
+            eventPayload: { sourceId },
+          },
         )
         document = read.value
+        readAttempt = read.attempt
       } catch (error) {
         const normalized = normalizeProviderError(error)
         if (['CANCELLED', 'BUDGET_EXCEEDED', 'LIMIT_EXCEEDED'].includes(normalized.code)) throw normalized
-        documents.push({ source: this.unavailableSource(candidate, input.runId, normalized.code) })
+        const failure = this.sourceFailure(
+          normalized.code,
+          `La fuente no está disponible porque falló la lectura: ${normalized.message}`,
+          this.latestAttempt('reading'),
+          'reading',
+        )
+        const source = this.unavailableSource(candidate, input.runId, failure)
+        documents.push({ source })
+        this.recordSourceUnavailable(input, source, failure)
         continue
       }
 
       if (document.status !== 'read' || !document.content) {
-        documents.push({ source: this.unavailableSource(candidate, input.runId, `HTTP_${document.httpStatus ?? 'UNAVAILABLE'}`) })
+        const errorCode = document.httpStatus ? `HTTP_${document.httpStatus}` : 'SOURCE_UNAVAILABLE'
+        const message = document.httpStatus
+          ? `La lectura de la fuente devolvió HTTP ${document.httpStatus}; se marcó como no disponible y el pipeline continuó con la evidencia válida.`
+          : 'La lectura no devolvió contenido utilizable; la fuente se marcó como no disponible y el pipeline continuó con la evidencia válida.'
+        const failure = this.sourceFailure(errorCode, message, readAttempt, 'reading', document.httpStatus)
+        const source = this.unavailableSource(candidate, input.runId, failure)
+        documents.push({ source })
+        this.recordSourceUnavailable(input, source, failure)
         continue
       }
       const content = document.content.slice(0, this.limits.maxDocumentCharacters)
@@ -264,19 +288,28 @@ export class SourceAcquisitionService {
             destination: input.destination,
             signal: operationSignal,
           }).then(value => SourceEvaluationSchema.parse(value)),
+          { eventPayload: { sourceId } },
         )
         evaluation = evaluated.value
       } catch (error) {
         const normalized = normalizeProviderError(error)
         if (['CANCELLED', 'BUDGET_EXCEEDED', 'LIMIT_EXCEEDED'].includes(normalized.code)) throw normalized
-        documents.push({ source: this.unavailableSource(candidate, input.runId, normalized.code), content })
+        const failure = this.sourceFailure(
+          normalized.code,
+          `La fuente no está disponible porque falló su evaluación: ${normalized.message}`,
+          this.latestAttempt('evaluation'),
+          'evaluation',
+        )
+        const source = this.unavailableSource(candidate, input.runId, failure)
+        documents.push({ source, content })
+        this.recordSourceUnavailable(input, source, failure)
         continue
       }
 
       const contentFingerprint = sha256(content)
       const duplicateOfId = contentFingerprints.get(contentFingerprint)
       const source = ResearchSourceSchema.parse({
-        id: deterministicUuid(`${input.runId}:${normalizeSourceUrl(candidate.url)}`),
+        id: sourceId,
         runId: input.runId,
         url: candidate.url,
         normalizedUrl: normalizeSourceUrl(candidate.url),
@@ -332,6 +365,10 @@ export class SourceAcquisitionService {
     input: SourceAcquisitionInput,
     signal: AbortSignal,
     action: (signal: AbortSignal) => Promise<T>,
+    options: {
+      recordSuccess?: (value: T) => boolean
+      eventPayload?: Record<string, unknown>
+    } = {},
   ): Promise<OperationResult<T>> {
     this.assertCircuitClosed()
     let lastError: SourceProviderError | undefined
@@ -344,13 +381,15 @@ export class SourceAcquisitionService {
         this.circuit.failures = 0
         this.circuit.openUntil = undefined
         this.recordUsage(operation, inputCharacters, outputCharacters(value), attempt, input.runId)
-        this.recordEvent(input, operation, 'succeeded', attempt, startedAt)
+        if (options.recordSuccess?.(value) ?? true) {
+          this.recordEvent(input, operation, 'succeeded', attempt, startedAt, options.eventPayload)
+        }
         return { value, attempt }
       } catch (error) {
         const normalized = normalizeProviderError(error)
         lastError = normalized
         this.recordUsage(operation, inputCharacters, 0, attempt, input.runId)
-        this.recordEvent(input, operation, normalized.code, attempt, startedAt)
+        this.recordEvent(input, operation, normalized.code, attempt, startedAt, options.eventPayload)
         if (normalized.code === 'CANCELLED') throw normalized
         this.recordCircuitFailure()
         if (!normalized.retryable || attempt >= this.limits.maxAttempts) throw normalized
@@ -413,6 +452,7 @@ export class SourceAcquisitionService {
     outcome: string,
     attempt: number,
     startedAt: Date,
+    eventPayload: Record<string, unknown> = {},
   ): void {
     this.events.push(ResearchEventSchema.parse({
       id: this.id(),
@@ -427,12 +467,65 @@ export class SourceAcquisitionService {
         simulation: this.provider.simulation,
         attempt,
         durationMs: Math.max(0, this.now().getTime() - startedAt.getTime()),
+        ...eventPayload,
       },
       occurredAt: this.now(),
     }))
   }
 
-  private unavailableSource(candidate: DiscoveryCandidate, runId: string, reason: string): ResearchSource {
+  private sourceFailure(
+    errorCode: string,
+    message: string,
+    attempt: number,
+    operation: ResearchSourceFailure['operation'],
+    httpStatus?: number,
+  ): ResearchSourceFailure {
+    return ResearchSourceFailureSchema.parse({
+      errorCode,
+      httpStatus,
+      message,
+      stage: 'source_reading',
+      occurredAt: this.now(),
+      attempt,
+      providerId: this.provider.id,
+      operation,
+    })
+  }
+
+  private latestAttempt(operation: SourceProviderOperation): number {
+    const latest = [...this.usage].reverse().find(item => item.cause.startsWith(`${operation}:attempt:`))
+    const attempt = Number(latest?.cause.split(':').at(-1))
+    return Number.isInteger(attempt) && attempt > 0 ? attempt : 1
+  }
+
+  private recordSourceUnavailable(
+    input: SourceAcquisitionInput,
+    source: ResearchSource,
+    failure: ResearchSourceFailure,
+  ): void {
+    this.events.push(ResearchEventSchema.parse({
+      id: this.id(),
+      requestId: input.requestId,
+      runId: input.runId,
+      type: 'source.unavailable',
+      stage: failure.stage,
+      actorId: input.actorId,
+      correlationId: input.correlationId,
+      payload: {
+        sourceId: source.id,
+        providerId: failure.providerId,
+        operation: failure.operation,
+        simulation: this.provider.simulation,
+        errorCode: failure.errorCode,
+        httpStatus: failure.httpStatus,
+        message: failure.message,
+        attempt: failure.attempt,
+      },
+      occurredAt: failure.occurredAt,
+    }))
+  }
+
+  private unavailableSource(candidate: DiscoveryCandidate, runId: string, failure: ResearchSourceFailure): ResearchSource {
     const normalizedUrl = normalizeSourceUrl(candidate.url)
     return ResearchSourceSchema.parse({
       id: deterministicUuid(`${runId}:${normalizedUrl}`),
@@ -448,8 +541,12 @@ export class SourceAcquisitionService {
       reliability: 0,
       status: 'unavailable',
       fingerprint: sha256(`unavailable:${normalizedUrl}`),
-      metadata: { simulation: this.provider.simulation, errorCode: reason },
-      capturedAt: this.now(),
+      metadata: {
+        simulation: this.provider.simulation,
+        errorCode: failure.errorCode,
+        failure,
+      },
+      capturedAt: failure.occurredAt,
     })
   }
 }

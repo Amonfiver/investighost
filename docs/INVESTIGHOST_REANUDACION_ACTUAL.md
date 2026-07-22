@@ -1,28 +1,29 @@
 # Investighost — punto de reanudación actual
 
-Fecha de actualización: 2026-07-23 00:41:43 CEST (UTC+02:00)
-Objetivo de reanudación: repetir exclusivamente **J05 — Fuentes insuficientes** después de la corrección técnica del bloqueo observado.
+Fecha de actualización: 2026-07-23 01:14:39 CEST (UTC+02:00)
+Objetivo de reanudación: repetir exclusivamente **J06 — Una fuente rota** después de corregir su trazabilidad HTTP 404.
 
-Este documento es la fuente operativa canónica para la próxima sesión. No autoriza J06, la aprobación automática de J05, el cierre de FASE 3J, FASE 4, Automatic, producción, Trawel, publicación ni proveedores reales.
+Este documento es la fuente operativa canónica para la próxima sesión. No autoriza J07, la aprobación automática de J06, el cierre de FASE 3J, FASE 4, Automatic, producción, Trawel, publicación ni proveedores reales.
 
 ## 1. Identificación y estado Git de partida
 
 - Proyecto: `D:\Proyectos\investighost`.
 - Ruta WSL: `/mnt/d/Proyectos/investighost`.
 - Rama: `feat/investighost-reinvencion`.
-- HEAD inicial de esta corrección: `f877de22bdafb1fe649f956cd1b7c09b820a37a1` (`docs: guardar punto de reanudación de fase 3j`).
+- HEAD inicial de esta corrección: `df84a5013bbf288d6012455b937c4a2ae42c3f25` (`fix: corregir incidencia durable de j05`).
 - Upstream: `origin/feat/investighost-reinvencion`.
 - Estado inicial comprobado después de `git fetch`: árbol limpio y divergencia `0/0`.
-- Commit nuevo de cierre previsto: `fix: corregir incidencia durable de j05` (el commit que contiene esta actualización; el hash final se entrega en el informe de cierre).
+- Commit de cierre previsto: `fix: hacer trazable el 404 parcial de j06` (el hash final se entrega en el informe de cierre).
 
 ## 2. Estado general vigente
 
 - FASE 2C-C: completada.
 - FASE 3A–3I: completadas técnicamente.
 - FASE 3J: en aceptación humana y **no aprobada**.
-- J01–J04: aprobados por decisión humana expresa.
-- J05: rechazado originalmente como bloqueo; corrección técnica implementada, pero **pendiente de repetición y decisión humana**.
-- J06–J17: no autorizados mientras J05 no tenga decisión humana expresa.
+- J01–J05: aprobados por decisión humana expresa.
+- J05: aprobado tras la corrección durable del commit `df84a5013bbf288d6012455b937c4a2ae42c3f25`.
+- J06: rechazado inicialmente por defecto de trazabilidad; corrección técnica implementada y validada, pero **pendiente de repetición y decisión humana**.
+- J07–J17: no autorizados mientras J06 no tenga decisión humana expresa.
 - FASE 4: no iniciada.
 - Automatic: no implementado.
 - Supabase local/PostgreSQL: única persistencia durable estructurada.
@@ -35,34 +36,35 @@ Este documento es la fuente operativa canónica para la próxima sesión. No aut
 
 ### J01 — APROBADO
 
-- Morella, ES, Localidad.
-- Resolución exacta y catálogo `geonames-2026-07-20`.
-- Flujo completado con 2 fuentes, 7 hechos, 2 lugares y 2 actividades.
-- Borradores Aventura y Estudiante diferenciados y listos para revisión.
+- Morella se resolvió de forma exacta con el catálogo `geonames-2026-07-20`.
+- El flujo válido conservó fuentes, hechos, lugares, actividades y borradores diferenciados.
 - Cero publicaciones y cero envíos a Trawel.
 
 ### J02 — APROBADO
 
-- `San Pedro`, país `ZZ`, Localidad.
-- Norte y Sur quedaron visibles.
+- `San Pedro`, país `ZZ`, mostró Norte y Sur.
 - No hubo selección silenciosa.
 
 ### J03 — APROBADO
 
 - Selección humana explícita de `Testland › Sur › San Pedro`.
-- Método `human`, catálogo y procedencia conservados.
-- La corrección geográfica durable debe preservarse.
+- Método `human`, catálogo, procedencia y corrección geográfica durable conservados.
 
 ### J04 — APROBADO
 
-- Se creó una nueva solicitud válida de Morella.
-- Se reutilizó la misma identidad geográfica canónica.
-- No se creó otra entidad Morella.
-- Publicaciones permanecieron en cero.
+- Una nueva solicitud de Morella reutilizó la misma identidad geográfica canónica.
+- No se duplicó la entidad y publicaciones permanecieron en cero.
 
-Observación no bloqueante de J04: repetir Morella volvió a imputar el coste simulado completo de 0,24 EUR. Antes de conectar IA real se deberá ofrecer reutilización de conocimiento, actualización selectiva de datos volátiles, regeneración parcial o rehacer bajo decisión humana. Investighost seguirá siendo la base maestra y Trawel solo una futura base de publicación del contenido aprobado. Este requisito no se implementó durante la corrección J05.
+Observación no bloqueante de J04: repetir Morella volvió a imputar el coste simulado completo. Antes de conectar IA real se deberá ofrecer reutilización de conocimiento, actualización selectiva o regeneración parcial bajo decisión humana. Este requisito no forma parte de J06.
 
-## 4. J05 original — RECHAZADO
+### J05 — APROBADO
+
+- El escenario `Fuentes insuficientes` quedó como incidencia durable y controlada.
+- Se muestran estado, etapa `fact_structuring`, código `NO_ACCEPTED_SOURCES`, clasificación `data_quality`, mensaje, fecha, request ID, run ID y destination ID.
+- La incidencia admite reintento sin duplicar solicitud ni destino.
+- Commit de corrección y aprobación: `df84a5013bbf288d6012455b937c4a2ae42c3f25`.
+
+## 4. J06 original — RECHAZADO
 
 Configuración ejecutada:
 
@@ -71,110 +73,117 @@ Configuración ejecutada:
 - Tipo: Localidad.
 - Perfiles: Aventura y Estudiante.
 - Profundidad: Estándar.
-- Presupuesto: 2 EUR simulados.
+- Presupuesto máximo simulado: 2 EUR.
 - Intentos máximos: 3.
-- Escenario: `Fuentes insuficientes`.
+- Escenario: `Una fuente rota` (`broken_source`).
 
-La interfaz mostró como resultado final:
+La ejecución terminó y conservó evidencia útil:
 
-```text
-Error invoking remote method 'manual:start':
-FactualStructuringError: No hay fuentes aceptadas y leídas para estructurar
-```
+- estado `Completada`;
+- 2 fuentes: una `ACCEPTED` y una `UNAVAILABLE`;
+- 3 hechos;
+- 1 lugar;
+- 1 actividad;
+- 2 borradores;
+- coste simulado: 0,23 EUR;
+- publicaciones: 0.
 
-La pantalla conservó el formulario y la Biblioteca visible en el renderer siguió mostrando 2 investigaciones, 2 completadas, 0 incidencias y 0 publicaciones. No quedó visible etapa, código, detalle o acción de recuperación. Por decisión humana, J05 quedó rechazado como bloqueo.
+El rechazo se debió a que no se mostraban HTTP 404, código de lectura, mensaje controlado ni evento explícito de fuente no disponible. Historial mostraba `provider.reading.succeeded` también para el retorno roto, de modo incoherente con `UNAVAILABLE`.
+
+Evidencia durable original inspeccionada directamente en Supabase local:
+
+- request ID: `25d04f8c-fc6d-4b0c-a988-99233a4ffc49`;
+- run ID: `bde7b2e3-1ef9-4f6b-8d4c-6744112ee275`;
+- source ID rota: `9e80c496-33bb-4322-a033-62fc4e614fb2`;
+- source status: `unavailable`;
+- metadato histórico disponible: `errorCode: HTTP_404`;
+- evento histórico ambiguo: `provider.reading.succeeded`;
+- etapa del evento: `source_reading`.
 
 ## 5. Causa raíz exacta
 
-La inspección directa de PostgreSQL local demostró que el scaffold **no se perdió ni se revirtió**. La ejecución original de J05 ya había persistido:
+1. El escenario simulado sí devolvía `status: broken` y `httpStatus: 404` desde `MockEditorialSourceProvider.read`.
+2. `SourceAcquisitionService.executeOperation` consideraba exitoso cualquier valor que cumpliera el contrato `SourceDocument`, aunque su estado semántico fuera `broken`.
+3. Por ello registraba `provider.reading.succeeded` antes de que `acquire` examinara `document.status` y `content`.
+4. Después, `acquire` convertía correctamente la fuente en `unavailable`, pero `unavailableSource` solo conservaba `metadata.errorCode`.
+5. No persistía mensaje, HTTP status numérico, etapa, fecha, proveedor, operación o intento en un detalle estructurado.
+6. Tampoco se emitía un evento explícito `source.unavailable`.
+7. La pestaña Fuentes no interpretaba el error de `metadata`, y el Historial solo mostraba tipo de evento, etapa y correlación.
 
-- request ID: `cfbec723-ad23-4c46-842d-f81367ebfda2`;
-- run ID: `f7cfc76d-3618-4daa-934e-8b24aa14f69d`;
-- destination ID canónico: `70000000-0000-4000-8000-000000000003`;
-- solicitud: `failed`;
-- run: `failed`;
-- etapa: `fact_structuring`;
-- código: `NO_ACCEPTED_SOURCES`;
-- mensaje: `No hay fuentes aceptadas y leídas para estructurar`;
-- coste registrado: 0,07 EUR simulados;
-- evento durable: `manual.execution.failed`.
+La tolerancia parcial del pipeline funcionaba; el defecto estaba en la semántica del evento, la riqueza del registro durable y su presentación.
 
-La causa del bloqueo visible estaba en la frontera IPC/UI:
+## 6. Flujo corregido exclusivamente para J06
 
-1. `ManualResearchService.start` persistía el destino, la solicitud y el run antes de ejecutar proveedores.
-2. Persistía el control de resiliencia antes del pipeline.
-3. Guardaba el checkpoint `source_reading` antes de entrar en `fact_structuring`.
-4. `FactualStructuringError(NO_ACCEPTED_SOURCES)` era capturado por `execute`, que actualizaba solicitud/run a `failed`, guardaba código/mensaje/evento y liberaba el lock.
-5. Después de persistir, `execute` relanzaba la excepción técnica.
-6. `manual:start` devolvía directamente esa promesa rechazada a Electron.
-7. `completeStart` capturaba el rechazo únicamente para mostrar `error.message`; no refrescaba Biblioteca ni abría la incidencia durable.
-8. Por ello el renderer conservaba su snapshot anterior de 2 investigaciones aunque PostgreSQL ya contenía 3.
+- Se añadió el contrato `ResearchSourceFailureSchema` con:
+  - `errorCode`;
+  - `httpStatus` opcional;
+  - mensaje controlado;
+  - etapa fija `source_reading`;
+  - fecha/hora `occurredAt`;
+  - intento;
+  - proveedor;
+  - operación `reading` o `evaluation`.
+- La fuente `unavailable` guarda ese detalle en `research_sources.metadata.failure`, además del `errorCode` compatible existente. Su propia fila ya aporta source ID, run ID, estado y captura.
+- La lectura solo genera `provider.reading.succeeded` cuando el documento está realmente leído y contiene contenido.
+- Un retorno roto HTTP 404 conserva exactamente:
+  - `errorCode: HTTP_404`;
+  - `httpStatus: 404`;
+  - intento `1` en el fixture;
+  - etapa `source_reading`;
+  - mensaje `La lectura de la fuente devolvió HTTP 404; se marcó como no disponible y el pipeline continuó con la evidencia válida.`
+- Se persiste el evento explícito `source.unavailable`, enlazado a request, run y source, con código, status, mensaje, intento, proveedor y fecha/hora.
+- La pestaña Fuentes muestra el 404, mensaje, código, etapa, intento, fecha, source ID y run ID.
+- Historial muestra `source.unavailable` y resume HTTP 404, source ID, intento y run ID.
+- La fuente aceptada continúa visible y alimenta 3 hechos, 1 lugar, 1 actividad y 2 borradores.
+- La ejecución parcial sigue completándose; no se convirtió J06 en fallo global.
 
-El orden durable previo era correcto; el defecto era que el resultado controlado persistido quedaba oculto y se sustituía visualmente por la excepción IPC cruda. Además faltaba una clasificación de fallo explícita en el run.
+## 7. Persistencia y migraciones
 
-## 6. Corrección aplicada exclusivamente para J05
+No hay migración nueva para J06. `research_sources.metadata` ya es un objeto JSONB durable y justificado para metadatos de proveedor; `research_events.payload` ya es el contrato durable de auditoría. La integración local comprobó ambos registros directamente en PostgreSQL.
 
-- Se añadió el contrato `ManualResearchExecutionOutcome` con resultados discriminados `completed` o `failed`.
-- Los handlers IPC `manual:start` y `manual:retry` usan ahora métodos orientados a interfaz que devuelven la incidencia persistida cuando existe, sin hacer cruzar J05 como excepción técnica cruda.
-- `NO_ACCEPTED_SOURCES` conserva su código estable y usa el mensaje controlado: `No hay fuentes aceptadas y leídas para continuar con la estructuración factual.`
-- El run y su evento guardan la clasificación durable `data_quality`.
-- Biblioteca se refresca también tras una ejecución fallida.
-- La fila fallida muestra etapa, código y mensaje.
-- La UI abre automáticamente el detalle durable con estado, etapa, código, clasificación, fecha/hora, request ID, run ID y destination ID canónico.
-- El detalle ofrece `Reintentar etapa`, compatible con los contratos actuales.
-- El reintento usa el mismo resultado controlado, mantiene la solicitud y el destino, crea un nuevo run enlazado y no duplica agregados.
-- La migración retrorellena el J05 histórico como `data_quality` y exige clasificación para todo run `failed`.
-- La integración geográfica usa ahora una consulta sintética aislada para no borrar ni falsear la corrección humana durable de J03.
-- Los relojes de los tests Manual ya no caducan artificialmente al pasar la fecha fija del antiguo fixture.
+No se ejecutaron `supabase link`, `supabase db push` ni `supabase db reset`. No se modificó ni eliminó la evidencia humana histórica.
 
-## 7. Migración local
+## 8. Archivos modificados
 
-Archivo:
+- `src/shared/editorial-contracts.ts`: contrato estructurado del fallo de fuente.
+- `src/modules/editorial-pipeline/source-providers.ts`: semántica de éxito, persistencia del 404 y evento `source.unavailable`.
+- `src/renderer/App.tsx`: detalle visible en Fuentes e Historial, incluida compatibilidad visual con el registro histórico mínimo.
+- `src/renderer/App.css`: estados y bloques visuales del fallo parcial.
+- `tests/source-acquisition.test.ts`: contrato, HTTP 404 y coherencia de eventos.
+- `tests/manual-resilience.test.ts`: continuidad del pipeline con evidencia restante.
+- `tests/manual-supabase.integration.test.ts`: persistencia real de fuente/evento y agregado completado.
+- `docs/INVESTIGHOST_REANUDACION_ACTUAL.md`: este punto de reanudación.
 
-```text
-supabase/migrations/20260723010000_manual_failure_classification.sql
-```
+## 9. Pruebas y validaciones realizadas
 
-La migración:
-
-- añade `failure_classification` a `editorial_research_runs`;
-- limita los valores permitidos;
-- retrorellena fallos existentes, incluido `NO_ACCEPTED_SOURCES → data_quality`;
-- exige clasificación cuando el run está `failed`.
-
-Se aplicó con `supabase migration up --local`. No se ejecutaron `supabase link`, `supabase db push` ni `supabase db reset`. Las dos investigaciones completadas y la incidencia original J05 se conservaron.
-
-Estado local comprobado después de migrar y limpiar únicamente fixtures temporales de integración:
-
-- solicitudes: 3;
-- completadas: 2;
-- fallidas: 1;
-- filas canónicas de Morella para ID `70000000-0000-4000-8000-000000000003`: 1.
-
-## 8. Pruebas y validaciones realizadas
-
-- Pruebas específicas Manual, resiliencia y schema: 22/22 aprobadas.
-- Integración Manual Supabase local: 4/4 aprobadas, incluido J05 y su reintento sin duplicados.
-- Suite general sin integraciones opt-in: 139 aprobadas y 7 omitidas según diseño.
-- Suite completa con integraciones Supabase locales: 146/146 aprobadas.
+- Pruebas específicas `source-acquisition` + `manual-resilience`: 20/20 aprobadas.
+- Integración Manual Supabase local: 5/5 aprobadas, incluida la persistencia J06 HTTP 404.
+- Suite normal sin integraciones opt-in: 139 aprobadas y 8 omitidas según diseño.
+- Suite completa con todas las integraciones Supabase locales: 147/147 aprobadas.
 - Typecheck: aprobado.
 - ESLint TypeScript/React con cero warnings: aprobado.
-- Build Vite renderer/main/preload: aprobado.
-- `supabase db lint --local --level warning`: aprobado, sin errores de schema.
-- `git diff --check`: aprobado antes de esta actualización documental y debe repetirse antes del commit.
+- Build de renderer, main y preload: aprobado.
+- `npm run build` llegó a compilar y empaquetar la aplicación, pero el paso estándar de `winCodeSign` falló porque el usuario Windows no tiene privilegio para crear dos enlaces simbólicos en la caché externa.
+- Build completo alternativo `npm run build -- --config.win.signAndEditExecutable=false`: aprobado; generó el instalador NSIS sin edición/firma del ejecutable.
+- `supabase db lint --local`: aprobado, sin errores de schema.
+- `git diff --check`: aprobado después de la actualización documental; debe repetirse como comprobación final antes del commit.
 
-No se ejecutó `supabase db reset` porque borraría el estado humano existente. No se usaron red de proveedores, IA real, créditos, producción, Trawel ni publicación.
+No se usaron proveedores de red, IA real, créditos, datos reales, producción, Trawel ni publicación.
 
-## 9. Estado actual y gate humano
+## 10. Estado local conservado y gate humano
 
-- La corrección técnica de J05 está lista y validada automáticamente.
-- J05 **no está aprobado automáticamente**.
-- FASE 3J sigue rechazada/bloqueada en J05 hasta nueva decisión humana.
-- No se autoriza J06.
-- El protocolo fuente continúa en `docs/FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
-- La próxima acción exclusiva es repetir J05 manualmente.
+Después de limpiar únicamente los fixtures temporales creados por las integraciones, Supabase local conserva:
 
-## 10. Arranque local desde PowerShell
+- 5 solicitudes humanas;
+- 3 completadas;
+- 2 incidencias J05;
+- 1 identidad canónica de Morella para `70000000-0000-4000-8000-000000000003`;
+- la ejecución J06 original rechazada;
+- publicaciones en cero.
+
+La corrección técnica de J06 está lista y validada automáticamente, pero J06 **no está aprobado automáticamente**. FASE 3J sigue abierta y no se autoriza J07. El protocolo fuente continúa en `docs/FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
+
+## 11. Arranque local desde PowerShell
 
 Ejecutar en PowerShell:
 
@@ -207,10 +216,10 @@ npm run dev
 
 Mantener abierta esa terminal. No abrir dos instancias. Confirmar `Supabase local`, `Local · Manual · Simulado` y `Publicaciones: 0`.
 
-## 11. Instrucciones exactas para repetir J05
+## 12. Instrucciones exactas para repetir J06
 
 1. Abrir Investighost con el bloque anterior.
-2. En Biblioteca comprobar el estado conservado previo a repetir: 3 investigaciones, 2 completadas, 1 incidencia y 0 publicaciones.
+2. En Biblioteca comprobar el estado conservado previo a repetir: 5 investigaciones, 3 completadas, 2 incidencias y 0 publicaciones.
 3. Pulsar `Nueva investigación`.
 4. Configurar:
    - Destino: `Morella`.
@@ -226,32 +235,42 @@ Mantener abierta esa terminal. No abrir dos instancias. Confirmar `Supabase loca
 7. Profundidad: `Estándar`.
 8. Presupuesto máximo simulado: `2` EUR.
 9. Intentos máximos: `3`.
-10. Escenario sintético: `Fuentes insuficientes`.
+10. Escenario sintético: `Una fuente rota`.
 11. Pulsar `Iniciar investigación Manual`.
-12. Comprobar que no aparece `Error invoking remote method 'manual:start'` ni `FactualStructuringError` como resultado final.
-13. Comprobar que se abre un detalle durable con:
-    - estado `Fallida`;
-    - etapa `Hechos` (`fact_structuring`);
-    - código `NO_ACCEPTED_SOURCES`;
-    - clasificación `Calidad de datos` (`data_quality`);
-    - mensaje controlado;
-    - request ID;
-    - run ID;
-    - destination ID `70000000-0000-4000-8000-000000000003`;
-    - acción visible `Reintentar etapa`.
-14. Volver a Biblioteca y comprobar:
-    - 4 investigaciones;
-    - 2 completadas;
-    - 2 incidencias, contando la evidencia original conservada y la nueva repetición;
-    - la nueva fila muestra etapa, código y mensaje;
-    - publicaciones continúa en 0.
-15. No pulsar J06 ni iniciar otro escenario.
-16. Registrar una decisión humana inequívoca sobre J05: `APROBADO` o `RECHAZADO`, con evidencia visible y fecha/hora.
+12. Comprobar que la ejecución termina `Completada` y muestra:
+    - 2 fuentes;
+    - 3 hechos;
+    - 1 lugar;
+    - 1 actividad;
+    - 2 borradores;
+    - coste simulado de 0,23 EUR;
+    - publicaciones en 0.
+13. Abrir `Fuentes` y comprobar:
+    - una fuente `ACCEPTED` con fiabilidad, actualidad, editor y captura;
+    - una fuente `UNAVAILABLE`;
+    - encabezado `HTTP 404`;
+    - código `HTTP_404`;
+    - mensaje controlado completo;
+    - etapa `Lectura` (`source_reading`);
+    - intento `1`;
+    - fecha/hora;
+    - source ID y run ID.
+14. Abrir `Historial` y comprobar:
+    - evento explícito `source.unavailable`;
+    - resumen `HTTP 404`;
+    - el mismo source ID;
+    - intento `1`;
+    - run ID asociado;
+    - solo una lectura exitosa, correspondiente a la fuente aceptada.
+15. Confirmar que la fuente no disponible no aparece como aceptada ni alimenta hechos, y que la fuente válida conserva el resto del resultado.
+16. Volver a Biblioteca y comprobar: 6 investigaciones, 4 completadas, 2 incidencias y 0 publicaciones.
+17. No iniciar J07 ni otro escenario.
+18. Registrar una decisión humana inequívoca sobre J06: `APROBADO` o `RECHAZADO`, con evidencia visible y fecha/hora.
 
-## 12. Restricciones que siguen vigentes
+## 13. Restricciones que siguen vigentes
 
-- No avanzar a J06 sin decisión humana expresa sobre la repetición de J05.
-- No aprobar J05 por inferencia técnica.
+- No avanzar a J07 sin decisión humana expresa sobre la repetición de J06.
+- No aprobar J06 por inferencia técnica.
 - No declarar FASE 3J aprobada.
 - No iniciar FASE 4.
 - No implementar Automatic.
@@ -260,13 +279,13 @@ Mantener abierta esa terminal. No abrir dos instancias. Confirmar `Supabase loca
 - No usar IA real, datos reales o créditos.
 - No ejecutar `supabase link`, `supabase db push` ni `supabase db reset` sobre el estado humano conservado.
 - No introducir SQLite, Drizzle, Better SQLite, segunda base, file store alternativo ni fallback.
-- No borrar las dos investigaciones completadas ni la corrección humana de J03.
+- No borrar las investigaciones humanas ni la corrección durable de J03.
 - No alterar la identidad canónica de Morella.
 
 # SIGUIENTE ACCIÓN OBLIGATORIA Y EXCLUSIVA
 
 ```text
-REPETIR J05 — Fuentes insuficientes
+REPETIR J06 — Una fuente rota
 ```
 
-La aprobación o rechazo de J05 seguirá siendo exclusivamente humano.
+La aprobación o rechazo de J06 seguirá siendo exclusivamente humano.

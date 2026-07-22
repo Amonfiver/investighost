@@ -136,6 +136,87 @@ integration('Supabase local Manual workflow', () => {
     }
   })
 
+  it('persists and audits J06 HTTP 404 while completing with the remaining evidence', async () => {
+    const { client } = createLocalSupabaseClientFromEnv()
+    const repository = new SupabaseEditorialResearchRepository(client)
+    const service = new ManualResearchService(
+      repository,
+      new GeographicResolver(new SupabaseGeographyCatalogRepository(client), 'geonames-2026-07-20'),
+      { ownerProcess: 'manual-supabase-j06' },
+    )
+    let requestId: string | undefined
+
+    try {
+      const result = await service.start({
+        destinationQuery: 'Morella', countryCode: 'ES', destinationType: 'locality',
+        profiles: ['adventure', 'student'], language: 'es', depth: 'standard',
+        notes: 'J06 sintético de integración', budgetLimit: 2, maxAttempts: 3,
+        simulationScenario: 'broken_source', idempotencyKey: `manual-j06:${randomUUID()}`,
+        actorId: '6fda5d08-9cd0-4d9d-98c1-7ccbfd56ad11',
+      })
+      requestId = result.request.id
+      expect(result).toMatchObject({
+        request: { state: 'completed' },
+        run: { stage: 'human_review', state: 'completed' },
+      })
+      expect(result.sources.map(source => source.status)).toEqual(expect.arrayContaining(['accepted', 'unavailable']))
+      expect(result.facts).toHaveLength(3)
+      expect(result.places).toHaveLength(1)
+      expect(result.activities).toHaveLength(1)
+      expect(result.drafts).toHaveLength(2)
+
+      const { data: source, error: sourceError } = await client.from('research_sources')
+        .select('id,run_id,status,metadata,captured_at')
+        .eq('run_id', result.run.id).eq('status', 'unavailable').single()
+      expect(sourceError).toBeNull()
+      expect(source).toMatchObject({
+        run_id: result.run.id,
+        status: 'unavailable',
+        metadata: {
+          errorCode: 'HTTP_404',
+          failure: {
+            errorCode: 'HTTP_404',
+            httpStatus: 404,
+            stage: 'source_reading',
+            attempt: 1,
+            providerId: 'mock-source-provider',
+            operation: 'reading',
+            occurredAt: expect.any(String),
+          },
+        },
+      })
+
+      const { data: unavailableEvent, error: eventError } = await client.from('research_events')
+        .select('request_id,run_id,event_type,stage,payload,occurred_at')
+        .eq('request_id', requestId).eq('event_type', 'source.unavailable').single()
+      expect(eventError).toBeNull()
+      expect(unavailableEvent).toMatchObject({
+        request_id: requestId,
+        run_id: result.run.id,
+        stage: 'source_reading',
+        payload: {
+          sourceId: source?.id,
+          errorCode: 'HTTP_404',
+          httpStatus: 404,
+          attempt: 1,
+          message: 'La lectura de la fuente devolvió HTTP 404; se marcó como no disponible y el pipeline continuó con la evidencia válida.',
+        },
+      })
+
+      const { count: successfulReadings, error: successError } = await client.from('research_events')
+        .select('id', { head: true, count: 'exact' })
+        .eq('request_id', requestId).eq('event_type', 'provider.reading.succeeded')
+      expect(successError).toBeNull()
+      expect(successfulReadings).toBe(1)
+      expect(await repository.getByRequestId(requestId)).toEqual(result)
+    } finally {
+      if (requestId) {
+        const { error } = await client.from('editorial_research_requests').delete().eq('id', requestId)
+        expect(error).toBeNull()
+      }
+    }
+  })
+
   it('persists and exposes the J05 insufficient-sources incident without duplicating Morella', async () => {
     const { client } = createLocalSupabaseClientFromEnv()
     const repository = new SupabaseEditorialResearchRepository(client)

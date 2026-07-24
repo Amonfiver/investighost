@@ -114,8 +114,9 @@ J14 quedó **APROBADO** tras la corrección y repetición humana.
 
 ## Acta de decisión humana
 
-- Commit base probado: `270ec3bbf373076bbd457751733de5c21f7b3324`.
-- Estado del código J14 probado: cambios locales sobre el commit base, pendientes de commit de cierre.
+- Commit de cierre: `ac61700f27297d899e55f6460a76a6cac7bca72a`.
+- Mensaje: `feat: cerrar fase 3j con revisión humana trazable`.
+- Rama remota: `origin/feat/investighost-reinvencion`, sincronizada con el commit de cierre.
 - Fecha/hora: 2026-07-25; hora no consignada.
 - Evaluador: jefe del proyecto.
 - Escenarios aprobados: J01–J17.
@@ -127,4 +128,4 @@ J14 quedó **APROBADO** tras la corrección y repetición humana.
 
 **FASE 3J — APROBADA**
 
-El gate humano queda cerrado. Esta decisión no autoriza trabajo posterior: FASE 4 no se ha iniciado, Automatic no está implementado y Trawel, producción y publicación permanecen desconectados.
+El gate humano queda cerrado y respaldado en remoto. Esta decisión no autorizó trabajo funcional posterior: FASE 4A solo se ha redefinido documentalmente, Automatic no está implementado y Trawel, producción y publicación permanecen desconectados.

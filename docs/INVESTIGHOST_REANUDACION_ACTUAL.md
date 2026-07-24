@@ -1,9 +1,9 @@
 # Investighost — cierre y punto de reanudación actual
 
 Fecha de actualización: 2026-07-25
-Estado canónico: **FASE 3J APROBADA Y CERRADA**
+Estado canónico: **FASE 3J APROBADA, CERRADA Y SINCRONIZADA**
 
-Este documento sustituye los puntos de reanudación anteriores. No hay una siguiente fase autorizada.
+Este documento sustituye los puntos de reanudación anteriores. FASE 4A queda diseñada documentalmente como siguiente bloque posible, pero no está autorizada para implementación.
 
 ## 1. Decisión humana vigente
 
@@ -13,21 +13,21 @@ El jefe del proyecto aprobó expresamente J01–J17 y emitió la decisión inequ
 FASE 3J — APROBADA
 ```
 
-El gate humano del flujo Manual queda cerrado. La aprobación no inicia ni autoriza FASE 4, Automatic, publicación, Trawel, producción, proveedores reales, IA real o carga de créditos.
+El gate humano del flujo Manual queda cerrado. La aprobación no inició ni autorizó FASE 4, Automatic, publicación, Trawel, producción, proveedores reales, IA real o carga de créditos.
 
 ## 2. Estado Git de este cierre
 
 - Proyecto Windows: `D:\Proyectos\investighost`.
 - Ruta WSL: `/mnt/d/Proyectos/investighost`.
 - Rama: `feat/investighost-reinvencion`.
-- HEAD inicial: `270ec3bbf373076bbd457751733de5c21f7b3324`.
-- Commit base: `docs: cerrar gate humano hasta j08`.
+- HEAD de cierre: `ac61700f27297d899e55f6460a76a6cac7bca72a` (`ac61700`).
+- Commit: `feat: cerrar fase 3j con revisión humana trazable`.
 - Upstream: `origin/feat/investighost-reinvencion`.
-- Divergencia inicial con upstream: 0 commits locales / 0 commits remotos.
-- La corrección de J14 y este cierre documental permanecen sin commit.
-- No se hizo push.
+- Push de cierre: realizado a `origin/feat/investighost-reinvencion`.
+- Divergencia confirmada antes de esta actualización documental: 0 commits locales / 0 commits remotos.
+- Árbol confirmado limpio antes de esta actualización documental.
 
-El cierre Git requiere autorización humana expresa. Hasta recibirla no debe crearse el commit.
+Esta actualización redefine únicamente documentación y queda local, sin commit ni push, hasta recibir autorización expresa. No modifica el cierre Git ya publicado de FASE 3J.
 
 ## 3. Estado general del proyecto
 
@@ -35,7 +35,8 @@ El cierre Git requiere autorización humana expresa. Hasta recibirla no debe cre
 - FASE 3A–3I: completadas técnicamente.
 - FASE 3J: aprobada humanamente y cerrada.
 - J01–J17: aprobados.
-- FASE 4: no iniciada y no autorizada.
+- FASE 4 original: no iniciada literalmente; parte de su alcance quedó cubierta y aceptada dentro de FASE 3J.
+- FASE 4A — Consolidación operativa de Biblioteca: diseñada documentalmente y no autorizada para implementación.
 - Automatic: no implementado.
 - Flujo activo: Manual local y simulado.
 - Persistencia estructurada: Supabase local/PostgreSQL.
@@ -265,7 +266,158 @@ Validación final ejecutada el 2026-07-25:
 
 No se ejecutaron integraciones Supabase que creasen solicitudes temporales ni comandos `supabase link`, `supabase db push` o `supabase db reset`.
 
-## 12. Decisiones estratégicas pendientes
+## 12. Ruta posterior redefinida — FASE 4A
+
+### Estado
+
+```text
+FASE 4A — CONSOLIDACIÓN OPERATIVA DE BIBLIOTECA
+DISEÑADA DOCUMENTALMENTE — NO AUTORIZADA PARA IMPLEMENTACIÓN
+```
+
+La FASE 4 original proponía biblioteca, CRUD durable, versiones, edición, aprobación/rechazo, historial y prueba con una persona no técnica. FASE 3J ya aceptó humanamente gran parte de esas capacidades:
+
+- Biblioteca y detalle durables.
+- Persistencia tras reinicio.
+- Versiones editoriales.
+- Regeneración aislada.
+- Edición humana con motivo.
+- Aprobación, rechazo y reapertura.
+- Historial cronológico de decisiones.
+- Actor, comentario, fecha y versión visibles.
+- Eventos y costes auditables.
+- Operación completa desde Electron.
+- Cero publicación y cero conexión a Trawel.
+
+Por ello no se debe implementar literalmente la FASE 4 anterior ni introducir un CRUD destructivo que duplique o debilite la trazabilidad existente.
+
+### Objetivo
+
+Convertir la Biblioteca durable existente en una herramienta cómoda y segura para gestionar un volumen creciente de investigaciones y borradores, sin lanzar nuevas investigaciones de forma implícita y sin conectar publicación, Trawel, producción, Automatic, IA o proveedores reales.
+
+### Alcance futuro propuesto
+
+#### Búsqueda
+
+Prever búsqueda en datos propios por:
+
+- destino;
+- país;
+- nombre o título;
+- identidad geográfica canónica;
+- identificador visible;
+- perfil editorial;
+- estado de solicitud o borrador.
+
+Buscar en Biblioteca nunca debe lanzar proveedores, crear solicitudes, regenerar contenido o añadir coste.
+
+#### Filtros
+
+Prever filtros combinables por:
+
+- estado de solicitud;
+- etapa;
+- incidencia;
+- completada o investigando;
+- lista para revisar o en revisión;
+- aprobada, rechazada o archivada;
+- perfil Aventura o Estudiante;
+- fecha o intervalo;
+- presencia o ausencia de incidencias.
+
+La definición técnica definitiva se decidirá después de inspeccionar el volumen, repositorio y experiencia de uso; no se fija en este cierre documental.
+
+#### Ordenación
+
+Prever ordenación por:
+
+- actividad más reciente;
+- creación más reciente;
+- creación más antigua;
+- destino alfabético;
+- estado;
+- coste;
+- última decisión editorial.
+
+#### Archivo seguro
+
+El comportamiento ordinario debe ser archivar, consultar archivados y restaurar. Archivar no puede borrar:
+
+- fuentes;
+- hechos;
+- versiones;
+- costes;
+- eventos;
+- decisiones humanas.
+
+La eliminación definitiva queda fuera de FASE 4A y exigiría una política posterior específica, confirmación reforzada y reglas propias de auditoría.
+
+#### Resumen operativo
+
+Prever indicadores de:
+
+- en ejecución;
+- con incidencia;
+- pendientes de revisión;
+- en revisión;
+- aprobadas;
+- rechazadas;
+- archivadas.
+
+Estos contadores describen trabajo interno y nunca deben confundirse con publicaciones.
+
+#### Navegación y experiencia
+
+La experiencia futura debe permitir a una persona no técnica:
+
+- localizar contenido rápidamente;
+- reconocer su estado;
+- abrir el detalle;
+- continuar una revisión;
+- distinguir incidencias;
+- archivar sin perder evidencia;
+- restaurar contenido archivado.
+
+#### Terminología de RevisIAtor
+
+RevisIAtor no se considera una dependencia externa obligatoria. FASE 4A solo debe registrar como deuda de interfaz la revisión futura de su nombre y presentación. No se elimina ni se modifica su comportamiento sin otro diseño autorizado.
+
+### Entregables futuros
+
+Si FASE 4A recibe autorización funcional, deberá entregar:
+
+- inventario confirmado de capacidades existentes para evitar duplicación;
+- diseño de búsqueda, filtros, ordenación y estados vacíos;
+- biblioteca operable con volumen sintético suficiente;
+- archivo y restauración no destructivos;
+- indicadores operativos separados de publicaciones;
+- preferencias persistentes cuando corresponda y esté justificado;
+- pruebas automatizadas y aceptación humana desde Electron;
+- documentación de invariantes, límites y resultado del gate.
+
+### Fuera de alcance
+
+- publicación;
+- Trawel;
+- producción;
+- Automatic;
+- IA y proveedores reales;
+- créditos reales;
+- cola editorial o calendario de FASE 5;
+- campañas, correo o nube;
+- migraciones remotas;
+- nuevas jerarquías de supervisor o permisos multiusuario;
+- borrado destructivo;
+- rediseño integral de perfiles;
+- control Extensión;
+- reutilización automática del conocimiento;
+- mejora editorial integral.
+
+### Gate futuro
+
+FASE 4A requerirá implementación explícitamente autorizada, validación técnica local y aceptación humana. Sus criterios documentales están en `docs/ACCEPTANCE_TESTS.md`. Hasta una autorización nueva no se modifica código, persistencia, UI, pruebas o migraciones para este bloque.
+
+## 13. Decisiones estratégicas pendientes
 
 Estas decisiones se conservan como deuda futura y no autorizan implementación.
 
@@ -284,6 +436,7 @@ Estas decisiones se conservan como deuda futura y no autorizan implementación.
 - Punto de partida orientativo: 800 palabras.
 - Referencias futuras: Estudiante 1.800; Aventura 1.000.
 - Evitar relleno artificial.
+- Admitir desviaciones justificadas por la información real disponible.
 
 ### Reutilización del conocimiento
 
@@ -292,6 +445,7 @@ Estas decisiones se conservan como deuda futura y no autorizan implementación.
 - Ampliar secciones concretas cuando baste.
 - Rehacer completamente solo por decisión humana.
 - Evitar imputar otra vez el coste completo al reutilizar conocimiento propio.
+- Mantener trazabilidad de qué conocimiento se reutilizó y qué información se actualizó.
 - Mantener Investighost como base maestra y reservar Trawel para una futura publicación autorizada.
 
 ### Mejora editorial futura
@@ -299,21 +453,21 @@ Estas decisiones se conservan como deuda futura y no autorizan implementación.
 Aventura:
 
 - adoptar el rol de aventurero experimentado;
-- detallar rutas, accesos, distancias, duración, desnivel, dificultad, terreno, condiciones, riesgos y servicios reales;
+- detallar rutas identificables, lugares, actividades, accesos, distancias, duración, desnivel, dificultad, terreno, condiciones, riesgos y servicios reales;
 - evitar generalidades intercambiables.
 
 Estudiante:
 
 - adoptar el rol de profesor o divulgador cercano;
-- integrar historia, fechas, población, lenguas, moneda, contexto administrativo, cultura, patrimonio, personajes, economía y sitios emblemáticos;
+- integrar historia, fechas, hechos importantes, población aproximada, lenguas, moneda, contexto político o administrativo, patrimonio, cultura, personajes, economía, educación, vida cotidiana y sitios emblemáticos;
 - explicar los datos de forma natural.
 
 Ambos:
 
-- producir escritura práctica, natural y propia de cada destino;
-- evitar clichés, plantillas repetidas y copia-pega.
+- producir escritura natural, sencilla, práctica, interesante y propia de cada destino;
+- evitar clichés, plantillas repetidas, copia-pega y datos inventados.
 
-## 13. Persistencia, seguridad y migraciones
+## 14. Persistencia, seguridad y migraciones
 
 - No hay migración nueva para J14 o para el cierre.
 - No se alteró ni borró evidencia humana histórica.
@@ -325,12 +479,12 @@ Ambos:
 - No se usó IA real.
 - No se cargaron créditos.
 - No se implementó Automatic.
-- No se inició FASE 4.
+- No se inició funcionalmente FASE 4A.
 
-## 14. Siguiente trabajo
+## 15. Siguiente trabajo
 
 ```text
-NINGÚN TRABAJO POSTERIOR AUTORIZADO
+NINGUNA IMPLEMENTACIÓN POSTERIOR AUTORIZADA
 ```
 
-La próxima acción permitida es únicamente el commit de cierre de FASE 3J si el jefe del proyecto lo autoriza expresamente. Tras ese commit seguirá siendo necesario un encargo nuevo para cualquier fase, funcionalidad o integración posterior.
+El commit y push de cierre de FASE 3J ya existen en remoto. La presente actualización documental debe permanecer sin commit hasta autorización expresa. Una futura implementación de FASE 4A requerirá otra autorización humana específica y no se deduce de aprobar este diseño.

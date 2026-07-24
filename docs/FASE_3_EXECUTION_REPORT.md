@@ -241,7 +241,9 @@ Estado: **aprobada humanamente y cerrada**.
 - J16 reconcilió intentos, versiones, eventos y un coste total de 0,26 EUR.
 - J17 confirmó publicaciones en cero y ausencia de Automatic, Trawel, producción, credenciales y proveedores reales.
 - Decisión inequívoca del jefe: **FASE 3J APROBADA**.
+- Commit de cierre: `ac61700f27297d899e55f6460a76a6cac7bca72a` (`feat: cerrar fase 3j con revisión humana trazable`).
+- Push confirmado en `origin/feat/investighost-reinvencion`; rama sincronizada y árbol limpio tras el cierre.
 
 ## Cierre y frontera posterior
 
-El flujo Manual de FASE 3 queda cerrado. No se inicia FASE 4 y no hay trabajo posterior autorizado. Automatic, producción, Trawel y publicación permanecen bloqueados.
+El flujo Manual de FASE 3 queda cerrado. La FASE 4 original se reinterpreta porque varias capacidades fueron cubiertas en 3J; FASE 4A — Consolidación operativa de Biblioteca queda diseñada documentalmente, pero no iniciada ni autorizada para implementación. Automatic, producción, Trawel y publicación permanecen bloqueados.

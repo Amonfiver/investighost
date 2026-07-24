@@ -17,7 +17,7 @@ Evidencia: `tests/contracts.test.ts`. Estos tests verifican contrato, no persist
 
 - F2: Auth/RLS probadas por rol, secretos ausentes del renderer, sync/conflictos y auditoría durable.
 - F3: fuentes reales trazables, fallos honestos, coste/tokens auditados y aceptación editorial humana.
-- F4: usuario no técnico crea, edita, revisa y aprueba sin ayuda externa.
+- F4A: usuario no técnico busca, filtra, ordena, archiva, restaura y continúa trabajo existente sin perder trazabilidad.
 - F6: handoff idempotente en entorno controlado, draft visible y cero escrituras no autorizadas.
 - F7–F14: criterios específicos de legal, moderación, campañas, anuncios y métricas reales antes de activación.
 - F15: backups/restauración, E2E, accesibilidad, seguridad y release aprobados.
@@ -84,7 +84,7 @@ FASE 2B no comienza hasta aceptación humana de este gate y confirmación de org
 
 ## Gate futuro de Automatic
 
-Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual complete investigación, fuentes, perfiles editoriales, persistencia, calidad, revisión y aprobación con contratos estables. Después deberá demostrar que cada objetivo invoca ese mismo pipeline; el alcance es estable/auditable; una caída no pierde progreso; reanudar no duplica; un fallo no bloquea el resto; costes y errores son visibles; Aventura/Estudiante son diferentes y verificables; y ningún resultado se publica automáticamente. La compatibilidad Trawel se acepta únicamente por el mapper/contrato/cola ya comunes.
+Automatic permanece bloqueado. El cierre de FASE 3J no autoriza su implementación: antes deberán consolidarse la Biblioteca y la operación Manual restante, incluida FASE 4A y los gates posteriores que correspondan, y existir una nueva decisión humana expresa. Cuando llegue ese encargo deberá demostrar que cada objetivo invoca el mismo pipeline; el alcance es estable/auditable; una caída no pierde progreso; reanudar no duplica; un fallo no bloquea el resto; costes y errores son visibles; Aventura/Estudiante son diferentes y verificables; y ningún resultado se publica automáticamente. La compatibilidad Trawel se aceptará únicamente mediante el mapper, contrato y cola comunes autorizados en su fase separada.
 
 ## Gate FASE 3A — aprobado técnicamente
 
@@ -195,3 +195,29 @@ Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual 
 - J15 confirmó aprobación local sin publicación; J16 reconcilió versiones, eventos y 0,26 EUR; J17 confirmó las fronteras negativas.
 - Decisión inequívoca: **FASE 3J APROBADA**.
 - La aprobación no inicia FASE 4 ni autoriza Automatic, publicación, Trawel, producción o proveedores reales.
+
+## Gate futuro FASE 4A — criterios documentales
+
+Estado: **DISEÑADO — IMPLEMENTACIÓN NO AUTORIZADA**.
+
+La futura aceptación de Consolidación operativa de Biblioteca deberá demostrar como mínimo:
+
+- Buscar por destino, país, título, identidad canónica, identificador visible, perfil o estado devuelve únicamente datos propios pertinentes.
+- Buscar, filtrar u ordenar no crea solicitudes, runs, versiones o eventos de investigación, no invoca proveedores y no añade coste.
+- Los filtros cubren estado, etapa, incidencia, situación editorial, perfil, fechas y presencia de incidencias.
+- La ordenación cubre actividad, creación, destino, estado, coste y última decisión editorial.
+- La selección de filtros y ordenación sobrevive al reinicio cuando el diseño autorizado determine que debe conservarse como preferencia.
+- Archivar retira el elemento de la vista operativa ordinaria sin borrar fuentes, hechos, secciones, versiones, costes, eventos o decisiones humanas.
+- La consulta de archivados permite abrir el detalle y auditar toda su evidencia.
+- Restaurar devuelve el elemento a la vista operativa sin crear una solicitud, run o versión.
+- Versiones, eventos, costes, comentarios, actores, fechas y decisiones son idénticos antes y después de archivar/restaurar.
+- Los indicadores de trabajo distinguen ejecución, incidencia, revisión, aprobación, rechazo y archivo, y no se presentan como publicaciones.
+- No aparece acción de publicación y el contador de publicaciones permanece en 0.
+- No se conecta ni invoca Trawel o producción.
+- No se activa Automatic, IA o proveedores reales.
+- No se ofrece borrado destructivo ordinario.
+- Una persona no técnica puede localizar contenido, reconocer su estado, abrirlo, continuar una revisión, distinguir una incidencia, archivarlo y restaurarlo sin ayuda externa.
+- El comportamiento se valida con una biblioteca suficientemente poblada mediante datos sintéticos para revelar estados vacíos, combinaciones de filtros, ordenaciones y navegación realista.
+- Reiniciar Electron conserva los datos durables y las preferencias expresamente incluidas en el diseño, sin alterar el resultado de búsquedas o el archivo.
+
+El gate exigirá pruebas automatizadas relevantes, validación local y aceptación humana. Estos criterios no autorizan código, migraciones, seeds, integraciones o cambios de UI en el presente cierre documental.

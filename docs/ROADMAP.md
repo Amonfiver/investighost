@@ -1,6 +1,6 @@
 # Roadmap recomendado de Investighost
 
-Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada humanamente y cerrada el 2026-07-25. No hay una fase posterior autorizada. Automatic continúa bloqueado y no implementado.
+Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada en remoto mediante `ac61700f27297d899e55f6460a76a6cac7bca72a`. FASE 4A está diseñada documentalmente, pero no autorizada para implementación. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia
 
@@ -58,13 +58,61 @@ Limitaciones conocidas: normalización no funcional del lockfile por npm 11.6.2;
 
 ### 3. Pipeline Manual canónico — V3 vigente
 
-La ejecución se rige por `INVESTIGHOST_HOJA_DE_RUTA_CANONICA_V3.md`. 3A–3G cerraron dominio, persistencia, contenido y calidad; 3H hizo el flujo Manual operable desde Electron sobre Supabase local; 3I cerró recuperación, costes, cancelación e idempotencia; 3J completó J01–J17 y recibió aprobación humana expresa. El flujo Manual queda cerrado sin conexión a producción/Trawel, sin publicación y sin Automatic.
+La ejecución se rige por `INVESTIGHOST_HOJA_DE_RUTA_CANONICA_V3.md`. 3A–3G cerraron dominio, persistencia, contenido y calidad; 3H hizo el flujo Manual operable desde Electron sobre Supabase local; 3I cerró recuperación, costes, cancelación e idempotencia; 3J completó J01–J17 y recibió aprobación humana expresa. El flujo Manual queda cerrado y sincronizado en la rama remota mediante el commit `ac61700f27297d899e55f6460a76a6cac7bca72a`, sin conexión a producción/Trawel, sin publicación de contenido y sin Automatic.
 
-### 4. Biblioteca, edición y revisión
+### 4. Biblioteca, edición y revisión — alcance original parcialmente cubierto
 
-CRUD durable, búsqueda, filtros, versiones, edición, aprobación/rechazo, historial y prueba con usuario no técnico. PAUSA HUMANA 4.
+La formulación original incluía CRUD durable, búsqueda, filtros, versiones, edición, aprobación/rechazo, historial y prueba con usuario no técnico. FASE 3J ya aceptó Biblioteca durable, persistencia tras reinicio, detalle, versiones, regeneración parcial, edición con motivo, aprobación, rechazo, reapertura, historial de decisiones, actores, comentarios, fechas, costes y eventos.
 
-### 5. Cola editorial durable
+No se implementará literalmente la FASE 4 original: hacerlo duplicaría capacidades y podría introducir un CRUD destructivo incompatible con la trazabilidad aprobada.
+
+### 4A. Consolidación operativa de Biblioteca — diseñada, no autorizada
+
+Estado: **DISEÑADA DOCUMENTALMENTE — NO AUTORIZADA PARA IMPLEMENTACIÓN**.
+
+#### Objetivo
+
+Hacer cómoda y segura la Biblioteca existente para un volumen creciente de investigaciones y borradores, manteniendo el entorno local, Manual y simulado.
+
+#### Alcance propuesto
+
+- Buscar en datos propios por destino, país, título, identidad canónica, identificador, perfil y estado.
+- Distinguir expresamente búsqueda de Biblioteca de nueva investigación: buscar no crea solicitudes, invoca proveedores ni genera coste.
+- Filtrar por estado, etapa, incidencia, revisión, aprobación/rechazo/archivo, perfil, fechas y presencia de incidencias.
+- Ordenar por actividad, creación, destino, estado, coste y última decisión.
+- Archivar, consultar archivados y restaurar sin perder fuentes, hechos, versiones, costes, eventos o decisiones.
+- Mostrar indicadores de ejecución, incidencias, pendientes de revisión, en revisión, aprobadas, rechazadas y archivadas.
+- Facilitar que una persona no técnica localice, comprenda, abra, continúe, archive y restaure contenido.
+- Registrar como deuda la terminología de RevisIAtor sin cambiar ahora su comportamiento.
+
+#### Fuera de alcance
+
+- publicación, Trawel y producción;
+- Automatic, IA, proveedores o créditos reales;
+- cola editorial y calendario de FASE 5;
+- campañas, correo, nube y migraciones remotas;
+- nuevas jerarquías de supervisor o permisos multiusuario;
+- borrado destructivo;
+- rediseño integral de perfiles;
+- control Extensión;
+- reutilización automática del conocimiento;
+- mejora editorial integral.
+
+#### Entregables futuros
+
+- inventario de capacidades existentes y gaps reales;
+- diseño de búsqueda, filtros, ordenación, archivo/restauración y estados vacíos;
+- operación sobre una biblioteca suficientemente poblada con datos sintéticos;
+- indicadores internos inequívocamente separados de publicaciones;
+- persistencia justificada de preferencias cuando corresponda;
+- pruebas automatizadas, validación local y aceptación humana desde Electron;
+- documentación final de invariantes y límites.
+
+#### Gate humano 4A
+
+FASE 4A no comienza con este diseño. Requiere autorización funcional explícita, implementación local acotada, criterios de `ACCEPTANCE_TESTS.md` satisfechos y una nueva decisión humana. El gate debe confirmar archivo no destructivo, conservación de trazabilidad, publicaciones en cero y ausencia de Trawel, producción y Automatic.
+
+### 5. Cola editorial durable — no iniciada
 
 Prioridad, calendario, máximos, pausas, reintentos, idempotencia y operación manual. Preparar ejecución cloud; no publicar todavía.
 
@@ -94,9 +142,10 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 
 ## Orden inmediato vigente
 
-1. Preparar únicamente el commit de cierre de FASE 3J y ejecutarlo solo tras autorización expresa.
-2. No iniciar FASE 4 ni ningún trabajo posterior sin un encargo nuevo.
-3. Mantener Automatic, producción, Trawel y publicación bloqueados.
+1. Mantener FASE 3J cerrada y sincronizada; no queda pendiente su commit o push.
+2. Someter esta redefinición documental a revisión y commit solo con autorización expresa.
+3. No iniciar funcionalmente FASE 4A, FASE 5 o cualquier bloque posterior sin un encargo nuevo.
+4. Mantener Automatic, producción, Trawel, proveedores reales y publicación bloqueados.
 
 ## Estado FASE 2C-B — 2026-07-14
 

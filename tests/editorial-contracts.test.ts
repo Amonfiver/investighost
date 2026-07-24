@@ -256,6 +256,7 @@ describe('canonical editorial domain', () => {
     expect(researchStateTransitions.researching).toContain('structuring')
     expect(researchStateTransitions.completed).toEqual([])
     expect(editorialDraftTransitions.in_review).toContain('changes_requested')
+    expect(editorialDraftTransitions.rejected).toContain('in_review')
     expect(editorialDraftTransitions.ready).not.toContain('approved')
   })
 })

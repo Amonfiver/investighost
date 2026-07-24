@@ -1,313 +1,336 @@
-# Investighost — punto de reanudación actual
+# Investighost — cierre y punto de reanudación actual
 
-Fecha de actualización: 2026-07-23 01:31:59 CEST (UTC+02:00)
-Objetivo de reanudación: ejecutar exclusivamente **J09 — Interrupción y reanudación** y esperar después una decisión humana expresa.
+Fecha de actualización: 2026-07-25
+Estado canónico: **FASE 3J APROBADA Y CERRADA**
 
-Este documento es la fuente operativa canónica para la próxima sesión. No autoriza J10, la aprobación automática de J09, el cierre de FASE 3J, FASE 4, Automatic, producción, Trawel, publicación ni proveedores reales.
+Este documento sustituye los puntos de reanudación anteriores. No hay una siguiente fase autorizada.
 
-## 1. Identificación y estado Git de partida
+## 1. Decisión humana vigente
 
-- Proyecto: `D:\Proyectos\investighost`.
+El jefe del proyecto aprobó expresamente J01–J17 y emitió la decisión inequívoca:
+
+```text
+FASE 3J — APROBADA
+```
+
+El gate humano del flujo Manual queda cerrado. La aprobación no inicia ni autoriza FASE 4, Automatic, publicación, Trawel, producción, proveedores reales, IA real o carga de créditos.
+
+## 2. Estado Git de este cierre
+
+- Proyecto Windows: `D:\Proyectos\investighost`.
 - Ruta WSL: `/mnt/d/Proyectos/investighost`.
 - Rama: `feat/investighost-reinvencion`.
-- HEAD inicial de este cierre documental: `8e8d14b564541efe90e898f5bb289f09adbb41e9` (`fix: hacer trazable el 404 parcial de j06`).
+- HEAD inicial: `270ec3bbf373076bbd457751733de5c21f7b3324`.
+- Commit base: `docs: cerrar gate humano hasta j08`.
 - Upstream: `origin/feat/investighost-reinvencion`.
-- Estado inicial comprobado después de `git fetch`: árbol limpio y divergencia `0/0`.
-- Commit de cierre previsto: `docs: cerrar gate humano hasta j08` (el hash final se entrega en el informe de cierre).
+- Divergencia inicial con upstream: 0 commits locales / 0 commits remotos.
+- La corrección de J14 y este cierre documental permanecen sin commit.
+- No se hizo push.
 
-## 2. Estado general vigente
+El cierre Git requiere autorización humana expresa. Hasta recibirla no debe crearse el commit.
+
+## 3. Estado general del proyecto
 
 - FASE 2C-C: completada.
 - FASE 3A–3I: completadas técnicamente.
-- FASE 3J: en aceptación humana y **no aprobada**.
-- J01–J08: aprobados por decisión humana expresa.
-- J05: aprobado tras la corrección durable del commit `df84a5013bbf288d6012455b937c4a2ae42c3f25`.
-- J06: aprobado tras la corrección durable del commit `8e8d14b564541efe90e898f5bb289f09adbb41e9`.
-- J07: aprobado; la indisponibilidad del proveedor quedó como incidencia durable y clasificada.
-- J08: aprobado; el reintento recuperó la misma solicitud en un segundo run enlazado.
-- J09: no ejecutado y pendiente de decisión humana.
-- J10–J17: no autorizados mientras J09 no tenga decisión humana expresa.
-- FASE 4: no iniciada.
+- FASE 3J: aprobada humanamente y cerrada.
+- J01–J17: aprobados.
+- FASE 4: no iniciada y no autorizada.
 - Automatic: no implementado.
-- Supabase local/PostgreSQL: única persistencia durable estructurada.
-- Supabase Storage local: único file store durable.
-- Producción, Trawel, publicación e IA real: desconectados.
-- No hay SQLite, Drizzle, Better SQLite ni fallback de persistencia.
-- No se han cargado créditos ni usado datos reales.
+- Flujo activo: Manual local y simulado.
+- Persistencia estructurada: Supabase local/PostgreSQL.
+- File store durable: Supabase Storage local.
+- SQLite, Drizzle, Better SQLite, segunda base y fallbacks: ausentes.
+- Trawel y producción: desconectados.
+- Publicación: bloqueada por diseño.
+- Publicaciones al cierre: 0.
+- Proveedores e IA reales: desconectados.
+- Créditos reales: no cargados ni consumidos.
 
-## 3. Decisiones humanas acumuladas
+## 4. Resultado consolidado J01–J08
 
-### J01 — APROBADO
+| Escenario | Resultado aprobado |
+|---|---|
+| J01 | Morella se resolvió con identidad canónica GeoNames y dos borradores diferenciados. |
+| J02 | La ambigüedad de San Pedro (`ZZ`) mostró Norte y Sur sin selección silenciosa. |
+| J03 | La corrección humana eligió San Pedro Sur y conservó método y procedencia. |
+| J04 | Una nueva investigación reutilizó el mismo destino Morella sin duplicarlo. |
+| J05 | `NO_ACCEPTED_SOURCES` quedó durable, visible, clasificado y recuperable. |
+| J06 | El HTTP 404 quedó como fuente `unavailable`, con detalle y evento explícito, sin ocultar la evidencia válida. |
+| J07 | El proveedor no disponible produjo un fallo controlado `PERMANENT`. |
+| J08 | El reintento recuperó la misma solicitud en un segundo run enlazado. |
 
-- Morella se resolvió de forma exacta con el catálogo `geonames-2026-07-20`.
-- El flujo válido conservó fuentes, hechos, lugares, actividades y borradores diferenciados.
-- Cero publicaciones y cero envíos a Trawel.
+Identificadores históricos relevantes de J07/J08:
 
-### J02 — APROBADO
-
-- `San Pedro`, país `ZZ`, mostró Norte y Sur.
-- No hubo selección silenciosa.
-
-### J03 — APROBADO
-
-- Selección humana explícita de `Testland › Sur › San Pedro`.
-- Método `human`, catálogo, procedencia y corrección geográfica durable conservados.
-
-### J04 — APROBADO
-
-- Una nueva solicitud de Morella reutilizó la misma identidad geográfica canónica.
-- No se duplicó la entidad y publicaciones permanecieron en cero.
-
-Observación no bloqueante pendiente desde J04: repetir una investigación reutiliza la identidad canónica, pero vuelve a imputar el coste completo. Antes de conectar IA real se deberá:
-
-- reutilizar conocimiento existente;
-- actualizar solo datos volátiles;
-- regenerar un perfil o una sección cuando sea suficiente;
-- rehacer completamente solo bajo decisión humana;
-- no volver a imputar el coste completo cuando se usen datos propios;
-- mantener Investighost como base maestra durable;
-- usar Trawel únicamente como futura base de publicación del contenido aprobado.
-
-Este requisito no se implementa durante el gate de aceptación humana.
-
-### J05 — APROBADO
-
-- El escenario `Fuentes insuficientes` quedó como incidencia durable y controlada.
-- Se muestran estado, etapa `fact_structuring`, código `NO_ACCEPTED_SOURCES`, clasificación `data_quality`, mensaje, fecha, request ID, run ID y destination ID.
-- La incidencia admite reintento sin duplicar solicitud ni destino.
-- Commit de corrección y aprobación: `df84a5013bbf288d6012455b937c4a2ae42c3f25`.
-
-## 4. J06 — APROBADO tras corrección
-
-J06 fue rechazado inicialmente por el defecto descrito a continuación. La corrección quedó en el commit `8e8d14b564541efe90e898f5bb289f09adbb41e9`, se repitió el escenario y recibió aprobación humana expresa.
-
-Configuración ejecutada:
-
-- Destino: Morella.
-- País ISO: ES.
-- Tipo: Localidad.
-- Perfiles: Aventura y Estudiante.
-- Profundidad: Estándar.
-- Presupuesto máximo simulado: 2 EUR.
-- Intentos máximos: 3.
-- Escenario: `Una fuente rota` (`broken_source`).
-
-La ejecución terminó y conservó evidencia útil:
-
-- estado `Completada`;
-- 2 fuentes: una `ACCEPTED` y una `UNAVAILABLE`;
-- 3 hechos;
-- 1 lugar;
-- 1 actividad;
-- 2 borradores;
-- coste simulado: 0,23 EUR;
-- publicaciones: 0.
-
-El rechazo se debió a que no se mostraban HTTP 404, código de lectura, mensaje controlado ni evento explícito de fuente no disponible. Historial mostraba `provider.reading.succeeded` también para el retorno roto, de modo incoherente con `UNAVAILABLE`.
-
-Evidencia durable original inspeccionada directamente en Supabase local:
-
-- request ID: `25d04f8c-fc6d-4b0c-a988-99233a4ffc49`;
-- run ID: `bde7b2e3-1ef9-4f6b-8d4c-6744112ee275`;
-- source ID rota: `9e80c496-33bb-4322-a033-62fc4e614fb2`;
-- source status: `unavailable`;
-- metadato histórico disponible: `errorCode: HTTP_404`;
-- evento histórico ambiguo: `provider.reading.succeeded`;
-- etapa del evento: `source_reading`.
-
-## 5. Causa raíz exacta
-
-1. El escenario simulado sí devolvía `status: broken` y `httpStatus: 404` desde `MockEditorialSourceProvider.read`.
-2. `SourceAcquisitionService.executeOperation` consideraba exitoso cualquier valor que cumpliera el contrato `SourceDocument`, aunque su estado semántico fuera `broken`.
-3. Por ello registraba `provider.reading.succeeded` antes de que `acquire` examinara `document.status` y `content`.
-4. Después, `acquire` convertía correctamente la fuente en `unavailable`, pero `unavailableSource` solo conservaba `metadata.errorCode`.
-5. No persistía mensaje, HTTP status numérico, etapa, fecha, proveedor, operación o intento en un detalle estructurado.
-6. Tampoco se emitía un evento explícito `source.unavailable`.
-7. La pestaña Fuentes no interpretaba el error de `metadata`, y el Historial solo mostraba tipo de evento, etapa y correlación.
-
-La tolerancia parcial del pipeline funcionaba; el defecto estaba en la semántica del evento, la riqueza del registro durable y su presentación.
-
-## 6. Flujo corregido exclusivamente para J06
-
-- Se añadió el contrato `ResearchSourceFailureSchema` con:
-  - `errorCode`;
-  - `httpStatus` opcional;
-  - mensaje controlado;
-  - etapa fija `source_reading`;
-  - fecha/hora `occurredAt`;
-  - intento;
-  - proveedor;
-  - operación `reading` o `evaluation`.
-- La fuente `unavailable` guarda ese detalle en `research_sources.metadata.failure`, además del `errorCode` compatible existente. Su propia fila ya aporta source ID, run ID, estado y captura.
-- La lectura solo genera `provider.reading.succeeded` cuando el documento está realmente leído y contiene contenido.
-- Un retorno roto HTTP 404 conserva exactamente:
-  - `errorCode: HTTP_404`;
-  - `httpStatus: 404`;
-  - intento `1` en el fixture;
-  - etapa `source_reading`;
-  - mensaje `La lectura de la fuente devolvió HTTP 404; se marcó como no disponible y el pipeline continuó con la evidencia válida.`
-- Se persiste el evento explícito `source.unavailable`, enlazado a request, run y source, con código, status, mensaje, intento, proveedor y fecha/hora.
-- La pestaña Fuentes muestra el 404, mensaje, código, etapa, intento, fecha, source ID y run ID.
-- Historial muestra `source.unavailable` y resume HTTP 404, source ID, intento y run ID.
-- La fuente aceptada continúa visible y alimenta 3 hechos, 1 lugar, 1 actividad y 2 borradores.
-- La ejecución parcial sigue completándose; no se convirtió J06 en fallo global.
-
-Resultado humano confirmado:
-
-- fuente `UNAVAILABLE` con HTTP 404;
-- código `HTTP_404`;
-- mensaje, etapa, intento, fecha, source ID y run ID visibles;
-- evento `source.unavailable` visible en Historial;
-- pipeline completado con la evidencia válida;
-- J06 **APROBADO**.
-
-## 7. J07 y J08 — APROBADOS
-
-### J07 — Proveedor no disponible
-
-- El primer intento falló de forma controlada.
-- Código durable: `PERMANENT`.
-- Clasificación durable: `provider` (`Proveedor` en la interfaz).
-- Etapa registrada: `source_discovery`.
-- La incidencia quedó visible en Biblioteca.
-- Request ID: `85630509-8ec6-4462-8fe6-9a2c036e7e20`.
+- Request: `85630509-8ec6-4462-8fe6-9a2c036e7e20`.
 - Run fallido: `f461901e-a4de-4daa-9b6c-4c0ff0e848e7`.
-- J07 **APROBADO** por decisión humana expresa.
+- Run recuperado: `d0c91fc6-7c57-4e75-9cee-1838d4ae490f`.
+- El segundo run conserva `recovery_from_run_id` hacia el primero.
+- Coste del intento fallido: 0,00 EUR.
+- Coste del intento recuperado: 0,24 EUR.
+- Se conserva una solicitud y dos runs.
 
-### J08 — Reintentar etapa sobre J07
+## 5. Resultados J09–J12
 
-- Se utilizó la acción `Reintentar etapa` sobre la incidencia J07.
-- El intento 1 permaneció fallido y el intento 2 terminó completado.
-- Se conservó la misma solicitud `85630509-8ec6-4462-8fe6-9a2c036e7e20`.
-- Run completado: `d0c91fc6-7c57-4e75-9cee-1838d4ae490f`.
-- El segundo run enlaza `recovery_from_run_id` con `f461901e-a4de-4daa-9b6c-4c0ff0e848e7`.
-- Se conservó la misma identidad canónica de Morella.
-- No hubo duplicación de solicitud ni destino.
-- J08 **APROBADO** por decisión humana expresa.
+### J09 — Interrupción y reanudación
 
-## 8. Persistencia y migraciones
+- Se utilizó el escenario lento interrumpible.
+- Electron se cerró durante la ejecución.
+- Al abrir de nuevo, la Biblioteca conservó el scaffold durable.
+- La acción `Reanudar` continuó desde checkpoint o etapa durable.
+- La ejecución terminó sin crear otra solicitud.
+- J09: **APROBADO**.
 
-No hay migración nueva para J06. `research_sources.metadata` ya es un objeto JSONB durable y justificado para metadatos de proveedor; `research_events.payload` ya es el contrato durable de auditoría. La integración local comprobó ambos registros directamente en PostgreSQL.
+### J10 — Persistencia tras reinicio
 
-No se ejecutaron `supabase link`, `supabase db push` ni `supabase db reset`. No se modificó ni eliminó la evidencia humana histórica.
+- Tras cerrar y abrir Electron reaparecieron Biblioteca, detalle, fuentes, borradores, costes e historial.
+- La evidencia mantuvo identidad y contenido.
+- J10: **APROBADO**.
 
-## 9. Archivos de la corrección J06
+### J11 — Perfiles diferenciados
 
-Este cierre de sesión no modifica código: solo actualiza `docs/INVESTIGHOST_REANUDACION_ACTUAL.md`. Se conservan como antecedente los archivos de la corrección J06:
+- Aventura priorizó ruta, preparación y riesgos.
+- Estudiante priorizó presupuesto, vida diaria y estudio.
+- Los perfiles no fueron una paráfrasis superficial.
+- J11: **APROBADO**.
 
-- `src/shared/editorial-contracts.ts`: contrato estructurado del fallo de fuente.
-- `src/modules/editorial-pipeline/source-providers.ts`: semántica de éxito, persistencia del 404 y evento `source.unavailable`.
-- `src/renderer/App.tsx`: detalle visible en Fuentes e Historial, incluida compatibilidad visual con el registro histórico mínimo.
-- `src/renderer/App.css`: estados y bloques visuales del fallo parcial.
-- `tests/source-acquisition.test.ts`: contrato, HTTP 404 y coherencia de eventos.
-- `tests/manual-resilience.test.ts`: continuidad del pipeline con evidencia restante.
-- `tests/manual-supabase.integration.test.ts`: persistencia real de fuente/evento y agregado completado.
-- `docs/INVESTIGHOST_REANUDACION_ACTUAL.md`: este punto de reanudación.
+### J12 — Regeneración parcial
 
-## 10. Pruebas y validaciones de la corrección J06
+- Se regeneró una sola sección de Aventura.
+- Se conservó Aventura v1.
+- Se creó Aventura v2 enlazada.
+- Solo cambió la sección seleccionada.
+- RevisIAtor se recalculó.
+- Evento durable: `manual.section.regenerated`.
+- Coste adicional simulado: 0,02 EUR.
+- J12: **APROBADO**.
 
-- Pruebas específicas `source-acquisition` + `manual-resilience`: 20/20 aprobadas.
-- Integración Manual Supabase local: 5/5 aprobadas, incluida la persistencia J06 HTTP 404.
-- Suite normal sin integraciones opt-in: 139 aprobadas y 8 omitidas según diseño.
-- Suite completa con todas las integraciones Supabase locales: 147/147 aprobadas.
-- Typecheck: aprobado.
-- ESLint TypeScript/React con cero warnings: aprobado.
-- Build de renderer, main y preload: aprobado.
-- `npm run build` llegó a compilar y empaquetar la aplicación, pero el paso estándar de `winCodeSign` falló porque el usuario Windows no tiene privilegio para crear dos enlaces simbólicos en la caché externa.
-- Build completo alternativo `npm run build -- --config.win.signAndEditExecutable=false`: aprobado; generó el instalador NSIS sin edición/firma del ejecutable.
-- `supabase db lint --local`: aprobado, sin errores de schema.
-- `git diff --check`: aprobado para este cierre documental J01–J08.
+## 6. J13 — Corrección editorial
 
-No se usaron proveedores de red, IA real, créditos, datos reales, producción, Trawel ni publicación.
+Se editó deliberadamente Estudiante, sección 1.
 
-## 11. Estado local conservado y gate humano
+- Se conservó Estudiante v1.
+- Se creó Estudiante v2 como edición humana.
+- Motivo: “Reorganizar la sección para explicar con mayor claridad qué aspectos debe comprobar un estudiante antes de alojarse en Morella, eliminando repeticiones y separando movilidad, servicios, presupuesto y seguridad.”
+- Evento durable: `manual.section.edited`.
+- La edición humana no añadió coste.
+- J13: **APROBADO**.
 
-Después de limpiar únicamente los fixtures temporales creados por las integraciones, Supabase local conserva:
+## 7. J14 — Rechazo, defecto, corrección y repetición
 
-- 7 solicitudes humanas;
-- 5 completadas;
-- 2 incidencias J05;
-- 2 ejecuciones del escenario J06, incluida su repetición aprobada;
-- 1 solicitud del escenario J07/J08 con 2 runs enlazados;
-- 1 identidad canónica de Morella para `70000000-0000-4000-8000-000000000003`;
-- publicaciones en cero.
+### Primera ejecución y defecto
 
-J01–J08 están aprobados por decisión humana expresa. J09 todavía no se ha ejecutado. FASE 3J sigue abierta y no se autoriza J10. El protocolo fuente continúa en `docs/FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
-
-## 12. Arranque local desde PowerShell
-
-Ejecutar en PowerShell:
-
-```powershell
-cd D:\Proyectos\investighost
-
-$supabaseVars = @{}
-
-npx supabase status -o env 2>$null | ForEach-Object {
-    if ($_ -match '^([A-Z0-9_]+)=(.*)$') {
-        $name = $matches[1]
-        $value = $matches[2].Trim().Trim('"')
-        $supabaseVars[$name] = $value
-    }
-}
-
-if (-not $supabaseVars["API_URL"]) {
-    throw "No se pudo obtener API_URL de Supabase local."
-}
-
-if (-not $supabaseVars["SERVICE_ROLE_KEY"]) {
-    throw "No se pudo obtener SERVICE_ROLE_KEY de Supabase local."
-}
-
-$env:SUPABASE_URL = $supabaseVars["API_URL"]
-$env:SUPABASE_SERVICE_ROLE_KEY = $supabaseVars["SERVICE_ROLE_KEY"]
-
-npm run dev
-```
-
-Mantener abierta esa terminal. No abrir dos instancias. Confirmar `Supabase local`, `Local · Manual · Simulado` y `Publicaciones: 0`.
-
-## 13. Protocolo exacto para J09 — Interrupción y reanudación
-
-J09 todavía no se ha ejecutado. En la próxima sesión:
-
-1. Crear Morella / ES / Localidad.
-2. Mantener Aventura y Estudiante.
-3. Profundidad `Estándar`.
-4. Presupuesto máximo simulado: `2` EUR.
-5. Intentos máximos: `3`.
-6. Seleccionar `Ejecución lenta para interrumpir`.
-7. Iniciar investigación Manual.
-8. Cerrar Electron mientras progresa.
-9. Esperar a que venza el lease si fuera necesario.
-10. Abrir de nuevo.
-11. Verificar el scaffold durable en Biblioteca.
-12. Pulsar `Reanudar`.
-13. Confirmar la continuación desde checkpoint o etapa durable.
-14. Confirmar la finalización sin crear otra solicitud.
-15. Esperar una decisión humana expresa sobre J09.
-16. No avanzar a J10 sin aprobación expresa.
-
-## 14. Restricciones que siguen vigentes
-
-- No ejecutar J09 durante este cierre documental.
-- No avanzar a J10 sin decisión humana expresa sobre J09.
-- No aprobar J09 ni ninguna otra prueba por inferencia técnica.
-- No declarar FASE 3J aprobada.
-- No iniciar FASE 4.
-- No implementar Automatic.
-- No conectar Trawel o producción.
-- No publicar.
-- No usar IA real, datos reales o créditos.
-- No ejecutar `supabase link`, `supabase db push` ni `supabase db reset` sobre el estado humano conservado.
-- No introducir SQLite, Drizzle, Better SQLite, segunda base, file store alternativo ni fallback.
-- No borrar las investigaciones humanas ni la corrección durable de J03.
-- No alterar la identidad canónica de Morella.
-
-# SIGUIENTE ACCIÓN OBLIGATORIA Y EXCLUSIVA
+Aventura v3 pasó:
 
 ```text
-J09 — Interrupción y reanudación
+ready → in_review → rejected
 ```
 
-La aprobación o rechazo de J09 seguirá siendo exclusivamente humano.
+Se registraron `manual.review.started` y `manual.review.rejected`. El rechazo era durable, pero la UI no mostraba después su comentario, actor y fecha, y la decisión no podía reabrirse. Esto impedía auditar el criterio o reconsiderarlo.
+
+J14 quedó bloqueado hasta corregir el defecto.
+
+### Causa técnica
+
+- Los eventos de revisión ya se persistían en `research_events` y en el agregado durable.
+- El comentario estaba en `payload`, pero la UI no interpretaba `manual.review.*`.
+- El modelo no contemplaba `rejected → in_review`.
+- No existían contrato, servicio o IPC de reapertura.
+- Los eventos anteriores no guardaban `draftVersion` explícito y el `actor_id` superior podía representar al creador de la solicitud en lugar del decisor.
+
+### Corrección implementada
+
+- La ficha de borrador muestra estado, comentario completo, actor, fecha/hora, versión, draft ID e historial cronológico.
+- Se añadió `rejected → in_review`.
+- La acción visible se denomina `Reabrir revisión`.
+- El comentario de reapertura es obligatorio.
+- Se registra `manual.review.reopened`.
+- Los eventos nuevos guardan draft, versión, actor, comentario, estado anterior y estado posterior; request, run y timestamp permanecen en el evento.
+- Tras reabrir vuelven a estar disponibles `Rechazar`, `Solicitar cambios` y `Aprobar`.
+- El rechazo histórico obtiene la versión desde su mismo draft ID inmutable, sin modificar la evidencia original.
+- No se crea versión editorial, solicitud o run.
+- No se regenera contenido.
+- No se añade coste.
+- No se publica.
+
+Archivos funcionales de la corrección:
+
+- `src/shared/editorial-contracts.ts`.
+- `src/shared/manual-contracts.ts`.
+- `src/shared/manual-review-history.ts`.
+- `src/modules/editorial-pipeline/manual-workflow.ts`.
+- `src/main/index.ts`.
+- `src/main/preload.ts`.
+- `src/vite-env.d.ts`.
+- `src/renderer/App.tsx`.
+- `src/renderer/App.css`.
+- `tests/editorial-contracts.test.ts`.
+- `tests/manual-workflow.test.ts`.
+
+No hay migración: se reutilizan `editorial_drafts.state`, `research_events.payload` y los checkpoints existentes.
+
+### Repetición humana
+
+- Se abrió Aventura v3 rechazada.
+- Se consultaron comentario original, actor, fecha/hora, versión e historial.
+- Se reabrió con comentario: `rejected → in_review`.
+- Se rechazó nuevamente con otro comentario.
+- Ambos ciclos quedaron visibles en orden cronológico.
+- Aventura permaneció en v3.
+- Estado final: `rejected`.
+- Coste total: 0,26 EUR.
+- Publicaciones: 0.
+- Se conservó una sola solicitud y el mismo run.
+- J14: **APROBADO tras corrección y repetición**.
+
+## 8. J15 — Aprobación
+
+Estudiante v2 pasó:
+
+```text
+ready → in_review → approved
+```
+
+- Eventos: `manual.review.started` y `manual.review.approved`.
+- Comentario, actor, fecha, versión y draft ID permanecen visibles.
+- La UI mostró: “Aprobado para biblioteca. No se ha publicado ni enviado a Trawel.”
+- No se creó versión ni se añadió coste.
+- J15: **APROBADO**.
+
+## 9. J16 — Coste e historial
+
+Versiones conservadas:
+
+- Aventura v1.
+- Aventura v2 regenerada.
+- Aventura v3 edición humana, rechazada.
+- Estudiante v1.
+- Estudiante v2 edición humana, aprobada.
+
+Eventos visibles:
+
+- `manual.section.regenerated`.
+- `manual.section.edited`.
+- `manual.review.started`.
+- `manual.review.rejected`.
+- `manual.review.reopened`.
+- `manual.review.approved`.
+
+Costes reconciliados:
+
+| Causa | Coste |
+|---|---:|
+| discovery | 0,02 EUR |
+| reading | 0,04 EUR |
+| evaluation | 0,02 EUR |
+| adventure:full | 0,08 EUR |
+| student:full | 0,08 EUR |
+| adventure:section:highlights | 0,02 EUR |
+| **Total** | **0,26 EUR** |
+
+Las ediciones y decisiones humanas no añadieron coste.
+
+J16: **APROBADO**.
+
+## 10. J17 — Fronteras negativas
+
+La evaluación confirmó desde la UI:
+
+- `Local · Manual · Simulado`.
+- Supabase local.
+- Mocks deterministas.
+- Publicaciones: 0.
+- Publicación bloqueada por diseño.
+- No existe acción visible de publicar.
+- No existe envío a Trawel.
+- No existe Automatic.
+- No se muestran credenciales, endpoints o proveedores reales.
+- Aprobar deja el contenido en biblioteca.
+- Rechazar solo permite consultar o reabrir la revisión.
+- La aplicación no publica tras aprobar.
+
+J17: **APROBADO**.
+
+## 11. Validaciones técnicas
+
+Validación final ejecutada el 2026-07-25:
+
+- Pruebas relevantes de contratos y flujo Manual: 15/15 aprobadas.
+- Suite normal: 143 pruebas aprobadas.
+- Integraciones opt-in omitidas: 8.
+- Typecheck: aprobado.
+- ESLint con cero warnings: aprobado.
+- Builds renderer, main y preload: aprobados.
+- `git diff --check`: aprobado.
+
+No se ejecutaron integraciones Supabase que creasen solicitudes temporales ni comandos `supabase link`, `supabase db push` o `supabase db reset`.
+
+## 12. Decisiones estratégicas pendientes
+
+Estas decisiones se conservan como deuda futura y no autorizan implementación.
+
+### RevisIAtor
+
+- RevisIAtor queda fuera del alcance actual como componente obligatorio.
+- La UI conserva nombres y bloques asociados.
+- Su ajuste o retirada es deuda posterior.
+- No se rediseña durante este cierre.
+
+### Control futuro de extensión
+
+- Añadir un objetivo aproximado de palabras.
+- Permitir incrementos de 100 palabras.
+- Configurarlo por perfil.
+- Punto de partida orientativo: 800 palabras.
+- Referencias futuras: Estudiante 1.800; Aventura 1.000.
+- Evitar relleno artificial.
+
+### Reutilización del conocimiento
+
+- Reutilizar datos ya investigados.
+- Actualizar solo información volátil.
+- Ampliar secciones concretas cuando baste.
+- Rehacer completamente solo por decisión humana.
+- Evitar imputar otra vez el coste completo al reutilizar conocimiento propio.
+- Mantener Investighost como base maestra y reservar Trawel para una futura publicación autorizada.
+
+### Mejora editorial futura
+
+Aventura:
+
+- adoptar el rol de aventurero experimentado;
+- detallar rutas, accesos, distancias, duración, desnivel, dificultad, terreno, condiciones, riesgos y servicios reales;
+- evitar generalidades intercambiables.
+
+Estudiante:
+
+- adoptar el rol de profesor o divulgador cercano;
+- integrar historia, fechas, población, lenguas, moneda, contexto administrativo, cultura, patrimonio, personajes, economía y sitios emblemáticos;
+- explicar los datos de forma natural.
+
+Ambos:
+
+- producir escritura práctica, natural y propia de cada destino;
+- evitar clichés, plantillas repetidas y copia-pega.
+
+## 13. Persistencia, seguridad y migraciones
+
+- No hay migración nueva para J14 o para el cierre.
+- No se alteró ni borró evidencia humana histórica.
+- No se ejecutó `supabase link`.
+- No se ejecutó `supabase db push`.
+- No se ejecutó `supabase db reset`.
+- No se conectó Trawel o producción.
+- No se publicó.
+- No se usó IA real.
+- No se cargaron créditos.
+- No se implementó Automatic.
+- No se inició FASE 4.
+
+## 14. Siguiente trabajo
+
+```text
+NINGÚN TRABAJO POSTERIOR AUTORIZADO
+```
+
+La próxima acción permitida es únicamente el commit de cierre de FASE 3J si el jefe del proyecto lo autoriza expresamente. Tras ese commit seguirá siendo necesario un encargo nuevo para cualquier fase, funcionalidad o integración posterior.

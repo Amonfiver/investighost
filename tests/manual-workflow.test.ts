@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { GeographicEntitySchema } from '@shared/editorial-contracts'
+import { manualReviewHistory } from '@shared/manual-review-history'
 import { GeographicResolver, MemoryGeographyCatalogRepository, type GeographicCatalogEntry } from '@modules/editorial-pipeline/geography'
 import { ManualResearchService } from '@modules/editorial-pipeline/manual-workflow'
 import { MemoryEditorialResearchRepository } from '@modules/editorial-pipeline/memory-repository'
@@ -193,4 +194,177 @@ describe('canonical Manual workflow', () => {
     expect(approved.drafts.some(item => (item.draft.state as string) === 'published')).toBe(false)
     expect(approved.events.some(event => event.type.startsWith('publishing.') || event.type.includes('.published'))).toBe(false)
   })
+
+  it('reopens a rejected review durably without creating content, request, run or cost', async () => {
+    const { repository, service } = setup()
+    const initial = await service.start(input())
+    const draft = initial.drafts[0].draft
+    const initialDraftVersions = await repository.listDraftVersions(initial.request.id)
+    const initialUsageIds = initial.usage.map(item => item.id)
+    const initialCost = initial.run.actualCost
+
+    const reviewing = await service.submitForReview({
+      requestId: initial.request.id,
+      draftId: draft.id,
+      actorId,
+    })
+    const rejected = await service.decide({
+      requestId: initial.request.id,
+      draftId: draft.id,
+      actorId,
+      decision: 'rejected',
+      comment: 'El enfoque de riesgos necesita una revisión humana adicional.',
+    })
+
+    const rejectionEvent = rejected.events.at(-1)
+    expect(rejectionEvent).toMatchObject({
+      requestId: initial.request.id,
+      runId: initial.run.id,
+      type: 'manual.review.rejected',
+      actorId,
+      payload: {
+        draftId: draft.id,
+        draftVersion: draft.contentVersion,
+        actorId,
+        fromState: 'in_review',
+        toState: 'rejected',
+        comment: 'El enfoque de riesgos necesita una revisión humana adicional.',
+      },
+    })
+    expect(rejectionEvent?.occurredAt).toBeInstanceOf(Date)
+
+    await expect(service.reopenReview({
+      requestId: initial.request.id,
+      draftId: draft.id,
+      actorId,
+      comment: '   ',
+    })).rejects.toThrow()
+
+    const reopened = await service.reopenReview({
+      requestId: initial.request.id,
+      draftId: draft.id,
+      actorId,
+      comment: 'Reabrir para reconsiderar el criterio aplicado por el equipo.',
+    })
+    const reopenedDraft = reopened.drafts.find(item => item.draft.id === draft.id)?.draft
+    expect(reopenedDraft).toMatchObject({
+      id: draft.id,
+      requestId: initial.request.id,
+      runId: initial.run.id,
+      contentVersion: draft.contentVersion,
+      state: 'in_review',
+    })
+    expect(reopened.request.id).toBe(initial.request.id)
+    expect(reopened.run.id).toBe(initial.run.id)
+    expect(reopened.run.actualCost).toBe(initialCost)
+    expect(reopened.usage.map(item => item.id)).toEqual(initialUsageIds)
+    expect(await repository.listRuns(initial.request.id)).toHaveLength(1)
+    expect((await repository.list()).filter(item => item.requestId === initial.request.id)).toHaveLength(1)
+    expect(reopened.events.at(-1)).toMatchObject({
+      requestId: initial.request.id,
+      runId: initial.run.id,
+      type: 'manual.review.reopened',
+      actorId,
+      payload: {
+        draftId: draft.id,
+        draftVersion: draft.contentVersion,
+        actorId,
+        fromState: 'rejected',
+        toState: 'in_review',
+        comment: 'Reabrir para reconsiderar el criterio aplicado por el equipo.',
+      },
+    })
+
+    const rejectedAgain = await service.decide({
+      requestId: initial.request.id,
+      draftId: draft.id,
+      actorId,
+      decision: 'rejected',
+      comment: 'Rechazo confirmado tras la segunda revisión humana.',
+    })
+    const history = manualReviewHistory(rejectedAgain.events, draft)
+    expect(history.map(entry => entry.action)).toEqual(['started', 'rejected', 'reopened', 'rejected'])
+    expect(history.map(entry => entry.comment)).toEqual([
+      undefined,
+      'El enfoque de riesgos necesita una revisión humana adicional.',
+      'Reabrir para reconsiderar el criterio aplicado por el equipo.',
+      'Rechazo confirmado tras la segunda revisión humana.',
+    ])
+    expect(history.every(entry => (
+      entry.requestId === initial.request.id
+      && entry.runId === initial.run.id
+      && entry.draftId === draft.id
+      && entry.draftVersion === draft.contentVersion
+      && entry.actorId === actorId
+    ))).toBe(true)
+
+    const persisted = await repository.getByRequestId(initial.request.id)
+    const persistedDraftVersions = await repository.listDraftVersions(initial.request.id)
+    expect(persisted?.drafts.find(item => item.draft.id === draft.id)?.draft.state).toBe('rejected')
+    expect(persisted ? manualReviewHistory(persisted.events, draft).map(entry => entry.action) : []).toEqual([
+      'started',
+      'rejected',
+      'reopened',
+      'rejected',
+    ])
+    expect(persistedDraftVersions.map(item => [item.id, item.contentVersion])).toEqual(
+      initialDraftVersions.map(item => [item.id, item.contentVersion]),
+    )
+    expect(rejectedAgain.events.some(event => event.type.startsWith('publishing.') || event.type.includes('.published'))).toBe(false)
+
+    if (!rejectionEvent) throw new Error('missing rejection event')
+    const legacyRejection = structuredClone(rejectionEvent)
+    delete legacyRejection.payload.draftVersion
+    legacyRejection.actorId = '7fda5d08-9cd0-4d9d-98c1-7ccbfd56ad22'
+    expect(manualReviewHistory([legacyRejection], draft)[0]).toMatchObject({
+      draftVersion: draft.contentVersion,
+      actorId,
+      comment: 'El enfoque de riesgos necesita una revisión humana adicional.',
+    })
+
+    expect(reviewing.drafts.find(item => item.draft.id === draft.id)?.draft.state).toBe('in_review')
+  })
+
+  it.each(['approved', 'changes_requested', 'rejected'] as const)(
+    'allows a reopened review to finish as %s',
+    async decision => {
+      const { service } = setup()
+      const initial = await service.start(input())
+      const draft = initial.drafts[0].draft
+      await service.submitForReview({ requestId: initial.request.id, draftId: draft.id, actorId })
+      await service.decide({
+        requestId: initial.request.id,
+        draftId: draft.id,
+        actorId,
+        decision: 'rejected',
+        comment: 'Primera decisión humana.',
+      })
+      const reopened = await service.reopenReview({
+        requestId: initial.request.id,
+        draftId: draft.id,
+        actorId,
+        comment: 'El supervisor solicita reconsiderar la decisión.',
+      })
+      expect(reopened.drafts.find(item => item.draft.id === draft.id)?.draft.state).toBe('in_review')
+
+      const decided = await service.decide({
+        requestId: initial.request.id,
+        draftId: draft.id,
+        actorId,
+        decision,
+        comment: `Decisión posterior a la reapertura: ${decision}.`,
+      })
+      expect(decided.drafts.find(item => item.draft.id === draft.id)?.draft.state).toBe(decision)
+      expect(decided.events.at(-1)).toMatchObject({
+        type: `manual.review.${decision}`,
+        payload: {
+          draftId: draft.id,
+          draftVersion: draft.contentVersion,
+          fromState: 'in_review',
+          toState: decision,
+          comment: `Decisión posterior a la reapertura: ${decision}.`,
+        },
+      })
+    },
+  )
 })

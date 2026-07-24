@@ -85,6 +85,13 @@ export const ManualDraftDecisionSchema = z.object({
   comment: z.string().trim().min(1).max(2000),
 })
 
+export const ManualDraftReopenSchema = z.object({
+  requestId: UuidSchema,
+  draftId: UuidSchema,
+  actorId: UuidSchema,
+  comment: z.string().trim().min(1).max(2000),
+})
+
 export const ManualExecutionActionSchema = z.object({
   requestId: UuidSchema,
   actorId: UuidSchema,
@@ -170,5 +177,6 @@ export type ManualSectionEdit = z.infer<typeof ManualSectionEditSchema>
 export type ManualSectionRegeneration = z.infer<typeof ManualSectionRegenerationSchema>
 export type ManualDraftReview = z.infer<typeof ManualDraftReviewSchema>
 export type ManualDraftDecision = z.infer<typeof ManualDraftDecisionSchema>
+export type ManualDraftReopen = z.infer<typeof ManualDraftReopenSchema>
 export type ManualExecutionAction = z.infer<typeof ManualExecutionActionSchema>
 export type ManualSimulationScenario = z.infer<typeof ManualSimulationScenarioSchema>

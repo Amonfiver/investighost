@@ -62,7 +62,7 @@ export const editorialDraftTransitions = {
   in_review: ['changes_requested', 'approved', 'rejected'],
   changes_requested: ['generating', 'in_review', 'archived'],
   approved: ['in_review', 'archived'],
-  rejected: ['generating', 'archived'],
+  rejected: ['generating', 'in_review', 'archived'],
   archived: [],
 } as const satisfies Record<z.infer<typeof EditorialDraftStateSchema>, readonly string[]>
 

@@ -18,6 +18,7 @@ import {
   ManualDestinationCorrectionSchema,
   ManualDestinationQuerySchema,
   ManualDraftDecisionSchema,
+  ManualDraftReopenSchema,
   ManualDraftReviewSchema,
   ManualExecutionActionSchema,
   ManualResearchStartSchema,
@@ -27,6 +28,7 @@ import {
   type ManualDestinationQuery,
   type ManualDestinationResolution,
   type ManualDraftDecision,
+  type ManualDraftReopen,
   type ManualDraftReview,
   type ManualExecutionAction,
   type ManualResearchExecutionOutcome,
@@ -725,6 +727,14 @@ export class ManualResearchService {
     return this.changeDraftState(result, bundle, input.decision, input.actorId, `manual.review.${input.decision}`, { comment: input.comment })
   }
 
+  async reopenReview(candidate: ManualDraftReopen): Promise<ResearchDestinationResult> {
+    const input = ManualDraftReopenSchema.parse(candidate)
+    const result = await this.requireResult(input.requestId)
+    const bundle = this.requireDraft(result, input.draftId)
+    if (bundle.draft.state !== 'rejected') throw new ManualWorkflowError('INVALID_STATE', 'Solo puede reabrirse un borrador rechazado')
+    return this.changeDraftState(result, bundle, 'in_review', input.actorId, 'manual.review.reopened', { comment: input.comment })
+  }
+
   private async setProgress(
     request: EditorialResearchRequest,
     run: EditorialResearchRun,
@@ -901,7 +911,14 @@ export class ManualResearchService {
       request: { ...result.request, version: result.request.version + 1, updatedAt: changedAt },
       run: { ...result.run, updatedAt: changedAt },
       drafts,
-      events: [...result.events, this.event(result.request, result.run, eventType, 'human_review', { ...payload, draftId: current.draft.id, actorId })],
+      events: [...result.events, this.event(result.request, result.run, eventType, 'human_review', {
+        ...payload,
+        draftId: current.draft.id,
+        draftVersion: current.draft.contentVersion,
+        actorId,
+        fromState: current.draft.state,
+        toState: state,
+      }, actorId)],
     })
     await this.repository.save(updated)
     return updated
@@ -913,6 +930,7 @@ export class ManualResearchService {
     type: string,
     stage: ResearchStage,
     payload: Record<string, unknown>,
+    actorId = request.actorId,
   ): ResearchEvent {
     return ResearchEventSchema.parse({
       id: this.id(),
@@ -920,7 +938,7 @@ export class ManualResearchService {
       runId: run.id,
       type,
       stage,
-      actorId: request.actorId,
+      actorId,
       correlationId: request.idempotencyKey,
       payload,
       occurredAt: this.now(),

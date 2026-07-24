@@ -231,14 +231,17 @@ Estado: aprobada técnicamente.
 
 ## FASE 3J — aceptación humana Manual
 
-Estado: preparada; decisión humana pendiente.
+Estado: **aprobada humanamente y cerrada**.
 
-- Protocolo J01–J17 y acta creados en `FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
-- UI local incorpora fixtures seleccionables para fuente insuficiente/rota, proveedor caído una vez y ejecución lenta interrumpible.
-- Historial muestra intentos anteriores, recuperación, error y coste para verificar idempotencia.
-- Preparación verificada con 137 tests generales, 6 integraciones locales, typecheck, lint, build y lint SQL.
-- No se ha marcado ningún escenario como aceptado ni se ha emitido decisión por el jefe.
+- J01–J17 fueron ejecutados y aprobados expresamente por el jefe del proyecto.
+- El protocolo y acta cerrada están en `FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
+- J14 detectó un defecto de consulta y reapertura del rechazo; la corrección añadió historial visible, `rejected → in_review`, comentario obligatorio y `manual.review.reopened`.
+- J14 se repitió con dos ciclos trazables sobre Aventura v3, sin nueva versión, solicitud, run o coste.
+- J15 aprobó Estudiante v2 localmente sin publicación o envío a Trawel.
+- J16 reconcilió intentos, versiones, eventos y un coste total de 0,26 EUR.
+- J17 confirmó publicaciones en cero y ausencia de Automatic, Trawel, producción, credenciales y proveedores reales.
+- Decisión inequívoca del jefe: **FASE 3J APROBADA**.
 
-## Pausa obligatoria
+## Cierre y frontera posterior
 
-El trabajo se detiene en el gate humano 3J. Automatic, FASE 4, producción, Trawel y publicación permanecen bloqueados.
+El flujo Manual de FASE 3 queda cerrado. No se inicia FASE 4 y no hay trabajo posterior autorizado. Automatic, producción, Trawel y publicación permanecen bloqueados.

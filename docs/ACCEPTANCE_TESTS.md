@@ -184,13 +184,14 @@ Automatic permanece bloqueado hasta que 2C esté finalizada y un destino Manual 
 - El Manual guarda documentos acotados en PostgreSQL y no depende de Storage; su indisponibilidad no corta el pipeline.
 - UI e IPC ofrecen reanudar, reintentar y cancelar sin exponer secretos ni requerir terminal.
 - Tests de resiliencia 9/9, Manual 5/5 e integración Manual Supabase 2/2 aprobados; reset, lint SQL, typecheck, lint y build aprobados.
-- Automatic continúa bloqueado hasta aceptación humana expresa de FASE 3J.
+- Automatic continúa bloqueado; la aprobación humana de FASE 3J no autoriza su implementación.
 
-## Gate FASE 3J — preparado, decisión humana pendiente
+## Gate FASE 3J — aprobado y cerrado
 
-- El protocolo reproducible está en `FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
-- J01–J17 cubren destino válido/ambiguo/duplicado, fuentes insuficientes/rotas, proveedor no disponible, interrupción/reanudación, regeneración, corrección, rechazo, aprobación, diferenciación, reinicio, coste, historial y fronteras negativas.
-- Los fallos sintéticos se seleccionan desde la UI local y quedan en la configuración durable; no requieren proveedor, Storage o credencial remotos.
-- Preparación técnica verde: 137 tests generales y 6 integraciones locales, incluida caída inicial de proveedor seguida de retry idempotente en Supabase.
-- Solo el jefe puede emitir `APROBADO` o `RECHAZADO`; el estado actual es **sin decisión**.
-- Hasta esa decisión no se implementan Automatic, FASE 4, publicación o Trawel.
+- El protocolo y el acta cerrada están en `FASE_3J_ACEPTACION_HUMANA_MANUAL.md`.
+- J01–J17 fueron ejecutados y aprobados expresamente por el jefe del proyecto.
+- El defecto de J14 sobre consulta y reapertura del rechazo se corrigió; el escenario se repitió y quedó aprobado con dos ciclos de decisión trazables.
+- La corrección J14 permite `rejected → in_review`, exige comentario y registra `manual.review.reopened` sin nueva versión, solicitud, run o coste.
+- J15 confirmó aprobación local sin publicación; J16 reconcilió versiones, eventos y 0,26 EUR; J17 confirmó las fronteras negativas.
+- Decisión inequívoca: **FASE 3J APROBADA**.
+- La aprobación no inicia FASE 4 ni autoriza Automatic, publicación, Trawel, producción o proveedores reales.

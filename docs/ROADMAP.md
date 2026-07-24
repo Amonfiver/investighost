@@ -1,6 +1,6 @@
 # Roadmap recomendado de Investighost
 
-Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente el 2026-07-21. FASE 3J está preparada y detenida en aceptación humana pendiente. Automatic continúa bloqueado y no implementado.
+Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada humanamente y cerrada el 2026-07-25. No hay una fase posterior autorizada. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia
 
@@ -58,7 +58,7 @@ Limitaciones conocidas: normalización no funcional del lockfile por npm 11.6.2;
 
 ### 3. Pipeline Manual canónico — V3 vigente
 
-La ejecución se rige por `INVESTIGHOST_HOJA_DE_RUTA_CANONICA_V3.md`. 3A–3G cerraron dominio, persistencia, contenido y calidad; 3H hizo el flujo Manual operable desde Electron sobre Supabase local; 3I cerró recuperación, costes, cancelación e idempotencia. El orden autorizado prepara 3J y se detiene allí para aceptación humana. No se conecta producción/Trawel, no se publica y no se implementa Automatic.
+La ejecución se rige por `INVESTIGHOST_HOJA_DE_RUTA_CANONICA_V3.md`. 3A–3G cerraron dominio, persistencia, contenido y calidad; 3H hizo el flujo Manual operable desde Electron sobre Supabase local; 3I cerró recuperación, costes, cancelación e idempotencia; 3J completó J01–J17 y recibió aprobación humana expresa. El flujo Manual queda cerrado sin conexión a producción/Trawel, sin publicación y sin Automatic.
 
 ### 4. Biblioteca, edición y revisión
 
@@ -94,9 +94,9 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 
 ## Orden inmediato vigente
 
-1. Esperar aprobación o rechazo expreso del jefe sobre FASE 3J.
-2. No inferir aceptación a partir de tests técnicos o silencio.
-3. Mantener Automatic y FASE 4 bloqueados.
+1. Preparar únicamente el commit de cierre de FASE 3J y ejecutarlo solo tras autorización expresa.
+2. No iniciar FASE 4 ni ningún trabajo posterior sin un encargo nuevo.
+3. Mantener Automatic, producción, Trawel y publicación bloqueados.
 
 ## Estado FASE 2C-B — 2026-07-14
 

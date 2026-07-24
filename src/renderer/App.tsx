@@ -7,6 +7,11 @@ import {
   type QualityReview,
   type ResearchDestinationResult,
 } from '@shared/editorial-contracts'
+import {
+  manualReviewHistory,
+  type ManualReviewAction,
+  type ManualReviewHistoryEntry,
+} from '@shared/manual-review-history'
 import type { ContributionImportJob, ContributionSyncSummary } from '@shared/contracts'
 import type {
   ManualDestinationResolution,
@@ -506,12 +511,13 @@ function Drafts({ result, busy, actorId, applyResult }: {
   actorId: string
   applyResult: (operation: () => Promise<ResearchDestinationResult>) => Promise<void>
 }): JSX.Element {
-  return <div><div className="comparison-intro"><div><span className="card-kicker">COMPARACIÓN EDITORIAL</span><h3>Dos perfiles, dos utilidades</h3></div><p>Ambos parten de los mismos hechos. La estructura y las decisiones cambian por perfil.</p></div><div className="draft-columns">{result.drafts.map(bundle => <DraftColumn key={bundle.draft.id} bundle={bundle} review={result.qualityReviews.find(item => item.draftId === bundle.draft.id)} requestId={result.request.id} actorId={actorId} busy={busy} applyResult={applyResult} />)}</div></div>
+  return <div><div className="comparison-intro"><div><span className="card-kicker">COMPARACIÓN EDITORIAL</span><h3>Dos perfiles, dos utilidades</h3></div><p>Ambos parten de los mismos hechos. La estructura y las decisiones cambian por perfil.</p></div><div className="draft-columns">{result.drafts.map(bundle => <DraftColumn key={bundle.draft.id} bundle={bundle} review={result.qualityReviews.find(item => item.draftId === bundle.draft.id)} reviewHistory={manualReviewHistory(result.events, bundle.draft)} requestId={result.request.id} actorId={actorId} busy={busy} applyResult={applyResult} />)}</div></div>
 }
 
-function DraftColumn({ bundle, review, requestId, actorId, busy, applyResult }: {
+function DraftColumn({ bundle, review, reviewHistory, requestId, actorId, busy, applyResult }: {
   bundle: EditorialDraftBundle
   review?: QualityReview
+  reviewHistory: ManualReviewHistoryEntry[]
   requestId: string
   actorId: string
   busy: boolean
@@ -523,6 +529,11 @@ function DraftColumn({ bundle, review, requestId, actorId, busy, applyResult }: 
   const [reason, setReason] = useState('')
   const [comment, setComment] = useState('')
   const openEdit = (section: EditorialDraftBundle['sections'][number]) => { setEditing(section.id); setHeading(section.heading); setContent(section.content); setReason('') }
+  const applyReviewResult = (operation: () => Promise<ResearchDestinationResult>) => applyResult(async () => {
+    const result = await operation()
+    setComment('')
+    return result
+  })
   return <article className={`draft-column ${bundle.draft.profile}`}>
     <header><div><span className="profile-label">{profileLabel(bundle.draft.profile)}</span><h3>{bundle.draft.title}</h3></div><StateBadge value={bundle.draft.state} /></header>
     <p className="draft-intro">{bundle.draft.introduction}</p>
@@ -530,11 +541,43 @@ function DraftColumn({ bundle, review, requestId, actorId, busy, applyResult }: 
     <div className="section-stack">{bundle.sections.map(section => <section key={section.id}><div className="section-heading-inline"><div><span>{section.position + 1}</span><h4>{section.heading}</h4></div>{['ready', 'changes_requested', 'rejected'].includes(bundle.draft.state) && <button className="text-button" onClick={() => openEdit(section)}>Editar</button>}</div><p>{section.content}</p><small>{section.factIds.length} hechos · {section.sourceIds.length} fuentes</small>{editing === section.id && <div className="edit-box"><label className="field"><span>Título</span><input value={heading} onChange={event => setHeading(event.target.value)} /></label><label className="field"><span>Contenido</span><textarea rows={6} value={content} onChange={event => setContent(event.target.value)} /></label><label className="field"><span>Motivo obligatorio</span><input value={reason} onChange={event => setReason(event.target.value)} placeholder="Qué debe cambiar y por qué" /></label><div className="edit-actions"><button className="button ghost" onClick={() => setEditing(null)}>Cerrar</button><button className="button secondary" disabled={busy || !reason.trim()} onClick={() => applyResult(() => window.electronAPI.regenerateManualSection({ requestId, draftId: bundle.draft.id, sectionId: section.id, reason, actorId }))}>Regenerar con mock</button><button className="button primary" disabled={busy || !reason.trim() || content.trim().length < 60} onClick={() => applyResult(() => window.electronAPI.editManualSection({ requestId, draftId: bundle.draft.id, sectionId: section.id, heading, content, reason, actorId }))}>Guardar versión</button></div></div>}</section>)}</div>
     <footer className="review-actions">
       <div><span className="card-kicker">REVISIATOR</span>{review ? <StateBadge value={review.outcome} /> : <span>Sin revisión</span>}</div>
+      {reviewHistory.length > 0 && <ManualDecisionDetails state={bundle.draft.state} history={reviewHistory} />}
       {bundle.draft.state === 'ready' && <button className="button primary" disabled={busy || !review || !['passed', 'passed_with_warnings'].includes(review.outcome)} onClick={() => applyResult(() => window.electronAPI.submitManualDraftReview({ requestId, draftId: bundle.draft.id, actorId }))}>Iniciar revisión humana</button>}
-      {bundle.draft.state === 'in_review' && <div className="decision-box"><label className="field"><span>Comentario de decisión</span><textarea rows={3} value={comment} onChange={event => setComment(event.target.value)} /></label><div><button className="button danger" disabled={busy || !comment.trim()} onClick={() => applyResult(() => window.electronAPI.decideManualDraft({ requestId, draftId: bundle.draft.id, actorId, decision: 'rejected', comment }))}>Rechazar</button><button className="button secondary" disabled={busy || !comment.trim()} onClick={() => applyResult(() => window.electronAPI.decideManualDraft({ requestId, draftId: bundle.draft.id, actorId, decision: 'changes_requested', comment }))}>Solicitar cambios</button><button className="button success" disabled={busy || !comment.trim()} onClick={() => applyResult(() => window.electronAPI.decideManualDraft({ requestId, draftId: bundle.draft.id, actorId, decision: 'approved', comment }))}>Aprobar</button></div></div>}
+      {bundle.draft.state === 'rejected' && <div className="decision-box reopen-box"><label className="field"><span>Comentario obligatorio de reapertura</span><textarea rows={3} value={comment} onChange={event => setComment(event.target.value)} placeholder="Explica por qué debe reconsiderarse la decisión" /></label><div><button className="button secondary" disabled={busy || !comment.trim()} onClick={() => applyReviewResult(() => window.electronAPI.reopenManualDraftReview({ requestId, draftId: bundle.draft.id, actorId, comment }))}>Reabrir revisión</button></div></div>}
+      {bundle.draft.state === 'in_review' && <div className="decision-box"><label className="field"><span>Comentario de decisión</span><textarea rows={3} value={comment} onChange={event => setComment(event.target.value)} /></label><div><button className="button danger" disabled={busy || !comment.trim()} onClick={() => applyReviewResult(() => window.electronAPI.decideManualDraft({ requestId, draftId: bundle.draft.id, actorId, decision: 'rejected', comment }))}>Rechazar</button><button className="button secondary" disabled={busy || !comment.trim()} onClick={() => applyReviewResult(() => window.electronAPI.decideManualDraft({ requestId, draftId: bundle.draft.id, actorId, decision: 'changes_requested', comment }))}>Solicitar cambios</button><button className="button success" disabled={busy || !comment.trim()} onClick={() => applyReviewResult(() => window.electronAPI.decideManualDraft({ requestId, draftId: bundle.draft.id, actorId, decision: 'approved', comment }))}>Aprobar</button></div></div>}
       {bundle.draft.state === 'approved' && <div className="no-publish-note">✓ Aprobado para biblioteca. No se ha publicado ni enviado a Trawel.</div>}
     </footer>
   </article>
+}
+
+function ManualDecisionDetails({ state, history }: {
+  state: EditorialDraftBundle['draft']['state']
+  history: ManualReviewHistoryEntry[]
+}): JSX.Element {
+  const current = history.at(-1)
+  if (!current) return <></>
+  return <section className="manual-decision-details" aria-label="Decisión humana actual e historial">
+    <div className="manual-decision-heading"><div><span className="card-kicker">DECISIÓN HUMANA ACTUAL</span><strong>{manualReviewActionLabel(current.action)}</strong></div><StateBadge value={state} /></div>
+    <p className="decision-comment">{current.comment ?? 'Inicio de revisión sin comentario de decisión.'}</p>
+    <dl className="definition-grid">
+      <div><dt>Actor</dt><dd className="technical-id">{current.actorId ?? 'No registrado'}</dd></div>
+      <div><dt>Fecha y hora</dt><dd>{formatDate(current.occurredAt)}</dd></div>
+      <div><dt>Versión afectada</dt><dd>v{current.draftVersion}</dd></div>
+      <div><dt>Draft ID</dt><dd className="technical-id">{current.draftId}</dd></div>
+    </dl>
+    <div className="manual-decision-history">
+      <strong>Historial de decisiones de v{current.draftVersion}</strong>
+      <ol>{history.map(entry => <li key={entry.id}><span>{formatDate(entry.occurredAt)}</span><div><strong>{manualReviewActionLabel(entry.action)}</strong><p>{entry.comment ?? 'Sin comentario de decisión'}</p><small>Actor {entry.actorId ?? 'no registrado'} · v{entry.draftVersion}</small></div></li>)}</ol>
+    </div>
+  </section>
+}
+
+function manualReviewActionLabel(action: ManualReviewAction): string {
+  if (action === 'started') return 'Revisión iniciada'
+  if (action === 'reopened') return 'Revisión reabierta'
+  if (action === 'approved') return 'Aprobada'
+  if (action === 'changes_requested') return 'Cambios solicitados'
+  return 'Rechazada'
 }
 
 function Quality({ result }: { result: ResearchDestinationResult }): JSX.Element {

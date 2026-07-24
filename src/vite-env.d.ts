@@ -18,6 +18,7 @@ import type {
   ManualDestinationQuery,
   ManualDestinationResolution,
   ManualDraftDecision,
+  ManualDraftReopen,
   ManualDraftReview,
   ManualExecutionAction,
   ManualPersistenceStatus,
@@ -56,6 +57,7 @@ declare global {
       regenerateManualSection: (input: ManualSectionRegeneration) => Promise<ResearchDestinationResult>
       submitManualDraftReview: (input: ManualDraftReview) => Promise<ResearchDestinationResult>
       decideManualDraft: (input: ManualDraftDecision) => Promise<ResearchDestinationResult>
+      reopenManualDraftReview: (input: ManualDraftReopen) => Promise<ResearchDestinationResult>
     }
   }
 }

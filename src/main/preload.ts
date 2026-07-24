@@ -38,6 +38,7 @@ const electronAPI = {
   regenerateManualSection: (input: unknown) => ipcRenderer.invoke('manual:regenerate-section', input),
   submitManualDraftReview: (input: unknown) => ipcRenderer.invoke('manual:submit-review', input),
   decideManualDraft: (input: unknown) => ipcRenderer.invoke('manual:decide', input),
+  reopenManualDraftReview: (input: unknown) => ipcRenderer.invoke('manual:reopen-review', input),
 }
 
 // Exponer como window.electronAPI

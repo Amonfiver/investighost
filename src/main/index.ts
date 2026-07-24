@@ -175,6 +175,10 @@ ipcMain.handle('manual:decide', async (_event, input: unknown) => {
   return (await getManualResearchRuntime()).decide(input as never)
 })
 
+ipcMain.handle('manual:reopen-review', async (_event, input: unknown) => {
+  return (await getManualResearchRuntime()).reopenReview(input as never)
+})
+
 // Ciclo de vida de la app
 app.whenReady().then(() => {
   // Valida Supabase local al arrancar; el fallo queda visible y nunca activa SQLite como fallback.

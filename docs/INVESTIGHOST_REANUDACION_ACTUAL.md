@@ -1,9 +1,9 @@
 # Investighost — cierre y punto de reanudación actual
 
 Fecha de actualización: 2026-07-25
-Estado canónico: **FASE 3J APROBADA, CERRADA Y SINCRONIZADA**
+Estado canónico: **FASE 3J CERRADA; FASE 4A-01 IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE GATE**
 
-Este documento sustituye los puntos de reanudación anteriores. FASE 4A queda diseñada documentalmente como siguiente bloque posible, pero no está autorizada para implementación.
+Este documento sustituye los puntos de reanudación anteriores. Se autorizó exclusivamente FASE 4A-01 para introducir el contrato compartido y la paginación estable de Biblioteca. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados.
 
 ## 1. Decisión humana vigente
 
@@ -15,19 +15,20 @@ FASE 3J — APROBADA
 
 El gate humano del flujo Manual queda cerrado. La aprobación no inició ni autorizó FASE 4, Automatic, publicación, Trawel, producción, proveedores reales, IA real o carga de créditos.
 
-## 2. Estado Git de este cierre
+## 2. Estado Git al iniciar FASE 4A-01
 
 - Proyecto Windows: `D:\Proyectos\investighost`.
 - Ruta WSL: `/mnt/d/Proyectos/investighost`.
 - Rama: `feat/investighost-reinvencion`.
-- HEAD de cierre: `ac61700f27297d899e55f6460a76a6cac7bca72a` (`ac61700`).
-- Commit: `feat: cerrar fase 3j con revisión humana trazable`.
+- Commit funcional de cierre 3J: `ac61700f27297d899e55f6460a76a6cac7bca72a`.
+- HEAD inicial de 4A-01: `5c55be66b3f40c75540d13a8e51aa935abac3e80` (`5c55be6`).
+- Commit documental ya existente: `docs: redefinir fase 4a tras el cierre de fase 3j`.
 - Upstream: `origin/feat/investighost-reinvencion`.
-- Push de cierre: realizado a `origin/feat/investighost-reinvencion`.
-- Divergencia confirmada antes de esta actualización documental: 0 commits locales / 0 commits remotos.
-- Árbol confirmado limpio antes de esta actualización documental.
+- Push de ambos commits previos: realizado a `origin/feat/investighost-reinvencion`.
+- Divergencia al iniciar 4A-01: 0 commits locales / 0 commits remotos.
+- Árbol limpio al iniciar 4A-01.
 
-Esta actualización redefine únicamente documentación y queda local, sin commit ni push, hasta recibir autorización expresa. No modifica el cierre Git ya publicado de FASE 3J.
+La indicación anterior de que `5c55be6` seguía pendiente de commit era obsoleta y queda corregida. La implementación actual de 4A-01 sí permanece local y sin commit ni push hasta recibir autorización expresa.
 
 ## 3. Estado general del proyecto
 
@@ -36,7 +37,8 @@ Esta actualización redefine únicamente documentación y queda local, sin commi
 - FASE 3J: aprobada humanamente y cerrada.
 - J01–J17: aprobados.
 - FASE 4 original: no iniciada literalmente; parte de su alcance quedó cubierta y aceptada dentro de FASE 3J.
-- FASE 4A — Consolidación operativa de Biblioteca: diseñada documentalmente y no autorizada para implementación.
+- FASE 4A-01 — contrato compartido y paginación estable: implementada técnicamente y pendiente de gate.
+- FASE 4A-02 y resto de FASE 4A: no iniciados ni autorizados.
 - Automatic: no implementado.
 - Flujo activo: Manual local y simulado.
 - Persistencia estructurada: Supabase local/PostgreSQL.
@@ -272,8 +274,45 @@ No se ejecutaron integraciones Supabase que creasen solicitudes temporales ni co
 
 ```text
 FASE 4A — CONSOLIDACIÓN OPERATIVA DE BIBLIOTECA
-DISEÑADA DOCUMENTALMENTE — NO AUTORIZADA PARA IMPLEMENTACIÓN
+4A-01 IMPLEMENTADA TÉCNICAMENTE — PENDIENTE DE GATE
+4A-02 Y BLOQUES POSTERIORES — NO INICIADOS
 ```
+
+### FASE 4A-01 — contrato compartido y paginación estable
+
+Alcance autorizado e implementado:
+
+- Contrato Zod compartido en `src/shared/library-contracts.ts`.
+- Consulta de página con tamaño predeterminado 25, mínimo 1 y máximo 100.
+- Orden canónico `updated_at DESC, id DESC`.
+- Cursor validado con orden, timestamp durable y request ID como desempate.
+- Conservación de la precisión textual de `timestamptz` procedente de PostgreSQL.
+- Keyset pagination en Supabase, sin offset y recuperando `pageSize + 1`.
+- Misma semántica en el repositorio de memoria.
+- Servicio, IPC, preload y tipos del renderer actualizados; la frontera IPC valida la consulta.
+- El renderer deja de depender del resumen interno del repositorio y continúa mostrando la primera página sin introducir la UI futura de paginación.
+- Las métricas visibles se rotulan como datos de la página y el coste existente como coste del último run, no como coste acumulado definitivo.
+
+El resultado de página contiene `items`, `hasMore` y `nextCursor`. No devuelve un total ni contadores globales incompletos. `hasActiveIncident` y `hasHistoricalIncident` permanecen conceptos contractualmente distintos; el cálculo histórico completo queda aplazado al read model. El coste acumulado futuro seguirá usando `editorial_execution_controls.spent_cost`.
+
+Pruebas y validaciones:
+
+- Pruebas específicas: 43 aprobadas.
+- Suite normal: 161 aprobadas; 9 integraciones opt-in omitidas.
+- Se recorrieron 137 solicitudes sintéticas con `updated_at` empatado en seis páginas, sin duplicados ni omisiones.
+- Paridad memoria/Supabase probada con un doble local sin red ni persistencia humana.
+- Existe una integración Supabase adicional opt-in con creación y limpieza explícitas; no se ejecutó sobre el entorno humano.
+- Typecheck, ESLint y builds renderer/main/preload: aprobados.
+- `git diff --check`: aprobado.
+
+Limitaciones deliberadas:
+
+- La UI continúa cargando solo la primera página; los controles de navegación pertenecen a 4A-03.
+- No hay búsqueda, filtros, ordenación seleccionable, totales, contadores globales, preferencias ni archivo.
+- Se conserva provisionalmente la selección del último run usada antes de 4A-01.
+- La consulta no incorpora geografía, borradores, eventos ni `spent_cost`.
+- La paginación garantiza recorrido estable sobre un conjunto sin mutaciones concurrentes; una política de snapshot para cambios simultáneos no forma parte de este bloque.
+- No se creó ni ejecutó migración.
 
 La FASE 4 original proponía biblioteca, CRUD durable, versiones, edición, aprobación/rechazo, historial y prueba con una persona no técnica. FASE 3J ya aceptó humanamente gran parte de esas capacidades:
 
@@ -413,9 +452,9 @@ Si FASE 4A recibe autorización funcional, deberá entregar:
 - reutilización automática del conocimiento;
 - mejora editorial integral.
 
-### Gate futuro
+### Gate vigente
 
-FASE 4A requerirá implementación explícitamente autorizada, validación técnica local y aceptación humana. Sus criterios documentales están en `docs/ACCEPTANCE_TESTS.md`. Hasta una autorización nueva no se modifica código, persistencia, UI, pruebas o migraciones para este bloque.
+FASE 4A-01 debe recibir revisión técnica y decisión humana antes de commit/push o de autorizar 4A-02. Los criterios están en `docs/ACCEPTANCE_TESTS.md`. Esta implementación no autoriza búsqueda, filtros, read model, archivo, contadores, preferencias ni cualquier fase posterior.
 
 ## 13. Decisiones estratégicas pendientes
 
@@ -470,6 +509,7 @@ Ambos:
 ## 14. Persistencia, seguridad y migraciones
 
 - No hay migración nueva para J14 o para el cierre.
+- FASE 4A-01 tampoco añade ni ejecuta migraciones, seeds o integraciones Supabase.
 - No se alteró ni borró evidencia humana histórica.
 - No se ejecutó `supabase link`.
 - No se ejecutó `supabase db push`.
@@ -479,12 +519,12 @@ Ambos:
 - No se usó IA real.
 - No se cargaron créditos.
 - No se implementó Automatic.
-- No se inició funcionalmente FASE 4A.
+- Solo se inició el bloque autorizado 4A-01; 4A-02 no comenzó.
 
 ## 15. Siguiente trabajo
 
 ```text
-NINGUNA IMPLEMENTACIÓN POSTERIOR AUTORIZADA
+REVISAR Y DECIDIR EL GATE TÉCNICO DE FASE 4A-01
 ```
 
-El commit y push de cierre de FASE 3J ya existen en remoto. La presente actualización documental debe permanecer sin commit hasta autorización expresa. Una futura implementación de FASE 4A requerirá otra autorización humana específica y no se deduce de aprobar este diseño.
+El commit y push de cierre de FASE 3J y el commit documental `5c55be6` ya existen en remoto. Los cambios de FASE 4A-01 deben permanecer sin commit ni push hasta autorización expresa. Aprobar este gate no autoriza automáticamente FASE 4A-02.

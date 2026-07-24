@@ -108,6 +108,9 @@ describe('canonical Manual workflow', () => {
     expect(result.qualityReviews.every(item => ['passed', 'passed_with_warnings'].includes(item.outcome))).toBe(true)
     expect(result.run.actualCost).toBeGreaterThan(0)
     expect(await repository.getByRequestId(result.request.id)).not.toBeNull()
+    const library = await service.list()
+    expect(library.items.map(item => item.requestId)).toContain(result.request.id)
+    expect(await service.get(library.items[0].requestId)).not.toBeNull()
   })
 
   it('returns the existing aggregate for the same completed idempotency key', async () => {
@@ -259,7 +262,7 @@ describe('canonical Manual workflow', () => {
     expect(reopened.run.actualCost).toBe(initialCost)
     expect(reopened.usage.map(item => item.id)).toEqual(initialUsageIds)
     expect(await repository.listRuns(initial.request.id)).toHaveLength(1)
-    expect((await repository.list()).filter(item => item.requestId === initial.request.id)).toHaveLength(1)
+    expect((await repository.list()).items.filter(item => item.requestId === initial.request.id)).toHaveLength(1)
     expect(reopened.events.at(-1)).toMatchObject({
       requestId: initial.request.id,
       runId: initial.run.id,

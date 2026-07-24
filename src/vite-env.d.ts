@@ -27,7 +27,11 @@ import type {
   ManualSectionEdit,
   ManualSectionRegeneration,
 } from './shared/manual-contracts'
-import type { EditorialDraftVersionSummary, EditorialResearchSummary } from './modules/editorial-pipeline/repository'
+import type {
+  LibraryPage,
+  LibraryPageQueryInput,
+} from './shared/library-contracts'
+import type { EditorialDraftVersionSummary } from './modules/editorial-pipeline/repository'
 
 declare global {
   interface Window {
@@ -50,7 +54,7 @@ declare global {
       resumeManualResearch: (input: ManualExecutionAction) => Promise<ResearchDestinationResult>
       retryManualResearch: (input: ManualExecutionAction) => Promise<ManualResearchExecutionOutcome>
       cancelManualResearch: (input: ManualExecutionAction) => Promise<void>
-      listManualResearch: () => Promise<EditorialResearchSummary[]>
+      listManualResearch: (query?: LibraryPageQueryInput) => Promise<LibraryPage>
       getManualResearch: (requestId: string) => Promise<ResearchDestinationResult | null>
       listManualDraftVersions: (requestId: string) => Promise<EditorialDraftVersionSummary[]>
       editManualSection: (input: ManualSectionEdit) => Promise<ResearchDestinationResult>

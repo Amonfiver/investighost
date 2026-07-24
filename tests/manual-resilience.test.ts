@@ -85,7 +85,7 @@ describe('Manual resilience, cost and idempotency gate', () => {
     const insufficient = setup()
     await expect(insufficient.service.start(input({ simulationScenario: 'insufficient_sources' })))
       .rejects.toMatchObject({ code: 'NO_ACCEPTED_SOURCES' })
-    expect((await insufficient.repository.list())[0]).toMatchObject({ state: 'failed', errorCode: 'NO_ACCEPTED_SOURCES' })
+    expect((await insufficient.repository.list()).items[0]).toMatchObject({ state: 'failed', errorCode: 'NO_ACCEPTED_SOURCES' })
 
     const broken = await setup().service.start(input({ simulationScenario: 'broken_source' }))
     expect(broken.sources.map(source => source.status)).toEqual(expect.arrayContaining(['accepted', 'unavailable']))
@@ -112,11 +112,11 @@ describe('Manual resilience, cost and idempotency gate', () => {
     const unavailable = setup()
     await expect(unavailable.service.start(input({ simulationScenario: 'provider_unavailable' })))
       .rejects.toMatchObject({ code: 'PERMANENT' })
-    const failed = (await unavailable.repository.list())[0]
+    const failed = (await unavailable.repository.list()).items[0]
     expect(failed).toMatchObject({ state: 'failed', errorCode: 'PERMANENT' })
     const retried = await unavailable.service.retry({ requestId: failed.requestId, actorId })
     expect(retried.run).toMatchObject({ attempt: 2, state: 'completed' })
-    expect(await unavailable.repository.list()).toHaveLength(1)
+    expect((await unavailable.repository.list()).items).toHaveLength(1)
   })
 
   it('returns J05 as a controlled durable incident and retries without duplicating its request or destination', async () => {
@@ -137,7 +137,7 @@ describe('Manual resilience, cost and idempotency gate', () => {
     })
     if (first.status !== 'failed') throw new Error('J05 debía producir una incidencia controlada')
 
-    const summaries = await repository.list()
+    const summaries = (await repository.list()).items
     expect(summaries).toHaveLength(1)
     expect(summaries[0]).toMatchObject({
       requestId: first.incident.requestId,
@@ -159,7 +159,7 @@ describe('Manual resilience, cost and idempotency gate', () => {
         errorCode: 'NO_ACCEPTED_SOURCES',
       },
     })
-    expect(await repository.list()).toHaveLength(1)
+    expect((await repository.list()).items).toHaveLength(1)
     expect(await repository.listRuns(first.incident.requestId)).toHaveLength(2)
   })
 
@@ -184,7 +184,7 @@ describe('Manual resilience, cost and idempotency gate', () => {
     })
     const key = randomUUID()
     await expect(service.start(input({ idempotencyKey: key }))).rejects.toMatchObject({ code: 'PERMANENT' })
-    const failed = (await repository.list())[0]
+    const failed = (await repository.list()).items[0]
     const recovered = await service.retry({ requestId: failed.requestId, actorId })
     expect(recovered.run).toMatchObject({ attempt: 2, state: 'completed' })
     expect(recovered.previousRuns).toHaveLength(1)
@@ -203,7 +203,7 @@ describe('Manual resilience, cost and idempotency gate', () => {
       },
     }).service
     await expect(first.start(input())).rejects.toMatchObject({ code: 'ELECTRON_INTERRUPTED' })
-    const failed = (await repository.list())[0]
+    const failed = (await repository.list()).items[0]
     const interruptedScaffold = await repository.getScaffold(failed.requestId)
     if (!interruptedScaffold) throw new Error('Falta scaffold interrumpido')
     interruptedScaffold.request.state = 'validating'
@@ -234,7 +234,7 @@ describe('Manual resilience, cost and idempotency gate', () => {
     const repository = new ControlWriteFailureRepository()
     const first = setup(repository).service
     await expect(first.start(input())).rejects.toMatchObject({ code: 'DATABASE_UNAVAILABLE' })
-    const scaffold = (await repository.list())[0]
+    const scaffold = (await repository.list()).items[0]
     const restarted = setup(repository).service
     const recovered = await restarted.resume({ requestId: scaffold.requestId, actorId })
     expect(recovered.request.state).toBe('completed')
@@ -255,7 +255,7 @@ describe('Manual resilience, cost and idempotency gate', () => {
     const repository = new FailingRepository()
     const { service } = setup(repository)
     await expect(service.start(input())).rejects.toMatchObject({ code: 'DATABASE_UNAVAILABLE' })
-    const failed = (await repository.list())[0]
+    const failed = (await repository.list()).items[0]
     expect(failed).toMatchObject({ state: 'failed', errorCode: 'DATABASE_UNAVAILABLE' })
     const recovered = await service.retry({ requestId: failed.requestId, actorId })
     expect(recovered.request.state).toBe('completed')
@@ -269,17 +269,17 @@ describe('Manual resilience, cost and idempotency gate', () => {
       beforeStage: stage => stage === 'source_discovery' ? barrier : Promise.resolve(),
     })
     const startPromise = service.start(input())
-    let summaries = await repository.list()
+    let summaries = (await repository.list()).items
     for (let attempt = 0; summaries.length === 0 && attempt < 10; attempt += 1) {
       await new Promise(resolve => setTimeout(resolve, 0))
-      summaries = await repository.list()
+      summaries = (await repository.list()).items
     }
     const summary = summaries[0]
     if (!summary) throw new Error('La ejecución no llegó a persistir el scaffold')
     await service.cancel({ requestId: summary.requestId, actorId })
     unblock?.()
     await expect(startPromise).rejects.toMatchObject({ code: 'CANCELLED' })
-    expect((await repository.list())[0]).toMatchObject({ state: 'cancelled', runState: 'cancelled' })
+    expect((await repository.list()).items[0]).toMatchObject({ state: 'cancelled', runState: 'cancelled' })
     expect((await repository.listRuns(summary.requestId))[0].cancelledBy).toBe(actorId)
   })
 
@@ -293,20 +293,20 @@ describe('Manual resilience, cost and idempotency gate', () => {
     expect(settled.filter(item => item.status === 'fulfilled')).toHaveLength(1)
     expect(settled.filter(item => item.status === 'rejected')).toHaveLength(1)
     expect(settled.find(item => item.status === 'rejected')).toMatchObject({ reason: { code: 'ALREADY_RUNNING' } })
-    expect(await repository.list()).toHaveLength(1)
+    expect((await repository.list()).items).toHaveLength(1)
   })
 
   it('bounds retries and keeps cumulative spend within the configured budget', async () => {
     const { repository, service } = setup(new MemoryEditorialResearchRepository(), { providers: unavailableProviders })
     await expect(service.start(input({ maxAttempts: 2 }))).rejects.toMatchObject({ code: 'PERMANENT' })
-    const summary = (await repository.list())[0]
+    const summary = (await repository.list()).items[0]
     await expect(service.retry({ requestId: summary.requestId, actorId })).rejects.toMatchObject({ code: 'PERMANENT' })
     await expect(service.retry({ requestId: summary.requestId, actorId })).rejects.toMatchObject({ code: 'ATTEMPTS_EXHAUSTED' })
     expect(await repository.listRuns(summary.requestId)).toHaveLength(2)
 
     const budgeted = setup()
     await expect(budgeted.service.start(input({ budgetLimit: 0.2 }))).rejects.toMatchObject({ code: 'BUDGET_EXCEEDED' })
-    const budgetSummary = (await budgeted.repository.list())[0]
+    const budgetSummary = (await budgeted.repository.list()).items[0]
     const control = await budgeted.repository.getExecutionControl(budgetSummary.requestId)
     expect(control?.spentCost).toBeLessThanOrEqual(control?.budgetLimit ?? 0)
   })
@@ -323,7 +323,7 @@ describe('Manual resilience, cost and idempotency gate', () => {
       },
     }).service
     await expect(service.start(input())).rejects.toMatchObject({ code: 'ELECTRON_INTERRUPTED' })
-    const summary = (await repository.list())[0]
+    const summary = (await repository.list()).items[0]
     const checkpoint = await repository.getStageCheckpoint(summary.requestId, 'source_reading')
     if (!checkpoint) throw new Error('Falta checkpoint de fuentes')
     await repository.saveCheckpoint({ ...checkpoint, snapshotHash: '0'.repeat(64) })

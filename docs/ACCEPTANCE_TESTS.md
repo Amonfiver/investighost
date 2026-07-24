@@ -196,6 +196,30 @@ Automatic permanece bloqueado. El cierre de FASE 3J no autoriza su implementaci�
 - Decisión inequívoca: **FASE 3J APROBADA**.
 - La aprobación no inicia FASE 4 ni autoriza Automatic, publicación, Trawel, producción o proveedores reales.
 
+## Gate técnico FASE 4A-01 — preparado, pendiente de decisión humana
+
+- La consulta de Biblioteca usa un contrato Zod compartido desde renderer/preload hasta servicio y repositorio.
+- La entrada se valida en IPC y no expone tipos internos del repositorio al renderer.
+- El tamaño predeterminado es 25, el máximo es 100 y los valores inválidos se rechazan.
+- El orden canónico es `updated_at DESC, id DESC`.
+- El cursor conserva orden, dirección, timestamp y request ID; rechaza fechas, UUID, campos, direcciones y propiedades arbitrarias no válidas.
+- Supabase aplica keyset pagination, no offset, y lee un elemento adicional para calcular `hasMore`.
+- Memoria y Supabase conservan la misma semántica.
+- Una prueba recorre 137 solicitudes con timestamps empatados sin duplicar ni omitir ninguna.
+- Una prueba sin red verifica paridad del adaptador Supabase y ausencia de mutaciones; la integración real equivalente queda opt-in y con limpieza.
+- Listar o avanzar página no crea solicitudes, runs, versiones o eventos; no cambia estados o fechas y no genera coste.
+- El resultado no presenta totales o contadores de una página como globales.
+- El coste disponible se identifica como `latestRunActualCost`; el coste acumulado definitivo sigue reservado a `editorial_execution_controls.spent_cost`.
+- Incidencia activa e histórica son conceptos contractualmente distintos; el agregado histórico queda fuera de 4A-01.
+- La Biblioteca actual carga y abre el detalle desde la primera página.
+- Pruebas específicas: 43 aprobadas. Suite normal: 161 aprobadas y 9 integraciones opt-in omitidas.
+- Typecheck, ESLint, builds renderer/main/preload y `git diff --check`: aprobados.
+- No existe migración nueva y no se ejecutaron migraciones, seeds o comandos Supabase.
+- Búsqueda, filtros, ordenación UI, read model, archivo, contadores y preferencias no se iniciaron.
+- Publicaciones permanecen en cero; Trawel, producción, Automatic, IA y proveedores reales siguen desconectados.
+
+El bloque queda preparado para revisión técnica y decisión humana. No autoriza commit/push ni FASE 4A-02 por sí solo.
+
 ## Gate futuro FASE 4A — criterios documentales
 
 Estado: **DISEÑADO — IMPLEMENTACIÓN NO AUTORIZADA**.

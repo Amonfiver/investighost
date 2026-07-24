@@ -4,6 +4,10 @@ import { MemoryEditorialResearchRepository } from '@modules/editorial-pipeline/m
 import { EditorialRepositoryError } from '@modules/editorial-pipeline/repository'
 import { buildEditorialFixture } from './support/editorial-fixture'
 
+function syntheticUuid(prefix: string, index: number): string {
+  return `${prefix}0000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+}
+
 describe('editorial repository contract', () => {
   it('persists, retrieves and lists a canonical result', async () => {
     const repository = new MemoryEditorialResearchRepository()
@@ -11,11 +15,14 @@ describe('editorial repository contract', () => {
     await repository.save(fixture)
 
     expect(await repository.getByRequestId(fixture.request.id)).toEqual(fixture)
-    expect((await repository.list())[0]).toMatchObject({
+    const page = await repository.list()
+    expect(page.items[0]).toMatchObject({
       requestId: fixture.request.id,
       destinationQuery: 'Testland',
       state: 'completed',
+      latestRunActualCost: 0,
     })
+    expect(await repository.getByRequestId(page.items[0].requestId)).toEqual(fixture)
   })
 
   it('returns the same durable result for an idempotency key', async () => {
@@ -25,7 +32,91 @@ describe('editorial repository contract', () => {
     await repository.save(structuredClone(fixture))
 
     expect((await repository.findByIdempotencyKey('stable:testland:v1'))?.request.id).toBe(fixture.request.id)
-    expect(await repository.list()).toHaveLength(1)
+    expect((await repository.list()).items).toHaveLength(1)
+  })
+
+  it('returns an empty final page without a cursor', async () => {
+    const repository = new MemoryEditorialResearchRepository()
+    expect(await repository.list()).toEqual({
+      items: [],
+      hasMore: false,
+    })
+  })
+
+  it('traverses more than 100 tied requests without duplicates, omissions or mutations', async () => {
+    const repository = new MemoryEditorialResearchRepository()
+    const tiedAt = new Date('2026-07-25T12:00:00.000Z')
+    const fixtures = Array.from({ length: 137 }, (_, index) => {
+      const fixture = buildEditorialFixture({
+        requestId: syntheticUuid('9', index + 1),
+        runId: syntheticUuid('a', index + 1),
+        destinationId: syntheticUuid('b', index + 1),
+        idempotencyKey: `library-pagination:${index + 1}`,
+      })
+      fixture.request.updatedAt = tiedAt
+      return fixture
+    })
+    for (const fixture of fixtures) await repository.save(fixture)
+
+    const protectedFixture = fixtures[50]
+    const aggregateBefore = await repository.getByRequestId(protectedFixture.request.id)
+    const runsBefore = await repository.listRuns(protectedFixture.request.id)
+    const maximumPage = await repository.list({ pageSize: 100 })
+    expect(maximumPage.items).toHaveLength(100)
+    expect(maximumPage.hasMore).toBe(true)
+    const seen: string[] = []
+    let cursor: Awaited<ReturnType<typeof repository.list>>['nextCursor']
+    let pageCount = 0
+
+    do {
+      const page = await repository.list({ pageSize: 25, cursor })
+      pageCount += 1
+      seen.push(...page.items.map(item => item.requestId))
+      cursor = page.nextCursor
+      expect(page.hasMore).toBe(Boolean(page.nextCursor))
+    } while (cursor)
+
+    expect(pageCount).toBe(6)
+    expect(seen).toHaveLength(137)
+    expect(new Set(seen)).toHaveLength(137)
+    expect(seen).toEqual(fixtures.map(item => item.request.id).sort().reverse())
+    expect(await repository.getByRequestId(protectedFixture.request.id)).toEqual(aggregateBefore)
+    expect(await repository.listRuns(protectedFixture.request.id)).toEqual(runsBefore)
+  })
+
+  it('uses updated_at before request ID when moving to the next page', async () => {
+    const repository = new MemoryEditorialResearchRepository()
+    const dates = [
+      new Date('2026-07-25T12:00:02.000Z'),
+      new Date('2026-07-25T12:00:01.000Z'),
+      new Date('2026-07-25T12:00:01.000Z'),
+      new Date('2026-07-25T12:00:00.000Z'),
+    ]
+    const fixtures = dates.map((updatedAt, index) => {
+      const fixture = buildEditorialFixture({
+        requestId: syntheticUuid('c', index + 1),
+        runId: syntheticUuid('d', index + 1),
+        destinationId: syntheticUuid('e', index + 1),
+        idempotencyKey: `library-order:${index + 1}`,
+      })
+      fixture.request.updatedAt = updatedAt
+      return fixture
+    })
+    for (const fixture of fixtures) await repository.save(fixture)
+
+    const first = await repository.list({ pageSize: 2 })
+    const second = await repository.list({ pageSize: 2, cursor: first.nextCursor })
+
+    expect(first.items.map(item => item.requestId)).toEqual([
+      fixtures[0].request.id,
+      fixtures[2].request.id,
+    ])
+    expect(second.items.map(item => item.requestId)).toEqual([
+      fixtures[1].request.id,
+      fixtures[3].request.id,
+    ])
+    expect(second.hasMore).toBe(false)
+    expect(second.nextCursor).toBeUndefined()
   })
 
   it('rejects an idempotency key assigned to a different request', async () => {

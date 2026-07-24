@@ -20,7 +20,8 @@ import type {
   ManualResearchIncident,
   ManualResearchStart,
 } from '@shared/manual-contracts'
-import type { EditorialDraftVersionSummary, EditorialResearchSummary } from '@modules/editorial-pipeline/repository'
+import type { LibraryItem } from '@shared/library-contracts'
+import type { EditorialDraftVersionSummary } from '@modules/editorial-pipeline/repository'
 
 type View = 'library' | 'new' | 'detail' | 'contributions'
 type DetailTab = 'overview' | 'sources' | 'facts' | 'places' | 'activities' | 'drafts' | 'quality' | 'history'
@@ -52,17 +53,17 @@ export function App(): JSX.Element {
   const [view, setView] = useState<View>('library')
   const [status, setStatus] = useState<ManualPersistenceStatus | null>(null)
   const [actorId, setActorId] = useState('')
-  const [summaries, setSummaries] = useState<EditorialResearchSummary[]>([])
-  const [selectedSummary, setSelectedSummary] = useState<EditorialResearchSummary | null>(null)
+  const [summaries, setSummaries] = useState<LibraryItem[]>([])
+  const [selectedSummary, setSelectedSummary] = useState<LibraryItem | null>(null)
   const [selected, setSelected] = useState<ResearchDestinationResult | null>(null)
   const [versions, setVersions] = useState<EditorialDraftVersionSummary[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const refreshLibrary = useCallback(async () => {
-    const items = await window.electronAPI.listManualResearch()
-    setSummaries(items)
-    return items
+    const page = await window.electronAPI.listManualResearch()
+    setSummaries(page.items)
+    return page.items
   }, [])
 
   useEffect(() => {
@@ -76,7 +77,7 @@ export function App(): JSX.Element {
     }).catch(reason => setError(errorText(reason)))
   }, [refreshLibrary])
 
-  const openResearch = async (summary: EditorialResearchSummary) => {
+  const openResearch = async (summary: LibraryItem) => {
     setBusy(true)
     setError(null)
     setSelectedSummary(summary)
@@ -258,9 +259,9 @@ export function App(): JSX.Element {
 }
 
 function Library({ summaries, connected, onOpen, onNew }: {
-  summaries: EditorialResearchSummary[]
+  summaries: LibraryItem[]
   connected: boolean
-  onOpen: (summary: EditorialResearchSummary) => void
+  onOpen: (summary: LibraryItem) => void
   onNew: () => void
 }): JSX.Element {
   const completed = summaries.filter(item => item.state === 'completed').length
@@ -268,9 +269,9 @@ function Library({ summaries, connected, onOpen, onNew }: {
   return (
     <section>
       <div className="metric-grid" aria-label="Resumen de biblioteca">
-        <Metric label="Investigaciones" value={summaries.length} detail="Persistidas localmente" />
-        <Metric label="Completadas" value={completed} detail="Pendientes o con decisión humana" />
-        <Metric label="Con incidencias" value={failures} detail="Visibles y recuperables" tone={failures ? 'warn' : 'normal'} />
+        <Metric label="En esta página" value={summaries.length} detail="Primera página de Biblioteca" />
+        <Metric label="Completadas en página" value={completed} detail="Pipeline terminado" />
+        <Metric label="Incidencias en página" value={failures} detail="Activas y recuperables" tone={failures ? 'warn' : 'normal'} />
         <Metric label="Publicaciones" value={0} detail="Bloqueadas por diseño" />
       </div>
       <div className="section-heading">
@@ -292,7 +293,7 @@ function Library({ summaries, connected, onOpen, onNew }: {
               <span className="research-main"><strong>{summary.destinationQuery}</strong><small>{summary.profiles.map(profileLabel).join(' · ')}</small>{summary.errorCode && <small className="incident-copy">{summary.errorCode} · {summary.errorMessage}</small>}</span>
               <span><StateBadge value={summary.state} /></span>
               <span className="stage-copy"><small>Etapa</small>{stageLabels[summary.stage ?? ''] ?? 'Preparación'}</span>
-              <span className="stage-copy"><small>Coste</small>{formatMoney(summary.actualCost, summary.currency)}</span>
+              <span className="stage-copy"><small>Coste del último run</small>{formatMoney(summary.latestRunActualCost, summary.currency)}</span>
               <span className="row-arrow" aria-hidden="true">→</span>
             </button>
           ))}
@@ -590,7 +591,7 @@ function History({ result, versions }: { result: ResearchDestinationResult; vers
 }
 
 function IncompleteResearch({ summary, busy, onResume, onRetry, onCancel, onBack }: {
-  summary: EditorialResearchSummary | null
+  summary: LibraryItem | null
   busy: boolean
   onResume: (requestId: string) => Promise<void>
   onRetry: (requestId: string) => Promise<void>
@@ -642,5 +643,5 @@ function formatMoney(value?: number, currency = 'EUR'): string { return value ==
 function formatDate(value: Date | string): string { return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
 function formatTime(value: Date | string): string { return new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(value)) }
 function errorText(reason: unknown): string { return reason instanceof Error ? reason.message : String(reason) }
-function summaryFromResult(result: ResearchDestinationResult): EditorialResearchSummary { return { requestId: result.request.id, runId: result.run.id, destinationId: result.destination.id, destinationQuery: result.request.destinationQuerySnapshot, profiles: result.request.profiles, state: result.request.state, version: result.request.version, stage: result.run.stage, runState: result.run.state, errorCode: result.run.errorCode, errorMessage: result.run.errorMessage, failureClassification: result.run.failureClassification, failedAt: result.run.state === 'failed' ? result.run.completedAt : undefined, actualCost: result.run.actualCost, currency: result.run.currency, createdAt: result.request.createdAt, updatedAt: result.request.updatedAt } }
-function summaryFromIncident(incident: ManualResearchIncident): EditorialResearchSummary { return { requestId: incident.requestId, runId: incident.runId, destinationId: incident.destinationId, destinationQuery: incident.destinationQuery, profiles: incident.profiles, state: 'failed', version: 1, stage: incident.stage, runState: 'failed', errorCode: incident.errorCode, errorMessage: incident.errorMessage, failureClassification: incident.failureClassification, failedAt: incident.occurredAt, createdAt: incident.occurredAt, updatedAt: incident.occurredAt } }
+function summaryFromResult(result: ResearchDestinationResult): LibraryItem { return { requestId: result.request.id, runId: result.run.id, destinationId: result.destination.id, destinationQuery: result.request.destinationQuerySnapshot, profiles: result.request.profiles, state: result.request.state, version: result.request.version, stage: result.run.stage, runState: result.run.state, errorCode: result.run.errorCode, errorMessage: result.run.errorMessage, failureClassification: result.run.failureClassification, failedAt: result.run.state === 'failed' ? result.run.completedAt : undefined, hasActiveIncident: ['failed', 'retry_pending'].includes(result.request.state) || ['failed', 'retry_pending'].includes(result.run.state), latestRunActualCost: result.run.actualCost, currency: result.run.currency, createdAt: result.request.createdAt, updatedAt: result.request.updatedAt } }
+function summaryFromIncident(incident: ManualResearchIncident): LibraryItem { return { requestId: incident.requestId, runId: incident.runId, destinationId: incident.destinationId, destinationQuery: incident.destinationQuery, profiles: incident.profiles, state: 'failed', version: 1, stage: incident.stage, runState: 'failed', errorCode: incident.errorCode, errorMessage: incident.errorMessage, failureClassification: incident.failureClassification, failedAt: incident.occurredAt, hasActiveIncident: true, createdAt: incident.occurredAt, updatedAt: incident.occurredAt } }

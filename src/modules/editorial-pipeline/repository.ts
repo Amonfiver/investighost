@@ -3,11 +3,14 @@ import type {
   EditorialResearchRequest,
   EditorialResearchRun,
   GeographicEntity,
-  ResearchFailureClassification,
   ResearchEvent,
   ResearchDestinationResult,
   ResearchStage,
 } from '@shared/editorial-contracts'
+import type {
+  LibraryPage,
+  LibraryPageQueryInput,
+} from '@shared/library-contracts'
 
 export type EditorialRepositoryErrorCode =
   | 'NOT_FOUND'
@@ -25,26 +28,6 @@ export class EditorialRepositoryError extends Error {
     super(message)
     this.name = 'EditorialRepositoryError'
   }
-}
-
-export interface EditorialResearchSummary {
-  requestId: string
-  runId?: string
-  destinationId: string
-  destinationQuery: string
-  profiles: Array<'adventure' | 'student'>
-  state: ResearchDestinationResult['request']['state']
-  version: number
-  stage?: ResearchStage
-  runState?: EditorialResearchRun['state']
-  errorCode?: string
-  errorMessage?: string
-  failureClassification?: ResearchFailureClassification
-  failedAt?: Date
-  actualCost?: number
-  currency?: string
-  createdAt: Date
-  updatedAt: Date
 }
 
 export interface EditorialExecutionScaffold {
@@ -103,7 +86,7 @@ export interface EditorialResearchRepository {
   save(result: ResearchDestinationResult): Promise<void>
   getByRequestId(requestId: string): Promise<ResearchDestinationResult | null>
   findByIdempotencyKey(idempotencyKey: string): Promise<ResearchDestinationResult | null>
-  list(limit?: number): Promise<EditorialResearchSummary[]>
+  list(query?: LibraryPageQueryInput): Promise<LibraryPage>
   listDraftVersions(requestId: string): Promise<EditorialDraftVersionSummary[]>
   saveCheckpoint(checkpoint: EditorialStageCheckpoint): Promise<void>
   getLatestCheckpoint(requestId: string): Promise<EditorialStageCheckpoint | null>

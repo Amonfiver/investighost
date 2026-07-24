@@ -37,12 +37,17 @@ import {
   type ManualSectionRegeneration,
   type ManualSimulationScenario,
 } from '@shared/manual-contracts'
+import {
+  LibraryPageQuerySchema,
+  LibraryPageSchema,
+  type LibraryPage,
+  type LibraryPageQueryInput,
+} from '@shared/library-contracts'
 import type {
   EditorialDraftVersionSummary,
   EditorialExecutionControl,
   EditorialExecutionScaffold,
   EditorialResearchRepository,
-  EditorialResearchSummary,
 } from './repository'
 import { GeographicResolver } from './geography'
 import { MockEditorialSourceProvider } from './mock-source-provider'
@@ -612,8 +617,9 @@ export class ManualResearchService {
     }
   }
 
-  list(limit = 100): Promise<EditorialResearchSummary[]> {
-    return this.repository.list(limit)
+  async list(candidate: LibraryPageQueryInput = {}): Promise<LibraryPage> {
+    const query = LibraryPageQuerySchema.parse(candidate)
+    return LibraryPageSchema.parse(await this.repository.list(query))
   }
 
   get(requestId: string): Promise<ResearchDestinationResult | null> {

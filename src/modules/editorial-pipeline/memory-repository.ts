@@ -1,9 +1,18 @@
 import { createHash } from 'node:crypto'
 import { ResearchDestinationResultSchema, type ResearchDestinationResult, type ResearchEvent } from '@shared/editorial-contracts'
 import {
+  LibraryPageQuerySchema,
+  LibraryPageSchema,
+  compareLibraryItems,
+  createLibraryCursor,
+  isLibraryItemAfterCursor,
+  type LibraryItem,
+  type LibraryPage,
+  type LibraryPageQueryInput,
+} from '@shared/library-contracts'
+import {
   EditorialRepositoryError,
   type EditorialResearchRepository,
-  type EditorialResearchSummary,
   type EditorialDraftVersionSummary,
   type EditorialExecutionControl,
   type EditorialExecutionScaffold,
@@ -123,11 +132,10 @@ export class MemoryEditorialResearchRepository implements EditorialResearchRepos
     return requestId ? this.getByRequestId(requestId) : null
   }
 
-  async list(limit = 100): Promise<EditorialResearchSummary[]> {
-    return [...this.scaffolds.values()]
-      .sort((left, right) => right.request.updatedAt.getTime() - left.request.updatedAt.getTime())
-      .slice(0, limit)
-      .map(scaffold => ({
+  async list(candidate: LibraryPageQueryInput = {}): Promise<LibraryPage> {
+    const query = LibraryPageQuerySchema.parse(candidate)
+    const ordered = [...this.scaffolds.values()]
+      .map<LibraryItem>(scaffold => ({
         requestId: scaffold.request.id,
         runId: scaffold.run.id,
         destinationId: scaffold.request.destinationId,
@@ -141,11 +149,28 @@ export class MemoryEditorialResearchRepository implements EditorialResearchRepos
         errorMessage: scaffold.run.errorMessage,
         failureClassification: scaffold.run.failureClassification,
         failedAt: scaffold.run.state === 'failed' ? scaffold.run.completedAt : undefined,
-        actualCost: scaffold.run.actualCost,
+        hasActiveIncident: ['failed', 'retry_pending'].includes(scaffold.request.state)
+          || ['failed', 'retry_pending'].includes(scaffold.run.state),
+        latestRunActualCost: scaffold.run.actualCost,
         currency: scaffold.run.currency,
         createdAt: new Date(scaffold.request.createdAt),
         updatedAt: new Date(scaffold.request.updatedAt),
       }))
+      .sort(compareLibraryItems)
+    const cursor = query.cursor
+    const afterCursor = cursor
+      ? ordered.filter(item => isLibraryItemAfterCursor(item, cursor))
+      : ordered
+    const selected = afterCursor.slice(0, query.pageSize + 1)
+    const hasMore = selected.length > query.pageSize
+    const items = selected.slice(0, query.pageSize)
+    return LibraryPageSchema.parse({
+      items,
+      hasMore,
+      nextCursor: hasMore && items.length > 0
+        ? createLibraryCursor(items[items.length - 1], query.sort)
+        : undefined,
+    })
   }
 
   async listDraftVersions(requestId: string): Promise<EditorialDraftVersionSummary[]> {

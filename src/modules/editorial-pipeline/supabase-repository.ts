@@ -11,9 +11,16 @@ import {
   type ResearchDestinationResult,
 } from '@shared/editorial-contracts'
 import {
+  LibraryPageQuerySchema,
+  LibraryPageSchema,
+  createLibraryCursor,
+  type LibraryItem,
+  type LibraryPage,
+  type LibraryPageQueryInput,
+} from '@shared/library-contracts'
+import {
   EditorialRepositoryError,
   type EditorialResearchRepository,
-  type EditorialResearchSummary,
   type EditorialDraftVersionSummary,
   type EditorialExecutionControl,
   type EditorialExecutionScaffold,
@@ -344,50 +351,72 @@ export class SupabaseEditorialResearchRepository implements EditorialResearchRep
     return data ? this.getByRequestId(String(data.id)) : null
   }
 
-  async list(limit = 100): Promise<EditorialResearchSummary[]> {
-    const boundedLimit = Math.min(Math.max(limit, 1), 500)
-    const requestsResult = await this.client
+  async list(candidate: LibraryPageQueryInput = {}): Promise<LibraryPage> {
+    const query = LibraryPageQuerySchema.parse(candidate)
+    let requestsQuery = this.client
       .from('editorial_research_requests')
       .select('id,destination_id,destination_query_snapshot,profiles,state,version,created_at,updated_at')
       .order('updated_at', { ascending: false })
-      .limit(boundedLimit)
+      .order('id', { ascending: false })
+      .limit(query.pageSize + 1)
+    if (query.cursor) {
+      requestsQuery = requestsQuery.or(
+        `updated_at.lt.${query.cursor.updatedAt},and(updated_at.eq.${query.cursor.updatedAt},id.lt.${query.cursor.requestId})`,
+      )
+    }
+    const requestsResult = await requestsQuery
     this.assertNoError(requestsResult.error, 'LIST_REQUESTS')
-    const requestIds = (requestsResult.data ?? []).map(row => String(row.id))
+    const requestRows = (requestsResult.data ?? []).slice(0, query.pageSize)
+    const hasMore = (requestsResult.data ?? []).length > query.pageSize
+    const requestIds = requestRows.map(row => String(row.id))
     const runsResult = requestIds.length === 0
       ? { data: [] as Row[], error: null }
       : await this.client.from('editorial_research_runs')
         .select('id,request_id,stage,state,error_code,error_message,failure_classification,actual_cost,currency,completed_at,updated_at')
         .in('request_id', requestIds)
         .order('updated_at', { ascending: false })
+        .order('id', { ascending: false })
     this.assertNoError(runsResult.error, 'LIST_RUNS')
     const latestRuns = new Map<string, Row>()
     for (const row of runsResult.data as Row[] ?? []) {
       const requestId = String(row.request_id)
       if (!latestRuns.has(requestId)) latestRuns.set(requestId, row)
     }
-    return (requestsResult.data ?? []).map(row => {
+    const items = requestRows.map<LibraryItem>(row => {
       const run = latestRuns.get(String(row.id))
       return {
-      requestId: String(row.id),
-      runId: run?.id ? String(run.id) : undefined,
-      destinationId: String(row.destination_id),
-      destinationQuery: String(row.destination_query_snapshot),
-      profiles: row.profiles as Array<'adventure' | 'student'>,
-      state: row.state as EditorialResearchSummary['state'],
-      version: Number(row.version),
-      stage: run?.stage as EditorialResearchSummary['stage'],
-      runState: run?.state as EditorialResearchSummary['runState'],
-      errorCode: run?.error_code ? String(run.error_code) : undefined,
-      errorMessage: run?.error_message ? String(run.error_message) : undefined,
-      failureClassification: run?.failure_classification
-        ? run.failure_classification as EditorialResearchSummary['failureClassification']
-        : undefined,
-      failedAt: run?.state === 'failed' && run.completed_at ? new Date(String(run.completed_at)) : undefined,
-      actualCost: run?.actual_cost === null || run?.actual_cost === undefined ? undefined : Number(run.actual_cost),
-      currency: run?.currency ? String(run.currency) : undefined,
-      createdAt: new Date(String(row.created_at)),
-      updatedAt: new Date(String(row.updated_at)),
+        requestId: String(row.id),
+        runId: run?.id ? String(run.id) : undefined,
+        destinationId: String(row.destination_id),
+        destinationQuery: String(row.destination_query_snapshot),
+        profiles: row.profiles as Array<'adventure' | 'student'>,
+        state: row.state as LibraryItem['state'],
+        version: Number(row.version),
+        stage: run?.stage as LibraryItem['stage'],
+        runState: run?.state as LibraryItem['runState'],
+        errorCode: run?.error_code ? String(run.error_code) : undefined,
+        errorMessage: run?.error_message ? String(run.error_message) : undefined,
+        failureClassification: run?.failure_classification
+          ? run.failure_classification as LibraryItem['failureClassification']
+          : undefined,
+        failedAt: run?.state === 'failed' && run.completed_at ? new Date(String(run.completed_at)) : undefined,
+        hasActiveIncident: ['failed', 'retry_pending'].includes(String(row.state))
+          || ['failed', 'retry_pending'].includes(String(run?.state ?? '')),
+        latestRunActualCost: run?.actual_cost === null || run?.actual_cost === undefined ? undefined : Number(run.actual_cost),
+        currency: run?.currency ? String(run.currency) : undefined,
+        createdAt: new Date(String(row.created_at)),
+        updatedAt: new Date(String(row.updated_at)),
       }
+    })
+    return LibraryPageSchema.parse({
+      items,
+      hasMore,
+      nextCursor: hasMore && items.length > 0
+        ? createLibraryCursor({
+          requestId: items[items.length - 1].requestId,
+          updatedAt: String(requestRows[items.length - 1].updated_at),
+        }, query.sort)
+        : undefined,
     })
   }
 

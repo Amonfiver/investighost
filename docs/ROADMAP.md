@@ -1,6 +1,6 @@
 # Roadmap recomendado de Investighost
 
-Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada en remoto mediante `ac61700f27297d899e55f6460a76a6cac7bca72a`. FASE 4A está diseñada documentalmente, pero no autorizada para implementación. Automatic continúa bloqueado y no implementado.
+Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada técnicamente y pendiente de gate; FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia
 
@@ -66,13 +66,31 @@ La formulación original incluía CRUD durable, búsqueda, filtros, versiones, e
 
 No se implementará literalmente la FASE 4 original: hacerlo duplicaría capacidades y podría introducir un CRUD destructivo incompatible con la trazabilidad aprobada.
 
-### 4A. Consolidación operativa de Biblioteca — diseñada, no autorizada
+### 4A. Consolidación operativa de Biblioteca — 4A-01 pendiente de gate
 
-Estado: **DISEÑADA DOCUMENTALMENTE — NO AUTORIZADA PARA IMPLEMENTACIÓN**.
+Estado: **4A-01 IMPLEMENTADA TÉCNICAMENTE — PENDIENTE DE GATE; RESTO NO INICIADO**.
 
 #### Objetivo
 
 Hacer cómoda y segura la Biblioteca existente para un volumen creciente de investigaciones y borradores, manteniendo el entorno local, Manual y simulado.
+
+#### 4A-01 — contrato compartido y paginación estable
+
+Implementación técnica terminada y aún no confirmada:
+
+- contrato Zod compartido y desacoplado del repositorio;
+- página predeterminada de 25 y máximo validado de 100;
+- cursor keyset con `updated_at DESC, id DESC`;
+- `items`, `hasMore` y `nextCursor`, sin total o contadores parciales presentados como globales;
+- paridad de memoria y Supabase;
+- validación en servicio e IPC;
+- compatibilidad mínima del renderer con su primera página;
+- 137 solicitudes sintéticas recorridas sin duplicados u omisiones;
+- 43 pruebas específicas y suite normal de 161 pruebas aprobadas;
+- typecheck, ESLint y builds renderer/main/preload aprobados;
+- cero migraciones, seeds, proveedores, costes, publicación o conexiones externas.
+
+Quedan expresamente fuera búsqueda, filtros, ordenación seleccionable, read model, geografía/títulos/estados editoriales, `spent_cost`, archivo/restauración, contadores, preferencias y rediseño UX. FASE 4A-02 no comenzó.
 
 #### Alcance propuesto
 
@@ -110,7 +128,7 @@ Hacer cómoda y segura la Biblioteca existente para un volumen creciente de inve
 
 #### Gate humano 4A
 
-FASE 4A no comienza con este diseño. Requiere autorización funcional explícita, implementación local acotada, criterios de `ACCEPTANCE_TESTS.md` satisfechos y una nueva decisión humana. El gate debe confirmar archivo no destructivo, conservación de trazabilidad, publicaciones en cero y ausencia de Trawel, producción y Automatic.
+El gate inmediato revisa exclusivamente 4A-01: contrato, cursor, recorrido completo, ausencia de mutaciones, compatibilidad de Biblioteca y fronteras negativas. FASE 4A-02 requerirá otra autorización expresa. El gate final de toda 4A seguirá exigiendo archivo no destructivo, conservación de trazabilidad, publicaciones en cero y ausencia de Trawel, producción y Automatic.
 
 ### 5. Cola editorial durable — no iniciada
 
@@ -143,8 +161,8 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 ## Orden inmediato vigente
 
 1. Mantener FASE 3J cerrada y sincronizada; no queda pendiente su commit o push.
-2. Someter esta redefinición documental a revisión y commit solo con autorización expresa.
-3. No iniciar funcionalmente FASE 4A, FASE 5 o cualquier bloque posterior sin un encargo nuevo.
+2. Someter FASE 4A-01 a revisión técnica y decisión humana; no hacer commit ni push antes de autorización.
+3. No iniciar FASE 4A-02, FASE 5 o cualquier bloque posterior sin un encargo nuevo.
 4. Mantener Automatic, producción, Trawel, proveedores reales y publicación bloqueados.
 
 ## Estado FASE 2C-B — 2026-07-14

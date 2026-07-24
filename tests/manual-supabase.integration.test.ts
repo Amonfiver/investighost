@@ -127,7 +127,7 @@ integration('Supabase local Manual workflow', () => {
       expect(recovered.previousRuns).toHaveLength(1)
       expect(recovered.run).toMatchObject({ attempt: 2, state: 'completed' })
       expect(await repository.listRuns(requestId)).toHaveLength(2)
-      expect((await repository.list()).filter(item => item.requestId === requestId)).toHaveLength(1)
+      expect((await repository.list()).items.filter(item => item.requestId === requestId)).toHaveLength(1)
     } finally {
       if (requestId) {
         const { error } = await client.from('editorial_research_requests').delete().eq('id', requestId)
@@ -263,7 +263,7 @@ integration('Supabase local Manual workflow', () => {
           failureClassification: 'data_quality',
         },
       })
-      expect((await repository.list()).filter(item => item.requestId === requestId)).toHaveLength(1)
+      expect((await repository.list()).items.filter(item => item.requestId === requestId)).toHaveLength(1)
 
       const { data: failureEvent, error: eventError } = await client.from('research_events')
         .select('request_id,run_id,event_type,stage,payload,occurred_at')
@@ -282,7 +282,7 @@ integration('Supabase local Manual workflow', () => {
       const retried = await service.retryForInterface({ requestId, actorId: '6fda5d08-9cd0-4d9d-98c1-7ccbfd56ad11' })
       expect(retried).toMatchObject({ status: 'failed', incident: { requestId, destinationId: morellaId } })
       expect(await repository.listRuns(requestId)).toHaveLength(2)
-      expect((await repository.list()).filter(item => item.requestId === requestId)).toHaveLength(1)
+      expect((await repository.list()).items.filter(item => item.requestId === requestId)).toHaveLength(1)
 
       const { count: destinationsAfter, error: afterError } = await client
         .from('geographic_entities').select('id', { head: true, count: 'exact' }).eq('id', morellaId)

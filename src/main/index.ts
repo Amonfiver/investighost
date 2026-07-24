@@ -99,6 +99,10 @@ ipcMain.handle('app:get-platform', () => {
 })
 
 import { z } from 'zod'
+import {
+  LibraryPageQuerySchema,
+  LibraryPageSchema,
+} from '@shared/library-contracts'
 import { getContributionImportRuntime, getContributionPersistenceStatus } from '@modules/contributions/runtime'
 import {
   getManualPersistenceStatus,
@@ -149,7 +153,10 @@ ipcMain.handle('manual:cancel', async (_event, input: unknown) => {
   return (await getManualResearchRuntime()).cancel(input as never)
 })
 
-ipcMain.handle('manual:list', async () => (await getManualResearchRuntime()).list())
+ipcMain.handle('manual:list', async (_event, input: unknown) => {
+  const query = LibraryPageQuerySchema.parse(input === undefined ? {} : input)
+  return LibraryPageSchema.parse(await (await getManualResearchRuntime()).list(query))
+})
 
 ipcMain.handle('manual:get', async (_event, requestId: unknown) => {
   return (await getManualResearchRuntime()).get(z.string().uuid().parse(requestId))

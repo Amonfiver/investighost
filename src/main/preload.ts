@@ -9,6 +9,7 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron'
+import type { LibraryPageQueryInput } from '@shared/library-contracts'
 
 // API expuesta al renderer
 const electronAPI = {
@@ -31,7 +32,7 @@ const electronAPI = {
   resumeManualResearch: (input: unknown) => ipcRenderer.invoke('manual:resume', input),
   retryManualResearch: (input: unknown) => ipcRenderer.invoke('manual:retry', input),
   cancelManualResearch: (input: unknown) => ipcRenderer.invoke('manual:cancel', input),
-  listManualResearch: () => ipcRenderer.invoke('manual:list'),
+  listManualResearch: (query: LibraryPageQueryInput = {}) => ipcRenderer.invoke('manual:list', query),
   getManualResearch: (requestId: string) => ipcRenderer.invoke('manual:get', requestId),
   listManualDraftVersions: (requestId: string) => ipcRenderer.invoke('manual:list-draft-versions', requestId),
   editManualSection: (input: unknown) => ipcRenderer.invoke('manual:edit-section', input),

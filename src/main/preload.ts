@@ -10,6 +10,12 @@
 
 import { contextBridge, ipcRenderer } from 'electron'
 import type { LibraryPageQueryInput } from '@shared/library-contracts'
+import type {
+  ProviderActivationInput,
+  ProviderConfigureInput,
+  ProviderDeleteInput,
+  ProviderTestInput,
+} from '@shared/provider-center-contracts'
 
 // API expuesta al renderer
 const electronAPI = {
@@ -40,6 +46,13 @@ const electronAPI = {
   submitManualDraftReview: (input: unknown) => ipcRenderer.invoke('manual:submit-review', input),
   decideManualDraft: (input: unknown) => ipcRenderer.invoke('manual:decide', input),
   reopenManualDraftReview: (input: unknown) => ipcRenderer.invoke('manual:reopen-review', input),
+
+  // Centro de proveedores. Configure es escritura unidireccional: ninguna respuesta contiene la credencial.
+  listProviders: () => ipcRenderer.invoke('providers:list'),
+  configureProvider: (input: ProviderConfigureInput) => ipcRenderer.invoke('providers:configure', input),
+  setProviderActive: (input: ProviderActivationInput) => ipcRenderer.invoke('providers:set-active', input),
+  removeProviderCredential: (input: ProviderDeleteInput) => ipcRenderer.invoke('providers:remove', input),
+  testProviderSimulated: (input: ProviderTestInput) => ipcRenderer.invoke('providers:test-simulated', input),
 }
 
 // Exponer como window.electronAPI

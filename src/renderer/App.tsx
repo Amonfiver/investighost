@@ -21,6 +21,10 @@ import type {
   ManualResearchStart,
 } from '@shared/manual-contracts'
 import type { LibraryItem } from '@shared/library-contracts'
+import type {
+  ProviderCenterSnapshot,
+  ProviderPublicStatus,
+} from '@shared/provider-center-contracts'
 import type { EditorialDraftVersionSummary } from '@modules/editorial-pipeline/repository'
 import {
   LIBRARY_PAGE_SUMMARY_LABEL,
@@ -30,7 +34,7 @@ import {
   type LibraryNavigationState,
 } from './library-navigation'
 
-type View = 'library' | 'new' | 'detail' | 'contributions'
+type View = 'library' | 'new' | 'detail' | 'contributions' | 'providers'
 type DetailTab = 'overview' | 'sources' | 'facts' | 'places' | 'activities' | 'drafts' | 'quality' | 'history'
 
 const stageLabels: Record<string, string> = {
@@ -211,6 +215,7 @@ export function App(): JSX.Element {
           <button className={view === 'library' ? 'nav-active' : ''} onClick={() => go('library')}>Biblioteca</button>
           <button className={view === 'new' ? 'nav-active' : ''} onClick={() => go('new')}>Nueva investigación</button>
           <button className={view === 'contributions' ? 'nav-active' : ''} onClick={() => go('contributions')}>Contribuciones</button>
+          <button className={view === 'providers' ? 'nav-active' : ''} onClick={() => go('providers')}>Proveedores</button>
         </nav>
         <div className="environment-card">
           <span className={`connection-dot ${status?.connected ? 'online' : ''}`} aria-hidden="true" />
@@ -272,6 +277,7 @@ export function App(): JSX.Element {
               />
           )}
           {view === 'contributions' && <ContributionImportPanel />}
+          {view === 'providers' && <ProviderCenterPanel />}
         </main>
       </div>
     </div>
@@ -683,6 +689,121 @@ function ContributionImportPanel(): JSX.Element {
   return <section><div className="section-heading"><div><span className="eyebrow">MÓDULO LOCAL EXISTENTE</span><h2>Contribuciones pendientes</h2><p>Adaptador remoto simulado y archivos privados en Supabase local.</p></div><button className="button primary" onClick={download} disabled={syncing || !connected}>{syncing ? 'Procesando…' : 'Descargar pendientes'}</button></div>{error && <div className="alert error">{error}</div>}{summary && <div className="metric-grid compact"><Metric label="Encontradas" value={summary.found} detail="en origen mock" /><Metric label="Descargadas" value={summary.downloaded} detail="en local" /><Metric label="Verificadas" value={summary.verified} detail="integridad correcta" /><Metric label="Fallidas" value={summary.failed} detail="visibles" tone={summary.failed ? 'warn' : 'normal'} /></div>}<div className="card-list">{jobs.map(job => <article className="data-card" key={job.id}><div className="data-card-heading"><div><strong>{job.remoteId}</strong><p>{job.sourceType} · intento {job.attemptCount}</p></div><StateBadge value={job.status} /></div>{job.lastError && <p className="inline-error">{job.lastError}</p>}{['failed', 'retry_pending'].includes(job.status) && <button className="button secondary" onClick={() => retry(job.id)} disabled={syncing}>Reintentar</button>}</article>)}</div></section>
 }
 
+function ProviderCenterPanel(): JSX.Element {
+  const [snapshot, setSnapshot] = useState<ProviderCenterSnapshot | null>(null)
+  const [editing, setEditing] = useState<ProviderPublicStatus | null>(null)
+  const [credential, setCredential] = useState('')
+  const [model, setModel] = useState('')
+  const [working, setWorking] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  const load = useCallback(async () => setSnapshot(await window.electronAPI.listProviders()), [])
+  useEffect(() => { load().catch(reason => setLocalError(errorText(reason))) }, [load])
+
+  const mutate = async (operation: () => Promise<ProviderCenterSnapshot>) => {
+    setWorking(true)
+    setLocalError(null)
+    try {
+      setSnapshot(await operation())
+    } catch (reason) {
+      setLocalError(errorText(reason))
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const openConfiguration = (provider: ProviderPublicStatus) => {
+    setEditing(provider)
+    setCredential('')
+    setModel(provider.selectedModel)
+    setLocalError(null)
+  }
+
+  const saveConfiguration = async () => {
+    if (!editing) return
+    const confirmReplace = !editing.configured || window.confirm(
+      `La credencial existente de ${editing.displayName} será sustituida. ¿Continuar?`,
+    )
+    if (!confirmReplace) return
+    await mutate(() => window.electronAPI.configureProvider({
+      providerId: editing.id,
+      credential,
+      selectedModel: model,
+      confirmReplace: editing.configured,
+    }))
+    setCredential('')
+    setEditing(null)
+  }
+
+  const removeCredential = async (provider: ProviderPublicStatus) => {
+    if (!window.confirm(`Se eliminará la credencial cifrada de ${provider.displayName}. ¿Continuar?`)) return
+    await mutate(() => window.electronAPI.removeProviderCredential({
+      providerId: provider.id,
+      confirmation: 'ELIMINAR',
+    }))
+  }
+
+  if (!snapshot) {
+    return <section><div className="empty-card provider-loading"><span className="spinner" /><h2>Preparando almacenamiento seguro…</h2></div></section>
+  }
+
+  const categories = [
+    { id: 'research_tool' as const, title: 'Herramientas de investigación', detail: 'Recuperan fuentes; no deciden el contenido editorial.' },
+    { id: 'intelligence_engine' as const, title: 'Motores de inteligencia', detail: 'Comprenden, estructuran, redactan y revisan el expediente.' },
+  ]
+
+  return (
+    <section>
+      <div className="section-heading">
+        <div><span className="eyebrow">CONFIGURACIÓN LOCAL SEGURA</span><h2>Centro de proveedores</h2><p>Catálogo extensible. Todas las pruebas de este lote son simuladas y no usan red.</p></div>
+        <span className="safety-pill">Modo real inactivo</span>
+      </div>
+      {!snapshot.secureStorageAvailable && (
+        <div className="alert error" role="alert">
+          <strong>Almacenamiento seguro no disponible.</strong>
+          <span>La configuración y activación de proveedores permanece bloqueada.</span>
+        </div>
+      )}
+      {localError && <div className="alert error" role="alert"><strong>Operación rechazada.</strong><span>{localError}</span></div>}
+      {categories.map(category => (
+        <div className="provider-category" key={category.id}>
+          <header><div><span className="category-pill">{category.title}</span><p>{category.detail}</p></div></header>
+          <div className="provider-grid">
+            {snapshot.providers.filter(provider => provider.category === category.id).map(provider => (
+              <article className="provider-card" key={provider.id}>
+                <div className="provider-card-heading">
+                  <div><h3>{provider.displayName}</h3><span>{provider.selectedModel}</span></div>
+                  <span className={`state-badge ${provider.active ? 'state-approved' : ''}`}>{provider.active ? 'Activo' : 'Inactivo'}</span>
+                </div>
+                <dl className="definition-grid">
+                  <div><dt>Credencial</dt><dd>{provider.configured ? provider.credentialMask : 'No configurada'}</dd></div>
+                  <div><dt>Conexión</dt><dd>{connectionLabel(provider.connectionState)}</dd></div>
+                  <div><dt>Última prueba</dt><dd>{provider.lastTestAt ? formatDate(provider.lastTestAt) : 'Nunca'}</dd></div>
+                  <div><dt>Entorno</dt><dd>Simulado · sin red</dd></div>
+                </dl>
+                <div className="provider-actions">
+                  <button className="button secondary" disabled={working || !snapshot.secureStorageAvailable} onClick={() => openConfiguration(provider)}>{provider.configured ? 'Sustituir credencial' : 'Configurar'}</button>
+                  <button className="button ghost" disabled={working || !provider.configured} onClick={() => mutate(() => window.electronAPI.testProviderSimulated({ providerId: provider.id }))}>Probar (simulado)</button>
+                  <button className="button ghost" disabled={working || !provider.configured} onClick={() => mutate(() => window.electronAPI.setProviderActive({ providerId: provider.id, active: !provider.active }))}>{provider.active ? 'Desactivar' : 'Activar'}</button>
+                  {provider.configured && <button className="button danger" disabled={working} onClick={() => removeCredential(provider)}>Eliminar</button>}
+                </div>
+                {editing?.id === provider.id && (
+                  <div className="provider-form">
+                    <label className="field"><span>Credencial</span><input type="password" autoComplete="off" value={credential} onChange={event => setCredential(event.target.value)} /></label>
+                    <label className="field"><span>Modelo o variante</span><select value={model} onChange={event => setModel(event.target.value)}>{provider.availableModels.map(available => <option key={available}>{available}</option>)}</select></label>
+                    <div className="provider-form-actions"><button className="button ghost" onClick={() => { setCredential(''); setEditing(null) }}>Cancelar</button><button className="button primary" disabled={working || credential.length < 8} onClick={saveConfiguration}>Guardar cifrada</button></div>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        </div>
+      ))}
+      <p className="scope-note"><strong>Frontera de seguridad</strong><span>Las credenciales se cifran en Electron main mediante safeStorage. El renderer solo vuelve a recibir estado público y una máscara constante.</span></p>
+    </section>
+  )
+}
+
 function StateBadge({ value }: { value: string }): JSX.Element {
   return <span className={`state-badge state-${value}`}>{stateLabels[value] ?? value.replaceAll('_', ' ')}</span>
 }
@@ -691,6 +812,7 @@ function viewTitle(view: View, selected: ResearchDestinationResult | null): stri
   if (view === 'new') return 'Nueva investigación'
   if (view === 'detail') return selected?.destination.name ?? 'Detalle de ejecución'
   if (view === 'contributions') return 'Contribuciones'
+  if (view === 'providers') return 'Centro de proveedores'
   return 'Biblioteca editorial'
 }
 
@@ -707,6 +829,11 @@ function initials(value: string): string { return value.split(/\s+/).slice(0, 2)
 function formatMoney(value?: number, currency = 'EUR'): string { return value === undefined ? '—' : new Intl.NumberFormat('es-ES', { style: 'currency', currency }).format(value) }
 function formatDate(value: Date | string): string { return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
 function formatTime(value: Date | string): string { return new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(value)) }
+function connectionLabel(value: ProviderPublicStatus['connectionState']): string {
+  if (value === 'simulated_ok') return 'Simulada correcta'
+  if (value === 'simulated_error') return 'Simulada fallida'
+  return 'Sin probar'
+}
 function errorText(reason: unknown): string { return reason instanceof Error ? reason.message : String(reason) }
 function summaryFromResult(result: ResearchDestinationResult): LibraryItem { return { requestId: result.request.id, runId: result.run.id, destinationId: result.destination.id, destinationQuery: result.request.destinationQuerySnapshot, profiles: result.request.profiles, state: result.request.state, version: result.request.version, stage: result.run.stage, runState: result.run.state, errorCode: result.run.errorCode, errorMessage: result.run.errorMessage, failureClassification: result.run.failureClassification, failedAt: result.run.state === 'failed' ? result.run.completedAt : undefined, hasActiveIncident: ['failed', 'retry_pending'].includes(result.request.state) || ['failed', 'retry_pending'].includes(result.run.state), latestRunActualCost: result.run.actualCost, currency: result.run.currency, createdAt: result.request.createdAt, updatedAt: result.request.updatedAt } }
 function summaryFromIncident(incident: ManualResearchIncident): LibraryItem { return { requestId: incident.requestId, runId: incident.runId, destinationId: incident.destinationId, destinationQuery: incident.destinationQuery, profiles: incident.profiles, state: 'failed', version: 1, stage: incident.stage, runState: 'failed', errorCode: incident.errorCode, errorMessage: incident.errorMessage, failureClassification: incident.failureClassification, failedAt: incident.occurredAt, hasActiveIncident: true, createdAt: incident.occurredAt, updatedAt: incident.occurredAt } }

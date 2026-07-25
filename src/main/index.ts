@@ -109,6 +109,7 @@ import {
   getManualResearchRuntime,
   MANUAL_LOCAL_ACTOR_ID,
 } from '@modules/editorial-pipeline/manual-runtime'
+import { getProviderCenterRuntime } from './provider-center-runtime'
 
 ipcMain.handle('contributions:import-pending', async () => {
   return (await getContributionImportRuntime()).importPending()
@@ -185,6 +186,41 @@ ipcMain.handle('manual:decide', async (_event, input: unknown) => {
 ipcMain.handle('manual:reopen-review', async (_event, input: unknown) => {
   return (await getManualResearchRuntime()).reopenReview(input as never)
 })
+
+// Centro de proveedores: las credenciales entran por canales de escritura específicos,
+// se cifran en main y jamás forman parte de las respuestas.
+ipcMain.handle('providers:list', async () => {
+  return (await getProviderCenterRuntime()).snapshot()
+})
+
+ipcMain.handle('providers:configure', async (_event, input: unknown) => {
+  return providerCenterAction(service => service.configure(input))
+})
+
+ipcMain.handle('providers:set-active', async (_event, input: unknown) => {
+  return providerCenterAction(service => service.setActive(input))
+})
+
+ipcMain.handle('providers:remove', async (_event, input: unknown) => {
+  return providerCenterAction(service => service.remove(input))
+})
+
+ipcMain.handle('providers:test-simulated', async (_event, input: unknown) => {
+  return providerCenterAction(service => service.testConnection(input))
+})
+
+async function providerCenterAction<T>(
+  action: (service: Awaited<ReturnType<typeof getProviderCenterRuntime>>) => Promise<T>,
+): Promise<T> {
+  try {
+    return await action(await getProviderCenterRuntime())
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : 'El centro de proveedores rechazó la operación'
+    throw new Error(message)
+  }
+}
 
 // Ciclo de vida de la app
 app.whenReady().then(() => {

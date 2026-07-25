@@ -18,3 +18,20 @@ Este informe acumula la evidencia del lote autónomo PROMPT 01–10. Hasta que e
 - Coste real consumido: `0 EUR`.
 - Llamadas reales realizadas: `0`.
 - Fronteras negativas: sin claves, red, persistencia nueva, UI funcional, proveedores activos, Trawel, producción, publicación ni Automatic.
+
+## PROMPT 02 — Centro de proveedores y credenciales seguras
+
+- Fecha/hora: 2026-07-25 (Europe/Madrid).
+- HEAD inicial: `9f4adbf8c65470ab4490897384cb1847fa551868`.
+- HEAD final: commit único de este bloque, con mensaje `feat: añadir centro seguro de proveedores`.
+- Commit: el hash queda reflejado en la auditoría consolidada posterior para evitar una referencia circular dentro del propio commit.
+- Archivos modificados: contratos IPC públicos, servicio seguro, runtime Electron main, handlers, preload, UI, estilos, pruebas y documentación.
+- Migraciones: ninguna; las credenciales no usan Supabase.
+- Pruebas: guardar, sustituir con confirmación, eliminar con confirmación, activar, exclusividad por categoría, proveedor no configurado, almacenamiento no disponible, máscara constante, reinicio, prueba simulada, IPC inválido, error sin filtración y rechazo de rutas dentro del proyecto.
+- Builds: suite específica, suite normal, typecheck, ESLint y builds renderer/main/preload ejecutados antes del commit.
+- Decisiones: Tavily y OpenAI inauguran un catálogo extensible; Electron `safeStorage` cifra en main; la configuración cifrada reside bajo `app.getPath('userData')`; Linux con backend `basic_text` o indeterminado falla cerrado; la prueba de conexión es determinista y sin red.
+- Riesgos: la seguridad efectiva depende del almacén de credenciales del sistema operativo; un backend no adecuado mantiene toda mutación bloqueada.
+- Deuda: las integraciones reales y la consulta de consumos pertenecen a bloques posteriores y continúan inactivas.
+- Coste real consumido: `0 EUR`.
+- Llamadas reales realizadas: `0`.
+- Fronteras negativas: ninguna clave en Git, Supabase, logs, eventos o respuestas; sin red, proveedores reales, publicación, Trawel, producción ni Automatic.

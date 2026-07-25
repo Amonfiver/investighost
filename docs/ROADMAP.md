@@ -4,6 +4,8 @@
 
 La rama `feat/investighost-real-pipeline` inicia el lote sin gasto PROMPT 01–10 desde el checkpoint protegido `checkpoint/pre-real-pipeline-20260725`. PROMPT 01 añade únicamente contratos neutrales y puertos sustituibles: Investighost orquesta, `ResearchTool` investiga y `IntelligenceEngine` comprende, estructura, redacta y revisa. El máximo de dos rondas queda representado en los contratos y no se activa ningún proveedor real.
 
+PROMPT 02 incorpora un Centro de proveedores local: catálogo inicial Tavily/OpenAI, una selección activa por categoría, estado y prueba simulada. Las credenciales quedan cifradas por `safeStorage` en Electron main, fuera del proyecto y de Supabase; el renderer no recibe secretos y la falta de un backend seguro bloquea las mutaciones.
+
 Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada y committeada; FASE 4A-01B está implementada técnicamente y pendiente de prueba humana. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia

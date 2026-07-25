@@ -32,6 +32,13 @@ import type {
   LibraryPageQueryInput,
 } from './shared/library-contracts'
 import type { EditorialDraftVersionSummary } from './modules/editorial-pipeline/repository'
+import type {
+  ProviderActivationInput,
+  ProviderCenterSnapshot,
+  ProviderConfigureInput,
+  ProviderDeleteInput,
+  ProviderTestInput,
+} from './shared/provider-center-contracts'
 
 declare global {
   interface Window {
@@ -62,6 +69,13 @@ declare global {
       submitManualDraftReview: (input: ManualDraftReview) => Promise<ResearchDestinationResult>
       decideManualDraft: (input: ManualDraftDecision) => Promise<ResearchDestinationResult>
       reopenManualDraftReview: (input: ManualDraftReopen) => Promise<ResearchDestinationResult>
+
+      // Centro de proveedores; las respuestas son siempre públicas y no incluyen credenciales.
+      listProviders: () => Promise<ProviderCenterSnapshot>
+      configureProvider: (input: ProviderConfigureInput) => Promise<ProviderCenterSnapshot>
+      setProviderActive: (input: ProviderActivationInput) => Promise<ProviderCenterSnapshot>
+      removeProviderCredential: (input: ProviderDeleteInput) => Promise<ProviderCenterSnapshot>
+      testProviderSimulated: (input: ProviderTestInput) => Promise<ProviderCenterSnapshot>
     }
   }
 }

@@ -14,6 +14,8 @@ PROMPT 01 formaliza una arquitectura neutral, todavía inactiva y sin red:
 
 La ejecución acumulada se registra en `docs/REAL_PIPELINE_EXECUTION_REPORT.md`. PROMPT 11 y posteriores continúan fuera de alcance.
 
+PROMPT 02 añade el Centro de proveedores en modo exclusivamente simulado. Tavily y OpenAI aparecen en sus categorías; el renderer solo recibe estado público y una máscara constante. Las credenciales se transportan por IPC de escritura validado, se cifran en main mediante Electron `safeStorage` y se guardan fuera del proyecto, bajo el directorio de datos de usuario. No se usa Supabase y un backend seguro no disponible bloquea configuración y activación.
+
 Fecha de actualización: 2026-07-25
 Estado canónico: **FASE 3J CERRADA; FASE 4A-01 COMMITTEADA; FASE 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA**
 

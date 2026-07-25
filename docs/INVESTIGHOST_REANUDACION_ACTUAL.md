@@ -32,6 +32,8 @@ PROMPT 09 prepara una puerta real fail-closed para un único piloto Morella, sin
 
 PROMPT 10 cierra la auditoría con dictamen **NO-GO operativo**. Las validaciones sin red son correctas, los backups conservan sus hashes, los datos humanos permanecen 13/14/24/136 y las tablas económicas están vacías. Bloquea el piloto una divergencia de idempotencia: el servicio en memoria rechaza reutilizar una clave con parámetros distintos, pero la función SQL devuelve la reserva existente sin compararlos. También permanecen pendientes, por diseño del lote, clientes y conexiones reales, tarifas, presupuestos y sondas del preflight. El detalle y los pasos de corrección están en `docs/real-pipeline/REAL_PIPELINE_PRE_PILOT_AUDIT.md`.
 
+PROMPT 10B resuelve aquel NO-GO con la migración aditiva `20260725183730_fix_provider_reservation_idempotency.sql`, sin modificar la migración aplicada original. Una clave existente solo devuelve la misma reserva si todos los campos de atribución, presupuesto, facturación y payload coinciden; cualquier diferencia produce `IDEMPOTENCY_CONFLICT`, tipado, sanitizado y no reintentable, sin presupuesto o ledger adicional. Las carreras idénticas/conflictivas se validaron en dos sesiones sobre una base local aislada y eliminada. Las rutas legacy de entorno, Kimi, Brave y orquestación histórica están deprecadas y bloqueadas antes de leer configuración, crear clientes, acceder a red o registrar inputs. Nuevo dictamen: **GO técnico para configurar credenciales y preparar autorización humana de PROMPT 11**. No autoriza conexiones, llamadas ni PROMPT 11.
+
 Fecha de actualización: 2026-07-25
 Estado canónico: **FASE 3J CERRADA; FASE 4A-01 COMMITTEADA; FASE 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA**
 

@@ -5,6 +5,13 @@ const migration = readFileSync(
   new URL('../supabase/migrations/20260725050000_real_provider_ledger.sql', import.meta.url),
   'utf8',
 )
+const idempotencyFix = readFileSync(
+  new URL(
+    '../supabase/migrations/20260725183730_fix_provider_reservation_idempotency.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
 
 describe('schema durable del ledger real', () => {
   it('crea las siete superficies económicas sin alterar tablas humanas', () => {
@@ -60,5 +67,52 @@ describe('schema durable del ledger real', () => {
     expect(migration).toContain('security definer set search_path = public')
     expect(migration).toContain('revoke all on table public.%I from public,anon,authenticated')
     expect(migration).toContain('grant execute on function public.reserve_provider_call')
+  })
+
+  it('reemplaza la función de forma aditiva sin tocar tablas o datos', () => {
+    expect(idempotencyFix).toContain('create or replace function public.reserve_provider_call')
+    expect(idempotencyFix).not.toMatch(/\b(drop|truncate|delete|alter table)\b/i)
+    expect(idempotencyFix).toContain('Reversibilidad')
+  })
+
+  it('serializa antes de comparar todos los campos funcionales de la reserva', () => {
+    const lock = idempotencyFix.indexOf('pg_advisory_xact_lock')
+    const existing = idempotencyFix.indexOf('select * into existing_reservation')
+    const conflict = idempotencyFix.indexOf("message = 'IDEMPOTENCY_CONFLICT'")
+    expect(lock).toBeGreaterThan(0)
+    expect(existing).toBeGreaterThan(lock)
+    expect(conflict).toBeGreaterThan(existing)
+
+    for (const field of [
+      'execution_id',
+      'request_id',
+      'run_id',
+      'task_id',
+      'batch_id',
+      'budget_date',
+      'stage',
+      'operation',
+      'provider_id',
+      'model',
+      'attempt',
+      'retry_of_call_id',
+      'estimated_cost',
+      'reserved_cost',
+      'currency',
+      'tariff_id',
+      'prompt_version',
+      'schema_version',
+      'input_hash',
+    ]) {
+      expect(idempotencyFix).toContain(`existing_reservation.${field}`)
+    }
+  })
+
+  it('mantiene el contrato sanitizado y no crea una segunda reserva en conflicto', () => {
+    expect(idempotencyFix).toContain("errcode = 'P0001'")
+    expect(idempotencyFix).toContain("message = 'IDEMPOTENCY_CONFLICT'")
+    expect(idempotencyFix.match(/insert into public\.provider_call_reservations/g)).toHaveLength(1)
+    expect(idempotencyFix).not.toContain('raise exception using detail')
+    expect(idempotencyFix).not.toContain('raise exception using hint')
   })
 })

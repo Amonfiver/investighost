@@ -13,7 +13,7 @@ import type {
   WebSearchResult,
   WebSourceType,
 } from '@shared/types'
-import { getConfig } from '@services/config'
+import { assertLegacyProviderRuntimeDisabled } from '@services/legacy-provider-guard'
 import { generateId } from '@utils/helpers'
 
 const BRAVE_WEB_SEARCH_ENDPOINT = 'https://api.search.brave.com/res/v1/web/search'
@@ -88,6 +88,7 @@ export class BraveSearchProvider extends BaseSearchProvider {
     query: WebSearchQuery,
     options: SearchProviderOptions = {}
   ): Promise<WebSearchResult[]> {
+    assertLegacyProviderRuntimeDisabled('search.BraveSearchProvider')
     const maxResults = options.maxResultsPerQuery ?? 5
     const url = new URL(BRAVE_WEB_SEARCH_ENDPOINT)
     url.searchParams.set('q', query.query)
@@ -142,12 +143,12 @@ export interface SearchProviderFactoryOptions {
   braveApiKey?: string
 }
 
+/** @deprecated Ruta histórica; solo conserva el mock y bloquea proveedores externos. */
 export function createSearchProvider(
   options: SearchProviderFactoryOptions = {}
 ): BaseSearchProvider {
-  const config = getSearchConfig()
-  const provider = options.provider ?? config.provider
-  const braveApiKey = options.braveApiKey ?? config.braveApiKey
+  const provider = options.provider ?? 'mock'
+  const braveApiKey = options.braveApiKey
 
   switch (provider) {
     case 'mock':
@@ -156,6 +157,7 @@ export function createSearchProvider(
     case 'serpapi':
     case 'searchapi':
     case 'brave':
+      assertLegacyProviderRuntimeDisabled('search.createSearchProvider')
       if (!braveApiKey) {
         console.warn('[Search] provider selected: mock (Brave API key missing)')
         return new LocalMockSearchProvider()
@@ -206,10 +208,12 @@ export function generateDestinationSearchQueries(input: ResearchInput): WebSearc
   return queries
 }
 
+/** @deprecated Sustituido por ResearchTool; permanece bloqueado fail-closed. */
 export async function collectWebResearchBundle(
   input: ResearchInput,
   options: SearchProviderFactoryOptions & SearchProviderOptions = {}
 ): Promise<WebResearchBundle> {
+  assertLegacyProviderRuntimeDisabled('search.collectWebResearchBundle')
   const provider = createSearchProvider(options)
   const queries = generateDestinationSearchQueries(input)
   const resultsByQuery = await Promise.all(
@@ -232,18 +236,6 @@ export async function collectWebResearchBundle(
     notes: provider.name === 'mock'
       ? ['MOCK_SEARCH_PROVIDER: no se ha llamado a internet todavia.']
       : undefined,
-  }
-}
-
-function getSearchConfig(): { provider: SearchProvider; braveApiKey?: string } {
-  try {
-    const config = getConfig()
-    return {
-      provider: config.search.provider,
-      braveApiKey: config.search.braveApiKey,
-    }
-  } catch {
-    return { provider: 'mock' }
   }
 }
 

@@ -6,55 +6,45 @@ Rama: `feat/investighost-real-pipeline`
 
 Checkpoint protegido: `18d8d33113c1412de07fb9f4189116100ccfa84b`
 
-Alcance: PROMPT 01–10, sin ejecutar PROMPT 11.
+Alcance: PROMPT 01–10 y corrección 10B, sin ejecutar PROMPT 11.
 
 ## Dictamen
 
-**NO-GO operativo para el piloto real.**
+**GO técnico para configurar credenciales y preparar autorización humana de PROMPT 11.**
 
-La base técnica sin red supera pruebas, typecheck, ESLint y los tres builds Vite. El checkpoint y sus backups son verificables, no hay llamadas/coste reales ni datos económicos residuales. Sin embargo, existe un defecto funcional bloqueante en la idempotencia durable y faltan deliberadamente las comprobaciones reales de credenciales, conexiones, tarifas y clientes. No debe habilitarse la feature flag ni ejecutarse Morella hasta resolver los bloqueos y repetir esta auditoría.
+La divergencia de idempotencia durable está corregida mediante una migración aditiva y pruebas unitarias/concurrentes contra Supabase local. Las rutas legacy capaces de leer variables de entorno o crear clientes históricos fallan ahora antes de acceder a configuración, red, inputs o previews. La base técnica sin red supera pruebas, typecheck, ESLint y los tres builds Vite; el checkpoint y sus backups siguen verificables y no hay llamadas, coste o datos económicos residuales.
 
-## Bloqueos
+Este GO solo permite configurar credenciales desde la aplicación y preparar el gate humano. No autoriza habilitar la feature flag, ejecutar PROMPT 11, hacer una prueba de conexión real, consumir saldo o publicar.
 
-### B1 — Conflicto idempotente no validado en PostgreSQL
+## Reauditoría de bloqueos
 
-Severidad: alta.
+### B1 — Conflicto idempotente durable: resuelto
 
-`CostLedgerService` compara todos los parámetros cuando ya existe una `idempotencyKey` y devuelve `IDEMPOTENCY_CONFLICT` si no coinciden. En cambio, `public.reserve_provider_call` de `20260725050000_real_provider_ledger.sql` adquiere el advisory lock, busca la clave y devuelve inmediatamente el ID existente sin comparar request, run, tarea, lote, operación, proveedor, modelo, intento, tarifa, versiones, hash o coste.
+La migración `20260725183730_fix_provider_reservation_idempotency.sql` reemplaza únicamente `public.reserve_provider_call`; la migración original permanece intacta. Bajo el mismo advisory lock, la función devuelve la reserva existente solo si coinciden todos los campos de atribución, presupuesto y facturación. `reserved_cost` se valida contra el coste estimado que determina la reserva máxima y `input_hash` cubre de forma canónica atribución, facturación, payload y límites.
 
-Impacto: reutilizar por error una clave con una llamada distinta no duplica presupuesto, pero puede devolver una reserva ajena y falsear atribución, trazabilidad y conciliación. La integración actual comprueba el happy path y append-only, no esta divergencia.
+Ante cualquier diferencia produce exclusivamente `IDEMPOTENCY_CONFLICT`; no crea una segunda reserva, no altera la original, no aumenta presupuesto y no añade ledger. En TypeScript, `CostLedgerError` lo expone como error tipado, sanitizado y `retryable: false`.
 
-Corrección exigida antes de GO:
+Evidencia:
 
-1. comparar en SQL la reserva existente con todos los campos inmutables;
-2. producir un error durable inequívoco ante cualquier diferencia;
-3. añadir prueba de integración local para misma clave/mismo input y misma clave/input distinto;
-4. aplicar el cambio solo mediante una nueva migración aditiva local autorizada;
-5. volver a confirmar tablas económicas vacías y conteos humanos intactos.
+- primera reserva y repetición idéntica;
+- conflictos de proveedor, modelo, etapa, operación, coste/reserva, moneda/tarifa, request, run, tarea, lote, intento y hash;
+- carreras idénticas y conflictivas con dos sesiones PostgreSQL;
+- presupuesto, ledger y reserva original intactos;
+- rollback transaccional y eliminación de la base concurrente aislada;
+- datos humanos iguales antes y después.
 
-### B2 — Integraciones reales aún no conectadas
+### B2 — Integraciones reales: gate posterior pendiente
 
-Severidad: bloqueante esperada por el alcance sin gasto.
+No es un defecto de 10B. La feature flag, los clientes reales y la acción de ejecución permanecen bloqueados por alcance. Conexiones, saldos y tarifas no se consultaron. Las pruebas simuladas no acreditan conexión real.
 
-- la feature flag real está apagada y no hay acción de ejecución;
-- el cliente OpenAI real no está instanciado;
-- Tavily solo puede usar `fetch` con habilitación explícita, pero el `ResearchTool` sigue marcado como simulado;
-- `OpenAIIntelligenceEngine` también se identifica como simulado;
-- el Centro de proveedores no entrega credenciales a los clientes del pipeline;
-- conexiones reales, saldos y tarifas no se han consultado;
-- las pruebas simuladas no satisfacen el preflight real.
+### B3 — Preflight operativo: decisión humana pendiente
 
-Este bloqueo preserva el límite del lote. Su resolución pertenece a una intervención posterior expresamente autorizada y nunca debe saltarse B1.
-
-### B3 — Preflight durable aún sin evidencia operativa
-
-Severidad: bloqueante esperada.
-
-En Supabase local existen las siete tablas y cinco funciones económicas, pero hay cero tarifas, presupuestos, reservas y llamadas. La guarda global está libre. El gate muestra como no comprobados Supabase, ledger, guarda, tareas reales y conexiones. No se ha leído el almacén de credenciales de usuario para respetar la prohibición de inspeccionar claves.
+En Supabase local constan las siete tablas, las cinco funciones y ambas migraciones, pero hay cero tarifas, presupuestos, reservas y llamadas. La guarda global está libre. El gate mantiene como no comprobados credenciales, conexión, saldo, tarifas y ejecución. Esta situación es compatible con el GO técnico para configurar; PROMPT 11 sigue bloqueado hasta completar el preflight y recibir autorización expresa.
 
 ## Hallazgos no bloqueantes y deuda
 
-- El módulo legado `src/modules/research` conserva rutas capaces de leer variables de entorno y usar proveedores históricos reales si fuera invocado. No está conectado al runtime Electron canónico actual ni al pipeline nuevo, pero debe aislarse o retirarse antes de un release para reducir superficie y evitar dos centros de credenciales.
+- El código legacy se conserva para evitar una retirada arriesgada, pero sus entradas de configuración, fábrica/Kimi, Brave, orquestación, investigación y `startResearch` están deprecadas y protegidas por `LEGACY_PROVIDER_RUNTIME_DISABLED`. El pipeline nuevo y Electron main no las importan.
+- Los logs legacy de input completo y preview se retiraron. El error del guard no contiene credenciales, prompts o inputs y no es reintentable.
 - El comentario del advisory lock aparece duplicado en la migración. No cambia el SQL ejecutable.
 - Los checkpoints del piloto fake y el repositorio usado por su ledger son implementaciones en memoria. El piloto real debe usar persistencia durable y no asumir que la prueba fake demuestra recuperación tras caída de proceso.
 - Los modelos y tarifas siguen siendo valores de catálogo o sintéticos; deben verificarse contra la configuración autorizada inmediatamente antes del piloto.
@@ -88,20 +78,22 @@ En Supabase local existen las siete tablas y cinco funciones económicas, pero h
 
 ### Ledger, reservas, tarifas y guarda
 
-- Migración aditiva: `20260725050000_real_provider_ledger.sql`.
+- Migración base aditiva: `20260725050000_real_provider_ledger.sql`, sin modificaciones.
+- Corrección aditiva: `20260725183730_fix_provider_reservation_idempotency.sql`.
 - Siete tablas económicas con RLS y privilegios retirados a `public`, `anon` y `authenticated`.
 - Ledger y tarifas protegidos contra update/delete.
 - Reserva previa, inicio y conciliación producen asientos separados.
 - Presupuestos de tarea, lote y día se bloquean en orden estable.
 - Un resultado `unknown` retiene la reserva y no admite reintento automático.
-- Advisory lock serializa una misma clave idempotente.
+- Advisory lock serializa una misma clave idempotente y la comparación explícita decide equivalencia o conflicto.
 - Guarda global limita la ejecución real concurrente.
 - La integración local transaccional aprobó y revirtió todos sus datos.
-- Defecto B1 pendiente: falta comparar el contenido al reutilizar la clave en SQL.
+- La integración concurrente trabajó en una base aislada del PostgreSQL local y la eliminó al terminar.
+- El contrato `IDEMPOTENCY_CONFLICT` es estable, sanitizado y no reintentable.
 
 ### Estado local y datos humanos
 
-La migración consta una vez en `supabase_migrations`. Se verificaron siete tablas y cinco funciones:
+Ambas migraciones constan una vez en `supabase_migrations`. Se verificaron siete tablas y cinco funciones:
 
 | Dato | Conteo |
 |---|---:|
@@ -130,8 +122,9 @@ La guarda no tiene propietario. El test de integración posterior dejó de nuevo
 
 ## Validaciones
 
-- Suite normal: 285 pruebas aprobadas; 10 integraciones opt-in omitidas por defecto.
-- Integración ledger Supabase local: 1 prueba aprobada, transacción revertida.
+- Suite normal: 337 pruebas aprobadas; 11 integraciones opt-in omitidas por defecto.
+- Pruebas específicas 10B: 71 aprobadas; regresión Morella falsa: 3 aprobadas.
+- Integración ledger Supabase local: 2 pruebas aprobadas; transacción revertida y base aislada eliminada.
 - TypeScript `--noEmit`: aprobado.
 - ESLint con cero warnings: aprobado.
 - Builds renderer, Electron main y preload: aprobados.
@@ -153,12 +146,13 @@ La guarda no tiene propietario. El test de integración posterior dejó de nuevo
 | 07 | `596df16dd2a3106657c192195115e8635e6581af` | `feat: añadir roles y extensión configurable por perfil` |
 | 08 | `f46a3d7ec5cd20afd2ad0b15af89421d4f25fbea` | `test: validar pipeline real completo sin red` |
 | 09 | `80a0f42559a86c4cc833ca4c123697182dc0ec6f` | `feat: preparar puerta segura para piloto real Morella` |
+| 10 | `dac00762cbb0f66ab5968917f6b3bade4168fcba` | `docs: cerrar auditoría previa al piloto real` |
 
-El hash de PROMPT 10 se informa después de crear su commit para evitar una referencia circular.
+El hash de 10B se informa después de crear su commit para evitar una referencia circular.
 
 ## Pasos humanos posteriores
 
-No realizar estos pasos hasta corregir B1 y recibir una autorización nueva:
+El GO técnico no autoriza conexiones o llamadas. Los pasos humanos posteriores son:
 
 1. Abrir Centro de proveedores desde Electron.
 2. Configurar Tavily y OpenAI escribiendo cada clave en su formulario; comprobar que la UI solo devuelve `••••••••`.

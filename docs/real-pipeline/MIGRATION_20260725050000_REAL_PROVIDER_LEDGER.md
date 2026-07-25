@@ -46,6 +46,10 @@ Se aplicó una sola vez con `supabase migration up --local`. No se ejecutó `sup
 
 La integración crea exclusivamente datos sintéticos dentro de una transacción, prueba reserva, inicio, conciliación, presupuestos, guarda y trigger append-only, y termina con `ROLLBACK`. Antes y después se conservaron los conteos humanos: 13 solicitudes, 14 runs, 24 borradores y 136 eventos.
 
+## Corrección posterior
+
+La migración original permanece sin cambios. `20260725183730_fix_provider_reservation_idempotency.sql` vuelve a declarar únicamente `reserve_provider_call` para comparar todos los parámetros de una clave existente y producir `IDEMPOTENCY_CONFLICT` ante cualquier diferencia. Su contrato y reversibilidad se documentan en `MIGRATION_20260725183730_FIX_PROVIDER_RESERVATION_IDEMPOTENCY.md`.
+
 ## Reversibilidad
 
 No existe rollback automático porque un ledger con llamadas reales no debe eliminarse de forma implícita. Mientras las tablas continúen vacías, una reversión autorizada podría retirar, en orden, funciones, triggers, tablas dependientes y tablas de presupuesto. Si llegaran a contener asientos, cualquier retirada exigiría backup nuevo, exportación íntegra, reconciliación y autorización humana específica. El checkpoint previo permanece disponible fuera del repositorio.

@@ -22,6 +22,8 @@ PROMPT 09 deja preparada una puerta visible y cerrada por defecto para un único
 
 PROMPT 10 concluye con **NO-GO operativo**. El pipeline simulado, la seguridad local, los límites y los backups superan auditoría, pero la función SQL de reserva no detecta que una clave idempotente existente llegue con parámetros distintos. Antes de cualquier piloto deben añadirse comparación durable y prueba de integración, y después resolverse los controles reales que permanecen cerrados por alcance: conexiones, clientes, tarifas, saldo, presupuesto y sondas. PROMPT 11 no está iniciado ni autorizado.
 
+PROMPT 10B corrige la deuda con una nueva migración local aditiva: misma clave e input idéntico convergen; cualquier diferencia de atribución, facturación, presupuesto o payload devuelve `IDEMPOTENCY_CONFLICT` sin duplicar reserva, ledger o coste. La concurrencia se prueba con sesiones PostgreSQL independientes y las rutas legacy quedan deprecadas y bloqueadas antes de entorno/red. Dictamen actualizado: **GO técnico para configurar credenciales y preparar autorización humana de PROMPT 11**; ejecución real, conexiones y PROMPT 11 siguen requiriendo autorización expresa.
+
 Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada y committeada; FASE 4A-01B está implementada técnicamente y pendiente de prueba humana. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia

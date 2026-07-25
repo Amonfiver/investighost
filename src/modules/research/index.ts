@@ -16,6 +16,7 @@ import { generateMockResult } from './mock-data'
 import { researchWithAI, isAIResearchAvailable } from '@services/ai/research'
 import { getProviderFactory } from '@services/ai/providers'
 import { collectWebResearchBundle } from '@services/search'
+import { assertLegacyProviderRuntimeDisabled } from '@services/legacy-provider-guard'
 
 // Re-exportar el mock para uso externo si es necesario
 export { generateMockResult } from './mock-data'
@@ -64,8 +65,11 @@ async function createRequest(input: unknown): Promise<ResearchRequest> {
 /**
  * Inicia el proceso de investigación
  * Usa Kimi si está configurado, simulación si no
+ * @deprecated El runtime canónico usa el pipeline Manual/real y esta entrada está bloqueada.
  */
 async function startResearch(requestId: string): Promise<void> {
+  assertLegacyProviderRuntimeDisabled('research.startResearch')
+
   const request = await store.getRequest(requestId)
   if (!request) {
     throw new Error(`Request not found: ${requestId}`)
@@ -75,9 +79,6 @@ async function startResearch(requestId: string): Promise<void> {
     throw new Error(`Cannot start research from status: ${request.status}`)
   }
 
-  console.log('🔍 [Research] Starting research for:', requestId)
-  console.log('🔍 [Research] Input:', JSON.stringify(request.input))
-  
   // Verificación detallada de disponibilidad de IA
   const aiAvailable = isAIResearchAvailable()
   console.log('🔍 [Research] isAIResearchAvailable():', aiAvailable)
@@ -193,7 +194,7 @@ async function cancelResearch(requestId: string): Promise<void> {
  * Verifica si la IA está configurada
  */
 function isAIConfigured(): boolean {
-  return isAIResearchAvailable()
+  return false
 }
 
 // ============================================

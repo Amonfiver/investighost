@@ -173,3 +173,22 @@ Este informe acumula la evidencia del lote autónomo PROMPT 01–10. Hasta que e
 - Coste real consumido: `0 EUR`.
 - Llamadas reales realizadas: `0`.
 - Fronteras negativas: PROMPT 11 no ejecutado; cero créditos, tokens, publicaciones, Trawel, producción y Automatic; ningún comando Supabase prohibido.
+
+## PROMPT 10B — Corrección de idempotencia y reauditoría
+
+- Fecha/hora: 2026-07-25 (Europe/Madrid).
+- HEAD inicial: `dac00762cbb0f66ab5968917f6b3bade4168fcba`.
+- HEAD final: commit único de este bloque, con mensaje `fix: endurecer idempotencia de reservas reales`.
+- Commit: el hash se entrega después de crear el commit para evitar una referencia circular dentro de sí mismo.
+- Archivos modificados: migración aditiva, ledger en memoria, guardas legacy, pruebas unitarias/esquema/integración y documentación de reauditoría.
+- Migraciones: `20260725183730_fix_provider_reservation_idempotency.sql`, aplicada exclusivamente mediante `migration up --local`; la migración original no se modificó.
+- Pruebas: 71 específicas y 3 de regresión Morella falsa; fingerprint estable, misma clave idéntica, conflictos por cada campo relevante, carreras idénticas/conflictivas, presupuesto, ledger, reserva intacta, error tipado/no retryable, rutas legacy y ausencia de imports desde el runtime nuevo.
+- Integración: 2 pruebas locales aprobadas; una transacción termina en rollback y la prueba concurrente usa una base aislada eliminada al finalizar. Datos humanos comparados antes/después.
+- Suite y builds: 337 pruebas normales, typecheck, ESLint, renderer, Electron main y preload aprobados antes del commit.
+- Decisiones: comparación explícita bajo advisory lock; `reserved_cost` equivale a la reserva máxima; `input_hash` cubre canónicamente atribución, facturación, payload y límites; conflicto estable `IDEMPOTENCY_CONFLICT`; guard legacy anterior a entorno, cliente, red o logs de input.
+- Riesgos: los clientes y el preflight reales siguen pendientes de una autorización posterior; el código legacy continúa presente, aunque deprecado y fail-closed.
+- Deuda: configurar desde la aplicación, verificar modelos/tarifas/saldos/conexiones y obtener autorización humana antes de PROMPT 11.
+- Dictamen: `GO técnico para configurar credenciales y preparar autorización humana de PROMPT 11`.
+- Coste real consumido: `0 EUR`.
+- Llamadas reales realizadas: `0`.
+- Fronteras negativas: feature flag apagada; PROMPT 11 no ejecutado; cero créditos, tokens y publicaciones; Trawel, producción y Automatic desconectados; ningún comando Supabase prohibido.

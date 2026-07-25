@@ -24,6 +24,7 @@ import {
   defaultProviderConfig,
   type MultiProviderConfig 
 } from './providers'
+import { assertLegacyProviderRuntimeDisabled } from '@services/legacy-provider-guard'
 
 // Re-exportar tipos y clases necesarios
 export { initializeProviderFactory, getProviderFactory, defaultProviderConfig }
@@ -50,6 +51,7 @@ export interface AIOrchestratorOptions {
 
 /**
  * Genera texto usando la estrategia configurada
+ * @deprecated Sustituido por IntelligenceEngine; permanece bloqueado fail-closed.
  */
 export async function generateText(
   prompt: string,
@@ -60,6 +62,7 @@ export async function generateText(
   cost?: number
   logId?: string
 }> {
+  assertLegacyProviderRuntimeDisabled('ai.generateText')
   const { 
     strategy = 'auto',
     trackUsage = true 

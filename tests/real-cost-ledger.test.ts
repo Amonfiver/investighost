@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CostLedgerError,
   CostLedgerService,
   MemoryCostLedgerRepository,
   type CostLedgerDependencies,
@@ -152,12 +153,60 @@ describe('ledger y cortafuegos de gasto real', () => {
     expect(await repository.entries()).toHaveLength(1)
   })
 
-  it('rechaza una colisión idempotente con parámetros distintos', async () => {
-    const { ledger } = await guarded()
-    await ledger.reserve(reservation())
-    await expect(ledger.reserve(reservation({ estimatedCost: 0.07 }))).rejects.toMatchObject({
+  it.each([
+    ['execution', { executionId: 'execution-other' }],
+    ['request', { requestId: 'request-other' }],
+    ['run', { runId: 'run-other' }],
+    ['task', { taskId: 'task-other' }],
+    ['batch', { batchId: 'batch-other' }],
+    ['provider', { providerId: 'openai' }],
+    ['model', { model: 'model-other' }],
+    ['stage', { stage: 'analyzing_round_1' }],
+    ['operation', { operation: 'extract' }],
+    ['attempt', { attempt: 2 }],
+    ['retry origin', { retryOfCallId: 'call-previous' }],
+    ['estimated and maximum reserved cost', { estimatedCost: 0.07 }],
+    ['currency and tariff', { currency: 'USD', tariffId: 'tariff-synthetic-usd-v1' }],
+    ['tariff version', { tariffId: 'tariff-synthetic-v2' }],
+    ['prompt version', { promptVersion: 'mission-v2' }],
+    ['schema version', { schemaVersion: 'real-v2' }],
+    ['canonical payload and limits hash', { inputHash: 'c'.repeat(64) }],
+  ])('rechaza una colisión idempotente por %s sin alterar reserva, presupuesto o ledger', async (_field, patch) => {
+    const { ledger, repository } = await guarded()
+    const original = await ledger.reserve(reservation())
+
+    await expect(ledger.reserve(reservation(patch))).rejects.toMatchObject({
       code: 'IDEMPOTENCY_CONFLICT',
+      retryable: false,
     })
+
+    expect(repository.budgetSnapshot().task).toEqual({ limit: 0.2, reserved: 0.08, spent: 0 })
+    expect(await repository.entries()).toHaveLength(1)
+    expect(await repository.findByIdempotencyKey('call-morella-round-1')).toEqual(original)
+  })
+
+  it('resuelve una carrera conflictiva con un único ganador y error tipado no reintentable', async () => {
+    const { ledger, repository } = await guarded()
+    const results = await Promise.allSettled([
+      ledger.reserve(reservation({ providerId: 'tavily' })),
+      ledger.reserve(reservation({ providerId: 'openai' })),
+    ])
+    const fulfilled = results.filter(result => result.status === 'fulfilled')
+    const rejected = results.filter(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    )
+
+    expect(fulfilled).toHaveLength(1)
+    expect(rejected).toHaveLength(1)
+    expect(rejected[0].reason).toBeInstanceOf(CostLedgerError)
+    expect(rejected[0].reason).toMatchObject({
+      code: 'IDEMPOTENCY_CONFLICT',
+      retryable: false,
+      message: 'La clave idempotente ya pertenece a otra reserva',
+    })
+    expect(rejected[0].reason.message).not.toMatch(/tavily|openai|request|task|hash/i)
+    expect(repository.budgetSnapshot().task.reserved).toBe(0.08)
+    expect(await repository.entries()).toHaveLength(1)
   })
 
   it('permite una sola ejecución global vigente', async () => {

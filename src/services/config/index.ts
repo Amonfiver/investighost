@@ -11,6 +11,7 @@
 
 import { z } from 'zod'
 import type { SearchProvider } from '@shared/types'
+import { assertLegacyProviderRuntimeDisabled } from '@services/legacy-provider-guard'
 
 // ============================================
 // Esquema de validación de configuración
@@ -56,8 +57,11 @@ let cachedConfig: Config | null = null
 /**
  * Carga la configuración desde variables de entorno
  * Esta función debe llamarse desde el proceso main de Electron
+ * @deprecated El Centro de proveedores seguro sustituye este cargador; permanece bloqueado.
  */
 export function loadConfig(): Config {
+  assertLegacyProviderRuntimeDisabled('config.loadConfig')
+
   // Si ya está cargada, devolver caché
   if (cachedConfig) {
     return cachedConfig

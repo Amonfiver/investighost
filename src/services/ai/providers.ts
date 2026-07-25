@@ -11,6 +11,7 @@
 import OpenAI from 'openai'
 import type { AIProvider, AIProviderContract, SearchProvider } from '@shared/types'
 import { getConfig } from '@services/config'
+import { assertLegacyProviderRuntimeDisabled } from '@services/legacy-provider-guard'
 
 const KIMI_REQUEST_TIMEOUT_MS = 90_000
 const KIMI_MINIMAL_TEST_TIMEOUT_MS = 20_000
@@ -102,6 +103,7 @@ export abstract class BaseAIProvider implements AIProviderContract {
 /**
  * Proveedor Kimi (Moonshot AI)
  * Estado: IMPLEMENTADO - usa API real compatible con OpenAI
+ * @deprecated Ruta histórica bloqueada; no usar fuera del Centro de proveedores.
  */
 export class KimiProvider extends BaseAIProvider {
   readonly name: AIProvider = 'kimi'
@@ -113,6 +115,7 @@ export class KimiProvider extends BaseAIProvider {
   
   constructor(config: ProviderConfig) {
     super(config)
+    assertLegacyProviderRuntimeDisabled('ai.KimiProvider')
     if (config.apiKey) {
       console.log('[KimiProvider] baseURL:', config.baseUrl || 'https://api.moonshot.ai/v1')
       console.log('[KimiProvider] model:', config.defaultModel)
@@ -415,6 +418,7 @@ export class ProviderFactory {
   private providers: Map<AIProvider, BaseAIProvider> = new Map()
   
   constructor(private config: MultiProviderConfig) {
+    assertLegacyProviderRuntimeDisabled('ai.ProviderFactory')
     this.initializeProviders()
   }
   
@@ -461,8 +465,11 @@ export class ProviderFactory {
 
 /**
  * Crea configuración de proveedores desde el módulo de config
+ * @deprecated Las credenciales se gestionan exclusivamente mediante safeStorage.
  */
 export function createProviderConfigFromEnv(): MultiProviderConfig {
+  assertLegacyProviderRuntimeDisabled('ai.createProviderConfigFromEnv')
+
   try {
     const config = getConfig()
     
@@ -551,10 +558,12 @@ export const defaultProviderConfig: MultiProviderConfig = {
 let providerFactory: ProviderFactory | null = null
 
 export function initializeProviderFactory(config: MultiProviderConfig): void {
+  assertLegacyProviderRuntimeDisabled('ai.initializeProviderFactory')
   providerFactory = new ProviderFactory(config)
 }
 
 export function getProviderFactory(): ProviderFactory {
+  assertLegacyProviderRuntimeDisabled('ai.getProviderFactory')
   if (!providerFactory) {
     // Intentar inicializar desde config
     const envConfig = createProviderConfigFromEnv()

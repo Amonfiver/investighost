@@ -11,8 +11,9 @@
  */
 
 import { generateText } from './index'
-import { getProviderFactory, testKimiMinimalCall } from './providers'
+import { testKimiMinimalCall } from './providers'
 import { isAIDiagnosticEnabled } from '@services/config'
+import { assertLegacyProviderRuntimeDisabled } from '@services/legacy-provider-guard'
 import type { ResearchInput, ResearchResult, EditorialDraft, Place, Activity, Source, WebResearchBundle, WebSearchResult, WebSourceType } from '@shared/types'
 import { generateId } from '@utils/helpers'
 
@@ -230,15 +231,14 @@ export interface ResearchWithAIResult {
 /**
  * Realiza una investigación honesta usando Kimi
  * @throws Error si no hay proveedor configurado o falla la API
+ * @deprecated Sustituido por el workflow real neutral; permanece bloqueado fail-closed.
  */
 export async function researchWithAI(
   researchId: string,
   input: ResearchInput,
   webResearchBundle?: WebResearchBundle
 ): Promise<ResearchWithAIResult> {
-  
-  console.log('🤖 [researchWithAI] Called with researchId:', researchId)
-  console.log('🤖 [researchWithAI] Input:', JSON.stringify(input))
+  assertLegacyProviderRuntimeDisabled('ai.researchWithAI')
 
   if (webResearchBundle) {
     return researchWithCompactWebBundle(researchId, input, webResearchBundle)
@@ -254,8 +254,6 @@ export async function researchWithAI(
   })
   
   console.log('🤖 [researchWithAI] Step 1 complete. Research text length:', researchText.length)
-  console.log('🤖 [researchWithAI] Step 1 preview:', researchText.substring(0, 200) + '...')
-  
   // 2. Generar datos estructurados
   const structuredPrompt = buildStructuredPrompt(input, researchText)
   console.log('🤖 [researchWithAI] Prompt 2 length:', structuredPrompt.length)
@@ -478,12 +476,7 @@ function generateHonestEditorialDraft(
  * Verifica si la investigación con IA está disponible
  */
 export function isAIResearchAvailable(): boolean {
-  try {
-    const factory = getProviderFactory()
-    return factory.getAvailableProviders().length > 0
-  } catch {
-    return false
-  }
+  return false
 }
 
 async function researchWithCompactWebBundle(

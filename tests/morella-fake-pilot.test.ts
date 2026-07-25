@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import {
   CostLedgerService,
+  createProviderCallPayloadFingerprint,
   FullRealEditorialPipeline,
   LedgeredWorkflowCallExecutor,
   MemoryCostLedgerRepository,
@@ -257,6 +258,11 @@ function metadataFactory(): LedgeredCallMetadataFactory {
   return {
     create: (operationId, attempt, estimatedCost, retryOfCallId) => {
       const research = operationId.includes(':research')
+      const stage = operationId.split(':').slice(-2).join('_')
+      const operation = operationId.split(':').at(-1) ?? 'unknown'
+      const providerId = research ? 'tavily' : 'openai'
+      const model = research ? 'search-and-extract' : 'structured-responses'
+      const tariffId = research ? 'tariff-tavily-synthetic' : 'tariff-openai-synthetic'
       return {
         idempotencyKey: `${operationId}:attempt:${attempt}`,
         executionId: 'execution-morella-fake',
@@ -264,18 +270,43 @@ function metadataFactory(): LedgeredCallMetadataFactory {
         runId: 'run-morella-fake',
         taskId: 'task-morella-fake',
         batchId: 'batch-morella-fake',
-        stage: operationId.split(':').slice(-2).join('_'),
-        operation: operationId.split(':').at(-1) ?? 'unknown',
-        providerId: research ? 'tavily' : 'openai',
-        model: research ? 'search-and-extract' : 'structured-responses',
+        stage,
+        operation,
+        providerId,
+        model,
         attempt,
         retryOfCallId,
         estimatedCost,
         currency: 'EUR',
-        tariffId: research ? 'tariff-tavily-synthetic' : 'tariff-openai-synthetic',
+        tariffId,
         promptVersion: 'morella-fake-v1',
         schemaVersion: 'real-v1',
-        inputHash: createHash('sha256').update(operationId).digest('hex'),
+        inputHash: createProviderCallPayloadFingerprint({
+          executionId: 'execution-morella-fake',
+          requestId: 'request-morella-fake',
+          runId: 'run-morella-fake',
+          taskId: 'task-morella-fake',
+          batchId: 'batch-morella-fake',
+          budgetDate: '2026-07-25',
+          stage,
+          operation,
+          providerId,
+          model,
+          attempt,
+          retryOfCallId,
+          estimatedCost,
+          reservedCost: estimatedCost,
+          currency: 'EUR',
+          tariffId,
+          promptVersion: 'morella-fake-v1',
+          schemaVersion: 'real-v1',
+          payloadHash: createHash('sha256').update(operationId).digest('hex'),
+          maxInputTokens: 200_000,
+          maxOutputTokens: 50_000,
+          maxToolCalls: research ? 2 : 1,
+          maxCredits: research ? 10 : 0,
+          tools: research ? ['search', 'extract'] : ['structured-output'],
+        }),
       }
     },
   }

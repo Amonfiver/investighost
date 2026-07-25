@@ -23,6 +23,8 @@ export type CostLedgerErrorCode =
   | 'IDEMPOTENCY_CONFLICT'
 
 export class CostLedgerError extends Error {
+  readonly retryable = false
+
   constructor(readonly code: CostLedgerErrorCode, message: string) {
     super(message)
     this.name = 'CostLedgerError'
@@ -156,7 +158,11 @@ export class MemoryCostLedgerRepository implements CostLedgerRepository {
   async reserve(input: ProviderCallReservationInput): Promise<ProviderCallReservation> {
     const existingId = this.idempotency.get(input.idempotencyKey)
     if (existingId) {
-      return this.cloneReservation(this.reservations.get(existingId)) as ProviderCallReservation
+      const existing = this.reservations.get(existingId) as ProviderCallReservation
+      if (!sameReservationInput(existing.input, input)) {
+        throw new CostLedgerError('IDEMPOTENCY_CONFLICT', 'La clave idempotente ya pertenece a otra reserva')
+      }
+      return this.cloneReservation(existing) as ProviderCallReservation
     }
     const now = this.dependencies.now().toISOString()
     if (!this.guard || this.guard.expiresAt <= now || this.guard.executionId !== input.executionId) {
@@ -286,5 +292,22 @@ export class MemoryCostLedgerRepository implements CostLedgerRepository {
 }
 
 function sameReservationInput(left: ProviderCallReservationInput, right: ProviderCallReservationInput): boolean {
-  return JSON.stringify(left) === JSON.stringify(right)
+  return left.idempotencyKey === right.idempotencyKey
+    && left.executionId === right.executionId
+    && left.requestId === right.requestId
+    && left.runId === right.runId
+    && left.taskId === right.taskId
+    && left.batchId === right.batchId
+    && left.stage === right.stage
+    && left.operation === right.operation
+    && left.providerId === right.providerId
+    && left.model === right.model
+    && left.attempt === right.attempt
+    && left.retryOfCallId === right.retryOfCallId
+    && left.estimatedCost === right.estimatedCost
+    && left.currency === right.currency
+    && left.tariffId === right.tariffId
+    && left.promptVersion === right.promptVersion
+    && left.schemaVersion === right.schemaVersion
+    && left.inputHash === right.inputHash
 }

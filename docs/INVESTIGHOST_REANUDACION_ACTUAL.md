@@ -1,5 +1,19 @@
 # Investighost — cierre y punto de reanudación actual
 
+## Pipeline real — lote PROMPT 01–10 en curso
+
+El punto de retorno previo al pipeline real permanece protegido por la etiqueta `checkpoint/pre-real-pipeline-20260725` y por el backup externo documentado en `D:\Backups\investighost\pre-real-pipeline-20260725-0336`.
+
+PROMPT 01 formaliza una arquitectura neutral, todavía inactiva y sin red:
+
+- Investighost como orquestador;
+- `ResearchTool` e `IntelligenceEngine` como puertos sustituibles;
+- contratos Zod serializables para misión, perfiles, extensión, profundidad, límites, expediente, fuentes, evidencias, conocimiento maestro, cobertura, carencias, consultas focalizadas, rondas, decisiones y estados;
+- un máximo contractual de dos rondas, sin posibilidad de tercera;
+- cero credenciales, proveedores reales, migraciones, publicación o coste.
+
+La ejecución acumulada se registra en `docs/REAL_PIPELINE_EXECUTION_REPORT.md`. PROMPT 11 y posteriores continúan fuera de alcance.
+
 Fecha de actualización: 2026-07-25
 Estado canónico: **FASE 3J CERRADA; FASE 4A-01 COMMITTEADA; FASE 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA**
 

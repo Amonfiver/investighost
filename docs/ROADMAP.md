@@ -10,6 +10,8 @@ PROMPT 03 incorpora contabilidad durable por llamada: tarifas versionadas, reser
 
 PROMPT 04 añade el primer `ResearchTool` Tavily con Search/Extract, normalización, deduplicación, hashes, créditos, límites, timeout y cancelación. Sigue siendo una implementación sin red: el transporte `fetch` está cerrado por defecto y toda validación usa fixtures.
 
+PROMPT 05 añade el primer `IntelligenceEngine` OpenAI sobre el contrato de Responses API y Structured Outputs. El cliente permanece falso: solo procesa el expediente, diferencia coberturas y roles, mide uso simulado y no dispone de web search ni herramientas externas.
+
 Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada y committeada; FASE 4A-01B está implementada técnicamente y pendiente de prueba humana. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia

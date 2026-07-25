@@ -20,6 +20,8 @@ PROMPT 03 añade el ledger durable y el cortafuegos de gasto. La migración loca
 
 PROMPT 04 implementa Tavily Search/Extract detrás de `ResearchTool`, pero únicamente con transporte inyectable y fixtures. El transporte REST basado en `fetch` permanece bloqueado por defecto. Se conservan URL normalizada, título, contenido acotado, score, SHA-256, request IDs, créditos y fallos parciales; timeout, cancelación, límites y errores HTTP detienen la operación sin reintentos ni red real.
 
+PROMPT 05 implementa OpenAI detrás de `IntelligenceEngine` con cliente Responses API falso y Structured Outputs derivados de Zod. Analiza solo el expediente, crea conocimiento maestro, contradicciones, carencias y consultas; genera Aventura/Estudiante y revisión final con coberturas distintas. Refusal, incomplete, JSON inválido, timeout, cancelación o intento de ampliar tras ronda 2 detienen la operación sin reintento ni red.
+
 Fecha de actualización: 2026-07-25
 Estado canónico: **FASE 3J CERRADA; FASE 4A-01 COMMITTEADA; FASE 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA**
 

@@ -69,3 +69,20 @@ Este informe acumula la evidencia del lote autónomo PROMPT 01–10. Hasta que e
 - Coste real consumido: `0 EUR`.
 - Llamadas reales realizadas: `0`.
 - Fronteras negativas: fixtures completos, transporte falso y `networkEnabled=false`; sin claves reales, red, créditos, publicación, Trawel, producción ni Automatic.
+
+## PROMPT 05 — Motor OpenAI sin red real
+
+- Fecha/hora: 2026-07-25 (Europe/Madrid).
+- HEAD inicial: `25f20760b7cfc43113d65e61f21b50af574a82d5`.
+- HEAD final: commit único de este bloque, con mensaje `feat: añadir motor editorial OpenAI estructurado`.
+- Commit: el hash queda reflejado en la auditoría consolidada posterior para evitar una referencia circular dentro del propio commit.
+- Archivos modificados: contratos de cobertura, motor `IntelligenceEngine`, puertos, pruebas y documentación.
+- Migraciones: ninguna.
+- Pruebas: conocimiento, carencias, contradicciones, consultas focalizadas, perfiles, extensión, cobertura insuficiente, revisión, refusal, incomplete, JSON/schema inválidos, prohibición de tercera ronda, timeout, cancelación, uso/coste y ausencia de web.
+- Builds: suite específica, suite normal, typecheck, ESLint y builds renderer/main/preload ejecutados antes del commit.
+- Decisiones: Responses API queda representada por un cliente inyectable; Structured Outputs usa JSON Schema derivado de Zod; cada operación fija modelo, prompt, schema, límite de salida y `store=false`; el motor solo recibe expediente/conocimiento y no declara tools.
+- Riesgos: modelo y tarifas actuales son sintéticos; el cliente real no se instancia y deberá auditarse antes del piloto.
+- Deuda: persistencia de checkpoints y orquestación de rondas se conectan en PROMPT 06.
+- Coste real consumido: `0 EUR`.
+- Llamadas reales realizadas: `0`.
+- Fronteras negativas: cliente falso, sin instancia OpenAI, claves, red, tokens reales, web search, publicación, Trawel, producción ni Automatic.

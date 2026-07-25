@@ -34,6 +34,8 @@ export interface IntelligenceRoundAnalysis {
   usage: {
     inputTokens: number
     outputTokens: number
+    estimatedCost: number
+    currency: 'EUR'
   }
 }
 
@@ -42,11 +44,27 @@ export interface IntelligenceDraft {
   title: string
   content: string
   approximateWordCount: number
+  promptVersion: string
+  schemaVersion: string
+  usage: {
+    inputTokens: number
+    outputTokens: number
+    estimatedCost: number
+    currency: 'EUR'
+  }
 }
 
 export interface IntelligenceReview {
   outcome: 'passed' | 'passed_with_warnings' | 'review_required'
   issues: string[]
+  promptVersion: string
+  schemaVersion: string
+  usage: {
+    inputTokens: number
+    outputTokens: number
+    estimatedCost: number
+    currency: 'EUR'
+  }
 }
 
 export interface IntelligenceEngine {

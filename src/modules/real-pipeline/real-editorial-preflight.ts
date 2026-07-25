@@ -16,6 +16,7 @@ export const RealEditorialPreflightInputSchema = z.object({
   guardFree: z.boolean(),
   activeExecutions: z.number().int().nonnegative(),
   pendingReservations: z.number().int().nonnegative(),
+  humanRequiredCalls: z.number().int().nonnegative(),
   openAIResponsesCapability: z.object({
     sdkVersion: z.string().trim().min(1).max(80),
     status: z.enum([
@@ -161,6 +162,13 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
     input.pendingReservations === 0,
     'No hay reservas editoriales pendientes.',
     `Hay ${input.pendingReservations} reserva(s) pendiente(s).`,
+  )
+  add(
+    'human_required_calls',
+    'Decisiones remotas pendientes',
+    input.humanRequiredCalls === 0,
+    'No hay llamadas remotas que requieran resolución humana.',
+    `Hay ${input.humanRequiredCalls} llamada(s) bloqueada(s) por consumo ambiguo.`,
   )
 
   const duplicateResolved = input.duplicateResolution !== 'identical_real_pilot_exists'

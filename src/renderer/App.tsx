@@ -36,6 +36,9 @@ import {
 } from '@shared/real-connectivity-contracts'
 import type { EditorialDraftVersionSummary } from '@modules/editorial-pipeline/repository'
 import type {
+  RealEditorialAmbiguousCall,
+  RealEditorialAmbiguousCallDecision,
+  RealEditorialAmbiguousCallResolution,
   RealEditorialPilotProgress,
   RealEditorialPreflight,
 } from '@shared/real-editorial-pilot-contracts'
@@ -1008,6 +1011,7 @@ function RealPilotPreflightPanel({ preflight, checking, result, onRun }: {
 function RealEditorialPilotPanel(): JSX.Element {
   const [preflight, setPreflight] = useState<RealEditorialPreflight | null>(null)
   const [progress, setProgress] = useState<RealEditorialPilotProgress | null>(null)
+  const [actorId, setActorId] = useState<string | null>(null)
   const [operation, setOperation] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
 
@@ -1022,6 +1026,9 @@ function RealEditorialPilotPanel(): JSX.Element {
 
   useEffect(() => {
     refresh().catch(reason => setLocalError(errorText(reason)))
+    window.electronAPI.getManualActor()
+      .then(setActorId)
+      .catch(reason => setLocalError(errorText(reason)))
   }, [refresh])
 
   useEffect(() => {
@@ -1125,6 +1132,18 @@ function RealEditorialPilotPanel(): JSX.Element {
           <div><dt>Publicaciones</dt><dd>{pilot.publicationCount}</dd></div>
         </dl>
       )}
+      {progress?.humanRequiredCall && (
+        <RealEditorialAmbiguousCallPanel
+          call={progress.humanRequiredCall}
+          actorId={actorId}
+          busy={operation !== null}
+          onResolve={input => run(
+            'human-resolution',
+            () => window.electronAPI.resolveRealEditorialAmbiguousCall(input),
+            input.pilotId,
+          )}
+        />
+      )}
       <div className="preflight-checks">
         {preflight.checks.map(check => (
           <article className={`preflight-${check.status}`} key={check.code}>
@@ -1153,7 +1172,9 @@ function RealEditorialPilotPanel(): JSX.Element {
             {operation === 'budget' ? 'Confirmando…' : 'Confirmar presupuesto 0,20 EUR'}
           </button>
         )}
-        {pilot && !active && pilot.state !== 'cancelled' && pilot.state !== 'pending_human_review' && (
+        {pilot && !active && !progress?.resumeAvailable
+          && pilot.state !== 'cancelled' && pilot.state !== 'pending_human_review'
+          && !progress?.humanRequiredCall && (
           <button
             className="button primary"
             disabled={!preflight.startActionEnabled || operation !== null}
@@ -1165,7 +1186,7 @@ function RealEditorialPilotPanel(): JSX.Element {
             {operation === 'start' ? 'Ejecutando…' : 'Iniciar piloto real'}
           </button>
         )}
-        {pilot && (active || operation === 'start') && (
+        {pilot && (active || operation === 'start') && !progress?.humanRequiredCall && (
           <button
             className="button danger"
             disabled={operation === 'cancel'}
@@ -1181,7 +1202,7 @@ function RealEditorialPilotPanel(): JSX.Element {
             Cancelar
           </button>
         )}
-        {pilot?.state === 'cancelled' && (
+        {pilot && progress?.resumeAvailable && (
           <button
             className="button secondary"
             disabled={!ready || operation !== null}
@@ -1196,6 +1217,163 @@ function RealEditorialPilotPanel(): JSX.Element {
       </div>
     </section>
   )
+}
+
+interface RealEditorialAmbiguousCallPanelProps {
+  call: RealEditorialAmbiguousCall
+  actorId: string | null
+  busy: boolean
+  onResolve: (input: RealEditorialAmbiguousCallResolution) => void
+}
+
+export function RealEditorialAmbiguousCallPanel({
+  call,
+  actorId,
+  busy,
+  onResolve,
+}: RealEditorialAmbiguousCallPanelProps): JSX.Element {
+  const [decision, setDecision] =
+    useState<RealEditorialAmbiguousCallDecision>('indeterminate')
+  const [recognizedCost, setRecognizedCost] = useState('')
+  const [credits, setCredits] = useState('')
+  const [inputTokens, setInputTokens] = useState('')
+  const [outputTokens, setOutputTokens] = useState('')
+  const [note, setNote] = useState('')
+  const consumption = decision === 'consumption_confirmed'
+  const submit = () => {
+    if (!actorId) return
+    const label = humanResolutionDecisionLabel(decision)
+    if (!window.confirm(
+      `Confirmar “${label}”. La decisión quedará registrada de forma durable y no borrará la llamada histórica.`,
+    )) return
+    onResolve({
+      pilotId: call.pilotId,
+      runId: call.runId,
+      callId: call.callId,
+      actorId,
+      decision,
+      recognizedCostEur: consumption ? Number(recognizedCost) : undefined,
+      credits: consumption && credits ? Number(credits) : undefined,
+      inputTokens: consumption && inputTokens ? Number(inputTokens) : undefined,
+      outputTokens: consumption && outputTokens ? Number(outputTokens) : undefined,
+      note: note.trim() || undefined,
+      confirmed: true,
+    })
+  }
+  const validConsumption = !consumption
+    || recognizedCost !== ''
+      && Number.isFinite(Number(recognizedCost))
+      && Number(recognizedCost) >= 0
+      && (
+        Number(recognizedCost) > 0
+        || Number(credits) > 0
+        || Number(inputTokens) > 0
+        || Number(outputTokens) > 0
+      )
+  return (
+    <section className="ambiguous-call-review" aria-label="Resolución humana de llamada remota">
+      <header>
+        <div>
+          <span className="card-kicker">DECISIÓN HUMANA REQUERIDA</span>
+          <h4>Llamada remota con consumo indeterminado</h4>
+        </div>
+        <span className="state-badge state-blocked">human_required</span>
+      </header>
+      <p>
+        No se realizará otro intento hasta que compruebes esta llamada en el panel del proveedor.
+        Resolverla no llama a OpenAI ni repite Tavily.
+      </p>
+      <dl className="definition-grid compact">
+        <div><dt>Proveedor</dt><dd>{call.providerId}</dd></div>
+        <div><dt>Operación</dt><dd>{call.operation}</dd></div>
+        <div><dt>Intento</dt><dd>{call.attempt}</dd></div>
+        <div><dt>Fecha y hora</dt><dd>{formatDate(call.occurredAt)}</dd></div>
+        <div><dt>Estado</dt><dd>{call.reviewState}</dd></div>
+        <div><dt>Coste local conocido</dt><dd>{formatMoney(call.localKnownCostEur)}</dd></div>
+        <div><dt>Exposición máxima de la llamada</dt><dd>{formatMoney(call.maximumExposureEur)}</dd></div>
+        <div><dt>Gastado / máximo automático</dt><dd>{formatMoney(call.spentCostEur)} / {formatMoney(call.automaticLimitEur)}</dd></div>
+      </dl>
+      {call.latestDecision && (
+        <div className="alert warning">
+          <strong>La ambigüedad continúa abierta.</strong>
+          <span>
+            “No puedo determinarlo” registrado por {call.latestDecision.actorId}
+            {' · '}{formatDate(call.latestDecision.decidedAt)}.
+          </span>
+        </div>
+      )}
+      <div className="form-grid ambiguity-resolution-form">
+        <label className="field full">
+          <span>Decisión tras comprobar el panel de OpenAI</span>
+          <select
+            value={decision}
+            onChange={event => setDecision(
+              event.target.value as RealEditorialAmbiguousCallDecision,
+            )}
+          >
+            <option value="no_consumption">El proveedor no registró consumo</option>
+            <option value="consumption_confirmed">El proveedor sí registró consumo</option>
+            <option value="indeterminate">No puedo determinarlo</option>
+            <option value="cancel_permanently">Cancelar definitivamente</option>
+          </select>
+        </label>
+        {consumption && <>
+          <label className="field">
+            <span>Coste confirmado (EUR)</span>
+            <input
+              type="number"
+              min="0"
+              max={call.automaticLimitEur - call.spentCostEur}
+              step="0.000001"
+              value={recognizedCost}
+              onChange={event => setRecognizedCost(event.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Créditos, si constan</span>
+            <input type="number" min="0" step="0.000001" value={credits} onChange={event => setCredits(event.target.value)} />
+          </label>
+          <label className="field">
+            <span>Tokens de entrada</span>
+            <input type="number" min="0" step="1" value={inputTokens} onChange={event => setInputTokens(event.target.value)} />
+          </label>
+          <label className="field">
+            <span>Tokens de salida</span>
+            <input type="number" min="0" step="1" value={outputTokens} onChange={event => setOutputTokens(event.target.value)} />
+          </label>
+        </>}
+        <label className="field full">
+          <span>Nota opcional, sin claves ni cabeceras</span>
+          <textarea
+            rows={3}
+            maxLength={1_000}
+            value={note}
+            onChange={event => setNote(event.target.value)}
+            placeholder="Referencia de la comprobación humana, sin datos sensibles"
+          />
+        </label>
+      </div>
+      <div className="form-actions">
+        <span className="muted">
+          Actor: {actorId ?? 'No disponible'} · se pedirá confirmación antes de guardar.
+        </span>
+        <button
+          className={decision === 'cancel_permanently' ? 'button danger' : 'button secondary'}
+          disabled={busy || !actorId || !validConsumption}
+          onClick={submit}
+        >
+          {busy ? 'Guardando decisión…' : 'Guardar decisión humana'}
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function humanResolutionDecisionLabel(decision: RealEditorialAmbiguousCallDecision): string {
+  if (decision === 'no_consumption') return 'El proveedor no registró consumo'
+  if (decision === 'consumption_confirmed') return 'El proveedor sí registró consumo'
+  if (decision === 'cancel_permanently') return 'Cancelar definitivamente'
+  return 'No puedo determinarlo'
 }
 
 function RealConnectivityResultPanel({ result }: { result: RealConnectivityResult }): JSX.Element {

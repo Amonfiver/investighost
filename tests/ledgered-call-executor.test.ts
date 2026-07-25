@@ -112,6 +112,23 @@ describe('conciliación de fallos facturables y reanudación idempotente', () =>
       calculatedCost: 0.008,
     })
     expect(new Set(entries.map(entry => entry.reservationId)).size).toBe(2)
+
+    const durableResult = {
+      providerRequestIds: ['resumed-request-sanitized'],
+      credits: 1,
+    }
+    const durableReader = vi.fn(async () => durableResult)
+    const restartedExecutor = new LedgeredWorkflowCallExecutor(
+      ledger,
+      metadata(),
+      0.2,
+      async targetOperationId => targetOperationId === operationId,
+    )
+    await expect(restartedExecutor.execute(operationId, 0.048, durableReader))
+      .resolves.toEqual(durableResult)
+    expect(durableReader).toHaveBeenCalledOnce()
+    expect(await repository.findByIdempotencyKey(`${operationId}:attempt:3`)).toBeUndefined()
+    expect(new Set((await repository.entries()).map(entry => entry.reservationId)).size).toBe(2)
   })
 
   it('mantiene una red ambigua sin conciliación ni reintento automático', async () => {

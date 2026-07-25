@@ -11,6 +11,7 @@ import {
 } from '@modules/real-pipeline'
 import {
   RealEditorialPilotActionSchema,
+  RealEditorialAmbiguousCallResolutionSchema,
   RealEditorialPilotCancelSchema,
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotProgressSchema,
@@ -19,6 +20,7 @@ import {
   type RealEditorialPreflight,
 } from '@shared/real-editorial-pilot-contracts'
 import { createLocalSupabaseClientFromEnv } from '@services/supabase'
+import { MANUAL_LOCAL_ACTOR_ID } from '@modules/editorial-pipeline/manual-runtime'
 import { getProviderCenterRuntime } from './provider-center-runtime'
 
 export class RealEditorialPilotRuntime {
@@ -55,6 +57,7 @@ export class RealEditorialPilotRuntime {
       guardFree: inspection.guardFree,
       activeExecutions: inspection.activeExecutions,
       pendingReservations: inspection.pendingReservations,
+      humanRequiredCalls: inspection.humanRequiredCalls,
       openAIResponsesCapability: inspectInstalledOpenAIResponsesCapability(),
       duplicateResolution,
       pilot,
@@ -80,13 +83,16 @@ export class RealEditorialPilotRuntime {
     const { pilotId } = RealEditorialPilotActionSchema.parse(candidate)
     const pilot = await this.repository.getPilot(pilotId)
     if (!pilot) throw new Error('El piloto editorial no existe')
-    const [snapshot, incidents, run, inspection] = await Promise.all([
+    const [snapshot, incidents, run, inspection, humanRequiredCall, resumeAvailable] =
+      await Promise.all([
       this.repository.getResult(pilotId),
       this.client.from('real_editorial_incidents').select('id', { head: true, count: 'exact' })
         .eq('pilot_id', pilotId),
       this.client.from('real_editorial_runs').select('current_round,accumulated_cost')
         .eq('id', pilot.currentRunId).eq('pilot_id', pilotId).single(),
       this.repository.inspect(pilot.identityKey, pilotId),
+      this.repository.getHumanRequiredCall(pilotId),
+      this.repository.canResumeFromCheckpoint(pilotId),
     ])
     if (incidents.error || run.error) throw new Error('No se pudo leer el progreso durable')
     return RealEditorialPilotProgressSchema.parse({
@@ -96,6 +102,8 @@ export class RealEditorialPilotRuntime {
       accumulatedCost: Number(run.data.accumulated_cost),
       incidentCount: incidents.count ?? 0,
       pendingReservations: inspection.pendingReservations,
+      humanRequiredCall,
+      resumeAvailable,
       guardFree: inspection.guardFree,
     })
   }
@@ -113,8 +121,33 @@ export class RealEditorialPilotRuntime {
 
   async resume(candidate: unknown) {
     const { pilotId } = RealEditorialPilotActionSchema.parse(candidate)
+    if (!await this.repository.canResumeFromCheckpoint(pilotId)) {
+      throw new Error('El checkpoint no está autorizado para reanudarse')
+    }
     await this.repository.reopenCancelled(pilotId)
     return this.start({ pilotId })
+  }
+
+  async resolveAmbiguousCall(candidate: unknown) {
+    const input = RealEditorialAmbiguousCallResolutionSchema.parse(candidate)
+    if (!resolveRealEditorialFeatureFlag(process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN)) {
+      throw new Error('La feature flag editorial real no autoriza la resolución')
+    }
+    if (input.actorId !== MANUAL_LOCAL_ACTOR_ID) {
+      throw new Error('El actor humano no coincide con el operador local autorizado')
+    }
+    if (this.controllers.has(input.pilotId)) {
+      throw new Error('No se puede resolver una llamada mientras el piloto se ejecuta')
+    }
+    const pilot = await this.repository.getPilot(input.pilotId)
+    if (!pilot || pilot.currentRunId !== input.runId) {
+      throw new Error('La resolución no corresponde al piloto y run activos')
+    }
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    if (!inspection.guardFree) {
+      throw new Error('La guarda editorial debe estar libre para resolver la llamada')
+    }
+    return this.repository.resolveHumanRequiredCall(input)
   }
 
   async start(candidate: unknown) {

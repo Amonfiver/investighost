@@ -49,6 +49,7 @@ function input(overrides: Partial<Input> = {}): Input {
     guardFree: true,
     activeExecutions: 0,
     pendingReservations: 0,
+    humanRequiredCalls: 0,
     openAIResponsesCapability: {
       sdkVersion: '6.34.0',
       status: 'available',
@@ -131,6 +132,7 @@ describe('preflight editorial real independiente', () => {
     ['guarda', { guardFree: false }],
     ['ejecución activa', { activeExecutions: 1 }],
     ['reserva pendiente', { pendingReservations: 1 }],
+    ['decisión humana pendiente', { humanRequiredCalls: 1 }],
     ['conectividad', { connectivityValidated: false }],
   ])('bloquea por %s', (_label, override) => {
     expect(evaluateRealEditorialPreflight(input(override)).status).toBe('blocked')

@@ -53,12 +53,6 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
       previous?.callId,
     ))
     this.previousReservations.set(operationId, reservation)
-    if (reservation.state === 'reconciled') {
-      const result = await operation()
-      this.completed.set(operationId, structuredClone(result))
-      this.spentCost += reservation.calculatedCost ?? 0
-      return structuredClone(result)
-    }
     if (['failed', 'cancelled'].includes(reservation.state)) {
       const retryAttempt = attempt + 1
       this.attempts.set(operationId, retryAttempt)
@@ -69,6 +63,18 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
         reservation.callId,
       ))
       this.previousReservations.set(operationId, reservation)
+    }
+    if (reservation.state === 'reconciled') {
+      if (!await this.durableResultAvailable(operationId)) {
+        throw new RealWorkflowError(
+          'LIMIT_EXCEEDED',
+          'La llamada conciliada no conserva un resultado durable reutilizable',
+        )
+      }
+      const result = await operation()
+      this.completed.set(operationId, structuredClone(result))
+      this.spentCost += reservation.calculatedCost ?? 0
+      return structuredClone(result)
     }
     if (reservation.state === 'started' && await this.durableResultAvailable(operationId)) {
       const result = await operation()

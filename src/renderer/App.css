@@ -215,6 +215,11 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 .connectivity-call-grid > article { padding: 12px; background: white; border: 1px solid var(--line); border-radius: 9px; }
 .connectivity-call-grid > article > strong { font-size: 11px; }
 .editorial-pilot .definition-grid { margin-bottom: 16px; padding: 13px; background: #f8faf9; border: 1px solid var(--line); border-radius: 10px; }
+.ambiguous-call-review { margin: 16px 0; padding: 16px; border: 1px solid #d99b45; border-radius: 12px; background: #fffaf1; }
+.ambiguous-call-review > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.ambiguous-call-review > header h4 { margin: 3px 0 0; font-size: 17px; }
+.ambiguous-call-review > p { color: #66522f; }
+.ambiguity-resolution-form { margin: 12px 0; }
 .editorial-actions { flex-wrap: wrap; }
 .editorial-actions .muted { margin-right: auto; }
 

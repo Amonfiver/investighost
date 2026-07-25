@@ -260,6 +260,10 @@ ipcMain.handle('real-editorial:resume', async (_event, input: unknown) => {
   return getRealEditorialPilotRuntime().resume(input)
 })
 
+ipcMain.handle('real-editorial:resolve-ambiguous-call', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().resolveAmbiguousCall(input)
+})
+
 async function providerCenterAction<T>(
   action: (service: Awaited<ReturnType<typeof getProviderCenterRuntime>>) => Promise<T>,
 ): Promise<T> {

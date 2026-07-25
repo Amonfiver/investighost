@@ -7,6 +7,7 @@ const migrations = [
   '20260725215500_real_editorial_ledger_sanitization.sql',
   '20260725220500_real_editorial_prepare_concurrency.sql',
   '20260725221500_real_editorial_connectivity_evidence.sql',
+  '20260726013000_real_editorial_ambiguous_call_resolution.sql',
 ]
 
 async function migration(name: string): Promise<string> {
@@ -82,5 +83,19 @@ describe('esquema durable del piloto editorial real', () => {
     expect(sql).toContain("calls.task_id = 'connectivity-check-10d-task'")
     expect(sql).not.toMatch(/update\s+public\.(?:provider_calls|provider_call_reservations|real_task_budgets)/i)
     expect(sql).toContain('real_editorial_connectivity_evidence_append_only')
+  })
+
+  it('añade resolución humana append-only y bloquea retries ambiguos', async () => {
+    const sql = await migration(migrations[5])
+
+    expect(sql).toContain('create table public.real_editorial_ambiguous_calls')
+    expect(sql).toContain('create table public.real_editorial_call_human_resolutions')
+    expect(sql).toContain('real_editorial_human_resolutions_append_only')
+    expect(sql).toContain('AMBIGUOUS_CALL_REQUIRES_HUMAN_RESOLUTION')
+    expect(sql).toContain('resolve_real_editorial_ambiguous_call')
+    expect(sql).toContain("'real.editorial.remote_call.human_decided'")
+    expect(sql).toContain("'LEGACY_OPENAI_PROVIDER_ERROR'")
+    expect(sql).toContain('HUMAN_RESOLUTION_BUDGET_EXCEEDED')
+    expect(sql).not.toMatch(/(?:drop|truncate)\s+table/i)
   })
 })

@@ -46,6 +46,8 @@ import type {
   RealConnectivityResult,
 } from './shared/real-connectivity-contracts'
 import type {
+  RealEditorialAmbiguousCallResolution,
+  RealEditorialAmbiguousCallResolutionResult,
   RealEditorialPilotAction,
   RealEditorialPilotCancel,
   RealEditorialPilotPrepare,
@@ -103,6 +105,9 @@ declare global {
       startRealEditorialPilot: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotSnapshot>
       cancelRealEditorialPilot: (input: RealEditorialPilotCancel) => Promise<void>
       resumeRealEditorialPilot: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotSnapshot>
+      resolveRealEditorialAmbiguousCall: (
+        input: RealEditorialAmbiguousCallResolution
+      ) => Promise<RealEditorialAmbiguousCallResolutionResult>
     }
   }
 }

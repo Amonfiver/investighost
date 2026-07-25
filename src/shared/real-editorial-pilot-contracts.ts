@@ -153,6 +153,107 @@ export const RealEditorialPilotCancelSchema = RealEditorialPilotActionSchema.ext
   reason: z.string().trim().min(1).max(1_000),
 })
 
+export const RealEditorialAmbiguousCallDecisionSchema = z.enum([
+  'no_consumption',
+  'consumption_confirmed',
+  'indeterminate',
+  'cancel_permanently',
+])
+
+const HumanResolutionNoteSchema = z.string().trim().min(1).max(1_000).refine(
+  value => !/(?:sk-|tvly-|api[_ -]?key|authorization|bearer\s)/i.test(value),
+  'La nota no puede contener credenciales ni cabeceras de autorización',
+)
+
+export const RealEditorialAmbiguousCallResolutionSchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  callId: z.string().uuid(),
+  actorId: z.string().uuid(),
+  decision: RealEditorialAmbiguousCallDecisionSchema,
+  recognizedCostEur: z.number().finite().nonnegative()
+    .max(REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur).optional(),
+  credits: z.number().finite().nonnegative().optional(),
+  inputTokens: z.number().int().nonnegative().optional(),
+  outputTokens: z.number().int().nonnegative().optional(),
+  note: HumanResolutionNoteSchema.optional(),
+  confirmed: z.literal(true),
+}).superRefine((value, context) => {
+  const usageProvided = (value.recognizedCostEur ?? 0) > 0
+    || (value.credits ?? 0) > 0
+    || (value.inputTokens ?? 0) > 0
+    || (value.outputTokens ?? 0) > 0
+  if (value.decision === 'consumption_confirmed') {
+    if (value.recognizedCostEur === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['recognizedCostEur'],
+        message: 'Confirmar consumo requiere indicar el coste conocido',
+      })
+    }
+    if (!usageProvided) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['recognizedCostEur'],
+        message: 'Confirmar consumo requiere coste, créditos o tokens observados',
+      })
+    }
+    return
+  }
+  for (const field of ['recognizedCostEur', 'credits', 'inputTokens', 'outputTokens'] as const) {
+    if (value[field] !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: 'Los datos de consumo solo corresponden a consumo confirmado',
+      })
+    }
+  }
+})
+
+export const RealEditorialAmbiguousCallSchema = z.object({
+  callId: z.string().uuid(),
+  reservationId: z.string().uuid(),
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  providerId: IdentifierSchema,
+  operation: IdentifierSchema,
+  attempt: z.number().int().positive(),
+  retryOfCallId: z.string().uuid().optional(),
+  sourceState: z.enum(['unknown', 'failed']),
+  reviewState: z.literal('human_required'),
+  occurredAt: TimestampSchema,
+  openedAt: TimestampSchema,
+  localKnownCostEur: z.number().nonnegative(),
+  maximumExposureEur: z.number().positive(),
+  spentCostEur: z.number().nonnegative(),
+  automaticLimitEur: z.literal(REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur),
+  incidentId: z.string().uuid().optional(),
+  incidentCode: IdentifierSchema.optional(),
+  latestDecision: z.object({
+    decision: z.literal('indeterminate'),
+    actorId: z.string().uuid(),
+    decidedAt: TimestampSchema,
+    note: HumanResolutionNoteSchema.optional(),
+  }).optional(),
+})
+
+export const RealEditorialAmbiguousCallResolutionResultSchema = z.object({
+  resolutionId: z.string().uuid(),
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  callId: z.string().uuid(),
+  actorId: z.string().uuid(),
+  decision: RealEditorialAmbiguousCallDecisionSchema,
+  recognizedCostEur: z.number().nonnegative(),
+  credits: z.number().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  note: HumanResolutionNoteSchema.optional(),
+  decidedAt: TimestampSchema,
+  nextAction: z.enum(['blocked', 'resume_from_checkpoint', 'cancelled']),
+})
+
 export const RealEditorialPilotBudgetSchema = z.object({
   pilotId: z.string().uuid(),
   taskId: IdentifierSchema,
@@ -258,6 +359,8 @@ export const RealEditorialPilotProgressSchema = z.object({
   accumulatedCost: z.number().nonnegative(),
   incidentCount: z.number().int().nonnegative(),
   pendingReservations: z.number().int().nonnegative(),
+  humanRequiredCall: RealEditorialAmbiguousCallSchema.optional(),
+  resumeAvailable: z.boolean(),
   guardFree: z.boolean(),
 })
 
@@ -304,6 +407,16 @@ export type RealEditorialPilotState = z.infer<typeof RealEditorialPilotStateSche
 export type RealEditorialPilotPrepare = z.infer<typeof RealEditorialPilotPrepareSchema>
 export type RealEditorialPilotAction = z.infer<typeof RealEditorialPilotActionSchema>
 export type RealEditorialPilotCancel = z.infer<typeof RealEditorialPilotCancelSchema>
+export type RealEditorialAmbiguousCallDecision = z.infer<
+  typeof RealEditorialAmbiguousCallDecisionSchema
+>
+export type RealEditorialAmbiguousCallResolution = z.infer<
+  typeof RealEditorialAmbiguousCallResolutionSchema
+>
+export type RealEditorialAmbiguousCall = z.infer<typeof RealEditorialAmbiguousCallSchema>
+export type RealEditorialAmbiguousCallResolutionResult = z.infer<
+  typeof RealEditorialAmbiguousCallResolutionResultSchema
+>
 export type RealEditorialPilotBudget = z.infer<typeof RealEditorialPilotBudgetSchema>
 export type RealEditorialPilotRecord = z.infer<typeof RealEditorialPilotRecordSchema>
 export type RealEditorialPilotSnapshot = z.infer<typeof RealEditorialPilotSnapshotSchema>

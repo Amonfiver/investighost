@@ -50,6 +50,7 @@ class MemoryDurableRepository implements RealEditorialPilotRepository {
       guardFree: true,
       activeExecutions: 0,
       pendingReservations: 0,
+      humanRequiredCalls: 0,
       manualMorellaCount: 13,
       identicalPilotCount: 0,
       budgetValid: true,

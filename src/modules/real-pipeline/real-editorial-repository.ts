@@ -2,10 +2,16 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   REAL_EDITORIAL_PILOT_POLICY,
+  RealEditorialAmbiguousCallResolutionResultSchema,
+  RealEditorialAmbiguousCallResolutionSchema,
+  RealEditorialAmbiguousCallSchema,
   RealEditorialPilotBudgetSchema,
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotRecordSchema,
   RealEditorialPilotSnapshotSchema,
+  type RealEditorialAmbiguousCall,
+  type RealEditorialAmbiguousCallResolution,
+  type RealEditorialAmbiguousCallResolutionResult,
   type RealEditorialPilotBudget,
   type RealEditorialPilotPrepare,
   type RealEditorialPilotRecord,
@@ -57,6 +63,10 @@ export type RealEditorialRepositoryErrorCode =
   | 'BUDGET_INVALID'
   | 'CHECKPOINT_INVALID'
   | 'VERSION_CONFLICT'
+  | 'HUMAN_RESOLUTION_REQUIRED'
+  | 'HUMAN_RESOLUTION_CONFLICT'
+  | 'HUMAN_RESOLUTION_BUDGET_EXCEEDED'
+  | 'HUMAN_RESOLUTION_NOT_ALLOWED'
   | 'PERSISTENCE_ERROR'
 
 export class RealEditorialRepositoryError extends Error {
@@ -78,6 +88,7 @@ export interface RealEditorialRepositoryInspection {
   guardFree: boolean
   activeExecutions: number
   pendingReservations: number
+  humanRequiredCalls: number
   manualMorellaCount: number
   identicalPilotCount: number
   budgetValid: boolean
@@ -170,6 +181,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         guard,
         active,
         pending,
+        humanRequired,
         manualMorella,
         duplicate,
         budget,
@@ -183,6 +195,10 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
           .in('state', activeStates),
         this.client.from('real_editorial_call_reservations').select('id', { head: true, count: 'exact' })
           .in('state', ['reserved', 'started', 'unknown']),
+        this.client.from('real_editorial_ambiguous_calls').select('call_id', {
+          head: true,
+          count: 'exact',
+        }).is('resolved_at', null),
         this.client.from('editorial_research_requests').select(
           'id,geographic_entities!inner(name,country_code,entity_type)',
           { head: true, count: 'exact' },
@@ -203,7 +219,17 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
           .eq('pilot_policy_id', REAL_EDITORIAL_PILOT_POLICY.id)
           .eq('source_kind', 'connectivity_check').eq('outcome', 'succeeded'),
       ])
-      const results = [policy, guard, active, pending, manualMorella, duplicate, budget, connectivity]
+      const results = [
+        policy,
+        guard,
+        active,
+        pending,
+        humanRequired,
+        manualMorella,
+        duplicate,
+        budget,
+        connectivity,
+      ]
       if (results.some(result => result.error)) {
         return unavailableInspection()
       }
@@ -219,6 +245,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         guardFree: !guard.data?.owner_execution_id || guardExpired,
         activeExecutions: active.count ?? 0,
         pendingReservations: pending.count ?? 0,
+        humanRequiredCalls: humanRequired.count ?? 0,
         manualMorellaCount: manualMorella.count ?? 0,
         identicalPilotCount: duplicate.count ?? 0,
         budgetValid: budget.data ? validBudgetRow(budget.data) : false,
@@ -299,6 +326,152 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     const artifact = await this.latestArtifact(pilot.currentRunId, 'checkpoint', 'pipeline')
     if (!artifact) return undefined
     return RealEditorialPilotSnapshotSchema.parse(artifact.payload)
+  }
+
+  async getHumanRequiredCall(pilotId: string): Promise<RealEditorialAmbiguousCall | undefined> {
+    const pilot = await this.getPilot(pilotId)
+    if (!pilot) throw new RealEditorialRepositoryError('PILOT_NOT_FOUND', 'El piloto no existe')
+    const ambiguityResult = await this.client.from('real_editorial_ambiguous_calls')
+      .select('*').eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+      .is('resolved_at', null).order('opened_at', { ascending: true }).limit(1).maybeSingle()
+    assertNoError(ambiguityResult.error, 'No se pudo leer la revisión humana de la llamada')
+    if (!ambiguityResult.data) return undefined
+    const ambiguity = ambiguityResult.data
+    const [reservationResult, terminalResult, incidentResult, latestDecisionResult] =
+      await Promise.all([
+        this.client.from('real_editorial_call_reservations').select('*')
+          .eq('id', ambiguity.reservation_id).eq('pilot_id', pilotId).single(),
+        this.client.from('real_editorial_provider_calls').select('created_at')
+          .eq('call_id', ambiguity.call_id).order('sequence', { ascending: false })
+          .limit(1).single(),
+        ambiguity.incident_id
+          ? this.client.from('real_editorial_incidents').select('id,code')
+            .eq('id', ambiguity.incident_id).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        this.client.from('real_editorial_call_human_resolutions')
+          .select('decision,actor_id,decided_at,note')
+          .eq('call_id', ambiguity.call_id).eq('decision', 'indeterminate')
+          .order('decided_at', { ascending: false }).limit(1).maybeSingle(),
+      ])
+    assertNoError(reservationResult.error, 'No se pudo leer la reserva ambigua')
+    assertNoError(terminalResult.error, 'No se pudo leer la llamada ambigua')
+    assertNoError(incidentResult.error, 'No se pudo leer el incidente de la llamada')
+    assertNoError(latestDecisionResult.error, 'No se pudo leer la última decisión humana')
+    if (!pilot.budget) {
+      throw new RealEditorialRepositoryError('BUDGET_INVALID', 'La llamada ambigua no tiene presupuesto')
+    }
+    if (!terminalResult.data) {
+      throw new RealEditorialRepositoryError(
+        'PERSISTENCE_ERROR',
+        'La llamada ambigua no conserva su asiento durable',
+      )
+    }
+    const reservation = reservationResult.data
+    return RealEditorialAmbiguousCallSchema.parse({
+      callId: ambiguity.call_id,
+      reservationId: ambiguity.reservation_id,
+      pilotId,
+      runId: pilot.currentRunId,
+      providerId: reservation.provider_id,
+      operation: reservation.operation,
+      attempt: Number(reservation.attempt),
+      retryOfCallId: reservation.retry_of_call_id ?? undefined,
+      sourceState: ambiguity.source_state,
+      reviewState: 'human_required',
+      occurredAt: terminalResult.data.created_at,
+      openedAt: ambiguity.opened_at,
+      localKnownCostEur: Number(reservation.calculated_cost ?? 0),
+      maximumExposureEur: Number(reservation.reserved_cost),
+      spentCostEur: pilot.budget.spentCost,
+      automaticLimitEur: pilot.budget.taskLimitCost,
+      incidentId: incidentResult.data?.id ?? undefined,
+      incidentCode: incidentResult.data?.code ?? undefined,
+      latestDecision: latestDecisionResult.data
+        ? {
+            decision: 'indeterminate',
+            actorId: latestDecisionResult.data.actor_id,
+            decidedAt: latestDecisionResult.data.decided_at,
+            note: latestDecisionResult.data.note ?? undefined,
+          }
+        : undefined,
+    })
+  }
+
+  async resolveHumanRequiredCall(
+    candidate: RealEditorialAmbiguousCallResolution,
+  ): Promise<RealEditorialAmbiguousCallResolutionResult> {
+    const input = RealEditorialAmbiguousCallResolutionSchema.parse(candidate)
+    const resolutionKey = createHash('sha256').update(JSON.stringify({
+      pilotId: input.pilotId,
+      runId: input.runId,
+      callId: input.callId,
+      actorId: input.actorId,
+      decision: input.decision,
+      recognizedCostEur: input.recognizedCostEur ?? null,
+      credits: input.credits ?? null,
+      inputTokens: input.inputTokens ?? null,
+      outputTokens: input.outputTokens ?? null,
+      note: input.note ?? null,
+    })).digest('hex')
+    const { data, error } = await this.client.rpc('resolve_real_editorial_ambiguous_call', {
+      p_resolution_key: resolutionKey,
+      p_pilot_id: input.pilotId,
+      p_run_id: input.runId,
+      p_call_id: input.callId,
+      p_actor_id: input.actorId,
+      p_decision: input.decision,
+      p_recognized_cost: input.recognizedCostEur ?? null,
+      p_credits: input.credits ?? null,
+      p_input_tokens: input.inputTokens ?? null,
+      p_output_tokens: input.outputTokens ?? null,
+      p_note: input.note ?? null,
+    })
+    if (error) throw humanResolutionPersistenceError(error)
+    const resolutionId = String(data)
+    const stored = await this.client.from('real_editorial_call_human_resolutions')
+      .select('*').eq('id', resolutionId).eq('pilot_id', input.pilotId)
+      .eq('run_id', input.runId).eq('call_id', input.callId).single()
+    assertNoError(stored.error, 'No se pudo verificar la decisión humana durable')
+    return RealEditorialAmbiguousCallResolutionResultSchema.parse({
+      resolutionId,
+      pilotId: stored.data.pilot_id,
+      runId: stored.data.run_id,
+      callId: stored.data.call_id,
+      actorId: stored.data.actor_id,
+      decision: stored.data.decision,
+      recognizedCostEur: Number(stored.data.recognized_cost),
+      credits: Number(stored.data.credits),
+      inputTokens: Number(stored.data.input_tokens),
+      outputTokens: Number(stored.data.output_tokens),
+      note: stored.data.note ?? undefined,
+      decidedAt: stored.data.decided_at,
+      nextAction: stored.data.decision === 'indeterminate'
+        ? 'blocked'
+        : stored.data.decision === 'cancel_permanently'
+          ? 'cancelled'
+          : 'resume_from_checkpoint',
+    })
+  }
+
+  async canResumeFromCheckpoint(pilotId: string): Promise<boolean> {
+    const pilot = await this.getPilot(pilotId)
+    if (!pilot || !['preflight', 'cancelled'].includes(pilot.state)) return false
+    const [checkpoint, unresolved, permanentCancellation] = await Promise.all([
+      this.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
+      this.client.from('real_editorial_ambiguous_calls').select('call_id', {
+        head: true,
+        count: 'exact',
+      }).eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId).is('resolved_at', null),
+      this.client.from('real_editorial_ambiguous_calls').select('call_id', {
+        head: true,
+        count: 'exact',
+      }).eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+        .eq('terminal_decision', 'cancel_permanently'),
+    ])
+    assertNoError(unresolved.error, 'No se pudo comprobar la ambigüedad pendiente')
+    assertNoError(permanentCancellation.error, 'No se pudo comprobar la cancelación definitiva')
+    return Boolean(checkpoint) && (unresolved.count ?? 0) === 0
+      && (permanentCancellation.count ?? 0) === 0
   }
 
   async appendArtifact(
@@ -817,6 +990,39 @@ function persistenceError(error: { message: string; code?: string }): RealEditor
   )
 }
 
+function humanResolutionPersistenceError(
+  error: { message: string; code?: string },
+): RealEditorialRepositoryError {
+  if (error.message.includes('HUMAN_RESOLUTION_BUDGET_EXCEEDED')) {
+    return new RealEditorialRepositoryError(
+      'HUMAN_RESOLUTION_BUDGET_EXCEEDED',
+      'El coste reconocido superaría el máximo automático de 0,20 EUR',
+    )
+  }
+  if (
+    error.message.includes('AMBIGUOUS_CALL_ALREADY_RESOLVED')
+    || error.message.includes('HUMAN_RESOLUTION_IDEMPOTENCY_CONFLICT')
+  ) {
+    return new RealEditorialRepositoryError(
+      'HUMAN_RESOLUTION_CONFLICT',
+      'La llamada ya tiene una resolución humana incompatible',
+    )
+  }
+  if (
+    error.message.includes('AMBIGUOUS_CALL_NOT_FOUND')
+    || error.message.includes('AMBIGUOUS_RESERVATION_STATE_CHANGED')
+  ) {
+    return new RealEditorialRepositoryError(
+      'HUMAN_RESOLUTION_REQUIRED',
+      'La llamada ya no está pendiente de revisión humana',
+    )
+  }
+  return new RealEditorialRepositoryError(
+    'HUMAN_RESOLUTION_NOT_ALLOWED',
+    'La resolución humana durable fue rechazada',
+  )
+}
+
 function unavailableInspection(): RealEditorialRepositoryInspection {
   return {
     repositoryAvailable: false,
@@ -824,6 +1030,7 @@ function unavailableInspection(): RealEditorialRepositoryInspection {
     guardFree: false,
     activeExecutions: 0,
     pendingReservations: 0,
+    humanRequiredCalls: 0,
     manualMorellaCount: 0,
     identicalPilotCount: 0,
     budgetValid: false,

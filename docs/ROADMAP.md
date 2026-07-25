@@ -18,6 +18,8 @@ PROMPT 07 expone Aventura y Estudiante con activación, profundidad y extensión
 
 PROMPT 08 valida un piloto integral Morella sin red: los adaptadores falsos recorren dos rondas como máximo, conocimiento compartido, dos borradores y revisión bajo reservas y ledger simulados. La reanudación tras una incidencia no duplica investigación ni gasto; coste y llamadas reales, regeneración, publicación y efectos externos siguen en cero. El protocolo humano existe, pero no ha sido ejecutado.
 
+PROMPT 09 deja preparada una puerta visible y cerrada por defecto para un único piloto Morella. La política fija una tarea, concurrencia 1, presupuestos 0,20/0,25/0,50 EUR, dos rondas y cero regeneración/publicación; el preflight exige proveedores, conexiones reales, modelos, tarifas, presupuesto, saldo, Supabase, ledger, guarda y cero tareas activas. Los estados desconocidos bloquean, una prueba simulada no cuenta y todavía no existe acción de ejecución.
+
 Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada y committeada; FASE 4A-01B está implementada técnicamente y pendiente de prueba humana. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia

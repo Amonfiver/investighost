@@ -28,6 +28,8 @@ PROMPT 07 añade controles visibles del pipeline real inactivo. Cada perfil pued
 
 PROMPT 08 valida el pipeline integral Morella exclusivamente con dobles inyectados. El recorrido comparte una misión y un expediente, detecta una carencia de acceso, realiza una única ronda focalizada y obtiene conocimiento, Aventura 1.000, Estudiante 1.800 y revisión. El ledger simulado reserva y concilia 0,19 EUR dentro del límite de 0,20; una incidencia recuperable demuestra reanudación sin repetir Tavily ni coste. Permanecen en cero las llamadas y el coste reales, las regeneraciones, las publicaciones y los efectos externos. El protocolo humano queda preparado, pero no ejecutado por Codex.
 
+PROMPT 09 prepara una puerta real fail-closed para un único piloto Morella, sin ejecutarlo. La política fija una tarea, concurrencia 1, aviso 0,16 EUR, presupuesto 0,20, ampliación humana máxima 0,25, límite absoluto 0,50, dos rondas y cero regeneración/publicación. El checklist exige claves configuradas sin exponerlas, proveedor activo, conexión real, modelo, tarifas, presupuesto durable, saldo cuando sea consultable, Supabase, ledger, guarda libre y cero tareas reales activas. La feature flag parte apagada, las pruebas simuladas no acreditan conexión real y no existe acción de ejecución.
+
 Fecha de actualización: 2026-07-25
 Estado canónico: **FASE 3J CERRADA; FASE 4A-01 COMMITTEADA; FASE 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA**
 

@@ -138,3 +138,21 @@ Este informe acumula la evidencia del lote autónomo PROMPT 01–10. Hasta que e
 - Coste real consumido: `0 EUR`.
 - Llamadas reales realizadas: `0`.
 - Fronteras negativas: protocolo humano no ejecutado por Codex; sin claves, red, saldo, regeneración, publicación, Trawel, producción ni Automatic.
+
+## PROMPT 09 — Preparación del piloto real
+
+- Fecha/hora: 2026-07-25 (Europe/Madrid).
+- HEAD inicial: `f46a3d7ec5cd20afd2ad0b15af89421d4f25fbea`.
+- HEAD final: commit único de este bloque, con mensaje `feat: preparar puerta segura para piloto real Morella`.
+- Commit: el hash queda reflejado en la auditoría consolidada posterior para evitar una referencia circular dentro del propio commit.
+- Archivos modificados: gate de piloto, export, UI/estilos, pruebas, guía de preparación y documentación canónica.
+- Migraciones: ninguna.
+- Pruebas: feature flag cerrada, whitelist, tarea única, concurrencia 1, límites 0,20/0,25/0,50 EUR, aviso 0,16, dos rondas, cero regeneración/publicación, proveedores, modelos, conexión, tarifas, presupuesto, saldos, Supabase, ledger, guarda y tareas activas.
+- Builds: suite específica, suite normal, typecheck, ESLint y builds renderer/main/preload ejecutados antes del commit.
+- Decisiones: el token de activación es estricto; todo estado no comprobado bloquea; una prueba simulada nunca acredita conexión real; saldo no consultable avisa y saldo insuficiente bloquea; la UI no ofrece acción de ejecución.
+- Riesgos: el preflight real de conexión, tarifas, saldo e infraestructura aún no se ha realizado porque implicaría el gate humano posterior; el modelo actual solo se valida contra el catálogo configurado.
+- Deuda: una autorización posterior deberá aportar las sondas reales y decidir el gate sin modificar los límites ni saltarse el ledger.
+- Gate actual: `NO-GO` esperado, con feature flag apagada y comprobaciones reales pendientes.
+- Coste real consumido: `0 EUR`.
+- Llamadas reales realizadas: `0`.
+- Fronteras negativas: no se leyeron claves ni se conectaron Tavily/OpenAI; sin tareas reales, saldo, publicación, Trawel, producción ni Automatic.

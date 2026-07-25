@@ -29,6 +29,10 @@ import {
   assessProfileEvidence,
   type RealProfileSettings,
 } from '@shared/real-profile-settings'
+import {
+  createClosedMorellaPilotPreflight,
+  type MorellaPilotPreflight,
+} from '@modules/real-pipeline/real-pilot-gate'
 import type { EditorialDraftVersionSummary } from '@modules/editorial-pipeline/repository'
 import {
   LIBRARY_PAGE_SUMMARY_LABEL,
@@ -812,13 +816,20 @@ function ProviderCenterPanel(): JSX.Element {
 
 function RealProfileSettingsPanel(): JSX.Element {
   const [settings, setSettings] = useState<RealProfileSettings | null>(null)
+  const [providerSnapshot, setProviderSnapshot] = useState<ProviderCenterSnapshot | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
   useEffect(() => {
-    window.electronAPI.getRealProfileSettings()
-      .then(setSettings)
+    Promise.all([
+      window.electronAPI.getRealProfileSettings(),
+      window.electronAPI.listProviders(),
+    ])
+      .then(([nextSettings, nextProviders]) => {
+        setSettings(nextSettings)
+        setProviderSnapshot(nextProviders)
+      })
       .catch(reason => setLocalError(errorText(reason)))
   }, [])
 
@@ -847,11 +858,12 @@ function RealProfileSettingsPanel(): JSX.Element {
     }
   }
 
-  if (!settings) {
+  if (!settings || !providerSnapshot) {
     return <section><div className="empty-card provider-loading"><span className="spinner" /><h2>Cargando roles editoriales…</h2></div></section>
   }
   const evidence = assessProfileEvidence(settings, 0)
   const activeCount = settings.profiles.filter(profile => profile.enabled).length
+  const preflight = createClosedMorellaPilotPreflight(providerSnapshot)
   return (
     <section>
       <div className="section-heading">
@@ -881,8 +893,37 @@ function RealProfileSettingsPanel(): JSX.Element {
         })}
       </div>
       <div className="shared-research-note"><strong>Una sola investigación compartida</strong><span>Aventura y Estudiante reutilizarán el mismo expediente y conocimiento maestro; activar ambos no duplica Tavily.</span></div>
+      <RealPilotPreflightPanel preflight={preflight} />
       {activeCount === 0 && <div className="alert warning" role="alert"><strong>Activa al menos un perfil.</strong></div>}
       <div className="form-actions"><span className="muted">{saved ? 'Configuración guardada localmente.' : 'Sin ejecutar proveedores.'}</span><button className="button primary" disabled={saving || activeCount === 0 || settings.profiles.some(profile => profile.targetWords < 800 || profile.targetWords > 4000 || profile.targetWords % 100 !== 0)} onClick={save}>{saving ? 'Guardando…' : 'Guardar configuración'}</button></div>
+    </section>
+  )
+}
+
+function RealPilotPreflightPanel({ preflight }: { preflight: MorellaPilotPreflight }): JSX.Element {
+  const policy = preflight.policy
+  return (
+    <section className="real-preflight" aria-label="Preflight del piloto real Morella">
+      <header>
+        <div><span className="card-kicker">PILOTO ÚNICO · MORELLA</span><h3>Puerta de ejecución real</h3><p>Evaluación local y cerrada: no descifra claves ni conecta con proveedores, saldo o red.</p></div>
+        <span className={`state-badge ${preflight.ready ? 'state-approved' : 'state-blocked'}`}>{preflight.ready ? 'Preparado' : 'Bloqueado'}</span>
+      </header>
+      <div className="real-policy-strip">
+        <span>1 tarea</span><span>Concurrencia 1</span><span>0,20 EUR</span><span>Aviso 0,16</span>
+        <span>Ampliación humana 0,25</span><span>Absoluto 0,50</span><span>{policy.maxRounds} rondas</span><span>0 publicación</span>
+      </div>
+      <div className="preflight-checks">
+        {preflight.checks.map(check => (
+          <article className={`preflight-${check.status}`} key={check.code}>
+            <span aria-hidden="true">{check.status === 'pass' ? '✓' : check.status === 'warning' ? '!' : '×'}</span>
+            <div><strong>{check.label}</strong><small>{check.detail}</small></div>
+          </article>
+        ))}
+      </div>
+      <div className="alert warning" role="status">
+        <strong>No existe acción de ejecución.</strong>
+        <span>La feature flag sigue apagada y cada comprobación real pendiente debe resolverse en un gate posterior autorizado.</span>
+      </div>
     </section>
   )
 }

@@ -6,6 +6,8 @@ La rama `feat/investighost-real-pipeline` inicia el lote sin gasto PROMPT 01–1
 
 PROMPT 02 incorpora un Centro de proveedores local: catálogo inicial Tavily/OpenAI, una selección activa por categoría, estado y prueba simulada. Las credenciales quedan cifradas por `safeStorage` en Electron main, fuera del proyecto y de Supabase; el renderer no recibe secretos y la falta de un backend seguro bloquea las mutaciones.
 
+PROMPT 03 incorpora contabilidad durable por llamada: tarifas versionadas, reservas, ledger append-only, una guarda real global y límites por tarea, lote y día. La migración se aplica únicamente en Supabase local y no habilita llamadas: reservar es obligatorio antes de invocar, conciliar después y un timeout ambiguo no se reintenta.
+
 Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada y committeada; FASE 4A-01B está implementada técnicamente y pendiente de prueba humana. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia

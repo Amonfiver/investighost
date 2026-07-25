@@ -26,6 +26,8 @@ PROMPT 06 conecta misión, `ResearchTool`, expediente e `IntelligenceEngine` en 
 
 PROMPT 07 añade controles visibles del pipeline real inactivo. Cada perfil puede activarse, elegir profundidad y extensión entre 800 y 4.000 palabras en pasos de 100; defaults: Aventura 1.000 y Estudiante 1.800. Las preferencias viven fuera del proyecto, sobreviven al reinicio y no ejecutan proveedores. Los prompts distinguen roles y prohíben rellenar cuando la evidencia no cubre el objetivo.
 
+PROMPT 08 valida el pipeline integral Morella exclusivamente con dobles inyectados. El recorrido comparte una misión y un expediente, detecta una carencia de acceso, realiza una única ronda focalizada y obtiene conocimiento, Aventura 1.000, Estudiante 1.800 y revisión. El ledger simulado reserva y concilia 0,19 EUR dentro del límite de 0,20; una incidencia recuperable demuestra reanudación sin repetir Tavily ni coste. Permanecen en cero las llamadas y el coste reales, las regeneraciones, las publicaciones y los efectos externos. El protocolo humano queda preparado, pero no ejecutado por Codex.
+
 Fecha de actualización: 2026-07-25
 Estado canónico: **FASE 3J CERRADA; FASE 4A-01 COMMITTEADA; FASE 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA**
 

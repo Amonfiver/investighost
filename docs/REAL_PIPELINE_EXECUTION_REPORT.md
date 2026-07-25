@@ -120,3 +120,21 @@ Este informe acumula la evidencia del lote autónomo PROMPT 01–10. Hasta que e
 - Coste real consumido: `0 EUR`.
 - Llamadas reales realizadas: `0`.
 - Fronteras negativas: guardar preferencias no ejecuta investigación ni crea solicitudes; sin red, proveedores reales, publicación, Trawel, producción ni Automatic.
+
+## PROMPT 08 — Piloto integral Morella sin red
+
+- Fecha/hora: 2026-07-25 (Europe/Madrid).
+- HEAD inicial: `596df16dd2a3106657c192195115e8635e6581af`.
+- HEAD final: commit único de este bloque, con mensaje `test: validar pipeline real completo sin red`.
+- Commit: el hash queda reflejado en la auditoría consolidada posterior para evitar una referencia circular dentro del propio commit.
+- Archivos modificados: ejecutor con ledger, orquestador editorial integral, exports, piloto automatizado, protocolo humano y documentación.
+- Migraciones: ninguna.
+- Pruebas: misión Morella, proveedor simulado, dos fuentes, expediente, carencia focalizada, ronda 2, conocimiento, Aventura 1.000, Estudiante 1.800, revisión, reservas, ledger, coste, concurrencia 1, incidencia, reanudación idempotente, ausencia de loops y cero efectos externos.
+- Builds: suite específica, suite normal, typecheck, ESLint y builds renderer/main/preload ejecutados antes del commit.
+- Decisiones: una operación solo alcanza al proveedor tras reservar; éxito, fallo y reintento producen asientos separados; el pipeline comparte investigación, prohíbe regeneración y fija publicación en cero; la prueba usa los adaptadores Tavily/OpenAI reales con transportes falsos inyectados.
+- Riesgos: los checkpoints del piloto siguen en memoria y el protocolo visual aún requiere decisión humana; ninguna evidencia fake acredita conectividad o tarifas reales.
+- Deuda: PROMPT 09 podrá preparar una puerta real cerrada por defecto, sin ejecutar el piloto.
+- Coste simulado conciliado: `0,19 EUR` de un máximo de `0,20 EUR`.
+- Coste real consumido: `0 EUR`.
+- Llamadas reales realizadas: `0`.
+- Fronteras negativas: protocolo humano no ejecutado por Codex; sin claves, red, saldo, regeneración, publicación, Trawel, producción ni Automatic.

@@ -16,6 +16,8 @@ PROMPT 06 cierra la orquestación controlada de investigación: ronda inicial, a
 
 PROMPT 07 expone Aventura y Estudiante con activación, profundidad y extensión aproximada persistente. El rango 800–4.000 avanza de 100 en 100, los prompts prohíben relleno y ambos perfiles reutilizan una sola investigación.
 
+PROMPT 08 valida un piloto integral Morella sin red: los adaptadores falsos recorren dos rondas como máximo, conocimiento compartido, dos borradores y revisión bajo reservas y ledger simulados. La reanudación tras una incidencia no duplica investigación ni gasto; coste y llamadas reales, regeneración, publicación y efectos externos siguen en cero. El protocolo humano existe, pero no ha sido ejecutado.
+
 Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada y committeada; FASE 4A-01B está implementada técnicamente y pendiente de prueba humana. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia

@@ -1,6 +1,6 @@
 # Investighost — cierre y punto de reanudación actual
 
-## Pipeline real — lote PROMPT 01–10 en curso
+## Pipeline real — lote PROMPT 01–10 auditado
 
 El punto de retorno previo al pipeline real permanece protegido por la etiqueta `checkpoint/pre-real-pipeline-20260725` y por el backup externo documentado en `D:\Backups\investighost\pre-real-pipeline-20260725-0336`.
 
@@ -29,6 +29,8 @@ PROMPT 07 añade controles visibles del pipeline real inactivo. Cada perfil pued
 PROMPT 08 valida el pipeline integral Morella exclusivamente con dobles inyectados. El recorrido comparte una misión y un expediente, detecta una carencia de acceso, realiza una única ronda focalizada y obtiene conocimiento, Aventura 1.000, Estudiante 1.800 y revisión. El ledger simulado reserva y concilia 0,19 EUR dentro del límite de 0,20; una incidencia recuperable demuestra reanudación sin repetir Tavily ni coste. Permanecen en cero las llamadas y el coste reales, las regeneraciones, las publicaciones y los efectos externos. El protocolo humano queda preparado, pero no ejecutado por Codex.
 
 PROMPT 09 prepara una puerta real fail-closed para un único piloto Morella, sin ejecutarlo. La política fija una tarea, concurrencia 1, aviso 0,16 EUR, presupuesto 0,20, ampliación humana máxima 0,25, límite absoluto 0,50, dos rondas y cero regeneración/publicación. El checklist exige claves configuradas sin exponerlas, proveedor activo, conexión real, modelo, tarifas, presupuesto durable, saldo cuando sea consultable, Supabase, ledger, guarda libre y cero tareas reales activas. La feature flag parte apagada, las pruebas simuladas no acreditan conexión real y no existe acción de ejecución.
+
+PROMPT 10 cierra la auditoría con dictamen **NO-GO operativo**. Las validaciones sin red son correctas, los backups conservan sus hashes, los datos humanos permanecen 13/14/24/136 y las tablas económicas están vacías. Bloquea el piloto una divergencia de idempotencia: el servicio en memoria rechaza reutilizar una clave con parámetros distintos, pero la función SQL devuelve la reserva existente sin compararlos. También permanecen pendientes, por diseño del lote, clientes y conexiones reales, tarifas, presupuestos y sondas del preflight. El detalle y los pasos de corrección están en `docs/real-pipeline/REAL_PIPELINE_PRE_PILOT_AUDIT.md`.
 
 Fecha de actualización: 2026-07-25
 Estado canónico: **FASE 3J CERRADA; FASE 4A-01 COMMITTEADA; FASE 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA**

@@ -156,3 +156,20 @@ Este informe acumula la evidencia del lote autónomo PROMPT 01–10. Hasta que e
 - Coste real consumido: `0 EUR`.
 - Llamadas reales realizadas: `0`.
 - Fronteras negativas: no se leyeron claves ni se conectaron Tavily/OpenAI; sin tareas reales, saldo, publicación, Trawel, producción ni Automatic.
+
+## PROMPT 10 — Auditoría previa sin gasto
+
+- Fecha/hora: 2026-07-25 (Europe/Madrid).
+- HEAD inicial: `80a0f42559a86c4cc833ca4c123697182dc0ec6f`.
+- HEAD final: commit único de este bloque, con mensaje `docs: cerrar auditoría previa al piloto real`.
+- Commit: el hash se entrega después de crear el commit para evitar una referencia circular dentro de sí mismo.
+- Archivos modificados: auditoría previa, reanudación canónica, roadmap e informe acumulado.
+- Migraciones: ninguna nueva; se revisó `20260725050000_real_provider_ledger.sql` y su estado local.
+- Pruebas: suite normal, integración ledger local transaccional, typecheck, ESLint, builds, diff, secreto versionado, esquema/datos locales y hashes de backup.
+- Builds: renderer, Electron main y preload aprobados antes del commit.
+- Decisiones: dictamen `NO-GO operativo`; no ocultar el defecto durable tras el éxito del repositorio en memoria; mantener feature flag y ejecución inexistentes.
+- Riesgos: `reserve_provider_call` reutiliza una clave sin comparar parámetros; integraciones, tarifas y comprobaciones reales siguen pendientes; rutas legacy de proveedores deben aislarse antes de release.
+- Deuda: nueva migración aditiva y test de conflicto idempotente; después, clientes/sondas reales autorizados y repetición íntegra del preflight.
+- Coste real consumido: `0 EUR`.
+- Llamadas reales realizadas: `0`.
+- Fronteras negativas: PROMPT 11 no ejecutado; cero créditos, tokens, publicaciones, Trawel, producción y Automatic; ningún comando Supabase prohibido.

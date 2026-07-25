@@ -20,6 +20,8 @@ PROMPT 08 valida un piloto integral Morella sin red: los adaptadores falsos reco
 
 PROMPT 09 deja preparada una puerta visible y cerrada por defecto para un único piloto Morella. La política fija una tarea, concurrencia 1, presupuestos 0,20/0,25/0,50 EUR, dos rondas y cero regeneración/publicación; el preflight exige proveedores, conexiones reales, modelos, tarifas, presupuesto, saldo, Supabase, ledger, guarda y cero tareas activas. Los estados desconocidos bloquean, una prueba simulada no cuenta y todavía no existe acción de ejecución.
 
+PROMPT 10 concluye con **NO-GO operativo**. El pipeline simulado, la seguridad local, los límites y los backups superan auditoría, pero la función SQL de reserva no detecta que una clave idempotente existente llegue con parámetros distintos. Antes de cualquier piloto deben añadirse comparación durable y prueba de integración, y después resolverse los controles reales que permanecen cerrados por alcance: conexiones, clientes, tarifas, saldo, presupuesto y sondas. PROMPT 11 no está iniciado ni autorizado.
+
 Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada y committeada; FASE 4A-01B está implementada técnicamente y pendiente de prueba humana. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia

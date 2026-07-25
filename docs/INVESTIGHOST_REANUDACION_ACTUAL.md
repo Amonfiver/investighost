@@ -18,6 +18,8 @@ PROMPT 02 añade el Centro de proveedores en modo exclusivamente simulado. Tavil
 
 PROMPT 03 añade el ledger durable y el cortafuegos de gasto. La migración local `20260725050000_real_provider_ledger.sql` es aditiva: siete tablas nuevas conservan tarifas versionadas, presupuestos, guarda global, reservas y asientos append-only. La reserva precede a la llamada, los límites se evalúan tarea → lote → día y un resultado ambiguo conserva la reserva y exige revisión humana. La integración fue sintética, transaccional y revertida; los conteos humanos permanecieron en 13 solicitudes, 14 runs, 24 borradores y 136 eventos.
 
+PROMPT 04 implementa Tavily Search/Extract detrás de `ResearchTool`, pero únicamente con transporte inyectable y fixtures. El transporte REST basado en `fetch` permanece bloqueado por defecto. Se conservan URL normalizada, título, contenido acotado, score, SHA-256, request IDs, créditos y fallos parciales; timeout, cancelación, límites y errores HTTP detienen la operación sin reintentos ni red real.
+
 Fecha de actualización: 2026-07-25
 Estado canónico: **FASE 3J CERRADA; FASE 4A-01 COMMITTEADA; FASE 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA**
 

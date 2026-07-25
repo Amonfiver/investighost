@@ -52,3 +52,20 @@ Este informe acumula la evidencia del lote autónomo PROMPT 01–10. Hasta que e
 - Coste real consumido: `0 EUR`.
 - Llamadas reales realizadas: `0`.
 - Fronteras negativas: datos de integración exclusivamente sintéticos y revertidos; sin claves, red, proveedores reales, publicación, Trawel, producción o Automatic; ningún comando Supabase prohibido.
+
+## PROMPT 04 — Adaptador Tavily sin red real
+
+- Fecha/hora: 2026-07-25 (Europe/Madrid).
+- HEAD inicial: `60cd8aabafb1a849639925d3e3231282dc463e70`.
+- HEAD final: commit único de este bloque, con mensaje `feat: añadir herramienta de investigación Tavily`.
+- Commit: el hash queda reflejado en la auditoría consolidada posterior para evitar una referencia circular dentro del propio commit.
+- Archivos modificados: adaptador `ResearchTool`, extensión del resultado del puerto, fixtures, pruebas y documentación.
+- Migraciones: ninguna.
+- Pruebas: éxito Search/Extract, vacío, fuente rota, duplicados, extracción parcial, timeout, cancelación, 429, 500, payload inválido, créditos, request ID, máximo de URLs, máximo de caracteres y bloqueo de fetch.
+- Builds: suite específica, suite normal, typecheck, ESLint y builds renderer/main/preload ejecutados antes del commit.
+- Decisiones: REST vive tras un transporte inyectable; el transporte `fetch` falla cerrado por defecto; normalización elimina fragmentos y tracking, ordena parámetros, deduplica técnicamente y calcula SHA-256; créditos y request IDs permanecen en el resultado.
+- Riesgos: la forma de payload real deberá confirmarse otra vez antes del piloto; el adaptador no autoriza red por sí mismo.
+- Deuda: la activación y credencial seguras solo podrán conectarse en un bloque real posterior y con feature flag.
+- Coste real consumido: `0 EUR`.
+- Llamadas reales realizadas: `0`.
+- Fronteras negativas: fixtures completos, transporte falso y `networkEnabled=false`; sin claves reales, red, créditos, publicación, Trawel, producción ni Automatic.

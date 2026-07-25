@@ -13,8 +13,10 @@ import type {
 export interface ResearchToolResult {
   round: RealRoundNumber
   sources: RealResearchSource[]
-  providerRequestId?: string
+  providerRequestIds: string[]
+  failures: Array<{ url: string; code: string; message: string }>
   usageUnits: number
+  credits: number
 }
 
 export interface ResearchTool {

@@ -8,6 +8,8 @@ PROMPT 02 incorpora un Centro de proveedores local: catálogo inicial Tavily/Ope
 
 PROMPT 03 incorpora contabilidad durable por llamada: tarifas versionadas, reservas, ledger append-only, una guarda real global y límites por tarea, lote y día. La migración se aplica únicamente en Supabase local y no habilita llamadas: reservar es obligatorio antes de invocar, conciliar después y un timeout ambiguo no se reintenta.
 
+PROMPT 04 añade el primer `ResearchTool` Tavily con Search/Extract, normalización, deduplicación, hashes, créditos, límites, timeout y cancelación. Sigue siendo una implementación sin red: el transporte `fetch` está cerrado por defecto y toda validación usa fixtures.
+
 Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada y committeada; FASE 4A-01B está implementada técnicamente y pendiente de prueba humana. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia

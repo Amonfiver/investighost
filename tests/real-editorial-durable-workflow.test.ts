@@ -4,6 +4,7 @@ import {
   DurableRealEditorialPipeline,
   MemoryCostLedgerRepository,
   missionForPilot,
+  OpenAIIntelligenceError,
   realEditorialPayloadHash,
   TavilyResearchError,
   type IntelligenceDraft,
@@ -325,6 +326,16 @@ class FakeIntelligenceEngine implements IntelligenceEngine {
   }
 }
 
+class FailingAnalysisEngine extends FakeIntelligenceEngine {
+  override async analyze(mission: RealResearchMission): Promise<never> {
+    this.calls.push(`analysis-${mission.round}`)
+    throw new OpenAIIntelligenceError(
+      'CLIENT_ERROR',
+      'Fallo OpenAI sintético anterior a respuesta remota',
+    )
+  }
+}
+
 function pilotRecord(): RealEditorialPilotRecord {
   return RealEditorialPilotRecordSchema.parse({
     id: pilotId,
@@ -527,6 +538,91 @@ describe('workflow editorial durable con clientes falsos', () => {
     expect(await ledger.entries()).toEqual([])
     expect(await repository.latestArtifact(runId, 'mission', 'initial')).toEqual(original)
     expect(repository.artifacts.get(`${runId}:mission:initial`)).toHaveLength(1)
+  })
+
+  it('reanuda en OpenAI reutilizando Tavily durable sin repetir la ronda 1', async () => {
+    const repository = new MemoryDurableRepository()
+    const ledger = ledgerRepository()
+    const firstResearch = new FakeResearchTool()
+
+    await expect(new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: {
+        researchTool: firstResearch,
+        intelligenceEngine: new FailingAnalysisEngine(),
+      },
+      now: () => new Date(now),
+      id: () => '82700000-0000-4000-8000-000000000001',
+    }).execute(repository.pilot, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'CLIENT_ERROR' })
+
+    expect(firstResearch.rounds).toEqual([1])
+    expect(ledger.budgetSnapshot().task).toMatchObject({ reserved: 0, spent: 0.048 })
+    const storedResearch = await repository.latestArtifact(runId, 'tavily_result', 'round-1')
+    const storedCheckpoint = await repository.latestArtifact(runId, 'checkpoint', 'workflow')
+    expect(storedResearch).toBeDefined()
+    expect(storedCheckpoint?.payload).toMatchObject({
+      state: 'analyzing_round_1',
+      completedRound: 0,
+    })
+
+    const resumedResearch = new FakeResearchTool()
+    const resumedIntelligence = new FakeIntelligenceEngine()
+    const result = await new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: {
+        researchTool: resumedResearch,
+        intelligenceEngine: resumedIntelligence,
+      },
+      now: () => new Date('2026-07-25T22:43:45.000Z'),
+      id: () => '82700000-0000-4000-8000-000000000002',
+    }).execute(repository.pilot, new AbortController().signal)
+
+    expect(result.state).toBe('pending_human_review')
+    expect(resumedResearch.rounds).toEqual([2])
+    expect(resumedIntelligence.calls).toEqual(['analysis-1', 'analysis-2', 'draft', 'review'])
+    expect(await repository.latestArtifact(runId, 'tavily_result', 'round-1'))
+      .toEqual(storedResearch)
+    expect(repository.artifacts.get(`${runId}:tavily_result:round-1`)).toHaveLength(1)
+    expect(repository.pilot).toMatchObject({
+      id: pilotId,
+      currentRunId: runId,
+      budget: { taskId: `real-editorial-task:${pilotId}` },
+    })
+    expect(ledger.budgetSnapshot().task.reserved).toBe(0)
+    expect(ledger.budgetSnapshot().task.spent).toBeCloseTo(0.2, 8)
+    expect(await ledger.findByIdempotencyKey(
+      `real-editorial-task:${pilotId}:round:1:research:attempt:1`,
+    )).toMatchObject({ state: 'reconciled' })
+    expect(await ledger.findByIdempotencyKey(
+      `real-editorial-task:${pilotId}:round:1:research:attempt:2`,
+    )).toBeUndefined()
+    const failedAnalysis = await ledger.findByIdempotencyKey(
+      `real-editorial-task:${pilotId}:round:1:analysis:attempt:1`,
+    )
+    expect(failedAnalysis).toMatchObject({ state: 'failed', calculatedCost: 0 })
+    expect(await ledger.findByIdempotencyKey(
+      `real-editorial-task:${pilotId}:round:1:analysis:attempt:2`,
+    )).toMatchObject({
+      state: 'reconciled',
+      input: { retryOfCallId: failedAnalysis?.callId },
+    })
+
+    const duplicateResearch = new FakeResearchTool()
+    const duplicate = await new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: {
+        researchTool: duplicateResearch,
+        intelligenceEngine: new FakeIntelligenceEngine(),
+      },
+      now: () => new Date('2026-07-25T22:44:00.000Z'),
+      id: () => '82700000-0000-4000-8000-000000000003',
+    }).execute(repository.pilot, new AbortController().signal)
+    expect(duplicate).toEqual(result)
+    expect(duplicateResearch.rounds).toEqual([])
   })
 
   it('reanuda tras reinicio desde el checkpoint sin repetir la ronda 1', async () => {

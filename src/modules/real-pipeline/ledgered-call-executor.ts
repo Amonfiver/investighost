@@ -93,8 +93,14 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     try {
       result = await execution
     } catch (error) {
-      const ambiguous = errorCode(error) === 'TIMEOUT'
-      const cancelled = errorCode(error) === 'CANCELLED'
+      const code = errorCode(error)
+      const ambiguous = [
+        'TIMEOUT',
+        'NETWORK_AMBIGUOUS',
+        'REMOTE_RESPONSE_ERROR',
+        'REMOTE_INVALID_RESPONSE',
+      ].includes(code)
+      const cancelled = code === 'CANCELLED'
       const providerUsage = failureUsage(error)
       try {
         await this.ledger.settle({
@@ -112,7 +118,7 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
             toolCalls: providerUsage?.toolCalls ?? 1,
             credits: providerUsage?.credits ?? 0,
           },
-          sanitizedError: errorCode(error),
+          sanitizedError: code,
         })
       } finally {
         this.running.delete(operationId)

@@ -18,6 +18,7 @@ import type {
   IntelligenceEngine,
   IntelligenceReview,
   IntelligenceRoundAnalysis,
+  ProviderFailureUsage,
 } from './ports'
 
 export interface OpenAIResponseRequest {
@@ -89,10 +90,25 @@ export type OpenAIIntelligenceErrorCode =
   | 'INVALID_RESPONSE'
   | 'TIMEOUT'
   | 'CANCELLED'
+  | 'SDK_INCOMPATIBLE'
+  | 'CLIENT_INVALID'
+  | 'CLIENT_ERROR'
+  | 'RESPONSES_UNAVAILABLE'
+  | 'RESPONSES_CREATE_UNAVAILABLE'
+  | 'AUTHENTICATION_ERROR'
+  | 'MODEL_UNAVAILABLE'
+  | 'REMOTE_HTTP_ERROR'
+  | 'NETWORK_AMBIGUOUS'
+  | 'REMOTE_RESPONSE_ERROR'
+  | 'REMOTE_INVALID_RESPONSE'
   | 'PROVIDER_ERROR'
 
 export class OpenAIIntelligenceError extends Error {
-  constructor(readonly code: OpenAIIntelligenceErrorCode, message: string) {
+  constructor(
+    readonly code: OpenAIIntelligenceErrorCode,
+    message: string,
+    readonly providerUsage?: ProviderFailureUsage,
+  ) {
     super(message)
     this.name = 'OpenAIIntelligenceError'
   }

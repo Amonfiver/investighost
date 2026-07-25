@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import OpenAI, { OpenAI as NamedOpenAI } from 'openai'
 import type { Response as OpenAIResponse } from 'openai/resources/responses/responses'
 import {
   assertLiveProviderNetworkPermit,
@@ -6,7 +7,11 @@ import {
   LiveProviderAccessError,
   type LiveProviderNetworkPermit,
 } from '@modules/real-pipeline/live-provider-access'
-import { OpenAISdkResponsesClient } from '@modules/real-pipeline/openai-responses-client'
+import {
+  inspectInstalledOpenAIResponsesCapability,
+  inspectOpenAIResponsesClient,
+  OpenAISdkResponsesClient,
+} from '@modules/real-pipeline/openai-responses-client'
 import { REAL_EXECUTION_FEATURE_TOKEN } from '@modules/real-pipeline/real-pilot-gate'
 import {
   TavilyFetchTransport,
@@ -76,6 +81,26 @@ function gate(overrides: Record<string, unknown> = {}) {
 
 function permit(): LiveProviderNetworkPermit {
   return issueLiveProviderNetworkPermit(gate())
+}
+
+function openAIRequest() {
+  return {
+    model: 'gpt-5.6-luna',
+    input: [
+      { role: 'system' as const, content: 'Solo fixture.' },
+      { role: 'user' as const, content: '{}' },
+    ],
+    text: {
+      format: {
+        type: 'json_schema' as const,
+        name: 'fixture',
+        strict: true as const,
+        schema: { type: 'object', additionalProperties: false },
+      },
+    },
+    max_output_tokens: 100,
+    store: false as const,
+  }
 }
 
 describe('clientes reales cerrados por permisos e inyectables sin red', () => {
@@ -177,6 +202,51 @@ describe('clientes reales cerrados por permisos e inyectables sin red', () => {
     expect(fetchImplementation).not.toHaveBeenCalled()
   })
 
+  it('detecta responses.create en las construcciones default y named del SDK instalado sin red', () => {
+    const fetchImplementation = vi.fn(async () => {
+      throw new Error('NETWORK_MUST_NOT_RUN')
+    })
+    const options = {
+      apiKey: 'sk-synthetic-capability-only',
+      maxRetries: 0,
+      fetch: fetchImplementation,
+    }
+    const defaultClient = new OpenAI(options)
+    const namedClient = new NamedOpenAI(options)
+
+    expect(inspectOpenAIResponsesClient(defaultClient)).toMatchObject({
+      sdkVersion: '6.34.0',
+      status: 'available',
+      available: true,
+    })
+    expect(inspectOpenAIResponsesClient(namedClient)).toMatchObject({
+      status: 'available',
+      available: true,
+    })
+    expect(inspectInstalledOpenAIResponsesCapability()).toMatchObject({
+      sdkVersion: '6.34.0',
+      status: 'available',
+      available: true,
+    })
+    expect(fetchImplementation).not.toHaveBeenCalled()
+  })
+
+  it('distingue cliente mal construido, Responses ausente y create ausente', () => {
+    expect(inspectInstalledOpenAIResponsesCapability(() => ({}))).toMatchObject({
+      status: 'sdk_incompatible',
+      available: false,
+    })
+    expect(() => new OpenAISdkResponsesClient(openAICredential, permit(), {
+      clientFactory: () => null,
+    })).toThrow(expect.objectContaining({ code: 'CLIENT_INVALID' }))
+    expect(() => new OpenAISdkResponsesClient(openAICredential, permit(), {
+      clientFactory: () => ({}),
+    })).toThrow(expect.objectContaining({ code: 'RESPONSES_UNAVAILABLE' }))
+    expect(() => new OpenAISdkResponsesClient(openAICredential, permit(), {
+      clientFactory: () => ({ responses: {} }),
+    })).toThrow(expect.objectContaining({ code: 'RESPONSES_CREATE_UNAVAILABLE' }))
+  })
+
   it('OpenAI usa Responses, señal y uso cacheado con cliente SDK falso', async () => {
     const requests: unknown[] = []
     const client = new OpenAISdkResponsesClient(openAICredential, permit(), {
@@ -207,23 +277,7 @@ describe('clientes reales cerrados por permisos e inyectables sin red', () => {
       },
     })
     const signal = new AbortController().signal
-    const response = await client.create({
-      model: 'gpt-5.6-luna',
-      input: [
-        { role: 'system', content: 'Solo fixture.' },
-        { role: 'user', content: '{}' },
-      ],
-      text: {
-        format: {
-          type: 'json_schema',
-          name: 'fixture',
-          strict: true,
-          schema: { type: 'object', additionalProperties: false },
-        },
-      },
-      max_output_tokens: 100,
-      store: false,
-    }, signal)
+    const response = await client.create(openAIRequest(), signal)
 
     expect(requests).toEqual([
       expect.objectContaining({
@@ -246,6 +300,43 @@ describe('clientes reales cerrados por permisos e inyectables sin red', () => {
     })
   })
 
+  it.each([
+    ['credencial inválida', { status: 401, code: 'invalid_api_key' }, 'AUTHENTICATION_ERROR'],
+    ['modelo ausente', { status: 404, code: 'model_not_found', param: 'model' }, 'MODEL_UNAVAILABLE'],
+    ['rechazo HTTP remoto', { status: 500, requestID: 'request-synthetic' }, 'REMOTE_HTTP_ERROR'],
+  ])('clasifica %s sin confundirlo con un método ausente', async (_label, sdkError, code) => {
+    const client = new OpenAISdkResponsesClient(openAICredential, permit(), {
+      clientFactory: () => ({
+        responses: {
+          create: async () => {
+            throw sdkError
+          },
+        },
+      }),
+    })
+
+    await expect(client.create(openAIRequest(), new AbortController().signal))
+      .rejects.toMatchObject({ code })
+  })
+
+  it('distingue una respuesta remota inválida de la ausencia de Responses', async () => {
+    const client = new OpenAISdkResponsesClient(openAICredential, permit(), {
+      clientFactory: () => ({
+        responses: {
+          create: async () => ({
+            id: 'resp_invalid_state',
+            status: 'queued',
+            error: null,
+            output: [],
+          }),
+        },
+      }),
+    })
+
+    await expect(client.create(openAIRequest(), new AbortController().signal))
+      .rejects.toMatchObject({ code: 'REMOTE_INVALID_RESPONSE' })
+  })
+
   it('OpenAI sanea un error SDK que contiene el secreto sintético', async () => {
     const client = new OpenAISdkResponsesClient(openAICredential, permit(), {
       clientFactory: () => ({
@@ -259,28 +350,13 @@ describe('clientes reales cerrados por permisos e inyectables sin red', () => {
 
     let failure: unknown
     try {
-      await client.create({
-        model: 'gpt-5.6-luna',
-        input: [
-          { role: 'system', content: 'Fixture.' },
-          { role: 'user', content: '{}' },
-        ],
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'fixture',
-            strict: true,
-            schema: { type: 'object' },
-          },
-        },
-        max_output_tokens: 10,
-        store: false,
-      }, new AbortController().signal)
+      await client.create(openAIRequest(), new AbortController().signal)
     } catch (error) {
       failure = error
     }
 
     expect(failure).toBeInstanceOf(Error)
+    expect(failure).toMatchObject({ code: 'CLIENT_ERROR' })
     expect(String(failure)).not.toContain(openAICredential)
   })
 

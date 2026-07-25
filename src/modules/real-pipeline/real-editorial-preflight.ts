@@ -16,6 +16,21 @@ export const RealEditorialPreflightInputSchema = z.object({
   guardFree: z.boolean(),
   activeExecutions: z.number().int().nonnegative(),
   pendingReservations: z.number().int().nonnegative(),
+  openAIResponsesCapability: z.object({
+    sdkVersion: z.string().trim().min(1).max(80),
+    status: z.enum([
+      'available',
+      'sdk_incompatible',
+      'client_construction_failed',
+      'client_invalid',
+      'responses_missing',
+      'responses_create_missing',
+    ]),
+    available: z.boolean(),
+  }).refine(
+    value => value.available === (value.status === 'available'),
+    'La disponibilidad debe coincidir con el estado del SDK',
+  ),
   duplicateResolution: z.enum([
     'manual_only_coexists',
     'no_conflict',
@@ -89,6 +104,14 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
     openAI?.selectedModel === REAL_EDITORIAL_PILOT_POLICY.providers.model,
     'gpt-5.6-luna seleccionado.',
     'El piloto exige exactamente gpt-5.6-luna.',
+  )
+  add(
+    'openai_responses_sdk',
+    'OpenAI Responses',
+    input.openAIResponsesCapability.available
+      && input.openAIResponsesCapability.status === 'available',
+    `SDK ${input.openAIResponsesCapability.sdkVersion}: responses.create disponible localmente.`,
+    openAICapabilityBlockDetail(input.openAIResponsesCapability),
   )
   add(
     'connectivity_validated',
@@ -245,4 +268,20 @@ function duplicateDetail(
   if (value === 'current_pilot') return 'El preflight corresponde al piloto preparado actual.'
   if (value === 'variant_authorized') return 'La variante tiene identidad humana autorizada distinta.'
   return 'No existe otro piloto real con la misma identidad.'
+}
+
+function openAICapabilityBlockDetail(
+  value: z.infer<typeof RealEditorialPreflightInputSchema>['openAIResponsesCapability'],
+): string {
+  const prefix = `SDK ${value.sdkVersion}:`
+  if (value.status === 'sdk_incompatible' || value.status === 'responses_missing') {
+    return `${prefix} no expone el recurso Responses.`
+  }
+  if (value.status === 'responses_create_missing') {
+    return `${prefix} Responses no expone el método create.`
+  }
+  if (value.status === 'client_construction_failed') {
+    return `${prefix} el cliente no pudo construirse durante el preflight sin red.`
+  }
+  return `${prefix} el cliente tiene una estructura incompatible.`
 }

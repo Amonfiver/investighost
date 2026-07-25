@@ -49,6 +49,11 @@ function input(overrides: Partial<Input> = {}): Input {
     guardFree: true,
     activeExecutions: 0,
     pendingReservations: 0,
+    openAIResponsesCapability: {
+      sdkVersion: '6.34.0',
+      status: 'available',
+      available: true,
+    },
     duplicateResolution: 'manual_only_coexists',
     boundaries: {
       regenerationBlocked: true,
@@ -129,6 +134,23 @@ describe('preflight editorial real independiente', () => {
     ['conectividad', { connectivityValidated: false }],
   ])('bloquea por %s', (_label, override) => {
     expect(evaluateRealEditorialPreflight(input(override)).status).toBe('blocked')
+  })
+
+  it('bloquea un SDK sin Responses antes de autorizar gasto o red', () => {
+    const result = evaluateRealEditorialPreflight(input({
+      openAIResponsesCapability: {
+        sdkVersion: 'synthetic-incompatible',
+        status: 'sdk_incompatible',
+        available: false,
+      },
+    }))
+
+    expect(result.status).toBe('blocked')
+    expect(result.startActionEnabled).toBe(false)
+    expect(result.networkCallsPerformed).toBe(0)
+    expect(result.checks.find(check => check.code === 'openai_responses_sdk')).toMatchObject({
+      status: 'block',
+    })
   })
 
   it.each([

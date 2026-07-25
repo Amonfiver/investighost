@@ -3,6 +3,7 @@ import {
   CostLedgerService,
   DurableRealEditorialPipeline,
   evaluateRealEditorialPreflight,
+  inspectInstalledOpenAIResponsesCapability,
   realEditorialIdentityKey,
   SupabaseRealEditorialLedgerRepository,
   SupabaseRealEditorialPilotRepository,
@@ -54,6 +55,7 @@ export class RealEditorialPilotRuntime {
       guardFree: inspection.guardFree,
       activeExecutions: inspection.activeExecutions,
       pendingReservations: inspection.pendingReservations,
+      openAIResponsesCapability: inspectInstalledOpenAIResponsesCapability(),
       duplicateResolution,
       pilot,
       boundaries: {

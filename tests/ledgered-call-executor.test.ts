@@ -113,4 +113,48 @@ describe('conciliación de fallos facturables y reanudación idempotente', () =>
     })
     expect(new Set(entries.map(entry => entry.reservationId)).size).toBe(2)
   })
+
+  it('mantiene una red ambigua sin conciliación ni reintento automático', async () => {
+    let sequence = 0
+    const repository = new MemoryCostLedgerRepository(
+      { task: 0.2, batch: 0.2, daily: 0.2, currency: 'EUR' },
+      {
+        now: () => new Date(now),
+        id: () => `ambiguous-ledger-id-${++sequence}`,
+      },
+    )
+    const ledger = new CostLedgerService(repository, { now: () => new Date(now) })
+    await ledger.acquireExecution(
+      'real-editorial:run-morella',
+      'lease-morella-ambiguous',
+      new Date('2026-07-26T00:00:00.000Z'),
+    )
+    const firstProviderCall = vi.fn(async () => {
+      throw { code: 'NETWORK_AMBIGUOUS' }
+    })
+
+    await expect(new LedgeredWorkflowCallExecutor(
+      ledger,
+      metadata(),
+      0.2,
+    ).execute(operationId, 0.048, firstProviderCall))
+      .rejects.toMatchObject({ code: 'NETWORK_AMBIGUOUS' })
+
+    expect(repository.budgetSnapshot().task).toMatchObject({
+      reserved: 0.048,
+      spent: 0,
+    })
+    expect(await repository.findByIdempotencyKey(`${operationId}:attempt:1`))
+      .toMatchObject({ state: 'unknown' })
+
+    const repeatedProviderCall = vi.fn()
+    await expect(new LedgeredWorkflowCallExecutor(
+      ledger,
+      metadata(),
+      0.2,
+    ).execute(operationId, 0.048, repeatedProviderCall))
+      .rejects.toMatchObject({ code: 'BUDGET_EXCEEDED' })
+    expect(repeatedProviderCall).not.toHaveBeenCalled()
+    expect(await repository.findByIdempotencyKey(`${operationId}:attempt:2`)).toBeUndefined()
+  })
 })

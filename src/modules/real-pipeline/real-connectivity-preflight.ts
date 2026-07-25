@@ -3,6 +3,10 @@ import {
   ProviderCenterSnapshotSchema,
   type ProviderCenterSnapshot,
 } from '@shared/provider-center-contracts'
+import {
+  REAL_CONNECTIVITY_FX_POLICY,
+  REAL_CONNECTIVITY_POLICY,
+} from '@shared/real-connectivity-contracts'
 import { MORELLA_REAL_PILOT_POLICY } from './real-pilot-gate'
 
 export const RealConnectivityPreflightStatusSchema = z.enum([
@@ -37,6 +41,11 @@ export const RealConnectivityPreflightInputSchema = z.object({
     ledgerAvailable: z.boolean(),
     globalGuardFree: z.boolean(),
     activeRealExecutions: z.number().int().nonnegative(),
+    providerCalls: z.number().int().nonnegative(),
+    reservations: z.number().int().nonnegative(),
+    pendingReservations: z.number().int().nonnegative(),
+    reservedEur: z.number().nonnegative(),
+    spentEur: z.number().nonnegative(),
   }),
   boundaries: z.object({
     regenerationBlocked: z.boolean(),
@@ -64,10 +73,12 @@ export interface RealConnectivityPreflight {
   status: RealConnectivityPreflightStatus
   checks: RealConnectivityPreflightCheck[]
   policy: typeof MORELLA_REAL_PILOT_POLICY
+  connectivityPolicy: typeof REAL_CONNECTIVITY_POLICY
+  conversionPolicy: typeof REAL_CONNECTIVITY_FX_POLICY
   providerCenter: ProviderCenterSnapshot
   networkCallsPerformed: 0
   researchExecutionAllowed: false
-  connectivityActionEnabled: false
+  connectivityActionEnabled: boolean
 }
 
 export function evaluateRealConnectivityPreflight(candidate: unknown): RealConnectivityPreflight {
@@ -131,6 +142,16 @@ export function evaluateRealConnectivityPreflight(candidate: unknown): RealConne
         : 'No existe una tarifa oficial verificada para la selección.',
     )
   }
+  const selectedOpenAI = input.providerCenter.providers
+    .find(entry => entry.id === 'openai')
+    ?.selectedModel
+  add(
+    'connectivity_model',
+    'Modelo de conectividad',
+    selectedOpenAI === REAL_CONNECTIVITY_POLICY.openai.model,
+    'La única llamada OpenAI usará gpt-5.6-luna.',
+    'La prueba exige seleccionar exactamente gpt-5.6-luna.',
+  )
 
   const limits = input.limits
   const budgetsValid = limits.warningBudgetEur <= limits.taskBudgetEur
@@ -190,6 +211,36 @@ export function evaluateRealConnectivityPreflight(candidate: unknown): RealConne
     'No hay ejecuciones reales activas.',
     `Hay ${input.infrastructure.activeRealExecutions} ejecución(es) real(es) activa(s).`,
   )
+  const pristineLedger = input.infrastructure.providerCalls === 0
+    && input.infrastructure.reservations === 0
+    && input.infrastructure.pendingReservations === 0
+    && input.infrastructure.reservedEur === 0
+    && input.infrastructure.spentEur === 0
+  add(
+    'connectivity_history',
+    'Prueba única sin historial',
+    pristineLedger,
+    'Cero llamadas, reservas y gasto reales previos.',
+    'Ya existe actividad real; una segunda prueba queda bloqueada.',
+  )
+  add(
+    'connectivity_budget',
+    'Presupuesto de conectividad',
+    REAL_CONNECTIVITY_POLICY.tavily.reserveEur
+      + REAL_CONNECTIVITY_POLICY.openai.reserveEur
+      === REAL_CONNECTIVITY_POLICY.budgetEur
+      && REAL_CONNECTIVITY_POLICY.maxProviderCalls === 2
+      && REAL_CONNECTIVITY_POLICY.maxRetries === 0,
+    'Máximo 2 llamadas, 0 reintentos y 0,02 EUR.',
+    'La política de conectividad no respeta el límite autorizado.',
+  )
+  add(
+    'conversion',
+    'Conversión presupuestaria',
+    REAL_CONNECTIVITY_FX_POLICY.usdToEur === 1,
+    `1 USD = 1 EUR · ${REAL_CONNECTIVITY_FX_POLICY.version} · decisión conservadora, no bancaria.`,
+    'No existe una conversión presupuestaria conservadora y versionada.',
+  )
   add(
     'regeneration',
     'Regeneración bloqueada',
@@ -226,14 +277,17 @@ export function evaluateRealConnectivityPreflight(candidate: unknown): RealConne
     'Desactivada; no se permite acceder a clientes reales.',
   )
 
+  const status = resolveStatus(checks)
   return {
-    status: resolveStatus(checks),
+    status,
     checks,
     policy: MORELLA_REAL_PILOT_POLICY,
+    connectivityPolicy: REAL_CONNECTIVITY_POLICY,
+    conversionPolicy: REAL_CONNECTIVITY_FX_POLICY,
     providerCenter: input.providerCenter,
     networkCallsPerformed: 0,
     researchExecutionAllowed: false,
-    connectivityActionEnabled: false,
+    connectivityActionEnabled: status === 'ready_for_live_connectivity_check',
   }
 }
 

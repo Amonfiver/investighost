@@ -38,6 +38,11 @@ function input(
       ledgerAvailable: true,
       globalGuardFree: true,
       activeRealExecutions: 0,
+      providerCalls: 0,
+      reservations: 0,
+      pendingReservations: 0,
+      reservedEur: 0,
+      spentEur: 0,
     },
     boundaries: {
       regenerationBlocked: true,
@@ -92,7 +97,7 @@ describe('preflight real sin red', () => {
     expect(result).toMatchObject({
       networkCallsPerformed: 0,
       researchExecutionAllowed: false,
-      connectivityActionEnabled: false,
+      connectivityActionEnabled: true,
     })
   })
 
@@ -154,6 +159,11 @@ describe('preflight real sin red', () => {
         ledgerAvailable: false,
         globalGuardFree: false,
         activeRealExecutions: 1,
+        providerCalls: 0,
+        reservations: 0,
+        pendingReservations: 0,
+        reservedEur: 0,
+        spentEur: 0,
       },
     })
     const result = evaluateRealConnectivityPreflight(candidate)

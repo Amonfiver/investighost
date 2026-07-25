@@ -6,15 +6,15 @@ Rama: `feat/investighost-real-pipeline`
 
 Checkpoint protegido: `18d8d33113c1412de07fb9f4189116100ccfa84b`
 
-Alcance: PROMPT 01–10, correcciones 10B y 10C, sin ejecutar PROMPT 11.
+Alcance: PROMPT 01–10 y correcciones 10B–10D, sin ejecutar PROMPT 11.
 
 ## Dictamen
 
-**GO para introducir credenciales desde la aplicación y preparar una prueba de conectividad controlada posterior.**
+**GO para preparar PROMPT 11 bajo una autorización separada.**
 
-La divergencia de idempotencia durable está corregida. Tavily REST y OpenAI SDK/Responses están conectados a los puertos nuevos exclusivamente mediante un permiso opaco que exige feature flag, proveedores configurados y activos, preflight, autorización humana, reserva económica y guarda global. Las credenciales solo se descifran en Electron main dentro de una operación acotada. El catálogo `2026-07-25.1` conserva tarifas oficiales verificadas, fuente y fecha de revisión. El preflight comprueba configuración pública e infraestructura local sin descifrar claves ni efectuar llamadas externas.
+La divergencia de idempotencia durable está corregida. PROMPT 10D añadió una ruta exclusiva de conectividad, separada del pipeline Morella, con conversión `connectivity-fx-2026-07-25.1`, presupuesto absoluto `0,02 EUR`, concurrencia 1, cero rondas, cero regeneraciones y cero reintentos. El 2026-07-25 a las 20:59 CEST el preflight aprobó todos sus controles y se ejecutaron exactamente una llamada Tavily Search basic y una llamada OpenAI Responses con `gpt-5.6-luna`.
 
-Este GO no autoriza todavía la prueba de conectividad, habilitar la feature flag, ejecutar PROMPT 11, investigar Morella, consumir saldo o publicar. La prueba requiere otra autorización humana y un bloque separado.
+Ambas llamadas quedaron conciliadas por `0,008077 EUR`, con dos reservas terminales, cero pendientes, cero coste retenido y guarda libre. Este GO solo permite preparar el siguiente bloque: no ejecuta ni autoriza por sí mismo PROMPT 11, Morella, Aventura, Estudiante, publicación, Trawel, producción o Automatic.
 
 ## Reauditoría de bloqueos
 
@@ -33,17 +33,17 @@ Evidencia:
 - rollback transaccional y eliminación de la base concurrente aislada;
 - datos humanos iguales antes y después.
 
-### B2 — Clientes reales: implementados y cerrados
+### B2 — Clientes reales: implementados y conectividad mínima validada
 
 Tavily usa `https://api.tavily.com`, autenticación Bearer, Search/Extract, `request_id`, uso/créditos, timeout, cancelación, límites, validación Zod y errores sanitizados. OpenAI usa el SDK ya instalado, Responses API, Structured Outputs estrictos, uso y entrada cacheada, refusal/incomplete, timeout, cancelación y límite de salida. Ambos se probaron únicamente con transportes falsos inyectados.
 
-No hay IPC o botón que invoque esos clientes. Un consumidor interno tampoco puede llamar al transporte sin un permiso emitido por el gate completo. La feature flag real sigue desactivada y el botón de conectividad permanece deshabilitado.
+La UI expone una única acción `Probar conectividad real`, con confirmación humana literal y resumen de proveedor, modelo, dos llamadas y `0,02 EUR`. La acción no usa el cliente Tavily editorial que encadena Extract: dispone de un cliente específico que solo hace `/search`. OpenAI se construye con `maxRetries: 0`, `store: false`, sin tools y con razonamiento `none`. Después de la ejecución, el historial durable bloquea un segundo intento.
 
 ### B3 — Preflight operativo sin red: implementado
 
-El preflight consulta solo el snapshot público del Centro de proveedores y Supabase local. Comprueba credenciales presentes, activación, modelo, vigencia de tarifa, límites, presupuestos, Morella, dos rondas, publicación/regeneración, Trawel, Automatic, ledger, guarda y cero reservas activas. Devuelve uno de los ocho estados definidos y siempre declara `networkCallsPerformed: 0`, `researchExecutionAllowed: false` y `connectivityActionEnabled: false`.
+El preflight consulta solo el snapshot público del Centro de proveedores y Supabase local. Comprueba credenciales presentes, activación, Luna, vigencia de tarifa, conversión 1:1, presupuesto exclusivo, publicación/regeneración, Trawel, Automatic, ledger, guarda y ausencia de actividad real previa. Devuelve uno de los ocho estados definidos, declara `researchExecutionAllowed: false` y solo habilita conectividad cuando todos los controles pasan.
 
-Sin credenciales y con la feature flag apagada, el estado operativo seguirá bloqueado de forma esperada. `ready_for_live_connectivity_check`, cuando se alcance, solo habilitará una decisión humana posterior; nunca autoriza investigación.
+Tras las dos llamadas, `connectivity_history` bloquea durablemente otra prueba. La feature flag se habilitó solo en el proceso autorizado; no se persistió en `.env`. El preflight nunca autoriza investigación.
 
 ## Hallazgos no bloqueantes y deuda
 
@@ -51,7 +51,7 @@ Sin credenciales y con la feature flag apagada, el estado operativo seguirá blo
 - Los logs legacy de input completo y preview se retiraron. El error del guard no contiene credenciales, prompts o inputs y no es reintentable.
 - El comentario del advisory lock aparece duplicado en la migración. No cambia el SQL ejecutable.
 - Los checkpoints del piloto fake y el repositorio usado por su ledger son implementaciones en memoria. El piloto real debe usar persistencia durable y no asumir que la prueba fake demuestra recuperación tras caída de proceso.
-- Las tarifas oficiales se conservan en USD y caducan operativamente el 2026-08-25 si no se reverifican. Antes de investigar debe definirse una conversión USD→EUR versionada y durable para conciliar con presupuestos en EUR; 10C no inventa un tipo de cambio.
+- Las tarifas oficiales se conservan en USD y caducan operativamente el 2026-08-25 si no se reverifican. 10D fija para conectividad una conversión conservadora `1 USD = 1 EUR`, versionada y documentada como decisión humana, no como cotización bancaria. PROMPT 11 deberá confirmar si reutiliza expresamente esta política.
 - La tarifa de Tavily representa pay-as-you-go a 0,008 USD/crédito; el coste efectivo de un plan contratado puede diferir y debe seleccionarse explícitamente antes de reservar gasto real.
 - Saldo `not_consultable` solo puede producir advertencia y exige comprobación humana documentada.
 
@@ -109,12 +109,12 @@ Ambas migraciones constan una vez en `supabase_migrations`. Se verificaron siete
 | Runs humanos | 14 |
 | Borradores | 24 |
 | Eventos | 136 |
-| Llamadas de proveedor reales | 0 |
-| Reservas reales | 0 |
-| Tarifas reales | 0 |
-| Presupuestos de tarea/lote/día | 0 / 0 / 0 |
+| Llamadas de proveedor reales | 2 |
+| Reservas reales | 2 conciliadas; 0 pendientes |
+| Tarifas reales | 2 |
+| Presupuestos de tarea/lote/día | 1 / 1 / 1 |
 
-La guarda no tiene propietario. El test de integración posterior dejó de nuevo llamadas, reservas y tarifas en cero.
+La guarda no tiene propietario. El presupuesto de conectividad retiene `0 EUR`, registra `0,008077 EUR` gastados y conserva `0,011923 EUR` disponibles. Los datos humanos mantienen exactamente 13 solicitudes, 14 runs, 24 borradores y 136 eventos, con los mismos timestamps máximos anteriores a 10D.
 
 ### Checkpoint, backup y restauración
 
@@ -130,13 +130,13 @@ La guarda no tiene propietario. El test de integración posterior dejó de nuevo
 
 ## Validaciones
 
-- Suite normal: 368 pruebas aprobadas; 11 integraciones opt-in omitidas por defecto.
-- Pruebas específicas 10C: 85 aprobadas.
+- Suite normal: 392 pruebas aprobadas; 11 integraciones opt-in omitidas por defecto.
+- Pruebas específicas 10D: 35 aprobadas, incluidas las 20 simulaciones obligatorias.
 - Integración ledger Supabase local: 2 pruebas aprobadas; transacción revertida y base aislada eliminada.
 - Integraciones locales de geografía, contribuciones, repositorio editorial y Manual: 9 pruebas aprobadas con datos sintéticos limpiados.
 - TypeScript `--noEmit`: aprobado.
 - ESLint con cero warnings: aprobado.
-- Builds renderer, Electron main y preload: aprobados.
+- Builds renderer, Electron main y preload: aprobados. El empaquetado NSIS falla después de crear `win-unpacked` por el privilegio conocido de symlinks de `winCodeSign`.
 - `git diff --check`: aprobado.
 - `git diff --cached --check`: aprobado antes del commit.
 - Búsqueda de secretos versionados: sin secreto real detectado; un placeholder conocido.
@@ -161,25 +161,25 @@ El hash de 10B se informa después de crear su commit para evitar una referencia
 
 ## Pasos humanos posteriores
 
-El GO técnico no autoriza conexiones o llamadas. Los pasos humanos posteriores son:
+Los pasos humanos posteriores son:
 
-1. Abrir Centro de proveedores desde Electron.
-2. Configurar Tavily y OpenAI escribiendo cada clave en su formulario; comprobar que la UI solo devuelve `••••••••`.
-3. Activar exactamente Tavily en investigación y OpenAI en inteligencia.
-4. Ejecutar en un gate posterior una prueba real mínima y autorizada; la prueba simulada actual no sirve.
-5. Confirmar modelos, tarifas versionadas y saldo disponible o comprobación humana equivalente.
-6. Persistir presupuesto antes de cualquier llamada y verificar ledger/guarda/cero tareas activas.
-7. Revisar el preflight: aviso 0,16 EUR; presupuesto normal 0,20; ampliación humana máxima 0,25; absoluto 0,50; una tarea; concurrencia 1; dos rondas; cero regeneración/publicación.
-8. Habilitar la feature flag estricta solo durante la ventana autorizada y retirar la habilitación al terminar.
+1. No repetir 10D; su historial durable cierra otra ejecución.
+2. Preparar el alcance y gate de PROMPT 11 sin ejecutarlo.
+3. Confirmar de nuevo modelos, tarifas, saldo, presupuesto, ledger y guarda en ese futuro bloque.
+4. Habilitar la feature flag estricta solo durante otra ventana autorizada.
+5. Mantener publicación, Trawel, producción y Automatic cerrados.
 
-PROMPT 11, las claves reales y cualquier llamada siguen fuera de alcance.
+PROMPT 11 sigue fuera del alcance ejecutado.
 
 ## Fronteras negativas confirmadas
 
-- llamadas reales Tavily/OpenAI: 0;
-- créditos Tavily: 0;
-- tokens reales OpenAI: 0;
-- coste real: 0 EUR;
+- llamadas reales Tavily/OpenAI: 1 / 1;
+- créditos Tavily: 1;
+- tokens reales OpenAI: 17 entrada, 0 cacheados y 10 salida;
+- coste real: `0,008077 EUR`;
+- reservas pendientes y coste retenido: 0;
+- guarda global: libre;
+- investigación editorial creada o modificada: 0;
 - publicaciones: 0;
 - Trawel: desconectado;
 - producción: desconectada;

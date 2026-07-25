@@ -30,6 +30,10 @@ import {
   type RealProfileSettings,
 } from '@shared/real-profile-settings'
 import type { RealConnectivityPreflight } from '@modules/real-pipeline/real-connectivity-preflight'
+import {
+  REAL_CONNECTIVITY_CONFIRMATION,
+  type RealConnectivityResult,
+} from '@shared/real-connectivity-contracts'
 import type { EditorialDraftVersionSummary } from '@modules/editorial-pipeline/repository'
 import {
   LIBRARY_PAGE_SUMMARY_LABEL,
@@ -821,6 +825,8 @@ function RealProfileSettingsPanel(): JSX.Element {
   const [settings, setSettings] = useState<RealProfileSettings | null>(null)
   const [preflight, setPreflight] = useState<RealConnectivityPreflight | null>(null)
   const [saving, setSaving] = useState(false)
+  const [checkingConnectivity, setCheckingConnectivity] = useState(false)
+  const [connectivityResult, setConnectivityResult] = useState<RealConnectivityResult | null>(null)
   const [saved, setSaved] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
@@ -861,6 +867,35 @@ function RealProfileSettingsPanel(): JSX.Element {
     }
   }
 
+  const runConnectivityCheck = async () => {
+    const confirmed = window.confirm(
+      'Prueba real mínima autorizada\n\n'
+      + '• 1 Tavily Search basic (máximo 1 resultado)\n'
+      + '• 1 OpenAI Responses con gpt-5.6-luna\n'
+      + '• Máximo total: 0,02 EUR\n'
+      + '• Sin Morella, contenido editorial, publicación, Trawel ni Automatic\n'
+      + '• Sin reintentos; un timeout ambiguo detiene la prueba\n\n'
+      + '¿Confirmas estas dos únicas llamadas reales?',
+    )
+    if (!confirmed) return
+    setCheckingConnectivity(true)
+    setLocalError(null)
+    try {
+      setConnectivityResult(await window.electronAPI.runRealConnectivityCheck({
+        humanConfirmation: REAL_CONNECTIVITY_CONFIRMATION,
+        morellaExecutionRequested: false,
+        publicationRequested: false,
+        automaticRequested: false,
+        trawelRequested: false,
+      }))
+    } catch (reason) {
+      setLocalError(errorText(reason))
+    } finally {
+      setPreflight(await window.electronAPI.getRealConnectivityPreflight().catch(() => preflight))
+      setCheckingConnectivity(false)
+    }
+  }
+
   if (!settings || !preflight) {
     return <section><div className="empty-card provider-loading"><span className="spinner" /><h2>Cargando roles editoriales…</h2></div></section>
   }
@@ -895,15 +930,26 @@ function RealProfileSettingsPanel(): JSX.Element {
         })}
       </div>
       <div className="shared-research-note"><strong>Una sola investigación compartida</strong><span>Aventura y Estudiante reutilizarán el mismo expediente y conocimiento maestro; activar ambos no duplica Tavily.</span></div>
-      <RealPilotPreflightPanel preflight={preflight} />
+      <RealPilotPreflightPanel
+        preflight={preflight}
+        checking={checkingConnectivity}
+        result={connectivityResult}
+        onRun={runConnectivityCheck}
+      />
       {activeCount === 0 && <div className="alert warning" role="alert"><strong>Activa al menos un perfil.</strong></div>}
       <div className="form-actions"><span className="muted">{saved ? 'Configuración guardada localmente.' : 'Sin ejecutar proveedores.'}</span><button className="button primary" disabled={saving || activeCount === 0 || settings.profiles.some(profile => profile.targetWords < 800 || profile.targetWords > 4000 || profile.targetWords % 100 !== 0)} onClick={save}>{saving ? 'Guardando…' : 'Guardar configuración'}</button></div>
     </section>
   )
 }
 
-function RealPilotPreflightPanel({ preflight }: { preflight: RealConnectivityPreflight }): JSX.Element {
+function RealPilotPreflightPanel({ preflight, checking, result, onRun }: {
+  preflight: RealConnectivityPreflight
+  checking: boolean
+  result: RealConnectivityResult | null
+  onRun: () => void
+}): JSX.Element {
   const policy = preflight.policy
+  const connectivity = preflight.connectivityPolicy
   const readyForConnectivity = preflight.status === 'ready_for_live_connectivity_check'
   return (
     <section className="real-preflight" aria-label="Preflight del piloto real Morella">
@@ -912,8 +958,20 @@ function RealPilotPreflightPanel({ preflight }: { preflight: RealConnectivityPre
         <span className={`state-badge ${readyForConnectivity ? 'state-approved' : 'state-blocked'}`}>{preflightStatusLabel(preflight.status)}</span>
       </header>
       <div className="real-policy-strip">
-        <span>1 tarea</span><span>Concurrencia 1</span><span>0,20 EUR</span><span>Aviso 0,16</span>
-        <span>Ampliación humana 0,25</span><span>Absoluto 0,50</span><span>{policy.maxRounds} rondas</span><span>0 publicación</span>
+        <span>{connectivity.maxProviderCalls} llamadas máximo</span>
+        <span>Concurrencia {connectivity.maxConcurrency}</span>
+        <span>{formatMoney(connectivity.budgetEur)}</span>
+        <span>{connectivity.maxRetries} reintentos</span>
+        <span>{connectivity.maxRounds} rondas</span>
+        <span>{connectivity.maxRegenerations} regeneraciones</span>
+        <span>Search basic · 1 resultado</span>
+        <span>0 publicación</span>
+      </div>
+      <div className="conversion-card">
+        <strong>Conversión presupuestaria: 1 USD = 1 EUR</strong>
+        <span>Tipo: conservador, no bancario</span>
+        <span>{preflight.conversionPolicy.version} · vigente {formatDate(preflight.conversionPolicy.effectiveFrom)}</span>
+        <small>{preflight.conversionPolicy.source}. {preflight.conversionPolicy.purpose}. Revisada {formatDate(preflight.conversionPolicy.reviewedAt)}.</small>
       </div>
       <div className="preflight-checks">
         {preflight.checks.map(check => (
@@ -925,11 +983,64 @@ function RealPilotPreflightPanel({ preflight }: { preflight: RealConnectivityPre
       </div>
       <div className="alert warning" role="status">
         <strong>La investigación real sigue bloqueada.</strong>
-        <span>Este resultado solo prepara una futura prueba de conectividad con autorización separada; no ejecuta Morella.</span>
+        <span>La acción solo prueba conectividad; no ejecuta {policy.destination}, no genera contenido y no publica.</span>
       </div>
+      {result && <RealConnectivityResultPanel result={result} />}
       <div className="form-actions">
         <span className="muted">Llamadas externas realizadas por este preflight: {preflight.networkCallsPerformed}</span>
-        <button className="button primary" disabled>Preparar prueba de conectividad</button>
+        <button
+          className="button primary"
+          disabled={!preflight.connectivityActionEnabled || checking}
+          onClick={onRun}
+        >
+          {checking ? 'Probando conectividad…' : 'Probar conectividad real'}
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function RealConnectivityResultPanel({ result }: { result: RealConnectivityResult }): JSX.Element {
+  return (
+    <section className={`connectivity-result connectivity-${result.status}`} aria-label="Resultado de conectividad real">
+      <header>
+        <div>
+          <span className="card-kicker">AUDITORÍA DURABLE</span>
+          <h4>{result.status === 'succeeded' ? 'Conectividad validada' : 'Prueba detenida'}</h4>
+        </div>
+        <StateBadge value={result.status === 'succeeded' ? 'approved' : 'blocked'} />
+      </header>
+      {result.errorMessage && <div className="alert error"><strong>{result.errorCode}</strong><span>{result.errorMessage}</span></div>}
+      <div className="connectivity-call-grid">
+        {result.calls.map(call => (
+          <article key={call.providerId}>
+            <strong>{call.providerId === 'tavily' ? 'Tavily Search basic' : 'OpenAI gpt-5.6-luna'}</strong>
+            <dl className="definition-grid">
+              <div><dt>Estado</dt><dd>{call.status}</dd></div>
+              <div><dt>Duración</dt><dd>{call.durationMs} ms</dd></div>
+              <div><dt>ID remoto</dt><dd>{call.remoteIdMask ?? 'No disponible'}</dd></div>
+              <div><dt>Reserva estimada</dt><dd>{formatMoney(call.estimatedCostEur)}</dd></div>
+              <div><dt>Coste conciliado</dt><dd>{formatMoney(call.costEur)} · USD {call.costUsd?.toFixed(9) ?? '—'}</dd></div>
+              {call.providerId === 'tavily' && <>
+                <div><dt>Créditos</dt><dd>{call.credits}</dd></div>
+                <div><dt>Dominio</dt><dd>{call.domain ?? '—'}</dd></div>
+              </>}
+              {call.providerId === 'openai' && <>
+                <div><dt>Tokens</dt><dd>{call.inputTokens} entrada · {call.cachedInputTokens} cache · {call.outputTokens} salida</dd></div>
+                <div><dt>Literal esperado</dt><dd>{call.expectedOutputMatched ? 'Correcto' : 'Incorrecto'}</dd></div>
+              </>}
+            </dl>
+          </article>
+        ))}
+      </div>
+      <div className="real-policy-strip">
+        <span>Ledger: {result.audit.providerCalls} llamadas</span>
+        <span>{result.audit.pendingReservations === 0 ? 'Ledger conciliado' : 'Ledger no conciliado'}</span>
+        <span>Pendientes: {result.audit.pendingReservations}</span>
+        <span>Gastado: {formatMoney(result.audit.spentEur)}</span>
+        <span>Restante: {formatMoney(result.audit.remainingEur)}</span>
+        <span>Guarda: {result.audit.guardFree ? 'libre' : 'ocupada'}</span>
+        <span>Publicaciones: {result.publicationCount}</span>
       </div>
     </section>
   )

@@ -1,6 +1,6 @@
 # Informe de ejecución del pipeline real
 
-Este informe acumula la evidencia desde PROMPT 01. Tras 10C existen clientes reales, pero no una ruta operativa de red: la feature flag y el botón de conectividad están apagados, la investigación permanece bloqueada y PROMPT 11 no se ejecuta.
+Este informe acumula la evidencia desde PROMPT 01. PROMPT 10D validó exclusivamente conectividad real mínima; la investigación Morella permanece bloqueada y PROMPT 11 no se ejecuta.
 
 ## PROMPT 01 — Arquitectura neutral y contratos del sistema operativo editorial
 
@@ -213,3 +213,22 @@ Este informe acumula la evidencia desde PROMPT 01. Tras 10C existen clientes rea
 - Coste real consumido: `0 EUR`; créditos Tavily: `0`; tokens OpenAI: `0`.
 - Llamadas reales realizadas: `0`.
 - Fronteras negativas: feature flag apagada; botón deshabilitado; PROMPT 11 no ejecutado; Morella no ejecutada; sin publicación, Trawel, producción ni Automatic; ningún comando Supabase prohibido.
+
+## PROMPT 10D — Prueba real mínima de conectividad
+
+- Fecha/hora: 2026-07-25, 20:59:43–20:59:47 CEST.
+- HEAD inicial: `272268e1f16482c323dc79e232ae5e14816054d6`.
+- HEAD final: commit único de este bloque, con mensaje `test: validar conectividad real de proveedores`.
+- Commit: el hash se entrega después de crear el commit para evitar una referencia circular dentro de sí mismo.
+- Conversión: `connectivity-fx-2026-07-25.1`; `1 USD = 1 EUR`; decisión humana conservadora, no bancaria; vigente y revisada el 2026-07-25.
+- Política: `connectivity-check-2026-07-25.1`; máximo `0,02 EUR`, dos llamadas, concurrencia 1, cero rondas, regeneraciones y reintentos.
+- Tavily: una sola llamada `/search`, consulta `official website Morella Spain`, profundidad basic, máximo un resultado, sin Answer, raw content, imágenes o Extract. Resultado correcto, `1` crédito, ID `fe4f••••5485`, URL `https://en.wikipedia.org/wiki/Morella,_Spain`, dominio `en.wikipedia.org`, `1.478 ms`, `0,008 USD/EUR`.
+- OpenAI: una sola Responses API con `gpt-5.6-luna`, prompt mínimo, `store: false`, sin tools/web/archivos/contexto previo, razonamiento `none`, `max_output_tokens: 16` y SDK con `maxRetries: 0`. Resultado literal `CONEXION_OPENAI_OK`, ID `resp••••0f39`, `17` tokens de entrada, `0` cacheados, `10` de salida, `2.110 ms`, `0,000077 USD/EUR`.
+- Ledger: 2 call IDs y 6 asientos append-only; ambas reservas `reconciled`; gasto `0,008077 EUR`; retenido `0`; restante `0,011923 EUR`; pendientes `0`; guarda global libre.
+- Pruebas previas: matriz 20/20, cuatro pruebas adicionales de clientes, suite normal 392 aprobadas y 11 opt-in omitidas, y dos integraciones locales del ledger aprobadas.
+- Validaciones previas: typecheck, ESLint y builds renderer/main/preload aprobados. El empaquetado NSIS volvió a alcanzar `release\\win-unpacked\\Investighost.exe` y falló después por el privilegio conocido de symlinks al extraer `winCodeSign`; no es un fallo del bundle.
+- Datos humanos: 13 solicitudes, 14 runs, 20 fuentes, 62 hechos, 24 borradores, 136 eventos y coste editorial histórico sin cambios. No se creó solicitud, run, fuente, hecho, borrador o evento.
+- Migraciones: ninguna. Las dos tarifas EUR y tres presupuestos de conectividad usan el esquema ya aplicado.
+- Errores reales: ninguno. No hubo segunda ronda, segundo intento o retry.
+- Publicaciones: `0`; Morella editorial: no ejecutada; PROMPT 11: no ejecutado; Trawel, producción y Automatic: desconectados.
+- Dictamen: `GO para preparar PROMPT 11`, que seguirá requiriendo autorización expresa antes de ejecutarse.

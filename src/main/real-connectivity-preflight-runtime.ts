@@ -44,6 +44,11 @@ async function inspectLocalInfrastructure(): Promise<{
   ledgerAvailable: boolean
   globalGuardFree: boolean
   activeRealExecutions: number
+  providerCalls: number
+  reservations: number
+  pendingReservations: number
+  reservedEur: number
+  spentEur: number
 }> {
   try {
     const { client, config } = createLocalSupabaseClientFromEnv()
@@ -54,6 +59,9 @@ async function inspectLocalInfrastructure(): Promise<{
       { error: ledgerError },
       { data: guard, error: guardError },
       { count: activeRealExecutions, error: reservationsError },
+      { count: providerCalls, error: providerCallsError },
+      { count: reservations, error: reservationCountError },
+      { data: connectivityBudget, error: budgetError },
     ] = await Promise.all([
       client.from('provider_calls').select('id', { head: true, count: 'exact' }).limit(1),
       client
@@ -65,13 +73,36 @@ async function inspectLocalInfrastructure(): Promise<{
         .from('provider_call_reservations')
         .select('id', { head: true, count: 'exact' })
         .in('state', ['reserved', 'started', 'unknown']),
+      client
+        .from('provider_call_reservations')
+        .select('id', { head: true, count: 'exact' }),
+      client
+        .from('provider_call_reservations')
+        .select('id', { head: true, count: 'exact' }),
+      client
+        .from('real_task_budgets')
+        .select('reserved_cost,spent_cost')
+        .eq('task_id', 'connectivity-check-10d-task')
+        .maybeSingle(),
     ])
 
-    if (ledgerError || guardError || reservationsError) return {
+    if (
+      ledgerError
+      || guardError
+      || reservationsError
+      || providerCallsError
+      || reservationCountError
+      || budgetError
+    ) return {
       supabaseLocalAvailable: true,
       ledgerAvailable: false,
       globalGuardFree: false,
       activeRealExecutions: activeRealExecutions ?? 0,
+      providerCalls: providerCalls ?? 0,
+      reservations: reservations ?? 0,
+      pendingReservations: activeRealExecutions ?? 0,
+      reservedEur: Number(connectivityBudget?.reserved_cost ?? 0),
+      spentEur: Number(connectivityBudget?.spent_cost ?? 0),
     }
 
     const guardExpired = guard?.expires_at
@@ -82,6 +113,11 @@ async function inspectLocalInfrastructure(): Promise<{
       ledgerAvailable: true,
       globalGuardFree: !guard?.owner_execution_id || guardExpired,
       activeRealExecutions: activeRealExecutions ?? 0,
+      providerCalls: providerCalls ?? 0,
+      reservations: reservations ?? 0,
+      pendingReservations: activeRealExecutions ?? 0,
+      reservedEur: Number(connectivityBudget?.reserved_cost ?? 0),
+      spentEur: Number(connectivityBudget?.spent_cost ?? 0),
     }
   } catch {
     return unavailableInfrastructure()
@@ -94,5 +130,10 @@ function unavailableInfrastructure() {
     ledgerAvailable: false,
     globalGuardFree: false,
     activeRealExecutions: 0,
+    providerCalls: 0,
+    reservations: 0,
+    pendingReservations: 0,
+    reservedEur: 0,
+    spentEur: 0,
   }
 }

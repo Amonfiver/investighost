@@ -1,20 +1,22 @@
 # Investighost — cierre y punto de reanudación actual
 
-## Estado vigente — PROMPT 10C preparado sin red
+## Estado vigente — PROMPT 10D completado y conciliado
 
 - Rama activa: `feat/investighost-real-pipeline`.
-- HEAD inicial del bloque: `e794a0bb1a1bf1422b12f94ac03d9a80946f9ea7`.
-- Tavily y OpenAI ya tienen clientes reales detrás de los puertos y de un permiso estricto; no existe ruta UI/IPC de investigación.
+- HEAD inicial del bloque: `272268e1f16482c323dc79e232ae5e14816054d6`.
+- Tavily y OpenAI tienen clientes reales detrás de un permiso estricto y una única ruta UI/IPC de conectividad; no existe ruta UI/IPC de investigación.
 - Las claves se introducen desde Centro de proveedores, se cifran con `safeStorage` fuera del proyecto y nunca regresan al renderer.
 - Catálogo oficial versionado: `2026-07-25.1`, moneda USD, verificado el 2026-07-25 y con revisión obligatoria desde 2026-08-25.
-- El preflight real consulta exclusivamente configuración pública y Supabase local. No descifra credenciales ni usa red.
-- La feature flag parte apagada y `Preparar prueba de conectividad` está deshabilitado.
-- Llamadas Tavily/OpenAI: 0; créditos: 0; tokens: 0; gasto: 0 EUR; publicaciones: 0.
+- Conversión `connectivity-fx-2026-07-25.1`: `1 USD = 1 EUR`, conservadora y no bancaria.
+- El preflight confirmó `safeStorage`, credenciales activas, Luna, tarifas, Supabase, ledger virgen, guarda libre y límites negativos.
+- A las 20:59 CEST se ejecutaron exactamente una Tavily Search basic y una OpenAI Responses con `gpt-5.6-luna`, sin retry.
+- Tavily: 1 crédito y `0,008 EUR`. OpenAI: 17 tokens de entrada, 0 cacheados, 10 de salida y `0,000077 EUR`.
+- Total: `0,008077 EUR`; reservas pendientes `0`; coste retenido `0`; guarda libre; publicaciones `0`.
 - PROMPT 11 no se ejecutó. Morella, Trawel, producción y Automatic permanecen bloqueados.
 
-Dictamen: **GO para introducir las claves desde la aplicación y preparar una prueba de conectividad controlada posterior; NO-GO para investigar o realizar ahora esa prueba.**
+Dictamen: **GO para preparar PROMPT 11; su ejecución sigue requiriendo otra autorización expresa.**
 
-La siguiente intervención, si recibe autorización separada, debe limitarse a una prueba mínima de conectividad. Antes de cualquier investigación también debe resolver de forma versionada la conversión entre tarifas USD y presupuestos EUR, persistir la reserva y adquirir la guarda. Las secciones históricas posteriores de este documento no amplían este alcance.
+El historial durable bloquea una segunda prueba de conectividad. La feature flag solo se habilitó en el proceso autorizado y no quedó persistida. Las secciones históricas posteriores no amplían este alcance ni autorizan investigación.
 
 ## Pipeline real — lote PROMPT 01–10 auditado
 
@@ -51,6 +53,8 @@ PROMPT 10 cierra la auditoría con dictamen **NO-GO operativo**. Las validacione
 PROMPT 10B resuelve aquel NO-GO con la migración aditiva `20260725183730_fix_provider_reservation_idempotency.sql`, sin modificar la migración aplicada original. Una clave existente solo devuelve la misma reserva si todos los campos de atribución, presupuesto, facturación y payload coinciden; cualquier diferencia produce `IDEMPOTENCY_CONFLICT`, tipado, sanitizado y no reintentable, sin presupuesto o ledger adicional. Las carreras idénticas/conflictivas se validaron en dos sesiones sobre una base local aislada y eliminada. Las rutas legacy de entorno, Kimi, Brave y orquestación histórica están deprecadas y bloqueadas antes de leer configuración, crear clientes, acceder a red o registrar inputs. Nuevo dictamen: **GO técnico para configurar credenciales y preparar autorización humana de PROMPT 11**. No autoriza conexiones, llamadas ni PROMPT 11.
 
 PROMPT 10C conecta Tavily REST y OpenAI SDK/Responses a las abstracciones nuevas, pero solo tras un permiso opaco que exige feature flag, configuración, preflight, autorización humana, reserva y guarda. El catálogo `2026-07-25.1` usa datos oficiales en USD y caduca para revisión. La pantalla muestra tarifa/modelo y un preflight local con ocho estados; la acción de conectividad está deshabilitada. Todos los tests usan secretos y transportes sintéticos. No se leyeron o probaron claves reales y no hubo llamadas, créditos, tokens o coste.
+
+PROMPT 10D añade una política exclusiva de conectividad, muestra la conversión conservadora y habilita una única acción con confirmación humana. Antes de red pasaron 20 escenarios obligatorios, cuatro pruebas de transporte, la suite completa y dos integraciones del ledger. La ejecución real produjo exactamente dos llamadas conciliadas por `0,008077 EUR`; los IDs solo se muestran enmascarados, las claves nunca se imprimieron y el segundo intento queda bloqueado. Los datos humanos conservan 13 solicitudes, 14 runs, 24 borradores y 136 eventos con sus timestamps previos.
 
 Fecha de actualización: 2026-07-25
 Estado canónico: **FASE 3J CERRADA; FASE 4A-01 COMMITTEADA; FASE 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA**
@@ -593,25 +597,25 @@ Ambos:
 
 ## 14. Persistencia, seguridad y migraciones
 
-- No hay migración nueva para J14 o para el cierre.
-- FASE 4A-01 y 4A-01B tampoco añaden ni ejecutan migraciones, seeds o integraciones Supabase.
+- No hay migración nueva para PROMPT 10D; se reutiliza el ledger local ya aplicado.
+- FASE 4A-01 y 4A-01B tampoco añadieron migraciones, seeds o integraciones Supabase.
 - No se alteró ni borró evidencia humana histórica.
 - No se ejecutó `supabase link`.
 - No se ejecutó `supabase db push`.
 - No se ejecutó `supabase db reset`.
 - No se conectó Trawel o producción.
 - No se publicó.
-- No se usó IA real.
-- No se cargaron créditos.
+- Se usó OpenAI real una única vez para el literal de conectividad; no se generó contenido editorial.
+- Se consumió 1 crédito Tavily y 27 tokens OpenAI por `0,008077 EUR` total.
 - No se implementó Automatic.
-- Solo se inició el bloque autorizado 4A-01B; 4A-02 no comenzó.
+- 4A-02 no comenzó y PROMPT 11 no se ejecutó.
 
 ## 15. Siguiente trabajo
 
 ```text
-EJECUTAR EL PILOTO HUMANO CONTROLADO DE FASE 4A-01B
+PREPARAR PROMPT 11 SIN EJECUTARLO
 ```
 
-La prueba propuesta es: abrir Biblioteca en página 1, avanzar a página 2, abrir una solicitud, volver conservando página 2, retroceder, regresar a la primera página y confirmar que navegar no crea solicitudes ni coste. Si no existen más de 25 solicitudes humanas, no deben crearse datos persistentes sin otra autorización; las pruebas sintéticas automatizadas demuestran el recorrido.
+La conectividad mínima ya está acreditada. La próxima intervención debe releer la hoja de ruta, definir el alcance exacto de PROMPT 11 y obtener autorización humana independiente antes de cualquier investigación. No debe repetir 10D ni reutilizar su botón para Morella.
 
-El commit `7b1ddde` de FASE 4A-01 ya existe en remoto. Esa secuencia pertenece al historial de la rama de reinvención. En la rama real actual, los clientes existen pero sus llamadas permanecen desconectadas. El siguiente paso autorizado por 10C es introducir las claves sin probarlas; cualquier conectividad o piloto exige otro gate humano, con publicaciones en cero y Trawel, Automatic y producción desconectados.
+El commit `7b1ddde` de FASE 4A-01 pertenece al historial de la rama de reinvención. En la rama real actual, publicaciones, Trawel, producción y Automatic siguen bloqueados.

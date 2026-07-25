@@ -17,6 +17,9 @@ import type {
   ProviderTestInput,
 } from '@shared/provider-center-contracts'
 import type { RealProfileSettings } from '@shared/real-profile-settings'
+import type {
+  RealConnectivityAuthorization,
+} from '@shared/real-connectivity-contracts'
 
 // API expuesta al renderer
 const electronAPI = {
@@ -55,6 +58,8 @@ const electronAPI = {
   removeProviderCredential: (input: ProviderDeleteInput) => ipcRenderer.invoke('providers:remove', input),
   testProviderSimulated: (input: ProviderTestInput) => ipcRenderer.invoke('providers:test-simulated', input),
   getRealConnectivityPreflight: () => ipcRenderer.invoke('real-preflight:get'),
+  runRealConnectivityCheck: (input: RealConnectivityAuthorization) =>
+    ipcRenderer.invoke('real-connectivity:run', input),
   getRealProfileSettings: () => ipcRenderer.invoke('real-profiles:get'),
   saveRealProfileSettings: (input: RealProfileSettings) => ipcRenderer.invoke('real-profiles:save', input),
 }

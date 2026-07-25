@@ -204,6 +204,16 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 .preflight-pass > span { background: #dff2e5; color: #24603a; }
 .preflight-warning > span { background: #fff0c7; color: #755200; }
 .preflight-block > span { background: #f7dedd; color: #802c28; }
+.conversion-card { display: flex; flex-direction: column; gap: 3px; margin: 0 0 14px; padding: 12px 14px; color: #315c4d; background: #f1f7f4; border: 1px solid #d5e5de; border-radius: 9px; font-size: 10px; }
+.conversion-card span, .conversion-card small { color: var(--muted); }
+.connectivity-result { margin-top: 14px; padding: 16px; background: #f8faf9; border: 1px solid var(--line); border-radius: 11px; }
+.connectivity-result > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.connectivity-result h4 { margin: 4px 0 0; font-size: 16px; }
+.connectivity-succeeded { border-color: #a9d3c1; background: #f4faf7; }
+.connectivity-failed, .connectivity-unknown, .connectivity-blocked { border-color: #e4b9b6; background: #fff9f8; }
+.connectivity-call-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.connectivity-call-grid > article { padding: 12px; background: white; border: 1px solid var(--line); border-radius: 9px; }
+.connectivity-call-grid > article > strong { font-size: 11px; }
 
 .role-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .role-settings-card { padding: 21px; background: #f8faf8; border: 1px solid var(--line); border-radius: 14px; opacity: .7; }
@@ -376,7 +386,7 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
   .sidebar { padding-left: 12px; padding-right: 12px; }
   .topbar, .content { padding-left: 22px; padding-right: 22px; }
   .safety-pill { display: none; }
-  .draft-columns, .quality-layout, .history-grid { grid-template-columns: 1fr; }
+  .draft-columns, .quality-layout, .history-grid, .connectivity-call-grid { grid-template-columns: 1fr; }
   .human-gate { grid-column: auto; }
   .tile-grid { grid-template-columns: 1fr; }
 }

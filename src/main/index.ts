@@ -111,7 +111,9 @@ import {
 } from '@modules/editorial-pipeline/manual-runtime'
 import { getProviderCenterRuntime } from './provider-center-runtime'
 import { getRealConnectivityPreflightRuntime } from './real-connectivity-preflight-runtime'
+import { executeRealConnectivityCheck } from './real-connectivity-runtime'
 import { getRealProfileSettingsRuntime } from './real-profile-settings-runtime'
+import { REAL_CONNECTIVITY_CONFIRMATION } from '@shared/real-connectivity-contracts'
 
 ipcMain.handle('contributions:import-pending', async () => {
   return (await getContributionImportRuntime()).importPending()
@@ -213,6 +215,10 @@ ipcMain.handle('providers:test-simulated', async (_event, input: unknown) => {
 
 ipcMain.handle('real-preflight:get', () => getRealConnectivityPreflightRuntime())
 
+ipcMain.handle('real-connectivity:run', async (_event, input: unknown) => {
+  return executeRealConnectivityCheck(input)
+})
+
 ipcMain.handle('real-profiles:get', () => getRealProfileSettingsRuntime().load())
 
 ipcMain.handle('real-profiles:save', async (_event, input: unknown) => {
@@ -233,7 +239,21 @@ async function providerCenterAction<T>(
 }
 
 // Ciclo de vida de la app
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  if (!app.isPackaged && process.argv.includes('--inspect-real-connectivity-preflight')) {
+    await runLocalConnectivityCommand(async () => getRealConnectivityPreflightRuntime())
+    return
+  }
+  if (!app.isPackaged && process.argv.includes('--authorized-real-connectivity-check-10d')) {
+    await runLocalConnectivityCommand(async () => executeRealConnectivityCheck({
+      humanConfirmation: REAL_CONNECTIVITY_CONFIRMATION,
+      morellaExecutionRequested: false,
+      publicationRequested: false,
+      automaticRequested: false,
+      trawelRequested: false,
+    }))
+    return
+  }
   // Valida Supabase local al arrancar; el fallo queda visible y nunca activa SQLite como fallback.
   getContributionImportRuntime().catch(error => console.error('[Contributions]', error.message))
   getManualResearchRuntime().catch(error => console.error('[Manual]', error.message))
@@ -245,6 +265,19 @@ app.whenReady().then(() => {
     }
   })
 })
+
+async function runLocalConnectivityCommand(operation: () => Promise<unknown>): Promise<void> {
+  try {
+    const result = await operation()
+    process.stdout.write(`REAL_CONNECTIVITY_AUDIT=${JSON.stringify(result)}\n`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Operación local rechazada'
+    process.stderr.write(`REAL_CONNECTIVITY_AUDIT_ERROR=${message}\n`)
+    process.exitCode = 1
+  } finally {
+    app.quit()
+  }
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

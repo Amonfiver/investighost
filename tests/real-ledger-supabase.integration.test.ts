@@ -22,7 +22,7 @@ values ('integration-task','integration-request','EUR',0.200000000);
 insert into public.real_batch_budgets (batch_id,currency,limit_cost)
 values ('integration-batch','EUR',0.500000000);
 insert into public.real_daily_budgets (budget_date,currency,limit_cost)
-values ('2026-07-25','EUR',1.000000000);
+values ('2099-01-01','EUR',1.000000000);
 
 select public.acquire_real_execution_guard(
   'integration-execution',
@@ -36,7 +36,7 @@ select public.acquire_real_execution_guard(
 
 select public.reserve_provider_call(
   'integration-idempotency','integration-execution','integration-request','integration-run',
-  'integration-task','integration-batch','2026-07-25','researching_round_1','search',
+  'integration-task','integration-batch','2099-01-01','researching_round_1','search',
   'synthetic','fixture',1,null::uuid,0.080000000,'EUR',
   '75000000-0000-4000-8000-000000000001','mission-v1','real-v1',
   'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'

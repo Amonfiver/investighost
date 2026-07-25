@@ -26,6 +26,8 @@ PROMPT 10B corrige la deuda con una nueva migración local aditiva: misma clave 
 
 PROMPT 10C permite introducir Tavily/OpenAI desde Electron y cifra las claves mediante `safeStorage`; añade Tavily REST y OpenAI SDK/Responses detrás de feature flag, preflight, autorización, reserva y guarda. El catálogo oficial `2026-07-25.1` conserva modelo/producto, Search/Extract, entrada/cache/salida, créditos, USD, fuentes y fecha de revisión. El preflight comprueba únicamente configuración pública y Supabase local, siempre informa cero llamadas y no autoriza investigación. La UI muestra el resultado y mantiene deshabilitada la preparación de conectividad. Dictamen: **GO para introducir claves y preparar una prueba de conectividad controlada posterior**, pero la prueba, PROMPT 11 y Morella requieren autorización independiente. La conversión durable USD→EUR sigue siendo bloqueante antes de investigar.
 
+PROMPT 10D fija `1 USD = 1 EUR` como conversión presupuestaria conservadora versionada y ejecuta la prueba mínima autorizada: una Tavily Search basic y una OpenAI Responses con `gpt-5.6-luna`, sin Extract, tools, web, retry, rondas o contenido editorial. Ambas reservas quedan conciliadas; coste total `0,008077 EUR`, pendientes `0`, guarda libre y datos humanos/publicaciones intactos. El segundo intento queda bloqueado. Dictamen: **GO para preparar PROMPT 11**, cuya ejecución requiere autorización separada.
+
 Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada y committeada; FASE 4A-01B está implementada técnicamente y pendiente de prueba humana. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia
@@ -204,10 +206,10 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 
 ## Orden inmediato vigente
 
-1. Mantener PROMPT 11 sin ejecutar, la feature flag apagada y el botón de conectividad deshabilitado.
-2. Permitir que el operador introduzca y active Tavily/OpenAI desde la aplicación, sin probar las claves contra Internet.
-3. Solicitar autorización separada para una prueba mínima de conectividad; no convertirla en investigación Morella.
-4. Antes de cualquier investigación, versionar la conversión USD→EUR, persistir presupuesto/reserva y comprobar guarda/ledger.
+1. Mantener PROMPT 11 sin ejecutar hasta recibir autorización expresa.
+2. No repetir la prueba 10D: el ledger durable bloquea el segundo intento.
+3. Preparar el gate de PROMPT 11 reutilizando solo controles que ese bloque autorice expresamente.
+4. Mantener la feature flag apagada fuera de una ventana humana y conservar reserva, ledger, guarda y límites fail-closed.
 5. Mantener Automatic, producción, Trawel y publicación bloqueados.
 
 ## Estado FASE 2C-B — 2026-07-14

@@ -24,6 +24,8 @@ PROMPT 05 implementa OpenAI detrás de `IntelligenceEngine` con cliente Response
 
 PROMPT 06 conecta misión, `ResearchTool`, expediente e `IntelligenceEngine` en un orquestador estrictamente limitado a dos rondas. La segunda exige carencia high/critical resoluble, consulta no repetida/equivalente, límites y presupuesto. Checkpoints con integridad y operaciones idempotentes permiten reanudar sin repetir llamadas o coste simulado. Tras ronda 2 solo se continúa a redacción o `review_required`.
 
+PROMPT 07 añade controles visibles del pipeline real inactivo. Cada perfil puede activarse, elegir profundidad y extensión entre 800 y 4.000 palabras en pasos de 100; defaults: Aventura 1.000 y Estudiante 1.800. Las preferencias viven fuera del proyecto, sobreviven al reinicio y no ejecutan proveedores. Los prompts distinguen roles y prohíben rellenar cuando la evidencia no cubre el objetivo.
+
 Fecha de actualización: 2026-07-25
 Estado canónico: **FASE 3J CERRADA; FASE 4A-01 COMMITTEADA; FASE 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA**
 

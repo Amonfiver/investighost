@@ -25,6 +25,10 @@ import type {
   ProviderCenterSnapshot,
   ProviderPublicStatus,
 } from '@shared/provider-center-contracts'
+import {
+  assessProfileEvidence,
+  type RealProfileSettings,
+} from '@shared/real-profile-settings'
 import type { EditorialDraftVersionSummary } from '@modules/editorial-pipeline/repository'
 import {
   LIBRARY_PAGE_SUMMARY_LABEL,
@@ -34,7 +38,7 @@ import {
   type LibraryNavigationState,
 } from './library-navigation'
 
-type View = 'library' | 'new' | 'detail' | 'contributions' | 'providers'
+type View = 'library' | 'new' | 'detail' | 'contributions' | 'providers' | 'real-config'
 type DetailTab = 'overview' | 'sources' | 'facts' | 'places' | 'activities' | 'drafts' | 'quality' | 'history'
 
 const stageLabels: Record<string, string> = {
@@ -216,6 +220,7 @@ export function App(): JSX.Element {
           <button className={view === 'new' ? 'nav-active' : ''} onClick={() => go('new')}>Nueva investigación</button>
           <button className={view === 'contributions' ? 'nav-active' : ''} onClick={() => go('contributions')}>Contribuciones</button>
           <button className={view === 'providers' ? 'nav-active' : ''} onClick={() => go('providers')}>Proveedores</button>
+          <button className={view === 'real-config' ? 'nav-active' : ''} onClick={() => go('real-config')}>Pipeline real</button>
         </nav>
         <div className="environment-card">
           <span className={`connection-dot ${status?.connected ? 'online' : ''}`} aria-hidden="true" />
@@ -278,6 +283,7 @@ export function App(): JSX.Element {
           )}
           {view === 'contributions' && <ContributionImportPanel />}
           {view === 'providers' && <ProviderCenterPanel />}
+          {view === 'real-config' && <RealProfileSettingsPanel />}
         </main>
       </div>
     </div>
@@ -804,6 +810,83 @@ function ProviderCenterPanel(): JSX.Element {
   )
 }
 
+function RealProfileSettingsPanel(): JSX.Element {
+  const [settings, setSettings] = useState<RealProfileSettings | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  useEffect(() => {
+    window.electronAPI.getRealProfileSettings()
+      .then(setSettings)
+      .catch(reason => setLocalError(errorText(reason)))
+  }, [])
+
+  const updateProfile = (
+    profile: 'adventure' | 'student',
+    patch: Partial<RealProfileSettings['profiles'][number]>,
+  ) => {
+    setSaved(false)
+    setSettings(current => current ? {
+      ...current,
+      profiles: current.profiles.map(item => item.profile === profile ? { ...item, ...patch } : item),
+    } : current)
+  }
+
+  const save = async () => {
+    if (!settings) return
+    setSaving(true)
+    setLocalError(null)
+    try {
+      setSettings(await window.electronAPI.saveRealProfileSettings(settings))
+      setSaved(true)
+    } catch (reason) {
+      setLocalError(errorText(reason))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!settings) {
+    return <section><div className="empty-card provider-loading"><span className="spinner" /><h2>Cargando roles editoriales…</h2></div></section>
+  }
+  const evidence = assessProfileEvidence(settings, 0)
+  const activeCount = settings.profiles.filter(profile => profile.enabled).length
+  return (
+    <section>
+      <div className="section-heading">
+        <div><span className="eyebrow">PIPELINE REAL · CONFIGURACIÓN</span><h2>Roles y extensión</h2><p>La investigación será compartida; cada perfil conserva su voz, profundidad y objetivo aproximado.</p></div>
+        <span className="safety-pill">Ejecución real bloqueada</span>
+      </div>
+      {localError && <div className="alert error" role="alert"><strong>No se pudo guardar.</strong><span>{localError}</span></div>}
+      <div className="role-settings-grid">
+        {settings.profiles.map(profile => {
+          const assessment = evidence.find(item => item.profile === profile.profile)
+          const adventure = profile.profile === 'adventure'
+          return (
+            <article className={`role-settings-card ${profile.enabled ? 'enabled' : ''}`} key={profile.profile}>
+              <header>
+                <div><span className="profile-label">{adventure ? 'AVENTURA' : 'ESTUDIANTE'}</span><h3>{adventure ? 'Aventurero experimentado' : 'Profesor o divulgador cercano'}</h3></div>
+                <label className="role-toggle"><input type="checkbox" checked={profile.enabled} onChange={event => updateProfile(profile.profile, { enabled: event.target.checked })} /><span>{profile.enabled ? 'Activo' : 'Inactivo'}</span></label>
+              </header>
+              <p>{adventure ? 'Rutas, lugares, accesos, duración, costes, temporada y riesgos.' : 'Historia, fechas, población, monumentos, cultura y vida cotidiana.'}</p>
+              <div className="form-grid">
+                <label className="field"><span>Extensión aproximada</span><input type="number" min={800} max={4000} step={100} value={profile.targetWords} onChange={event => updateProfile(profile.profile, { targetWords: Number(event.target.value) })} /></label>
+                <label className="field"><span>Profundidad</span><select value={profile.depth} onChange={event => updateProfile(profile.profile, { depth: event.target.value as 'standard' | 'deep' })}><option value="standard">Estándar</option><option value="deep">Profunda</option></select></label>
+              </div>
+              <small className="extension-help">800–4.000 palabras · incrementos de 100 · objetivo orientativo, nunca relleno.</small>
+              {profile.enabled && assessment?.warning && <div className="evidence-warning" role="status"><strong>Evidencia pendiente</strong><span>{assessment.warning} Se comprobará tras investigar.</span></div>}
+            </article>
+          )
+        })}
+      </div>
+      <div className="shared-research-note"><strong>Una sola investigación compartida</strong><span>Aventura y Estudiante reutilizarán el mismo expediente y conocimiento maestro; activar ambos no duplica Tavily.</span></div>
+      {activeCount === 0 && <div className="alert warning" role="alert"><strong>Activa al menos un perfil.</strong></div>}
+      <div className="form-actions"><span className="muted">{saved ? 'Configuración guardada localmente.' : 'Sin ejecutar proveedores.'}</span><button className="button primary" disabled={saving || activeCount === 0 || settings.profiles.some(profile => profile.targetWords < 800 || profile.targetWords > 4000 || profile.targetWords % 100 !== 0)} onClick={save}>{saving ? 'Guardando…' : 'Guardar configuración'}</button></div>
+    </section>
+  )
+}
+
 function StateBadge({ value }: { value: string }): JSX.Element {
   return <span className={`state-badge state-${value}`}>{stateLabels[value] ?? value.replaceAll('_', ' ')}</span>
 }
@@ -813,6 +896,7 @@ function viewTitle(view: View, selected: ResearchDestinationResult | null): stri
   if (view === 'detail') return selected?.destination.name ?? 'Detalle de ejecución'
   if (view === 'contributions') return 'Contribuciones'
   if (view === 'providers') return 'Centro de proveedores'
+  if (view === 'real-config') return 'Pipeline real'
   return 'Biblioteca editorial'
 }
 

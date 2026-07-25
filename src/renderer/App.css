@@ -190,6 +190,18 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 .provider-form-actions .button { min-height: 34px; font-size: 10px; }
 .provider-loading { min-height: 240px; }
 
+.role-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.role-settings-card { padding: 21px; background: #f8faf8; border: 1px solid var(--line); border-radius: 14px; opacity: .7; }
+.role-settings-card.enabled { background: white; border-color: #b9d8cc; box-shadow: var(--shadow); opacity: 1; }
+.role-settings-card > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.role-settings-card h3 { margin: 5px 0 0; font-size: 16px; }
+.role-settings-card > p { min-height: 35px; margin: 13px 0 16px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.role-toggle { display: flex; align-items: center; gap: 6px; color: var(--green); font-size: 10px; font-weight: 700; }
+.extension-help { display: block; margin-top: -4px; color: var(--muted); font-size: 9px; }
+.evidence-warning { display: flex; flex-direction: column; gap: 2px; margin-top: 13px; padding: 10px 11px; color: #76501b; background: var(--amber-soft); border-radius: 8px; font-size: 10px; }
+.shared-research-note { display: flex; flex-direction: column; gap: 3px; margin-top: 14px; padding: 14px 16px; color: #2d5d4e; background: var(--green-soft); border: 1px solid #cde4da; border-radius: 10px; font-size: 11px; }
+.shared-research-note span { color: #4e7165; }
+
 .detail-hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; padding: 23px 25px; color: white; background: linear-gradient(125deg, #134f3e, #0b352b); border-radius: 14px 14px 0 0; }
 .detail-hero h2 { margin: 5px 0 2px; font-size: 27px; }
 .detail-hero p { margin: 0; color: #b8d3ca; font-size: 11px; }

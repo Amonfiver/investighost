@@ -16,6 +16,7 @@ import type {
   ProviderDeleteInput,
   ProviderTestInput,
 } from '@shared/provider-center-contracts'
+import type { RealProfileSettings } from '@shared/real-profile-settings'
 
 // API expuesta al renderer
 const electronAPI = {
@@ -53,6 +54,8 @@ const electronAPI = {
   setProviderActive: (input: ProviderActivationInput) => ipcRenderer.invoke('providers:set-active', input),
   removeProviderCredential: (input: ProviderDeleteInput) => ipcRenderer.invoke('providers:remove', input),
   testProviderSimulated: (input: ProviderTestInput) => ipcRenderer.invoke('providers:test-simulated', input),
+  getRealProfileSettings: () => ipcRenderer.invoke('real-profiles:get'),
+  saveRealProfileSettings: (input: RealProfileSettings) => ipcRenderer.invoke('real-profiles:save', input),
 }
 
 // Exponer como window.electronAPI

@@ -39,6 +39,7 @@ import type {
   ProviderDeleteInput,
   ProviderTestInput,
 } from './shared/provider-center-contracts'
+import type { RealProfileSettings } from './shared/real-profile-settings'
 
 declare global {
   interface Window {
@@ -76,6 +77,8 @@ declare global {
       setProviderActive: (input: ProviderActivationInput) => Promise<ProviderCenterSnapshot>
       removeProviderCredential: (input: ProviderDeleteInput) => Promise<ProviderCenterSnapshot>
       testProviderSimulated: (input: ProviderTestInput) => Promise<ProviderCenterSnapshot>
+      getRealProfileSettings: () => Promise<RealProfileSettings>
+      saveRealProfileSettings: (input: RealProfileSettings) => Promise<RealProfileSettings>
     }
   }
 }

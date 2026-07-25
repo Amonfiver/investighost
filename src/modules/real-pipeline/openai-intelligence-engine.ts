@@ -154,7 +154,7 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
           depth: mission.depth,
         },
         masterKnowledge: knowledge,
-        instruction: roleInstruction(profile.profile),
+        instruction: roleInstruction(profile.profile, profile.targetWords, profile.depth ?? mission.depth),
       }, OpenAIDraftOutputSchema, signal)
       const output = parseStructuredOutput(response, OpenAIDraftOutputSchema)
       if (output.profile !== profile.profile || output.coverage.profile !== profile.profile) {
@@ -315,8 +315,13 @@ async function withOpenAITimeout<T>(
   }
 }
 
-function roleInstruction(profile: 'adventure' | 'student'): string {
-  return profile === 'adventure'
+function roleInstruction(
+  profile: 'adventure' | 'student',
+  targetWords: number,
+  depth: 'standard' | 'deep',
+): string {
+  const role = profile === 'adventure'
     ? 'Escribe como aventurero experimentado: rutas, lugares, accesos, duración, costes, temporada y riesgos.'
     : 'Escribe como profesor cercano: historia, fechas, población, monumentos, cultura y vida cotidiana.'
+  return `${role} Objetivo aproximado: ${targetWords} palabras; profundidad ${depth}. No rellenes: si falta evidencia, adviértelo.`
 }

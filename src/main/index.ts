@@ -110,6 +110,7 @@ import {
   MANUAL_LOCAL_ACTOR_ID,
 } from '@modules/editorial-pipeline/manual-runtime'
 import { getProviderCenterRuntime } from './provider-center-runtime'
+import { getRealProfileSettingsRuntime } from './real-profile-settings-runtime'
 
 ipcMain.handle('contributions:import-pending', async () => {
   return (await getContributionImportRuntime()).importPending()
@@ -207,6 +208,12 @@ ipcMain.handle('providers:remove', async (_event, input: unknown) => {
 
 ipcMain.handle('providers:test-simulated', async (_event, input: unknown) => {
   return providerCenterAction(service => service.testConnection(input))
+})
+
+ipcMain.handle('real-profiles:get', () => getRealProfileSettingsRuntime().load())
+
+ipcMain.handle('real-profiles:save', async (_event, input: unknown) => {
+  return getRealProfileSettingsRuntime().save(input)
 })
 
 async function providerCenterAction<T>(

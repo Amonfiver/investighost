@@ -14,6 +14,8 @@ PROMPT 05 añade el primer `IntelligenceEngine` OpenAI sobre el contrato de Resp
 
 PROMPT 06 cierra la orquestación controlada de investigación: ronda inicial, ampliación focalizada solo para carencias relevantes y parada definitiva tras ronda 2. Hashes de consulta, equivalencias, límites, checkpoints íntegros e idempotencia impiden loops, duplicados y doble coste.
 
+PROMPT 07 expone Aventura y Estudiante con activación, profundidad y extensión aproximada persistente. El rango 800–4.000 avanza de 100 en 100, los prompts prohíben relleno y ambos perfiles reutilizan una sola investigación.
+
 Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada y committeada; FASE 4A-01B está implementada técnicamente y pendiente de prueba humana. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia

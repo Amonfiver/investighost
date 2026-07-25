@@ -246,6 +246,9 @@ describe('OpenAI IntelligenceEngine estructurado y sin red', () => {
     expect(drafts.every(draft => draft.promptVersion === 'editorial-test-v2')).toBe(true)
     expect(client.requests[0].input[1].content).toContain('"targetWords":1000')
     expect(client.requests[1].input[1].content).toContain('"targetWords":1800')
+    expect(client.requests[0].input[1].content).toContain('No rellenes')
+    expect(client.requests[0].input[1].content).toContain('aventurero experimentado')
+    expect(client.requests[1].input[1].content).toContain('profesor cercano')
   })
 
   it('representa insuficiencia por perfil con requisitos distintos', () => {

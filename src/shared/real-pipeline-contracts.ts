@@ -19,7 +19,7 @@ export const RealProviderReferenceSchema = z.object({
 
 export const RealEditorialProfileSchema = z.enum(['adventure', 'student'])
 export const RealResearchDepthSchema = z.enum(['standard', 'deep'])
-export const RealTargetWordCountSchema = z.number().int().min(100).max(10_000).refine(
+export const RealTargetWordCountSchema = z.number().int().min(800).max(4_000).refine(
   value => value % 100 === 0,
   'La extensión debe expresarse en incrementos de 100 palabras',
 )
@@ -27,6 +27,7 @@ export const RealProfileConfigurationSchema = z.object({
   profile: RealEditorialProfileSchema,
   enabled: z.boolean(),
   targetWords: RealTargetWordCountSchema,
+  depth: RealResearchDepthSchema.optional(),
 })
 
 export const RealRoundNumberSchema = z.union([z.literal(1), z.literal(2)])

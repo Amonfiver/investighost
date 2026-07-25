@@ -103,3 +103,20 @@ Este informe acumula la evidencia del lote autónomo PROMPT 01–10. Hasta que e
 - Coste real consumido: `0 EUR`.
 - Llamadas reales realizadas: `0`.
 - Fronteras negativas: máximo literal de dos rondas, sin loops, red, claves, proveedores reales, publicación, Trawel, producción ni Automatic.
+
+## PROMPT 07 — Roles editoriales y control Extensión
+
+- Fecha/hora: 2026-07-25 (Europe/Madrid).
+- HEAD inicial: `f518765098a3c5ad587dfab4a970af47553acfc5`.
+- HEAD final: commit único de este bloque, con mensaje `feat: añadir roles y extensión configurable por perfil`.
+- Commit: el hash queda reflejado en la auditoría consolidada posterior para evitar una referencia circular dentro del propio commit.
+- Archivos modificados: contratos/preferencias, store local, runtime e IPC, UI/estilos, prompts del motor, pruebas y documentación.
+- Migraciones: ninguna; las preferencias se guardan fuera del proyecto en `userData`.
+- Pruebas: defaults, controles, incrementos/rangos, unicidad/activación, persistencia, reinicio, prompts, perfiles independientes, evidencia insuficiente e investigación compartida.
+- Builds: suite específica, regresión motor/workflow, suite normal, typecheck, ESLint y builds renderer/main/preload ejecutados antes del commit.
+- Decisiones: mínimo 800 y máximo 4000; paso 100; Aventura 1000/standard y Estudiante 1800/deep; objetivo aproximado sin relleno; profundidad por perfil; el expediente siempre es compartido.
+- Riesgos: el aviso previo solo puede indicar evidencia pendiente; la suficiencia efectiva se calcula después de investigar.
+- Deuda: enlazar la evaluación de cobertura real al resumen del piloto fake en PROMPT 08.
+- Coste real consumido: `0 EUR`.
+- Llamadas reales realizadas: `0`.
+- Fronteras negativas: guardar preferencias no ejecuta investigación ni crea solicitudes; sin red, proveedores reales, publicación, Trawel, producción ni Automatic.

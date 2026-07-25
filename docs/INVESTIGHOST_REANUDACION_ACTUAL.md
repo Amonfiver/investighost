@@ -619,3 +619,37 @@ PREPARAR PROMPT 11 SIN EJECUTARLO
 La conectividad mínima ya está acreditada. La próxima intervención debe releer la hoja de ruta, definir el alcance exacto de PROMPT 11 y obtener autorización humana independiente antes de cualquier investigación. No debe repetir 10D ni reutilizar su botón para Morella.
 
 El commit `7b1ddde` de FASE 4A-01 pertenece al historial de la rama de reinvención. En la rama real actual, publicaciones, Trawel, producción y Automatic siguen bloqueados.
+
+## 16. Estado tras PROMPT 10E
+
+PROMPT 10E corrige el NO-GO técnico que impedía ejecutar de forma durable el piloto real. El sistema dispone ahora de:
+
+- preflight editorial independiente del ensayo 10D;
+- modo durable `real_editorial_pilot`, separado de `manual` y de la identidad futura `automatic`;
+- presupuesto y guarda propios de Morella con parada automática en `0,20 EUR`;
+- repositorio append-only para misión, rondas, fuentes, documentos, evidencia, conocimiento, borradores, revisión, incidencias, eventos y checkpoints;
+- ledger editorial relacionado con piloto y run, sin hardcodes de `connectivity-check-10d`;
+- estado `pending_human_review`;
+- preparación idempotente, bloqueo de identidad duplicada y variante humana distinta;
+- IPC/UI para preparar, confirmar presupuesto, observar, cancelar, reanudar y consultar resultado;
+- workflow completo verificado con clientes falsos y reinicio simulado.
+
+Las migraciones locales son:
+
+1. `20260725213000_real_editorial_pilot.sql`;
+2. `20260725214500_real_editorial_prepare_idempotency.sql`;
+3. `20260725215500_real_editorial_ledger_sanitization.sql`;
+4. `20260725220500_real_editorial_prepare_concurrency.sql`;
+5. `20260725221500_real_editorial_connectivity_evidence.sql`.
+
+No hay piloto real persistido todavía: la integración usó rollback y la UI no ejecutó preparación. Las 13 solicitudes Manual, 14 runs, 20 fuentes, 62 hechos, 24 borradores y 136 eventos permanecen intactos. El historial 10D conserva dos llamadas conciliadas, cero reservas pendientes y `0,008077 EUR`; 10E añadió cero gasto.
+
+## 17. Siguiente trabajo vigente
+
+```text
+REINTENTAR PROMPT 11 SOLO CON AUTORIZACIÓN HUMANA EXPRESA
+```
+
+Antes de cualquier red, PROMPT 11 debe obtener `ready_for_real_editorial_pilot`, preparar el piloto separado, confirmar su presupuesto de `0,20 EUR` y habilitar temporalmente la feature flag editorial. Debe detenerse si hay duplicado real, reserva pendiente, guarda ocupada, tarifa no vigente o cualquier frontera negativa.
+
+PROMPT 11 sigue sin ejecutarse. Publicación, Trawel, producción y Automatic continúan bloqueados; la prueba 10D no debe repetirse.

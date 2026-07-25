@@ -35,6 +35,10 @@ import {
   type RealConnectivityResult,
 } from '@shared/real-connectivity-contracts'
 import type { EditorialDraftVersionSummary } from '@modules/editorial-pipeline/repository'
+import type {
+  RealEditorialPilotProgress,
+  RealEditorialPreflight,
+} from '@shared/real-editorial-pilot-contracts'
 import {
   LIBRARY_PAGE_SUMMARY_LABEL,
   LibraryNavigator,
@@ -936,6 +940,7 @@ function RealProfileSettingsPanel(): JSX.Element {
         result={connectivityResult}
         onRun={runConnectivityCheck}
       />
+      <RealEditorialPilotPanel />
       {activeCount === 0 && <div className="alert warning" role="alert"><strong>Activa al menos un perfil.</strong></div>}
       <div className="form-actions"><span className="muted">{saved ? 'Configuración guardada localmente.' : 'Sin ejecutar proveedores.'}</span><button className="button primary" disabled={saving || activeCount === 0 || settings.profiles.some(profile => profile.targetWords < 800 || profile.targetWords > 4000 || profile.targetWords % 100 !== 0)} onClick={save}>{saving ? 'Guardando…' : 'Guardar configuración'}</button></div>
     </section>
@@ -995,6 +1000,199 @@ function RealPilotPreflightPanel({ preflight, checking, result, onRun }: {
         >
           {checking ? 'Probando conectividad…' : 'Probar conectividad real'}
         </button>
+      </div>
+    </section>
+  )
+}
+
+function RealEditorialPilotPanel(): JSX.Element {
+  const [preflight, setPreflight] = useState<RealEditorialPreflight | null>(null)
+  const [progress, setProgress] = useState<RealEditorialPilotProgress | null>(null)
+  const [operation, setOperation] = useState<string | null>(null)
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  const refresh = useCallback(async (pilotId?: string) => {
+    const nextPreflight = await window.electronAPI.getRealEditorialPreflight(pilotId)
+    setPreflight(nextPreflight)
+    const currentId = pilotId ?? nextPreflight.pilot?.id
+    if (currentId) {
+      setProgress(await window.electronAPI.getRealEditorialProgress({ pilotId: currentId }))
+    }
+  }, [])
+
+  useEffect(() => {
+    refresh().catch(reason => setLocalError(errorText(reason)))
+  }, [refresh])
+
+  useEffect(() => {
+    const pilotId = preflight?.pilot?.id
+    if (operation !== 'start' || !pilotId) return
+    const timer = window.setInterval(() => {
+      window.electronAPI.getRealEditorialProgress({ pilotId })
+        .then(setProgress)
+        .catch(() => undefined)
+    }, 1_000)
+    return () => window.clearInterval(timer)
+  }, [operation, preflight?.pilot?.id])
+
+  const run = async (name: string, action: () => Promise<unknown>, pilotId?: string) => {
+    setOperation(name)
+    setLocalError(null)
+    try {
+      await action()
+      await refresh(pilotId)
+    } catch (reason) {
+      setLocalError(errorText(reason))
+      if (pilotId) await refresh(pilotId).catch(() => undefined)
+    } finally {
+      setOperation(null)
+    }
+  }
+
+  const prepare = async () => {
+    let preparedId: string | undefined
+    await run('prepare', async () => {
+      const pilot = await window.electronAPI.prepareRealEditorialPilot({
+        variantKey: 'initial',
+        preparationKey: 'morella-real-editorial-pilot-v1-initial-prepare',
+        taskOrigin: 'human_authorized',
+        profiles: [
+          { profile: 'adventure', enabled: true, targetWords: 1_000, depth: 'standard' },
+          { profile: 'student', enabled: true, targetWords: 1_800, depth: 'deep' },
+        ],
+      })
+      preparedId = pilot.id
+    })
+    if (preparedId) await refresh(preparedId)
+  }
+
+  if (!preflight) {
+    return (
+      <section className="real-preflight">
+        <div className="provider-loading"><span className="spinner" /> Cargando ruta durable…</div>
+      </section>
+    )
+  }
+
+  const pilot = progress?.pilot ?? preflight.pilot
+  const active = pilot && [
+    'researching_round_1',
+    'evaluating_round_1',
+    'researching_round_2',
+    'evaluating_round_2',
+    'generating_adventure',
+    'generating_student',
+    'final_review',
+  ].includes(pilot.state)
+  const ready = preflight.status === 'ready_for_real_editorial_pilot'
+  return (
+    <section className="real-preflight editorial-pilot" aria-label="Ruta durable del piloto editorial real">
+      <header>
+        <div>
+          <span className="card-kicker">RUTA EDITORIAL DURABLE · MORELLA</span>
+          <h3>Preparación, progreso y reanudación</h3>
+          <p>Ruta independiente de la prueba 10D y de las solicitudes Manual históricas.</p>
+        </div>
+        <span className={`state-badge ${ready ? 'state-approved' : 'state-blocked'}`}>
+          {pilot ? stateLabels[pilot.state] ?? pilot.state : editorialPreflightLabel(preflight.status)}
+        </span>
+      </header>
+      <div className="real-policy-strip">
+        <span>Destino Morella · ES · localidad</span>
+        <span>Aventura · 1.000 palabras</span>
+        <span>Estudiante · 1.800 palabras</span>
+        <span>Tavily Search basic</span>
+        <span>OpenAI {preflight.policy.providers.model}</span>
+        <span>Objetivo {formatMoney(preflight.policy.targetCostEur)}</span>
+        <span>Aviso {formatMoney(preflight.policy.warningCostEur)}</span>
+        <span>Parada {formatMoney(preflight.policy.automaticStopCostEur)}</span>
+        <span>Máximo {preflight.policy.maxRounds} rondas</span>
+        <span>{preflight.policy.maxFocusedQueries} consultas focalizadas</span>
+        <span>Concurrencia {preflight.policy.maxConcurrency}</span>
+        <span>0 regeneraciones</span>
+        <span>0 publicaciones</span>
+      </div>
+      {localError && <div className="alert error"><strong>Ruta detenida.</strong><span>{localError}</span></div>}
+      {pilot && (
+        <dl className="definition-grid compact">
+          <div><dt>Modo</dt><dd>real_editorial_pilot</dd></div>
+          <div><dt>Estado</dt><dd>{stateLabels[pilot.state] ?? pilot.state}</dd></div>
+          <div><dt>Run</dt><dd className="technical-id">{pilot.currentRunId}</dd></div>
+          <div><dt>Presupuesto</dt><dd>{pilot.budgetConfirmed ? '0,20 EUR confirmado' : 'Pendiente'}</dd></div>
+          <div><dt>Ronda</dt><dd>{progress?.currentRound ?? 0} / 2</dd></div>
+          <div><dt>Coste</dt><dd>{formatMoney(progress?.accumulatedCost ?? pilot.budget?.spentCost ?? 0)}</dd></div>
+          <div><dt>Reservas pendientes</dt><dd>{progress?.pendingReservations ?? 0}</dd></div>
+          <div><dt>Publicaciones</dt><dd>{pilot.publicationCount}</dd></div>
+        </dl>
+      )}
+      <div className="preflight-checks">
+        {preflight.checks.map(check => (
+          <article className={`preflight-${check.status}`} key={check.code}>
+            <span aria-hidden="true">{check.status === 'pass' ? '✓' : check.status === 'warning' ? '!' : '×'}</span>
+            <div><strong>{check.label}</strong><small>{check.detail}</small></div>
+          </article>
+        ))}
+      </div>
+      <div className="form-actions editorial-actions">
+        <span className="muted">Este panel no publica, no conecta Trawel y no activa Automatic.</span>
+        {!pilot && (
+          <button className="button secondary" disabled={operation !== null} onClick={prepare}>
+            {operation === 'prepare' ? 'Preparando…' : 'Preparar piloto'}
+          </button>
+        )}
+        {pilot && !pilot.budgetConfirmed && (
+          <button
+            className="button secondary"
+            disabled={operation !== null}
+            onClick={() => run(
+              'budget',
+              () => window.electronAPI.confirmRealEditorialBudget({ pilotId: pilot.id }),
+              pilot.id,
+            )}
+          >
+            {operation === 'budget' ? 'Confirmando…' : 'Confirmar presupuesto 0,20 EUR'}
+          </button>
+        )}
+        {pilot && !active && pilot.state !== 'cancelled' && pilot.state !== 'pending_human_review' && (
+          <button
+            className="button primary"
+            disabled={!preflight.startActionEnabled || operation !== null}
+            onClick={() => {
+              if (!window.confirm('Iniciar el piloto real Morella consumirá saldo. Requiere autorización operativa expresa.')) return
+              void run('start', () => window.electronAPI.startRealEditorialPilot({ pilotId: pilot.id }), pilot.id)
+            }}
+          >
+            {operation === 'start' ? 'Ejecutando…' : 'Iniciar piloto real'}
+          </button>
+        )}
+        {pilot && (active || operation === 'start') && (
+          <button
+            className="button danger"
+            disabled={operation === 'cancel'}
+            onClick={() => run(
+              'cancel',
+              () => window.electronAPI.cancelRealEditorialPilot({
+                pilotId: pilot.id,
+                reason: 'Cancelación humana desde la interfaz',
+              }),
+              pilot.id,
+            )}
+          >
+            Cancelar
+          </button>
+        )}
+        {pilot?.state === 'cancelled' && (
+          <button
+            className="button secondary"
+            disabled={!ready || operation !== null}
+            onClick={() => {
+              if (!window.confirm('Reanudar continuará desde el checkpoint durable sin repetir trabajo conciliado.')) return
+              void run('start', () => window.electronAPI.resumeRealEditorialPilot({ pilotId: pilot.id }), pilot.id)
+            }}
+          >
+            Reanudar desde checkpoint
+          </button>
+        )}
       </div>
     </section>
   )
@@ -1091,6 +1289,21 @@ function preflightStatusLabel(value: RealConnectivityPreflight['status']): strin
     real_feature_disabled: 'Feature flag desactivada',
     budget_invalid: 'Presupuesto inválido',
     provider_inactive: 'Proveedor inactivo',
+    blocked: 'Bloqueado',
+  }
+  return labels[value]
+}
+function editorialPreflightLabel(value: RealEditorialPreflight['status']): string {
+  const labels: Record<RealEditorialPreflight['status'], string> = {
+    ready_for_real_editorial_pilot: 'Preparado para piloto',
+    missing_credentials: 'Faltan credenciales',
+    provider_inactive: 'Proveedor inactivo',
+    missing_tariff: 'Falta tarifa vigente',
+    budget_invalid: 'Presupuesto pendiente',
+    unsafe_storage: 'Almacenamiento inseguro',
+    duplicate_requires_resolution: 'Duplicado bloqueado',
+    repository_unavailable: 'Repositorio no disponible',
+    real_feature_disabled: 'Feature flag desactivada',
     blocked: 'Bloqueado',
   }
   return labels[value]

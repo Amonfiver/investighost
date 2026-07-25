@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto'
 import type {
   ProviderCallReservation,
   ProviderCallReservationInput,
+  ProviderCallSettlement,
 } from '@shared/real-cost-contracts'
 import { CostLedgerService } from './cost-ledger'
 import { RealWorkflowError, type WorkflowCallExecutor } from './real-workflow'
@@ -26,6 +28,8 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     private readonly ledger: CostLedgerService,
     private readonly metadata: LedgeredCallMetadataFactory,
     private readonly budgetLimit: number,
+    private readonly durableResultAvailable: (operationId: string) => Promise<boolean> =
+      async () => false,
   ) {}
 
   async execute<T>(operationId: string, estimatedCost: number, operation: () => Promise<T>): Promise<T> {
@@ -41,48 +45,80 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     const attempt = (this.attempts.get(operationId) ?? 0) + 1
     this.attempts.set(operationId, attempt)
     const previous = this.previousReservations.get(operationId)
-    const reservation = await this.ledger.reserve(this.metadata.create(
+    let reservation = await this.ledger.reserve(this.metadata.create(
       operationId,
       attempt,
       estimatedCost,
       previous?.callId,
     ))
     this.previousReservations.set(operationId, reservation)
+    if (reservation.state === 'reconciled') {
+      const result = await operation()
+      this.completed.set(operationId, structuredClone(result))
+      this.spentCost += reservation.calculatedCost ?? 0
+      return structuredClone(result)
+    }
+    if (['failed', 'cancelled'].includes(reservation.state)) {
+      const retryAttempt = attempt + 1
+      this.attempts.set(operationId, retryAttempt)
+      reservation = await this.ledger.reserve(this.metadata.create(
+        operationId,
+        retryAttempt,
+        estimatedCost,
+        reservation.callId,
+      ))
+      this.previousReservations.set(operationId, reservation)
+    }
+    if (reservation.state === 'started' && await this.durableResultAvailable(operationId)) {
+      const result = await operation()
+      const settlement = settlementFromResult(reservation.id, result, estimatedCost)
+      await this.ledger.settle(settlement)
+      this.completed.set(operationId, structuredClone(result))
+      this.spentCost += settlement.calculatedCost
+      return structuredClone(result)
+    }
+    if (reservation.state !== 'reserved') {
+      throw new RealWorkflowError(
+        reservation.state === 'unknown' ? 'BUDGET_EXCEEDED' : 'LIMIT_EXCEEDED',
+        'La llamada durable previa requiere revisión humana y no se reintenta',
+      )
+    }
     await this.ledger.start(reservation.id)
 
-    const execution = operation()
+    const execution = Promise.resolve().then(operation)
     this.running.set(operationId, execution)
     this.activeOperation = operationId
+    let result: T
     try {
-      const result = await execution
-      await this.ledger.settle({
-        reservationId: reservation.id,
-        outcome: 'succeeded',
-        calculatedCost: estimatedCost,
-        usage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          toolCalls: 1,
-          credits: 0,
-        },
-      })
-      this.completed.set(operationId, structuredClone(result))
-      this.spentCost += estimatedCost
-      return structuredClone(result)
+      result = await execution
     } catch (error) {
-      await this.ledger.settle({
-        reservationId: reservation.id,
-        outcome: 'failed',
-        calculatedCost: 0,
-        usage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          toolCalls: 1,
-          credits: 0,
-        },
-        sanitizedError: errorCode(error),
-      })
+      const ambiguous = errorCode(error) === 'TIMEOUT'
+      const cancelled = errorCode(error) === 'CANCELLED'
+      try {
+        await this.ledger.settle({
+          reservationId: reservation.id,
+          outcome: ambiguous ? 'unknown' : cancelled ? 'cancelled' : 'failed',
+          calculatedCost: ambiguous ? undefined : 0,
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            toolCalls: 1,
+            credits: 0,
+          },
+          sanitizedError: errorCode(error),
+        })
+      } finally {
+        this.running.delete(operationId)
+        this.activeOperation = undefined
+      }
       throw error
+    }
+    try {
+      const settlement = settlementFromResult(reservation.id, result, estimatedCost)
+      await this.ledger.settle(settlement)
+      this.completed.set(operationId, structuredClone(result))
+      this.spentCost += settlement.calculatedCost
+      return structuredClone(result)
     } finally {
       this.running.delete(operationId)
       this.activeOperation = undefined
@@ -107,4 +143,56 @@ function errorCode(error: unknown): string {
     return /^[A-Z0-9_]{1,120}$/.test(error.code) ? error.code : 'PROVIDER_OPERATION_FAILED'
   }
   return 'PROVIDER_OPERATION_FAILED'
+}
+
+function settlementFromResult<T>(
+  reservationId: string,
+  result: T,
+  fallbackCost: number,
+): ProviderCallSettlement & { calculatedCost: number } {
+  const records = Array.isArray(result)
+    ? result.filter(isRecord)
+    : isRecord(result) ? [result] : []
+  let inputTokens = 0
+  let outputTokens = 0
+  let calculatedCost = 0
+  let credits = 0
+  let toolCalls = 1
+  let remoteId: string | undefined
+  for (const record of records) {
+    if (isRecord(record.usage)) {
+      inputTokens += number(record.usage.inputTokens)
+      outputTokens += number(record.usage.outputTokens)
+      calculatedCost += number(record.usage.estimatedCost)
+    }
+    credits += number(record.credits)
+    if (Array.isArray(record.providerRequestIds)) {
+      const ids = record.providerRequestIds.filter(value => typeof value === 'string')
+      toolCalls = Math.max(toolCalls, ids.length)
+      remoteId ??= ids[0]
+    }
+  }
+  if (credits > 0 && calculatedCost === 0) calculatedCost = credits * 0.008
+  if (calculatedCost === 0) calculatedCost = fallbackCost
+  return {
+    reservationId,
+    outcome: 'succeeded',
+    calculatedCost,
+    usage: {
+      remoteId,
+      inputTokens,
+      outputTokens,
+      toolCalls,
+      credits,
+      outputHash: createHash('sha256').update(JSON.stringify(result)).digest('hex'),
+    },
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object'
+}
+
+function number(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }

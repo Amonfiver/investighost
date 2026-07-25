@@ -1,0 +1,538 @@
+import { createHash, randomUUID } from 'node:crypto'
+import {
+  REAL_EDITORIAL_PILOT_POLICY,
+  RealEditorialPilotSnapshotSchema,
+  type RealEditorialPilotRecord,
+  type RealEditorialPilotSnapshot,
+} from '@shared/real-editorial-pilot-contracts'
+import {
+  RealRoundResultSchema,
+  type RealResearchDossier,
+  type RealResearchMission,
+} from '@shared/real-pipeline-contracts'
+import {
+  defaultRealProfileSettings,
+  missionProfilesFromSettings,
+} from '@shared/real-profile-settings'
+import { CostLedgerService, type CostLedgerRepository } from './cost-ledger'
+import { FullRealEditorialPipeline } from './full-editorial-pipeline'
+import {
+  LedgeredWorkflowCallExecutor,
+  type LedgeredCallMetadataFactory,
+} from './ledgered-call-executor'
+import type {
+  IntelligenceDraft,
+  IntelligenceEngine,
+  IntelligenceReview,
+  IntelligenceRoundAnalysis,
+  RealPipelineProviderSelection,
+  ResearchTool,
+  ResearchToolResult,
+} from './ports'
+import { createProviderCallPayloadFingerprint } from './provider-call-fingerprint'
+import {
+  type RealEditorialPilotRepository,
+  SupabaseRealWorkflowCheckpointStore,
+} from './real-editorial-repository'
+import { ControlledRealWorkflow } from './real-workflow'
+
+export const REAL_EDITORIAL_OPERATION_BUDGETS = {
+  researchPerRound: 0.048,
+  analysisPerRound: 0.022,
+  drafting: 0.04,
+  finalReview: 0.02,
+} as const
+
+export interface DurableRealEditorialDependencies {
+  repository: RealEditorialPilotRepository
+  ledgerRepository: CostLedgerRepository
+  providers: RealPipelineProviderSelection
+  now?: () => Date
+  id?: () => string
+  guardLease?: {
+    executionId: string
+    leaseToken: string
+  }
+}
+
+export class DurableRealEditorialPipeline {
+  private readonly now: () => Date
+  private readonly id: () => string
+
+  constructor(private readonly dependencies: DurableRealEditorialDependencies) {
+    this.now = dependencies.now ?? (() => new Date())
+    this.id = dependencies.id ?? randomUUID
+  }
+
+  async execute(pilot: RealEditorialPilotRecord, signal: AbortSignal): Promise<RealEditorialPilotSnapshot> {
+    if (!pilot.budgetConfirmed || !pilot.budget) {
+      throw new DurableRealEditorialError('BUDGET_REQUIRED', 'El piloto no tiene presupuesto confirmado')
+    }
+    if (pilot.state === 'pending_human_review') {
+      const stored = await this.dependencies.repository.getResult(pilot.id)
+      if (!stored) throw new DurableRealEditorialError(
+        'CHECKPOINT_REQUIRED',
+        'El piloto terminado no conserva su resultado',
+      )
+      return stored
+    }
+
+    const executionId = this.dependencies.guardLease?.executionId
+      ?? `real-editorial:${pilot.currentRunId}`
+    const leaseToken = this.dependencies.guardLease?.leaseToken ?? this.id()
+    const ledger = new CostLedgerService(this.dependencies.ledgerRepository, { now: this.now })
+    const acquired = this.dependencies.guardLease
+      ? true
+      : await ledger.acquireExecution(
+        executionId,
+        leaseToken,
+        new Date(this.now().getTime() + 30 * 60 * 1_000),
+      )
+    if (!acquired) throw new DurableRealEditorialError('GUARD_BUSY', 'La guarda editorial está ocupada')
+
+    try {
+      const mission = missionForPilot(pilot, this.now())
+      await this.dependencies.repository.appendArtifact(
+        pilot.id,
+        pilot.currentRunId,
+        'mission',
+        'initial',
+        1,
+        mission,
+      )
+      await this.dependencies.repository.appendEvent(
+        pilot.id,
+        pilot.currentRunId,
+        'real.editorial.execution.started',
+        'researching_round_1',
+        { executionId, mode: 'real_editorial_pilot' },
+      )
+      const durableProviders = durableProvidersFor(
+        this.dependencies.providers,
+        this.dependencies.repository,
+        pilot,
+      )
+      const calls = new LedgeredWorkflowCallExecutor(
+        ledger,
+        metadataFactory(pilot, executionId),
+        REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur,
+        operationId => durableOperationResultAvailable(
+          this.dependencies.repository,
+          pilot.currentRunId,
+          operationId,
+        ),
+      )
+      const workflow = new ControlledRealWorkflow(
+        durableProviders,
+        new SupabaseRealWorkflowCheckpointStore(
+          this.dependencies.repository,
+          pilot.id,
+          pilot.currentRunId,
+        ),
+        calls,
+        {
+          researchCostPerRound: REAL_EDITORIAL_OPERATION_BUDGETS.researchPerRound,
+          analysisCostPerRound: REAL_EDITORIAL_OPERATION_BUDGETS.analysisPerRound,
+          now: this.now,
+        },
+      )
+      const pipeline = new FullRealEditorialPipeline(
+        workflow,
+        durableProviders.intelligenceEngine,
+        calls,
+        {
+          draftingCost: REAL_EDITORIAL_OPERATION_BUDGETS.drafting,
+          reviewCost: REAL_EDITORIAL_OPERATION_BUDGETS.finalReview,
+        },
+      )
+      const settings = defaultRealProfileSettings(this.now())
+      const result = await pipeline.execute(mission, settings, signal)
+      const roundResults = []
+      for (const round of result.research.completedRounds) {
+        const artifact = await this.dependencies.repository.latestArtifact(
+          pilot.currentRunId,
+          'round',
+          `round-${round}`,
+        )
+        if (!artifact) throw new DurableRealEditorialError(
+          'CHECKPOINT_REQUIRED',
+          `Falta el resultado durable de la ronda ${round}`,
+        )
+        roundResults.push(RealRoundResultSchema.parse(artifact.payload))
+      }
+      const callSnapshot = calls.snapshot()
+      const snapshot = RealEditorialPilotSnapshotSchema.parse({
+        version: 'real-editorial-snapshot-v1',
+        pilotId: pilot.id,
+        runId: pilot.currentRunId,
+        state: 'pending_human_review',
+        currentRound: result.research.completedRounds.at(-1) ?? 0,
+        mission,
+        roundResults,
+        dossier: result.research.dossier,
+        masterKnowledge: result.research.masterKnowledge,
+        coverage: result.research.coverage,
+        drafts: result.drafts,
+        review: result.review,
+        limits: mission.limits,
+        accumulatedCost: callSnapshot.spentCost,
+        providerCalls: callSnapshot.operationIds.length,
+        publicationCount: 0,
+        regenerationCount: 0,
+        trawelConnected: false,
+        automaticEnabled: false,
+        updatedAt: this.now().toISOString(),
+      })
+      await this.dependencies.repository.saveResult(snapshot)
+      return snapshot
+    } catch (error) {
+      if (!signal.aborted) {
+        const code = safeErrorCode(error)
+        await this.dependencies.repository.recordIncident(
+          pilot.id,
+          pilot.currentRunId,
+          code,
+          code === 'TIMEOUT' ? 'ambiguous' : 'human_required',
+          'La ejecución editorial real se detuvo; revisar el ledger y el checkpoint durable.',
+        )
+        await this.dependencies.repository.appendEvent(
+          pilot.id,
+          pilot.currentRunId,
+          'real.editorial.execution.halted',
+          undefined,
+          { code },
+        )
+      }
+      throw error
+    } finally {
+      if (!this.dependencies.guardLease) await ledger.releaseExecution(leaseToken)
+    }
+  }
+}
+
+export type DurableRealEditorialErrorCode =
+  | 'BUDGET_REQUIRED'
+  | 'GUARD_BUSY'
+  | 'CHECKPOINT_REQUIRED'
+
+export class DurableRealEditorialError extends Error {
+  readonly retryable = false
+
+  constructor(readonly code: DurableRealEditorialErrorCode, message: string) {
+    super(message)
+    this.name = 'DurableRealEditorialError'
+  }
+}
+
+function durableProvidersFor(
+  providers: RealPipelineProviderSelection,
+  repository: RealEditorialPilotRepository,
+  pilot: RealEditorialPilotRecord,
+): RealPipelineProviderSelection {
+  return {
+    researchTool: new DurableResearchTool(
+      providers.researchTool,
+      repository,
+      pilot.id,
+      pilot.currentRunId,
+    ),
+    intelligenceEngine: new DurableIntelligenceEngine(
+      providers.intelligenceEngine,
+      repository,
+      pilot.id,
+      pilot.currentRunId,
+    ),
+  }
+}
+
+class DurableResearchTool implements ResearchTool {
+  readonly id: string
+  readonly model: string
+  readonly simulation: boolean
+
+  constructor(
+    private readonly delegate: ResearchTool,
+    private readonly repository: RealEditorialPilotRepository,
+    private readonly pilotId: string,
+    private readonly runId: string,
+  ) {
+    this.id = delegate.id
+    this.model = delegate.model
+    this.simulation = delegate.simulation
+  }
+
+  async research(mission: RealResearchMission, signal: AbortSignal): Promise<ResearchToolResult> {
+    const existing = await this.repository.latestArtifact(
+      this.runId,
+      'tavily_result',
+      `round-${mission.round}`,
+    )
+    if (existing) return structuredClone(existing.payload) as ResearchToolResult
+    const result = await this.delegate.research(mission, signal)
+    await this.repository.saveResearchResult(this.pilotId, this.runId, mission, result)
+    return result
+  }
+}
+
+class DurableIntelligenceEngine implements IntelligenceEngine {
+  readonly id: string
+  readonly model: string
+  readonly simulation: boolean
+
+  constructor(
+    private readonly delegate: IntelligenceEngine,
+    private readonly repository: RealEditorialPilotRepository,
+    private readonly pilotId: string,
+    private readonly runId: string,
+  ) {
+    this.id = delegate.id
+    this.model = delegate.model
+    this.simulation = delegate.simulation
+  }
+
+  async analyze(
+    mission: RealResearchMission,
+    dossier: RealResearchDossier,
+    signal: AbortSignal,
+  ): Promise<IntelligenceRoundAnalysis> {
+    const existing = await this.repository.latestArtifact(
+      this.runId,
+      'round',
+      `round-${mission.round}`,
+    )
+    if (existing && isRecord(existing.payload) && isRecord(existing.payload.analysis)) {
+      return structuredClone(existing.payload.analysis) as unknown as IntelligenceRoundAnalysis
+    }
+    const analysis = await this.delegate.analyze(mission, dossier, signal)
+    await this.repository.saveAnalysis(this.pilotId, this.runId, mission, analysis, dossier)
+    await this.repository.appendArtifact(
+      this.pilotId,
+      this.runId,
+      'round',
+      `round-${mission.round}`,
+      1,
+      {
+        round: mission.round,
+        dossier,
+        masterKnowledge: analysis.masterKnowledge,
+        coverage: analysis.coverage,
+        gaps: analysis.gaps,
+        proposedQueries: analysis.proposedQueries,
+        completedAt: new Date().toISOString(),
+        analysis,
+      },
+    )
+    return analysis
+  }
+
+  async draft(
+    mission: RealResearchMission,
+    knowledge: Parameters<IntelligenceEngine['draft']>[1],
+    signal: AbortSignal,
+  ): Promise<IntelligenceDraft[]> {
+    const stored = await Promise.all(['adventure', 'student'].map(profile =>
+      this.repository.latestArtifact(
+        this.runId,
+        profile === 'adventure' ? 'draft_adventure' : 'draft_student',
+        profile,
+      )))
+    if (stored.every(Boolean)) {
+      return stored.map(artifact => structuredClone(artifact?.payload) as IntelligenceDraft)
+    }
+    const completedRound = await this.completedRound()
+    await this.repository.updateState(
+      this.pilotId,
+      this.runId,
+      'generating_adventure',
+      completedRound,
+    )
+    const drafts = await this.delegate.draft(mission, knowledge, signal)
+    await this.repository.saveDrafts(this.pilotId, this.runId, drafts)
+    await this.repository.updateState(
+      this.pilotId,
+      this.runId,
+      'generating_student',
+      completedRound,
+    )
+    return drafts
+  }
+
+  async review(
+    mission: RealResearchMission,
+    knowledge: Parameters<IntelligenceEngine['review']>[1],
+    drafts: IntelligenceDraft[],
+    signal: AbortSignal,
+  ): Promise<IntelligenceReview> {
+    const existing = await this.repository.latestArtifact(this.runId, 'final_review', 'final')
+    if (existing) return structuredClone(existing.payload) as IntelligenceReview
+    await this.repository.updateState(
+      this.pilotId,
+      this.runId,
+      'final_review',
+      await this.completedRound(),
+    )
+    const review = await this.delegate.review(mission, knowledge, drafts, signal)
+    await this.repository.saveReview(this.pilotId, this.runId, review)
+    return review
+  }
+
+  private async completedRound(): Promise<0 | 1 | 2> {
+    const checkpoint = await this.repository.latestArtifact(this.runId, 'checkpoint', 'workflow')
+    if (!checkpoint || !isRecord(checkpoint.payload)) return 0
+    const value = checkpoint.payload.completedRound
+    return value === 1 || value === 2 ? value : 0
+  }
+}
+
+export function missionForPilot(
+  pilot: RealEditorialPilotRecord,
+  now = new Date(),
+): RealResearchMission {
+  const settings = defaultRealProfileSettings(now)
+  return {
+    requestId: pilot.id,
+    runId: pilot.currentRunId,
+    taskId: pilot.budget?.taskId ?? `real-editorial-task:${pilot.id}`,
+    destination: {
+      canonicalId: pilot.canonicalDestinationId,
+      name: 'Morella',
+      countryCode: 'ES',
+      type: 'locality',
+    },
+    language: 'es',
+    profiles: missionProfilesFromSettings(settings),
+    depth: 'deep',
+    round: 1,
+    objectives: [
+      'patrimonio e historia documentada',
+      'lugares y actividades verificables',
+      'acceso, duración, costes, temporada y riesgos',
+      'cultura, población y vida cotidiana',
+    ],
+    focusedQueries: [],
+    limits: {
+      maxRounds: 2,
+      maxFocusedQueriesPerRound: 3,
+      maxSources: 8,
+      maxCharactersPerSource: 100_000,
+      maxProviderCalls: 12,
+      maxInputTokens: 200_000,
+      maxOutputTokens: 50_000,
+      taskBudgetEur: 0.2,
+      batchBudgetEur: 0.2,
+      dailyBudgetEur: 0.2,
+    },
+    createdAt: now.toISOString(),
+  }
+}
+
+function metadataFactory(
+  pilot: RealEditorialPilotRecord,
+  executionId: string,
+): LedgeredCallMetadataFactory {
+  if (!pilot.budget) throw new DurableRealEditorialError('BUDGET_REQUIRED', 'Falta el presupuesto editorial')
+  return {
+    create(operationId, attempt, estimatedCost, retryOfCallId) {
+      const research = operationId.endsWith(':research')
+      const providerId = research ? 'tavily' : 'openai'
+      const model = research ? 'search-and-extract' : REAL_EDITORIAL_PILOT_POLICY.providers.model
+      const tariffId = research
+        ? 'morella-v1-tavily-search'
+        : 'morella-v1-openai-responses'
+      const operation = operationId.split(':').at(-1) ?? 'unknown'
+      const stage = operationId.split(':').slice(-2).join('_')
+      const payloadHash = createHash('sha256').update(JSON.stringify({
+        operationId,
+        pilotId: pilot.id,
+        runId: pilot.currentRunId,
+        policyId: pilot.policyId,
+      })).digest('hex')
+      return {
+        idempotencyKey: `${operationId}:attempt:${attempt}`,
+        executionId,
+        requestId: pilot.id,
+        runId: pilot.currentRunId,
+        taskId: pilot.budget?.taskId ?? '',
+        batchId: pilot.budget?.batchId ?? '',
+        stage,
+        operation,
+        providerId,
+        model,
+        attempt,
+        retryOfCallId,
+        estimatedCost,
+        currency: 'EUR',
+        tariffId,
+        promptVersion: 'morella-real-editorial-v1',
+        schemaVersion: 'real-editorial-snapshot-v1',
+        inputHash: createProviderCallPayloadFingerprint({
+          executionId,
+          requestId: pilot.id,
+          runId: pilot.currentRunId,
+          taskId: pilot.budget?.taskId ?? '',
+          batchId: pilot.budget?.batchId ?? '',
+          budgetDate: pilot.budget?.budgetDate,
+          stage,
+          operation,
+          providerId,
+          model,
+          attempt,
+          retryOfCallId,
+          estimatedCost,
+          reservedCost: estimatedCost,
+          currency: 'EUR',
+          tariffId,
+          promptVersion: 'morella-real-editorial-v1',
+          schemaVersion: 'real-editorial-snapshot-v1',
+          payloadHash,
+          maxInputTokens: 200_000,
+          maxOutputTokens: 50_000,
+          maxToolCalls: research ? 5 : 2,
+          maxCredits: research ? 4 : 0,
+          tools: research ? ['search', 'extract'] : ['structured-output'],
+        }),
+      }
+    },
+  }
+}
+
+function safeErrorCode(error: unknown): string {
+  if (
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && typeof error.code === 'string'
+    && /^[A-Z0-9_]{1,120}$/.test(error.code)
+  ) return error.code
+  return 'REAL_EDITORIAL_EXECUTION_HALTED'
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object'
+}
+
+async function durableOperationResultAvailable(
+  repository: RealEditorialPilotRepository,
+  runId: string,
+  operationId: string,
+): Promise<boolean> {
+  if (operationId.endsWith(':research')) {
+    const round = operationId.includes(':round:2:') ? 2 : 1
+    return Boolean(await repository.latestArtifact(runId, 'tavily_result', `round-${round}`))
+  }
+  if (operationId.endsWith(':analysis')) {
+    const round = operationId.includes(':round:2:') ? 2 : 1
+    return Boolean(await repository.latestArtifact(runId, 'round', `round-${round}`))
+  }
+  if (operationId.endsWith(':drafting')) {
+    const [adventure, student] = await Promise.all([
+      repository.latestArtifact(runId, 'draft_adventure', 'adventure'),
+      repository.latestArtifact(runId, 'draft_student', 'student'),
+    ])
+    return Boolean(adventure && student)
+  }
+  if (operationId.endsWith(':final-review')) {
+    return Boolean(await repository.latestArtifact(runId, 'final_review', 'final'))
+  }
+  return false
+}

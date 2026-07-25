@@ -186,3 +186,48 @@ PROMPT 11 sigue fuera del alcance ejecutado.
 - Automatic: no iniciado;
 - PROMPT 11: no ejecutado;
 - comandos Supabase prohibidos: no ejecutados.
+
+## Reauditoría PROMPT 10E — ruta durable del piloto editorial real
+
+La causa del NO-GO previo a PROMPT 11 era correcta: la única ruta operativa terminaba en la prueba de conectividad 10D, su presupuesto estaba limitado a `0,02 EUR`, el workflow editorial conservaba checkpoints parciales en memoria y no existían persistencia, IPC ni estado terminal propios para Morella real.
+
+PROMPT 10E corrige ese defecto sin ejecutar PROMPT 11:
+
+- separa durablemente los modos `manual`, `real_editorial_pilot` y la identidad reservada `automatic`;
+- mantiene intactas las tablas, reservas, guarda, presupuesto e historial de `connectivity_check`;
+- añade una política Morella estable con objetivo `0,125 EUR`, aviso `0,16 EUR`, parada automática y límite diario `0,20 EUR`, ampliación manual declarada `0,25 EUR` y límite técnico declarado `0,50 EUR`;
+- añade presupuesto, tarifas, guarda, reservas y ledger exclusivos del piloto editorial;
+- persiste piloto, run, misión, rondas, consultas, resultados Tavily, fuentes, documentos, evidencias, conocimiento, hechos, lugares, actividades, carencias, contradicciones, cobertura, borradores, revisión, incidencias, eventos y checkpoints;
+- incorpora hashes canónicos para que la representación JSONB no invalide la integridad;
+- añade `pending_human_review` manteniendo compatibilidad explícita con `ready_for_human_review`;
+- permite un piloto real separado aunque existan solicitudes Manual de Morella, bloquea una segunda identidad real idéntica y admite una variante humana con identidad distinta;
+- añade preflight editorial independiente, feature flag propia, IPC validado y UI de preparación, presupuesto, progreso, cancelación, reanudación y resultado;
+- recupera operaciones conciliadas desde artefactos durables y no reintenta un timeout `unknown`;
+- mantiene máximo dos rondas, cuatro búsquedas iniciales, tres consultas focalizadas, ocho fuentes, concurrencia uno y cero regeneraciones/publicaciones.
+
+Migraciones aditivas aplicadas solo a Supabase local:
+
+- `20260725213000_real_editorial_pilot.sql`;
+- `20260725214500_real_editorial_prepare_idempotency.sql`;
+- `20260725215500_real_editorial_ledger_sanitization.sql`;
+- `20260725220500_real_editorial_prepare_concurrency.sql`;
+- `20260725221500_real_editorial_connectivity_evidence.sql`.
+
+La integración específica se ejecuta dentro de una transacción con rollback. Demuestra coexistencia Manual/real, presupuesto 10D intacto, preparación idempotente, duplicado bloqueado, variante autorizada, artefactos append-only, ledger conciliado, estado `pending_human_review`, guarda liberada y publicaciones cero.
+
+Validaciones de 10E:
+
+- 413 pruebas de la suite normal aprobadas; las 12 integraciones opt-in permanecen omitidas en esa ejecución ordinaria;
+- tres integraciones económicas específicas aprobadas por separado: ledger 10D, concurrencia/idempotencia del ledger y ruta editorial con rollback;
+- typecheck aprobado;
+- ESLint aprobado con cero warnings;
+- builds Vite de renderer, Electron main y preload aprobados;
+- `git diff --check`, `git diff --cached --check` y búsqueda de secretos aprobados antes del commit.
+
+### Dictamen 10E
+
+`GO para reintentar PROMPT 11`.
+
+Este GO solo afirma que ya existe la ruta durable. No autoriza por sí mismo red ni gasto: la acción real permanece cerrada por la feature flag editorial y el futuro PROMPT 11 debe volver a comprobar credenciales, tarifas, saldo, presupuesto, guarda, duplicados y ausencia de reservas pendientes. PROMPT 11 no se ejecutó durante 10E.
+
+Fronteras verificadas en 10E: cero llamadas nuevas a Tavily/OpenAI, cero créditos o tokens nuevos, gasto real total conservado en `0,008077 EUR`, cero reservas editoriales, guarda editorial libre, cero pilotos persistidos por pruebas debido al rollback, publicaciones cero, Trawel/producción/Automatic desconectados y ningún comando Supabase prohibido.

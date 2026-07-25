@@ -152,7 +152,9 @@ export class TavilyResearchTool implements ResearchTool {
     const mission = RealResearchMissionSchema.parse(candidate)
     this.assertNotCancelled(signal)
     const queries = this.queries(mission)
-    const maxQueries = Math.min(this.limits.maxQueries, mission.limits.maxFocusedQueriesPerRound)
+    const maxQueries = mission.round === 1
+      ? Math.min(this.limits.maxQueries, 4)
+      : Math.min(this.limits.maxQueries, mission.limits.maxFocusedQueriesPerRound)
     if (queries.length > maxQueries) {
       throw new TavilyResearchError('LIMIT_EXCEEDED', 'La misión supera el límite de consultas')
     }

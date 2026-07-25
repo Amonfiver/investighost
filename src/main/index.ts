@@ -114,6 +114,7 @@ import { getRealConnectivityPreflightRuntime } from './real-connectivity-preflig
 import { executeRealConnectivityCheck } from './real-connectivity-runtime'
 import { getRealProfileSettingsRuntime } from './real-profile-settings-runtime'
 import { REAL_CONNECTIVITY_CONFIRMATION } from '@shared/real-connectivity-contracts'
+import { getRealEditorialPilotRuntime } from './real-editorial-pilot-runtime'
 
 ipcMain.handle('contributions:import-pending', async () => {
   return (await getContributionImportRuntime()).importPending()
@@ -223,6 +224,40 @@ ipcMain.handle('real-profiles:get', () => getRealProfileSettingsRuntime().load()
 
 ipcMain.handle('real-profiles:save', async (_event, input: unknown) => {
   return getRealProfileSettingsRuntime().save(input)
+})
+
+ipcMain.handle('real-editorial:preflight', async (_event, pilotId: unknown) => {
+  return getRealEditorialPilotRuntime().preflight(
+    pilotId === undefined ? undefined : z.string().uuid().parse(pilotId),
+  )
+})
+
+ipcMain.handle('real-editorial:prepare', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().prepare(input)
+})
+
+ipcMain.handle('real-editorial:confirm-budget', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().confirmBudget(input)
+})
+
+ipcMain.handle('real-editorial:progress', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().progress(input)
+})
+
+ipcMain.handle('real-editorial:result', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().result(input)
+})
+
+ipcMain.handle('real-editorial:start', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().start(input)
+})
+
+ipcMain.handle('real-editorial:cancel', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().cancel(input)
+})
+
+ipcMain.handle('real-editorial:resume', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().resume(input)
 })
 
 async function providerCenterAction<T>(

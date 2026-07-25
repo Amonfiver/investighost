@@ -212,6 +212,27 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 4. Mantener la feature flag apagada fuera de una ventana humana y conservar reserva, ledger, guarda y límites fail-closed.
 5. Mantener Automatic, producción, Trawel y publicación bloqueados.
 
+## Pipeline real — PROMPT 10E completado técnicamente
+
+La ruta durable previa al primer piloto real ya está implementada:
+
+- preflight editorial separado de conectividad 10D;
+- presupuesto, guarda y ledger Morella propios hasta `0,20 EUR`;
+- persistencia durable y append-only de todo el ciclo editorial;
+- identidad `real_editorial_pilot` separada de Manual y Automatic;
+- estado terminal `pending_human_review`;
+- IPC/UI de preparación, progreso, cancelación, reanudación y resultado;
+- reanudación desde checkpoint sin repetir resultados conciliados;
+- pruebas completas con clientes falsos e integración Supabase local con rollback.
+
+PROMPT 11 no se ejecutó. El orden inmediato pasa a ser:
+
+1. revisar el dictamen `GO para reintentar PROMPT 11`;
+2. obtener autorización humana específica;
+3. ejecutar el preflight editorial y detenerse ante cualquier gate cerrado;
+4. mantener la feature flag apagada fuera de esa ventana;
+5. conservar publicación, Trawel, producción y Automatic bloqueados.
+
 ## Estado FASE 2C-B — 2026-07-14
 
 Implementación completada: contribuciones usa PostgreSQL y Storage de Supabase local mediante migración versionada y seed sintético. El runtime no inicializa SQLite ni ofrece fallback. El código SQLite legado permanece aislado para retirada posterior porque otros módulos aún lo referencian. Próxima subfase recomendada: 2C-C, retirada controlada de dependencias, schemas y adaptadores SQLite residuales, sin ampliar dominios ni conectar producción.

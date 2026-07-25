@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { ProviderCenterSnapshotSchema } from '@shared/provider-center-contracts'
+import { resolveRealEditorialFeatureFlag } from '@shared/real-editorial-pilot-contracts'
 import { resolveRealExecutionFeatureFlag } from './real-pilot-gate'
 
 const permitBrand = Symbol('investighost-live-provider-permit')
@@ -12,7 +13,10 @@ export interface LiveProviderNetworkPermit {
 export const LiveProviderAccessInputSchema = z.object({
   featureToken: z.string(),
   providerCenter: ProviderCenterSnapshotSchema,
-  preflightStatus: z.literal('ready_for_live_connectivity_check'),
+  preflightStatus: z.enum([
+    'ready_for_live_connectivity_check',
+    'ready_for_real_editorial_pilot',
+  ]),
   taskAuthorized: z.boolean(),
   budgetReserved: z.boolean(),
   globalGuardAcquired: z.boolean(),
@@ -43,7 +47,10 @@ export function issueLiveProviderNetworkPermit(candidate: unknown): LiveProvider
     throw new LiveProviderAccessError('PREFLIGHT_REQUIRED', 'El preflight real no autoriza acceso a proveedores')
   }
   const input = parsed.data
-  if (!resolveRealExecutionFeatureFlag(input.featureToken)) {
+  const featureEnabled = input.preflightStatus === 'ready_for_real_editorial_pilot'
+    ? resolveRealEditorialFeatureFlag(input.featureToken)
+    : resolveRealExecutionFeatureFlag(input.featureToken)
+  if (!featureEnabled) {
     throw new LiveProviderAccessError('REAL_FEATURE_DISABLED', 'La feature flag real permanece desactivada')
   }
   if (!input.providerCenter.secureStorageAvailable) {

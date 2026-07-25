@@ -13,6 +13,7 @@ import {
   TavilyResearchError,
 } from '@modules/real-pipeline/tavily-research-tool'
 import type { ProviderCenterSnapshot } from '@shared/provider-center-contracts'
+import { REAL_EDITORIAL_FEATURE_TOKEN } from '@shared/real-editorial-pilot-contracts'
 
 const tavilyCredential = 'synthetic-tavily-live-key'
 const openAICredential = 'synthetic-openai-live-key'
@@ -88,6 +89,20 @@ describe('clientes reales cerrados por permisos e inyectables sin red', () => {
     expect(() => issueLiveProviderNetworkPermit(gate({
       preflightStatus: 'blocked',
     }))).toThrow(expect.objectContaining({ code: 'PREFLIGHT_REQUIRED' }))
+  })
+
+  it('separa los permisos de conectividad y ejecución editorial', () => {
+    expect(() => issueLiveProviderNetworkPermit(gate({
+      featureToken: REAL_EDITORIAL_FEATURE_TOKEN,
+    }))).toThrow(expect.objectContaining({ code: 'REAL_FEATURE_DISABLED' }))
+    expect(() => issueLiveProviderNetworkPermit(gate({
+      featureToken: REAL_EXECUTION_FEATURE_TOKEN,
+      preflightStatus: 'ready_for_real_editorial_pilot',
+    }))).toThrow(expect.objectContaining({ code: 'REAL_FEATURE_DISABLED' }))
+    expect(() => issueLiveProviderNetworkPermit(gate({
+      featureToken: REAL_EDITORIAL_FEATURE_TOKEN,
+      preflightStatus: 'ready_for_real_editorial_pilot',
+    }))).not.toThrow()
   })
 
   it('no emite permiso con tarifa caducada aunque se falsifique el estado textual', () => {

@@ -18,7 +18,7 @@ describe('superficie de preparación y conectividad real controlada', () => {
     expect(contracts).not.toMatch(/decryptedCredential|apiKey|credentialValue/)
   })
 
-  it('muestra preflight, tarifas y una única acción confirmada sin acción Morella', async () => {
+  it('separa conectividad y piloto editorial, cuyo inicio depende del preflight', async () => {
     const renderer = await source('src/renderer/App.tsx')
 
     expect(renderer).toContain('Preflight real sin red')
@@ -27,19 +27,26 @@ describe('superficie de preparación y conectividad real controlada', () => {
     expect(renderer).toContain('window.confirm')
     expect(renderer).toContain('1 USD = 1 EUR')
     expect(renderer.match(/Probar conectividad real/g)).toHaveLength(1)
-    expect(renderer).not.toMatch(/executeMorella|runMorella|startRealResearch/)
+    expect(renderer).toContain('Preparar piloto')
+    expect(renderer).toContain('Confirmar presupuesto 0,20 EUR')
+    expect(renderer).toContain('Iniciar piloto real')
+    expect(renderer).toContain('disabled={!preflight.startActionEnabled || operation !== null}')
+    expect(renderer).toContain('Reanudar desde checkpoint')
   })
 
-  it('el proceso main expone solo el check de conectividad y mantiene bloqueada la investigación', async () => {
+  it('main expone IPC editorial validado tras una feature flag independiente', async () => {
     const main = await source('src/main/index.ts')
-    const runtime = await source('src/main/real-connectivity-preflight-runtime.ts')
+    const runtime = await source('src/main/real-editorial-pilot-runtime.ts')
 
     expect(main).toContain("ipcMain.handle('real-preflight:get'")
     expect(main).toContain("ipcMain.handle('real-connectivity:run'")
-    expect(main).not.toMatch(/real-research:(run|start)/)
-    expect(runtime).toContain('process.env.INVESTIGHOST_REAL_EXECUTION_TOKEN')
+    expect(main).toContain("ipcMain.handle('real-editorial:preflight'")
+    expect(main).toContain("ipcMain.handle('real-editorial:start'")
+    expect(main).toContain("ipcMain.handle('real-editorial:cancel'")
+    expect(main).toContain("ipcMain.handle('real-editorial:resume'")
+    expect(runtime).toContain('process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN')
     expect(runtime).not.toMatch(/KIMI_API_KEY|BRAVE_SEARCH_API_KEY|OPENAI_API_KEY|TAVILY_API_KEY/)
-    expect(runtime).not.toContain('withLiveProviderClients')
+    expect(runtime).toContain('withLiveProviderClients')
     expect(runtime).not.toContain('api.tavily.com')
     expect(runtime).not.toContain('api.openai.com')
   })

@@ -45,6 +45,15 @@ import type {
   RealConnectivityAuthorization,
   RealConnectivityResult,
 } from './shared/real-connectivity-contracts'
+import type {
+  RealEditorialPilotAction,
+  RealEditorialPilotCancel,
+  RealEditorialPilotPrepare,
+  RealEditorialPilotProgress,
+  RealEditorialPilotRecord,
+  RealEditorialPilotSnapshot,
+  RealEditorialPreflight,
+} from './shared/real-editorial-pilot-contracts'
 
 declare global {
   interface Window {
@@ -86,6 +95,14 @@ declare global {
       runRealConnectivityCheck: (input: RealConnectivityAuthorization) => Promise<RealConnectivityResult>
       getRealProfileSettings: () => Promise<RealProfileSettings>
       saveRealProfileSettings: (input: RealProfileSettings) => Promise<RealProfileSettings>
+      getRealEditorialPreflight: (pilotId?: string) => Promise<RealEditorialPreflight>
+      prepareRealEditorialPilot: (input: RealEditorialPilotPrepare) => Promise<RealEditorialPilotRecord>
+      confirmRealEditorialBudget: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotRecord>
+      getRealEditorialProgress: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotProgress>
+      getRealEditorialResult: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotSnapshot | undefined>
+      startRealEditorialPilot: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotSnapshot>
+      cancelRealEditorialPilot: (input: RealEditorialPilotCancel) => Promise<void>
+      resumeRealEditorialPilot: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotSnapshot>
     }
   }
 }

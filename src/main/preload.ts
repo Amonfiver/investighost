@@ -20,6 +20,11 @@ import type { RealProfileSettings } from '@shared/real-profile-settings'
 import type {
   RealConnectivityAuthorization,
 } from '@shared/real-connectivity-contracts'
+import type {
+  RealEditorialPilotAction,
+  RealEditorialPilotCancel,
+  RealEditorialPilotPrepare,
+} from '@shared/real-editorial-pilot-contracts'
 
 // API expuesta al renderer
 const electronAPI = {
@@ -62,6 +67,21 @@ const electronAPI = {
     ipcRenderer.invoke('real-connectivity:run', input),
   getRealProfileSettings: () => ipcRenderer.invoke('real-profiles:get'),
   saveRealProfileSettings: (input: RealProfileSettings) => ipcRenderer.invoke('real-profiles:save', input),
+  getRealEditorialPreflight: (pilotId?: string) => ipcRenderer.invoke('real-editorial:preflight', pilotId),
+  prepareRealEditorialPilot: (input: RealEditorialPilotPrepare) =>
+    ipcRenderer.invoke('real-editorial:prepare', input),
+  confirmRealEditorialBudget: (input: RealEditorialPilotAction) =>
+    ipcRenderer.invoke('real-editorial:confirm-budget', input),
+  getRealEditorialProgress: (input: RealEditorialPilotAction) =>
+    ipcRenderer.invoke('real-editorial:progress', input),
+  getRealEditorialResult: (input: RealEditorialPilotAction) =>
+    ipcRenderer.invoke('real-editorial:result', input),
+  startRealEditorialPilot: (input: RealEditorialPilotAction) =>
+    ipcRenderer.invoke('real-editorial:start', input),
+  cancelRealEditorialPilot: (input: RealEditorialPilotCancel) =>
+    ipcRenderer.invoke('real-editorial:cancel', input),
+  resumeRealEditorialPilot: (input: RealEditorialPilotAction) =>
+    ipcRenderer.invoke('real-editorial:resume', input),
 }
 
 // Exponer como window.electronAPI

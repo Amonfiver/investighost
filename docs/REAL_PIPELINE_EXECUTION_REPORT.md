@@ -232,3 +232,23 @@ Este informe acumula la evidencia desde PROMPT 01. PROMPT 10D validó exclusivam
 - Errores reales: ninguno. No hubo segunda ronda, segundo intento o retry.
 - Publicaciones: `0`; Morella editorial: no ejecutada; PROMPT 11: no ejecutado; Trawel, producción y Automatic: desconectados.
 - Dictamen: `GO para preparar PROMPT 11`, que seguirá requiriendo autorización expresa antes de ejecutarse.
+
+## PROMPT 10E — Ruta durable del piloto real
+
+- Fecha: 2026-07-25 (Europe/Madrid).
+- HEAD inicial: `64badf2c3d5055ba9e19d1d3befeec15596ff7d9`.
+- Objetivo: corregir el NO-GO de PROMPT 11 sin hacer llamadas reales ni crear el piloto efectivo.
+- Arquitectura: ruta `real_editorial_pilot` separada de `connectivity_check` y de las 13 solicitudes Manual históricas.
+- Preflight: nuevo estado `ready_for_real_editorial_pilot` y estados de fallo específicos; valida proveedores, Luna, tarifas, evidencia 10D, conversión, repositorio, presupuesto propio, guarda propia, actividad, reservas, destino, duplicado y fronteras negativas.
+- Persistencia: repositorio Supabase durable para misión, rondas, expediente, fuentes, evidencia, conocimiento, entidades editoriales, borradores, revisión, incidencias, eventos y checkpoints append-only.
+- Economía: ledger y guarda editoriales propios; presupuesto de tarea/lote/día `0,20 EUR`; política objetivo/aviso/parada `0,125/0,16/0,20 EUR`; la ampliación `0,25` y el techo `0,50` no son utilizables automáticamente.
+- Reanudación: un artefacto durable conciliado se reutiliza sin red; una reserva `started` solo se reconcilia si su resultado durable existe; `unknown` queda bloqueado y no se reintenta.
+- Duplicados: Manual coexiste; el piloto real no reutiliza ni sobrescribe solicitudes; identidad idéntica bloqueada; variante humana explícita permitida.
+- Superficie: IPC y UI para preflight, preparación, confirmación presupuestaria, inicio cerrado por flag, progreso, cancelación, reanudación y resultado.
+- Pruebas falsas: dos rondas, ampliación focalizada, Aventura 1.000, Estudiante 1.800, control final, cancelación/reinicio, `pending_human_review`, coste simulado máximo `0,20 EUR`, cero publicación, Trawel y Automatic.
+- Integración local: transacción PostgreSQL con rollback; datos Manual y ledger 10D comparados antes/después.
+- Validaciones: 413 pruebas normales aprobadas, tres integraciones económicas Supabase aprobadas por separado, typecheck, ESLint sin warnings y builds renderer/main/preload aprobados.
+- Migraciones: `20260725213000_real_editorial_pilot.sql`, `20260725214500_real_editorial_prepare_idempotency.sql`, `20260725215500_real_editorial_ledger_sanitization.sql`, `20260725220500_real_editorial_prepare_concurrency.sql` y `20260725221500_real_editorial_connectivity_evidence.sql`, aplicadas solo mediante `migration up --local`.
+- Red/gasto: cero llamadas nuevas, cero créditos/tokens nuevos y cero gasto nuevo. El total histórico de 10D sigue en `0,008077 EUR`.
+- Fronteras: PROMPT 11 no ejecutado; sin publicación, Trawel, producción o Automatic; no se ejecutó `supabase link`, `supabase db push` ni `supabase db reset`.
+- Dictamen: `GO para reintentar PROMPT 11`, sujeto a su autorización humana y preflight operativo independiente.

@@ -193,6 +193,7 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 .real-preflight > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .real-preflight > header h3 { margin: 3px 0 5px; font-size: 20px; }
 .real-preflight > header p { margin: 0; color: var(--muted); }
+.tariff-warning { color: var(--danger); font-weight: 700; }
 .real-policy-strip { display: flex; flex-wrap: wrap; gap: 7px; margin: 16px 0; }
 .real-policy-strip span { padding: 6px 9px; background: #f2f6f3; border: 1px solid #dce5df; border-radius: 999px; color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
 .preflight-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }

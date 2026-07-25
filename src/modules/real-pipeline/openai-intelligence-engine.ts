@@ -47,6 +47,9 @@ export interface OpenAIResponseEnvelope {
   usage: {
     input_tokens: number
     output_tokens: number
+    input_tokens_details?: {
+      cached_tokens: number
+    }
   }
 }
 
@@ -60,8 +63,11 @@ export interface OpenAIIntelligenceConfiguration {
   schemaVersion: string
   maxOutputTokens: number
   timeoutMs: number
-  inputCostPerMillionEur: number
-  outputCostPerMillionEur: number
+  inputCostPerMillion: number
+  cachedInputCostPerMillion: number
+  outputCostPerMillion: number
+  currency: 'EUR' | 'USD'
+  simulation: boolean
 }
 
 const defaultConfiguration: OpenAIIntelligenceConfiguration = {
@@ -70,8 +76,11 @@ const defaultConfiguration: OpenAIIntelligenceConfiguration = {
   schemaVersion: 'real-intelligence-v1',
   maxOutputTokens: 12_000,
   timeoutMs: 30_000,
-  inputCostPerMillionEur: 0,
-  outputCostPerMillionEur: 0,
+  inputCostPerMillion: 0,
+  cachedInputCostPerMillion: 0,
+  outputCostPerMillion: 0,
+  currency: 'EUR',
+  simulation: true,
 }
 
 export type OpenAIIntelligenceErrorCode =
@@ -91,7 +100,7 @@ export class OpenAIIntelligenceError extends Error {
 
 export class OpenAIIntelligenceEngine implements IntelligenceEngine {
   readonly id = 'openai'
-  readonly simulation = true
+  readonly simulation: boolean
   readonly model: string
   private readonly configuration: OpenAIIntelligenceConfiguration
 
@@ -101,6 +110,7 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
   ) {
     this.configuration = { ...defaultConfiguration, ...configuration }
     this.model = this.configuration.model
+    this.simulation = this.configuration.simulation
   }
 
   async analyze(
@@ -262,9 +272,12 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
   private usage(response: OpenAIResponseEnvelope) {
     const inputTokens = response.usage.input_tokens
     const outputTokens = response.usage.output_tokens
-    const estimatedCost = inputTokens * this.configuration.inputCostPerMillionEur / 1_000_000
-      + outputTokens * this.configuration.outputCostPerMillionEur / 1_000_000
-    return { inputTokens, outputTokens, estimatedCost, currency: 'EUR' as const }
+    const cachedInputTokens = response.usage.input_tokens_details?.cached_tokens ?? 0
+    const uncachedInputTokens = Math.max(0, inputTokens - cachedInputTokens)
+    const estimatedCost = uncachedInputTokens * this.configuration.inputCostPerMillion / 1_000_000
+      + cachedInputTokens * this.configuration.cachedInputCostPerMillion / 1_000_000
+      + outputTokens * this.configuration.outputCostPerMillion / 1_000_000
+    return { inputTokens, outputTokens, estimatedCost, currency: this.configuration.currency }
   }
 }
 

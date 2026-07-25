@@ -6,15 +6,15 @@ Rama: `feat/investighost-real-pipeline`
 
 Checkpoint protegido: `18d8d33113c1412de07fb9f4189116100ccfa84b`
 
-Alcance: PROMPT 01–10 y corrección 10B, sin ejecutar PROMPT 11.
+Alcance: PROMPT 01–10, correcciones 10B y 10C, sin ejecutar PROMPT 11.
 
 ## Dictamen
 
-**GO técnico para configurar credenciales y preparar autorización humana de PROMPT 11.**
+**GO para introducir credenciales desde la aplicación y preparar una prueba de conectividad controlada posterior.**
 
-La divergencia de idempotencia durable está corregida mediante una migración aditiva y pruebas unitarias/concurrentes contra Supabase local. Las rutas legacy capaces de leer variables de entorno o crear clientes históricos fallan ahora antes de acceder a configuración, red, inputs o previews. La base técnica sin red supera pruebas, typecheck, ESLint y los tres builds Vite; el checkpoint y sus backups siguen verificables y no hay llamadas, coste o datos económicos residuales.
+La divergencia de idempotencia durable está corregida. Tavily REST y OpenAI SDK/Responses están conectados a los puertos nuevos exclusivamente mediante un permiso opaco que exige feature flag, proveedores configurados y activos, preflight, autorización humana, reserva económica y guarda global. Las credenciales solo se descifran en Electron main dentro de una operación acotada. El catálogo `2026-07-25.1` conserva tarifas oficiales verificadas, fuente y fecha de revisión. El preflight comprueba configuración pública e infraestructura local sin descifrar claves ni efectuar llamadas externas.
 
-Este GO solo permite configurar credenciales desde la aplicación y preparar el gate humano. No autoriza habilitar la feature flag, ejecutar PROMPT 11, hacer una prueba de conexión real, consumir saldo o publicar.
+Este GO no autoriza todavía la prueba de conectividad, habilitar la feature flag, ejecutar PROMPT 11, investigar Morella, consumir saldo o publicar. La prueba requiere otra autorización humana y un bloque separado.
 
 ## Reauditoría de bloqueos
 
@@ -33,13 +33,17 @@ Evidencia:
 - rollback transaccional y eliminación de la base concurrente aislada;
 - datos humanos iguales antes y después.
 
-### B2 — Integraciones reales: gate posterior pendiente
+### B2 — Clientes reales: implementados y cerrados
 
-No es un defecto de 10B. La feature flag, los clientes reales y la acción de ejecución permanecen bloqueados por alcance. Conexiones, saldos y tarifas no se consultaron. Las pruebas simuladas no acreditan conexión real.
+Tavily usa `https://api.tavily.com`, autenticación Bearer, Search/Extract, `request_id`, uso/créditos, timeout, cancelación, límites, validación Zod y errores sanitizados. OpenAI usa el SDK ya instalado, Responses API, Structured Outputs estrictos, uso y entrada cacheada, refusal/incomplete, timeout, cancelación y límite de salida. Ambos se probaron únicamente con transportes falsos inyectados.
 
-### B3 — Preflight operativo: decisión humana pendiente
+No hay IPC o botón que invoque esos clientes. Un consumidor interno tampoco puede llamar al transporte sin un permiso emitido por el gate completo. La feature flag real sigue desactivada y el botón de conectividad permanece deshabilitado.
 
-En Supabase local constan las siete tablas, las cinco funciones y ambas migraciones, pero hay cero tarifas, presupuestos, reservas y llamadas. La guarda global está libre. El gate mantiene como no comprobados credenciales, conexión, saldo, tarifas y ejecución. Esta situación es compatible con el GO técnico para configurar; PROMPT 11 sigue bloqueado hasta completar el preflight y recibir autorización expresa.
+### B3 — Preflight operativo sin red: implementado
+
+El preflight consulta solo el snapshot público del Centro de proveedores y Supabase local. Comprueba credenciales presentes, activación, modelo, vigencia de tarifa, límites, presupuestos, Morella, dos rondas, publicación/regeneración, Trawel, Automatic, ledger, guarda y cero reservas activas. Devuelve uno de los ocho estados definidos y siempre declara `networkCallsPerformed: 0`, `researchExecutionAllowed: false` y `connectivityActionEnabled: false`.
+
+Sin credenciales y con la feature flag apagada, el estado operativo seguirá bloqueado de forma esperada. `ready_for_live_connectivity_check`, cuando se alcance, solo habilitará una decisión humana posterior; nunca autoriza investigación.
 
 ## Hallazgos no bloqueantes y deuda
 
@@ -47,7 +51,8 @@ En Supabase local constan las siete tablas, las cinco funciones y ambas migracio
 - Los logs legacy de input completo y preview se retiraron. El error del guard no contiene credenciales, prompts o inputs y no es reintentable.
 - El comentario del advisory lock aparece duplicado en la migración. No cambia el SQL ejecutable.
 - Los checkpoints del piloto fake y el repositorio usado por su ledger son implementaciones en memoria. El piloto real debe usar persistencia durable y no asumir que la prueba fake demuestra recuperación tras caída de proceso.
-- Los modelos y tarifas siguen siendo valores de catálogo o sintéticos; deben verificarse contra la configuración autorizada inmediatamente antes del piloto.
+- Las tarifas oficiales se conservan en USD y caducan operativamente el 2026-08-25 si no se reverifican. Antes de investigar debe definirse una conversión USD→EUR versionada y durable para conciliar con presupuestos en EUR; 10C no inventa un tipo de cambio.
+- La tarifa de Tavily representa pay-as-you-go a 0,008 USD/crédito; el coste efectivo de un plan contratado puede diferir y debe seleccionarse explícitamente antes de reservar gasto real.
 - Saldo `not_consultable` solo puede producir advertencia y exige comprobación humana documentada.
 
 ## Evidencia revisada
@@ -63,15 +68,17 @@ En Supabase local constan las siete tablas, las cinco funciones y ambas migracio
 - Aventura y Estudiante comparten expediente y conocimiento maestro.
 - El piloto fake fija regeneraciones, publicaciones y efectos externos en cero.
 - El gate Morella exige una tarea, concurrencia 1, máximo dos rondas y cero regeneración/publicación.
+- Los clientes reales existen, pero no hay ruta de ejecución desde renderer o IPC y el permiso de red exige todos los controles económicos.
 
 ### Claves, IPC, `safeStorage` y logs
 
 - Las credenciales entran por IPC de escritura específico y validado.
 - El renderer recibe estado público y máscara constante, nunca el secreto.
 - Electron main cifra mediante `safeStorage` y persiste fuera del proyecto, bajo `userData`.
+- El uso real futuro se encapsula en `withCredential`; el secreto descifrado no puede devolverse y los errores que lo contengan se sustituyen por un error estable.
 - En Linux, `basic_text` o backend desconocido falla cerrado.
 - Sustitución y borrado exigen confirmación.
-- La búsqueda sobre archivos versionados no encontró tokens Tavily/OpenAI reales ni cabeceras Bearer; el único patrón con aspecto de clave es el placeholder explícito de OpenAI en `.env.example`.
+- La búsqueda sobre archivos versionados no encontró tokens Tavily/OpenAI reales; las únicas cabeceras Bearer pertenecen a la implementación oficial y a secretos sintéticos de prueba.
 - `.env.example` es el único archivo de entorno versionado.
 - No se detectaron logs del pipeline nuevo que impriman credenciales o cabeceras.
 - No se inspeccionaron archivos ignorados, almacenes de usuario ni variables con claves reales.
@@ -90,6 +97,7 @@ En Supabase local constan las siete tablas, las cinco funciones y ambas migracio
 - La integración local transaccional aprobó y revirtió todos sus datos.
 - La integración concurrente trabajó en una base aislada del PostgreSQL local y la eliminó al terminar.
 - El contrato `IDEMPOTENCY_CONFLICT` es estable, sanitizado y no reintentable.
+- El catálogo de aplicación `2026-07-25.1` es versionado y no modifica todavía `provider_tariffs`; no se añadió migración en 10C.
 
 ### Estado local y datos humanos
 
@@ -122,9 +130,10 @@ La guarda no tiene propietario. El test de integración posterior dejó de nuevo
 
 ## Validaciones
 
-- Suite normal: 337 pruebas aprobadas; 11 integraciones opt-in omitidas por defecto.
-- Pruebas específicas 10B: 71 aprobadas; regresión Morella falsa: 3 aprobadas.
+- Suite normal: 368 pruebas aprobadas; 11 integraciones opt-in omitidas por defecto.
+- Pruebas específicas 10C: 85 aprobadas.
 - Integración ledger Supabase local: 2 pruebas aprobadas; transacción revertida y base aislada eliminada.
+- Integraciones locales de geografía, contribuciones, repositorio editorial y Manual: 9 pruebas aprobadas con datos sintéticos limpiados.
 - TypeScript `--noEmit`: aprobado.
 - ESLint con cero warnings: aprobado.
 - Builds renderer, Electron main y preload: aprobados.

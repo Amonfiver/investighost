@@ -110,6 +110,7 @@ import {
   MANUAL_LOCAL_ACTOR_ID,
 } from '@modules/editorial-pipeline/manual-runtime'
 import { getProviderCenterRuntime } from './provider-center-runtime'
+import { getRealConnectivityPreflightRuntime } from './real-connectivity-preflight-runtime'
 import { getRealProfileSettingsRuntime } from './real-profile-settings-runtime'
 
 ipcMain.handle('contributions:import-pending', async () => {
@@ -209,6 +210,8 @@ ipcMain.handle('providers:remove', async (_event, input: unknown) => {
 ipcMain.handle('providers:test-simulated', async (_event, input: unknown) => {
   return providerCenterAction(service => service.testConnection(input))
 })
+
+ipcMain.handle('real-preflight:get', () => getRealConnectivityPreflightRuntime())
 
 ipcMain.handle('real-profiles:get', () => getRealProfileSettingsRuntime().load())
 

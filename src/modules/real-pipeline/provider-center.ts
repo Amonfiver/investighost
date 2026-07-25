@@ -11,6 +11,15 @@ import {
   type ProviderConnectionState,
 } from '@shared/provider-center-contracts'
 import type { RealProviderCategory } from '@shared/real-pipeline-contracts'
+import {
+  OPENAI_ALLOWED_MODELS,
+  OPENAI_DEFAULT_MODEL,
+  PROVIDER_PRICING_CATALOG,
+  pricingEntriesFor,
+  pricingSummary,
+  tariffStatus,
+  type ProviderPricingCatalog,
+} from '@shared/provider-pricing-catalog'
 
 export interface ProviderCatalogEntry {
   id: string
@@ -32,8 +41,8 @@ export const INITIAL_PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
     id: 'openai',
     displayName: 'OpenAI',
     category: 'intelligence_engine',
-    models: ['structured-responses'],
-    defaultModel: 'structured-responses',
+    models: [...OPENAI_ALLOWED_MODELS],
+    defaultModel: OPENAI_DEFAULT_MODEL,
   },
 ]
 
@@ -89,6 +98,7 @@ export interface ProviderCenterDependencies {
   catalog?: readonly ProviderCatalogEntry[]
   connectionTester?: SimulatedConnectionTester
   projectDirectory?: string
+  pricingCatalog?: ProviderPricingCatalog
 }
 
 export class ProviderCenterService {
@@ -96,6 +106,7 @@ export class ProviderCenterService {
   private readonly catalog: readonly ProviderCatalogEntry[]
   private readonly connectionTester: SimulatedConnectionTester
   private readonly projectDirectory: string
+  private readonly pricingCatalog: ProviderPricingCatalog
   private document: StoredDocument = { version: 1, providers: {} }
   private initialized = false
 
@@ -108,6 +119,7 @@ export class ProviderCenterService {
     this.catalog = dependencies.catalog ?? INITIAL_PROVIDER_CATALOG
     this.connectionTester = dependencies.connectionTester ?? new DeterministicConnectionTester()
     this.projectDirectory = path.resolve(dependencies.projectDirectory ?? process.cwd())
+    this.pricingCatalog = dependencies.pricingCatalog ?? PROVIDER_PRICING_CATALOG
   }
 
   async initialize(): Promise<void> {
@@ -138,9 +150,17 @@ export class ProviderCenterService {
     return ProviderCenterSnapshotSchema.parse({
       secureStorageAvailable,
       simulationOnly: true,
+      realClientsAvailable: true,
+      externalCallsAllowed: false,
+      pricingCatalogVersion: this.pricingCatalog.version,
       providers: this.catalog.map(provider => {
         const stored = secureStorageAvailable ? this.document.providers[provider.id] : undefined
         const configured = Boolean(stored?.encryptedCredential)
+        const selectedModel = stored?.selectedModel ?? provider.defaultModel
+        const pricing = pricingEntriesFor(provider.id, selectedModel, this.pricingCatalog)
+        const statuses = pricing.map(entry => tariffStatus(entry, this.now()))
+        const currentTariff = pricing.length > 0 && statuses.every(status => status === 'current')
+        const firstTariff = pricing[0]
         return {
           id: provider.id,
           displayName: provider.displayName,
@@ -148,8 +168,17 @@ export class ProviderCenterService {
           configured,
           credentialMask: configured ? '••••••••' : undefined,
           active: configured && Boolean(stored?.active),
-          selectedModel: stored?.selectedModel ?? provider.defaultModel,
+          selectedModel,
           availableModels: provider.models,
+          tariffStatus: currentTariff
+            ? 'current'
+            : statuses.includes('stale') ? 'stale' : 'unverified',
+          tariffEffectiveFrom: firstTariff?.effectiveFrom,
+          tariffVerifiedAt: firstTariff?.verifiedAt,
+          tariffReviewAfter: firstTariff?.reviewAfter,
+          tariffCurrency: firstTariff?.currency,
+          tariffSummary: pricingSummary(pricing),
+          tariffSource: firstTariff?.sourceUrl,
           lastTestAt: stored?.lastTestAt,
           connectionState: stored?.connectionState ?? 'not_tested',
         }
@@ -234,10 +263,47 @@ export class ProviderCenterService {
     return this.snapshot()
   }
 
+  async withCredential<T>(
+    providerId: string,
+    operation: (credential: string, selectedModel: string) => Promise<T>,
+  ): Promise<T> {
+    this.assertSecure()
+    const provider = this.provider(providerId)
+    const stored = this.document.providers[provider.id]
+    if (!stored?.encryptedCredential) {
+      throw new ProviderCenterError('NOT_CONFIGURED', 'El proveedor debe configurarse antes de usarse')
+    }
+    if (!stored.active) {
+      throw new ProviderCenterError('NOT_CONFIGURED', 'El proveedor debe estar activo antes de usarse')
+    }
+    const credential = this.decryptCredential(stored)
+    try {
+      const result = await operation(credential, stored.selectedModel)
+      if (containsCredential(result, credential)) {
+        throw new ProviderCenterError(
+          'SECURE_OPERATION_FAILED',
+          'La operación intentó devolver material de credencial',
+        )
+      }
+      return result
+    } catch (error) {
+      if (error instanceof ProviderCenterError) throw error
+      if (containsCredential(error, credential)) {
+        throw new ProviderCenterError('SECURE_OPERATION_FAILED', 'La operación segura del proveedor falló')
+      }
+      throw error
+    }
+  }
+
   private assertCredentialDecrypts(provider: StoredProvider): void {
+    this.decryptCredential(provider)
+  }
+
+  private decryptCredential(provider: StoredProvider): string {
     try {
       const decrypted = this.encryption.decryptString(Buffer.from(provider.encryptedCredential ?? '', 'base64'))
       if (decrypted.length < 8) throw new Error('invalid')
+      return decrypted
     } catch {
       throw new ProviderCenterError('SECURE_OPERATION_FAILED', 'La credencial cifrada no se puede validar')
     }
@@ -305,4 +371,18 @@ export class ProviderCenterService {
 
 function isFileNotFound(error: unknown): boolean {
   return Boolean(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')
+}
+
+function containsCredential(value: unknown, credential: string): boolean {
+  if (typeof value === 'string') return value.includes(credential)
+  if (value instanceof Error) {
+    return value.message.includes(credential)
+      || Boolean(value.stack?.includes(credential))
+      || containsCredential(value.cause, credential)
+  }
+  try {
+    return JSON.stringify(value).includes(credential)
+  } catch {
+    return false
+  }
 }

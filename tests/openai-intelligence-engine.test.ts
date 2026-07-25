@@ -200,8 +200,9 @@ function engine(client: OpenAIResponsesClient, overrides: Record<string, number 
     schemaVersion: 'schema-test-v1',
     maxOutputTokens: 4_000,
     timeoutMs: 30,
-    inputCostPerMillionEur: 1,
-    outputCostPerMillionEur: 2,
+    inputCostPerMillion: 1,
+    cachedInputCostPerMillion: 0.5,
+    outputCostPerMillion: 2,
     ...overrides,
   })
 }
@@ -365,6 +366,23 @@ describe('OpenAI IntelligenceEngine estructurado y sin red', () => {
       estimatedCost: 0.002,
       currency: 'EUR',
     })
+  })
+
+  it('aplica por separado la tarifa de entrada cacheada', async () => {
+    const cached = response(analysisOutput(), {
+      usage: {
+        input_tokens: 1_000,
+        output_tokens: 500,
+        input_tokens_details: { cached_tokens: 400 },
+      },
+    })
+    const result = await engine(new FakeResponsesClient([cached])).analyze(
+      mission(),
+      dossier(),
+      new AbortController().signal,
+    )
+
+    expect(result.usage.estimatedCost).toBe(0.0018)
   })
 
   it('envía modelo, límite y Structured Outputs sin navegación web', async () => {

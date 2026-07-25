@@ -53,8 +53,8 @@ const catalog: ProviderCatalogEntry[] = [
     id: 'openai',
     displayName: 'OpenAI',
     category: 'intelligence_engine',
-    models: ['structured-responses'],
-    defaultModel: 'structured-responses',
+    models: ['gpt-5.6-luna'],
+    defaultModel: 'gpt-5.6-luna',
   },
 ]
 
@@ -83,7 +83,9 @@ function configuration(providerId = 'tavily', credential = syntheticCredential) 
   return {
     providerId,
     credential,
-    selectedModel: providerId === 'research-alternative' ? 'fixture' : 'search-and-extract',
+    selectedModel: providerId === 'research-alternative'
+      ? 'fixture'
+      : providerId === 'openai' ? 'gpt-5.6-luna' : 'search-and-extract',
     confirmReplace: false,
   }
 }
@@ -101,6 +103,22 @@ describe('Centro seguro de proveedores', () => {
     })
     expect(serialized).not.toContain(syntheticCredential)
     expect(stored).not.toContain(syntheticCredential)
+  })
+
+  it('guarda también una credencial OpenAI sintética y su modelo permitido', async () => {
+    const openAICredential = 'synthetic-openai-provider-key'
+    const { center, file } = await service()
+    const snapshot = await center.configure(configuration('openai', openAICredential))
+    const openAI = snapshot.providers.find(provider => provider.id === 'openai')
+
+    expect(openAI).toMatchObject({
+      configured: true,
+      credentialMask: '••••••••',
+      selectedModel: 'gpt-5.6-luna',
+      tariffStatus: 'current',
+    })
+    expect(JSON.stringify(snapshot)).not.toContain(openAICredential)
+    expect(await readFile(file, 'utf8')).not.toContain(openAICredential)
   })
 
   it('requiere confirmación y sustituye la credencial sin conservar la anterior', async () => {
@@ -201,6 +219,43 @@ describe('Centro seguro de proveedores', () => {
       connectionState: 'simulated_ok',
       lastTestAt: '2026-07-25T10:15:00.000Z',
     })
+  })
+
+  it('solo descifra durante una operación main activa y nunca permite devolver la clave', async () => {
+    const { center } = await service()
+    await center.configure(configuration())
+    await center.setActive({ providerId: 'tavily', active: true })
+
+    await expect(center.withCredential('tavily', async (credential, selectedModel) => ({
+      selectedModel,
+      credentialLength: credential.length,
+    }))).resolves.toEqual({
+      selectedModel: 'search-and-extract',
+      credentialLength: syntheticCredential.length,
+    })
+    await expect(center.withCredential('tavily', async credential => credential)).rejects.toMatchObject({
+      code: 'SECURE_OPERATION_FAILED',
+    })
+  })
+
+  it('sanea errores y logs sin exponer el secreto sintético', async () => {
+    const { center } = await service()
+    await center.configure(configuration())
+    await center.setActive({ providerId: 'tavily', active: true })
+    const messages: string[] = []
+    let failure: unknown
+
+    try {
+      await center.withCredential('tavily', async credential => {
+        messages.push('operación segura iniciada')
+        throw new Error(`fallo interno ${credential}`)
+      })
+    } catch (error) {
+      failure = error
+    }
+
+    expect(messages.join(' ')).not.toContain(syntheticCredential)
+    expect(String(failure)).not.toContain(syntheticCredential)
   })
 
   it('rechaza IPC inválido antes de tocar el almacenamiento', () => {

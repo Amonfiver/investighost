@@ -320,8 +320,9 @@ async function pilot(openAIQueue: Array<OpenAIResponseEnvelope | Error>) {
     model: 'structured-responses',
     promptVersion: 'morella-fake-v1',
     schemaVersion: 'real-v1',
-    inputCostPerMillionEur: 0,
-    outputCostPerMillionEur: 0,
+    inputCostPerMillion: 0,
+    cachedInputCostPerMillion: 0,
+    outputCostPerMillion: 0,
   })
   const ledgerRepository = new MemoryCostLedgerRepository(
     { task: 0.2, batch: 0.2, daily: 0.2, currency: 'EUR' },

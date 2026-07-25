@@ -22,6 +22,9 @@ function input(overrides: Partial<MorellaPilotPreflightInput> = {}): MorellaPilo
     providerCenter: {
       secureStorageAvailable: true,
       simulationOnly: true,
+      realClientsAvailable: true,
+      externalCallsAllowed: false,
+      pricingCatalogVersion: '2026-07-25.1',
       providers: [
         {
           id: 'tavily',
@@ -32,6 +35,11 @@ function input(overrides: Partial<MorellaPilotPreflightInput> = {}): MorellaPilo
           active: true,
           selectedModel: 'search-and-extract',
           availableModels: ['search-and-extract'],
+          tariffStatus: 'current',
+          tariffVerifiedAt: '2026-07-25T00:00:00.000+02:00',
+          tariffReviewAfter: '2026-08-25T00:00:00.000+02:00',
+          tariffCurrency: 'USD',
+          tariffSummary: 'Tarifa sintética vigente',
           connectionState: 'simulated_ok',
         },
         {
@@ -41,8 +49,13 @@ function input(overrides: Partial<MorellaPilotPreflightInput> = {}): MorellaPilo
           configured: true,
           credentialMask: '••••••••',
           active: true,
-          selectedModel: 'structured-responses',
-          availableModels: ['structured-responses'],
+          selectedModel: 'gpt-5.6-luna',
+          availableModels: ['gpt-5.6-luna'],
+          tariffStatus: 'current',
+          tariffVerifiedAt: '2026-07-25T00:00:00.000+02:00',
+          tariffReviewAfter: '2026-08-25T00:00:00.000+02:00',
+          tariffCurrency: 'USD',
+          tariffSummary: 'Tarifa sintética vigente',
           connectionState: 'simulated_ok',
         },
       ],

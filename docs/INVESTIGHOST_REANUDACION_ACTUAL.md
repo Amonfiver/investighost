@@ -1,5 +1,21 @@
 # Investighost — cierre y punto de reanudación actual
 
+## Estado vigente — PROMPT 10C preparado sin red
+
+- Rama activa: `feat/investighost-real-pipeline`.
+- HEAD inicial del bloque: `e794a0bb1a1bf1422b12f94ac03d9a80946f9ea7`.
+- Tavily y OpenAI ya tienen clientes reales detrás de los puertos y de un permiso estricto; no existe ruta UI/IPC de investigación.
+- Las claves se introducen desde Centro de proveedores, se cifran con `safeStorage` fuera del proyecto y nunca regresan al renderer.
+- Catálogo oficial versionado: `2026-07-25.1`, moneda USD, verificado el 2026-07-25 y con revisión obligatoria desde 2026-08-25.
+- El preflight real consulta exclusivamente configuración pública y Supabase local. No descifra credenciales ni usa red.
+- La feature flag parte apagada y `Preparar prueba de conectividad` está deshabilitado.
+- Llamadas Tavily/OpenAI: 0; créditos: 0; tokens: 0; gasto: 0 EUR; publicaciones: 0.
+- PROMPT 11 no se ejecutó. Morella, Trawel, producción y Automatic permanecen bloqueados.
+
+Dictamen: **GO para introducir las claves desde la aplicación y preparar una prueba de conectividad controlada posterior; NO-GO para investigar o realizar ahora esa prueba.**
+
+La siguiente intervención, si recibe autorización separada, debe limitarse a una prueba mínima de conectividad. Antes de cualquier investigación también debe resolver de forma versionada la conversión entre tarifas USD y presupuestos EUR, persistir la reserva y adquirir la guarda. Las secciones históricas posteriores de este documento no amplían este alcance.
+
 ## Pipeline real — lote PROMPT 01–10 auditado
 
 El punto de retorno previo al pipeline real permanece protegido por la etiqueta `checkpoint/pre-real-pipeline-20260725` y por el backup externo documentado en `D:\Backups\investighost\pre-real-pipeline-20260725-0336`.
@@ -14,7 +30,7 @@ PROMPT 01 formaliza una arquitectura neutral, todavía inactiva y sin red:
 
 La ejecución acumulada se registra en `docs/REAL_PIPELINE_EXECUTION_REPORT.md`. PROMPT 11 y posteriores continúan fuera de alcance.
 
-PROMPT 02 añade el Centro de proveedores en modo exclusivamente simulado. Tavily y OpenAI aparecen en sus categorías; el renderer solo recibe estado público y una máscara constante. Las credenciales se transportan por IPC de escritura validado, se cifran en main mediante Electron `safeStorage` y se guardan fuera del proyecto, bajo el directorio de datos de usuario. No se usa Supabase y un backend seguro no disponible bloquea configuración y activación.
+PROMPT 02 añadió originalmente el Centro de proveedores en modo simulado. PROMPT 10C conserva su validación sin red y añade clientes reales inaccesibles sin el gate completo. Tavily y OpenAI aparecen en sus categorías; el renderer solo recibe estado público y una máscara constante. Las credenciales se transportan por IPC de escritura validado, se cifran en main mediante Electron `safeStorage` y se guardan fuera del proyecto, bajo el directorio de datos de usuario. No se usa Supabase para credenciales y un backend seguro no disponible bloquea configuración y activación.
 
 PROMPT 03 añade el ledger durable y el cortafuegos de gasto. La migración local `20260725050000_real_provider_ledger.sql` es aditiva: siete tablas nuevas conservan tarifas versionadas, presupuestos, guarda global, reservas y asientos append-only. La reserva precede a la llamada, los límites se evalúan tarea → lote → día y un resultado ambiguo conserva la reserva y exige revisión humana. La integración fue sintética, transaccional y revertida; los conteos humanos permanecieron en 13 solicitudes, 14 runs, 24 borradores y 136 eventos.
 
@@ -33,6 +49,8 @@ PROMPT 09 prepara una puerta real fail-closed para un único piloto Morella, sin
 PROMPT 10 cierra la auditoría con dictamen **NO-GO operativo**. Las validaciones sin red son correctas, los backups conservan sus hashes, los datos humanos permanecen 13/14/24/136 y las tablas económicas están vacías. Bloquea el piloto una divergencia de idempotencia: el servicio en memoria rechaza reutilizar una clave con parámetros distintos, pero la función SQL devuelve la reserva existente sin compararlos. También permanecen pendientes, por diseño del lote, clientes y conexiones reales, tarifas, presupuestos y sondas del preflight. El detalle y los pasos de corrección están en `docs/real-pipeline/REAL_PIPELINE_PRE_PILOT_AUDIT.md`.
 
 PROMPT 10B resuelve aquel NO-GO con la migración aditiva `20260725183730_fix_provider_reservation_idempotency.sql`, sin modificar la migración aplicada original. Una clave existente solo devuelve la misma reserva si todos los campos de atribución, presupuesto, facturación y payload coinciden; cualquier diferencia produce `IDEMPOTENCY_CONFLICT`, tipado, sanitizado y no reintentable, sin presupuesto o ledger adicional. Las carreras idénticas/conflictivas se validaron en dos sesiones sobre una base local aislada y eliminada. Las rutas legacy de entorno, Kimi, Brave y orquestación histórica están deprecadas y bloqueadas antes de leer configuración, crear clientes, acceder a red o registrar inputs. Nuevo dictamen: **GO técnico para configurar credenciales y preparar autorización humana de PROMPT 11**. No autoriza conexiones, llamadas ni PROMPT 11.
+
+PROMPT 10C conecta Tavily REST y OpenAI SDK/Responses a las abstracciones nuevas, pero solo tras un permiso opaco que exige feature flag, configuración, preflight, autorización humana, reserva y guarda. El catálogo `2026-07-25.1` usa datos oficiales en USD y caduca para revisión. La pantalla muestra tarifa/modelo y un preflight local con ocho estados; la acción de conectividad está deshabilitada. Todos los tests usan secretos y transportes sintéticos. No se leyeron o probaron claves reales y no hubo llamadas, créditos, tokens o coste.
 
 Fecha de actualización: 2026-07-25
 Estado canónico: **FASE 3J CERRADA; FASE 4A-01 COMMITTEADA; FASE 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA**
@@ -596,4 +614,4 @@ EJECUTAR EL PILOTO HUMANO CONTROLADO DE FASE 4A-01B
 
 La prueba propuesta es: abrir Biblioteca en página 1, avanzar a página 2, abrir una solicitud, volver conservando página 2, retroceder, regresar a la primera página y confirmar que navegar no crea solicitudes ni coste. Si no existen más de 25 solicitudes humanas, no deben crearse datos persistentes sin otra autorización; las pruebas sintéticas automatizadas demuestran el recorrido.
 
-El commit `7b1ddde` de FASE 4A-01 ya existe en remoto. Los cambios de FASE 4A-01B deben permanecer sin commit ni push hasta autorización expresa. Aprobar este gate no autoriza automáticamente FASE 4A-02. El siguiente paso recomendado tras el gate es un piloto real controlado, manteniendo publicaciones en cero y Trawel, Automatic, producción, IA y proveedores reales desconectados.
+El commit `7b1ddde` de FASE 4A-01 ya existe en remoto. Esa secuencia pertenece al historial de la rama de reinvención. En la rama real actual, los clientes existen pero sus llamadas permanecen desconectadas. El siguiente paso autorizado por 10C es introducir las claves sin probarlas; cualquier conectividad o piloto exige otro gate humano, con publicaciones en cero y Trawel, Automatic y producción desconectados.

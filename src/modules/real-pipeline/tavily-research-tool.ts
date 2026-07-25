@@ -7,6 +7,10 @@ import {
   type RealResearchSource,
 } from '@shared/real-pipeline-contracts'
 import type { ResearchTool, ResearchToolResult } from './ports'
+import {
+  assertLiveProviderNetworkPermit,
+  type LiveProviderNetworkPermit,
+} from './live-provider-access'
 
 const TavilyUsageSchema = z.object({
   credits: z.number().nonnegative(),
@@ -49,18 +53,16 @@ export interface TavilyFetchTransportOptions {
   credential: string
   fetchImplementation?: typeof fetch
   baseUrl?: string
-  networkEnabled?: boolean
+  networkPermit?: LiveProviderNetworkPermit
 }
 
 export class TavilyFetchTransport implements TavilyTransport {
   private readonly fetchImplementation: typeof fetch
   private readonly baseUrl: string
-  private readonly networkEnabled: boolean
 
   constructor(private readonly options: TavilyFetchTransportOptions) {
     this.fetchImplementation = options.fetchImplementation ?? globalThis.fetch
     this.baseUrl = options.baseUrl ?? 'https://api.tavily.com'
-    this.networkEnabled = options.networkEnabled ?? false
   }
 
   async post(
@@ -68,13 +70,18 @@ export class TavilyFetchTransport implements TavilyTransport {
     body: Record<string, unknown>,
     signal: AbortSignal,
   ): Promise<TavilyHttpResponse> {
-    if (!this.networkEnabled) {
+    try {
+      assertLiveProviderNetworkPermit(this.options.networkPermit)
+    } catch {
       throw new TavilyResearchError('NETWORK_DISABLED', 'Tavily real permanece desactivado')
     }
     const response = await this.fetchImplementation(`${this.baseUrl}${pathname}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ...body, api_key: this.options.credential }),
+      headers: {
+        authorization: `Bearer ${this.options.credential}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
       signal,
     })
     let responseBody: unknown
@@ -121,12 +128,13 @@ export class TavilyResearchError extends Error {
 
 export interface TavilyResearchDependencies {
   now?: () => Date
+  simulation?: boolean
 }
 
 export class TavilyResearchTool implements ResearchTool {
   readonly id = 'tavily'
   readonly model = 'search-and-extract'
-  readonly simulation = true
+  readonly simulation: boolean
   private readonly limits: TavilyResearchLimits
   private readonly now: () => Date
 
@@ -137,6 +145,7 @@ export class TavilyResearchTool implements ResearchTool {
   ) {
     this.limits = { ...defaultLimits, ...limits }
     this.now = dependencies.now ?? (() => new Date())
+    this.simulation = dependencies.simulation ?? true
   }
 
   async research(candidate: RealResearchMission, signal: AbortSignal): Promise<ResearchToolResult> {
@@ -156,6 +165,8 @@ export class TavilyResearchTool implements ResearchTool {
         query,
         max_results: Math.min(this.limits.maxResultsPerQuery, mission.limits.maxSources),
         include_raw_content: false,
+        include_usage: true,
+        search_depth: 'basic',
       }, signal, TavilySearchResponseSchema)
       providerRequestIds.push(response.request_id)
       credits += response.usage.credits
@@ -190,6 +201,7 @@ export class TavilyResearchTool implements ResearchTool {
     const extraction = await this.request('/extract', {
       urls: selected.map(candidate => candidate.url),
       extract_depth: mission.depth === 'deep' ? 'advanced' : 'basic',
+      include_usage: true,
     }, signal, TavilyExtractResponseSchema)
     providerRequestIds.push(extraction.request_id)
     credits += extraction.usage.credits

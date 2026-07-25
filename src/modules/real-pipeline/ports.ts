@@ -37,7 +37,7 @@ export interface IntelligenceRoundAnalysis {
     inputTokens: number
     outputTokens: number
     estimatedCost: number
-    currency: 'EUR'
+    currency: 'EUR' | 'USD'
   }
 }
 
@@ -52,7 +52,7 @@ export interface IntelligenceDraft {
     inputTokens: number
     outputTokens: number
     estimatedCost: number
-    currency: 'EUR'
+    currency: 'EUR' | 'USD'
   }
 }
 
@@ -65,7 +65,7 @@ export interface IntelligenceReview {
     inputTokens: number
     outputTokens: number
     estimatedCost: number
-    currency: 'EUR'
+    currency: 'EUR' | 'USD'
   }
 }
 

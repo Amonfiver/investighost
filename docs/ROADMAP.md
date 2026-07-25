@@ -24,6 +24,8 @@ PROMPT 10 concluye con **NO-GO operativo**. El pipeline simulado, la seguridad l
 
 PROMPT 10B corrige la deuda con una nueva migración local aditiva: misma clave e input idéntico convergen; cualquier diferencia de atribución, facturación, presupuesto o payload devuelve `IDEMPOTENCY_CONFLICT` sin duplicar reserva, ledger o coste. La concurrencia se prueba con sesiones PostgreSQL independientes y las rutas legacy quedan deprecadas y bloqueadas antes de entorno/red. Dictamen actualizado: **GO técnico para configurar credenciales y preparar autorización humana de PROMPT 11**; ejecución real, conexiones y PROMPT 11 siguen requiriendo autorización expresa.
 
+PROMPT 10C permite introducir Tavily/OpenAI desde Electron y cifra las claves mediante `safeStorage`; añade Tavily REST y OpenAI SDK/Responses detrás de feature flag, preflight, autorización, reserva y guarda. El catálogo oficial `2026-07-25.1` conserva modelo/producto, Search/Extract, entrada/cache/salida, créditos, USD, fuentes y fecha de revisión. El preflight comprueba únicamente configuración pública y Supabase local, siempre informa cero llamadas y no autoriza investigación. La UI muestra el resultado y mantiene deshabilitada la preparación de conectividad. Dictamen: **GO para introducir claves y preparar una prueba de conectividad controlada posterior**, pero la prueba, PROMPT 11 y Morella requieren autorización independiente. La conversión durable USD→EUR sigue siendo bloqueante antes de investigar.
+
 Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada y committeada; FASE 4A-01B está implementada técnicamente y pendiente de prueba humana. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia
@@ -202,10 +204,11 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 
 ## Orden inmediato vigente
 
-1. Mantener FASE 3J cerrada y sincronizada; no queda pendiente su commit o push.
-2. Ejecutar el piloto humano controlado de FASE 4A-01B; no hacer commit ni push antes de autorización.
-3. No iniciar FASE 4A-02, FASE 5 o cualquier bloque posterior sin un encargo nuevo.
-4. Mantener Automatic, producción, Trawel, proveedores reales y publicación bloqueados.
+1. Mantener PROMPT 11 sin ejecutar, la feature flag apagada y el botón de conectividad deshabilitado.
+2. Permitir que el operador introduzca y active Tavily/OpenAI desde la aplicación, sin probar las claves contra Internet.
+3. Solicitar autorización separada para una prueba mínima de conectividad; no convertirla en investigación Morella.
+4. Antes de cualquier investigación, versionar la conversión USD→EUR, persistir presupuesto/reserva y comprobar guarda/ledger.
+5. Mantener Automatic, producción, Trawel y publicación bloqueados.
 
 ## Estado FASE 2C-B — 2026-07-14
 

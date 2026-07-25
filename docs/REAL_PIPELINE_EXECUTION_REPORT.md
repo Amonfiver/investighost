@@ -1,6 +1,6 @@
 # Informe de ejecución del pipeline real
 
-Este informe acumula la evidencia del lote autónomo PROMPT 01–10. Hasta que exista una autorización posterior, todos los proveedores permanecen simulados, el modo real está inactivo y PROMPT 11 no se ejecuta.
+Este informe acumula la evidencia desde PROMPT 01. Tras 10C existen clientes reales, pero no una ruta operativa de red: la feature flag y el botón de conectividad están apagados, la investigación permanece bloqueada y PROMPT 11 no se ejecuta.
 
 ## PROMPT 01 — Arquitectura neutral y contratos del sistema operativo editorial
 
@@ -192,3 +192,24 @@ Este informe acumula la evidencia del lote autónomo PROMPT 01–10. Hasta que e
 - Coste real consumido: `0 EUR`.
 - Llamadas reales realizadas: `0`.
 - Fronteras negativas: feature flag apagada; PROMPT 11 no ejecutado; cero créditos, tokens y publicaciones; Trawel, producción y Automatic desconectados; ningún comando Supabase prohibido.
+
+## PROMPT 10C — Credenciales, clientes reales y preflight sin red
+
+- Fecha/hora: 2026-07-25 (Europe/Madrid).
+- HEAD inicial: `e794a0bb1a1bf1422b12f94ac03d9a80946f9ea7`.
+- HEAD final: commit único de este bloque, con mensaje `feat: conectar proveedores reales tras preflight seguro`.
+- Commit: el hash se entrega después de crear el commit para evitar una referencia circular dentro de sí mismo.
+- Credenciales: Tavily y OpenAI se configuran, sustituyen, eliminan y activan desde la aplicación; `safeStorage` cifra fuera del proyecto y el secreto solo se descifra en Electron main durante `withCredential`.
+- Clientes: Tavily REST usa Bearer, Search/Extract, request ID y créditos; OpenAI usa el SDK instalado, `v1/responses`, Structured Outputs, uso cacheado, refusal e incomplete. Timeout, cancelación, límites, parsing y errores sanitizados permanecen detrás de los puertos existentes.
+- Gate: el permiso de red es opaco y exige token estricto, proveedor configurado/activo, estado `ready_for_live_connectivity_check`, autorización de tarea, reserva y guarda. No existe acción de renderer/IPC para emitirlo o ejecutar Morella.
+- Catálogo: versión `2026-07-25.1`; Tavily Search basic/advanced 1/2 créditos, Extract basic/advanced 1/2 créditos por cinco extracciones satisfactorias y pay-as-you-go 0,008 USD/crédito; OpenAI GPT-5.6 Luna 1/0,1/6, Terra 2,5/0,25/15 y Sol 5/0,5/30 USD por millón de tokens entrada/cache/salida. Revisión obligatoria desde 2026-08-25.
+- Fuentes oficiales: `https://docs.tavily.com/documentation/api-reference/introduction`, `https://docs.tavily.com/documentation/api-reference/endpoint/search`, `https://docs.tavily.com/documentation/api-reference/endpoint/extract`, `https://docs.tavily.com/documentation/api-credits`, `https://developers.openai.com/api/docs/models/compare`, `https://developers.openai.com/api/docs/guides/structured-outputs` y `https://developers.openai.com/api/docs/guides/error-codes`.
+- Preflight: estado tipado de ocho alternativas, construido con snapshot público, configuración fija e inspección local de Supabase, ledger, guarda y reservas. Siempre devuelve cero llamadas y mantiene investigación/conectividad deshabilitadas.
+- UI: muestra configuración, activación, modelo, tarifa, fecha de revisión, presupuestos, Morella, dos rondas, fronteras y resultado. `Preparar prueba de conectividad` está visible pero deshabilitado.
+- Migraciones: ninguna. El catálogo versionado vive en configuración; `provider_tariffs` permanece sin filas hasta que un bloque autorizado defina moneda/conversión y persistencia para gasto real.
+- Pruebas: 85 específicas, 368 en suite normal, 2 integraciones de ledger y 9 integraciones locales editoriales aprobadas. Los clientes se ejercitan solo con `fetch`/SDK falsos.
+- Riesgos: no se ha comprobado ninguna clave, saldo o conectividad; las tarifas son USD y los presupuestos del piloto son EUR, por lo que una conversión versionada es bloqueante para investigar, aunque no para introducir claves o preparar conectividad.
+- Dictamen: `GO para introducir claves y preparar una prueba de conectividad controlada posterior`; la prueba en sí requiere autorización humana separada.
+- Coste real consumido: `0 EUR`; créditos Tavily: `0`; tokens OpenAI: `0`.
+- Llamadas reales realizadas: `0`.
+- Fronteras negativas: feature flag apagada; botón deshabilitado; PROMPT 11 no ejecutado; Morella no ejecutada; sin publicación, Trawel, producción ni Automatic; ningún comando Supabase prohibido.

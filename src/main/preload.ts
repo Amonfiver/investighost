@@ -54,6 +54,7 @@ const electronAPI = {
   setProviderActive: (input: ProviderActivationInput) => ipcRenderer.invoke('providers:set-active', input),
   removeProviderCredential: (input: ProviderDeleteInput) => ipcRenderer.invoke('providers:remove', input),
   testProviderSimulated: (input: ProviderTestInput) => ipcRenderer.invoke('providers:test-simulated', input),
+  getRealConnectivityPreflight: () => ipcRenderer.invoke('real-preflight:get'),
   getRealProfileSettings: () => ipcRenderer.invoke('real-profiles:get'),
   saveRealProfileSettings: (input: RealProfileSettings) => ipcRenderer.invoke('real-profiles:save', input),
 }

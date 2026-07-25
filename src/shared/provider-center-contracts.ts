@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { RealProviderCategorySchema } from './real-pipeline-contracts'
+import { ProviderTariffStatusSchema } from './provider-pricing-catalog'
 
 const ProviderIdSchema = z.string().trim().regex(/^[a-z0-9][a-z0-9-]{1,79}$/)
 const ModelIdSchema = z.string().trim().min(1).max(160)
@@ -19,6 +20,13 @@ export const ProviderPublicStatusSchema = z.object({
   active: z.boolean(),
   selectedModel: ModelIdSchema,
   availableModels: z.array(ModelIdSchema).min(1),
+  tariffStatus: ProviderTariffStatusSchema,
+  tariffEffectiveFrom: z.string().datetime({ offset: true }).optional(),
+  tariffVerifiedAt: z.string().datetime({ offset: true }).optional(),
+  tariffReviewAfter: z.string().datetime({ offset: true }).optional(),
+  tariffCurrency: z.literal('USD').optional(),
+  tariffSummary: z.string().trim().min(1).max(300),
+  tariffSource: z.string().url().optional(),
   lastTestAt: z.string().datetime({ offset: true }).optional(),
   connectionState: ProviderConnectionStateSchema,
 })
@@ -26,6 +34,9 @@ export const ProviderPublicStatusSchema = z.object({
 export const ProviderCenterSnapshotSchema = z.object({
   secureStorageAvailable: z.boolean(),
   simulationOnly: z.literal(true),
+  realClientsAvailable: z.literal(true),
+  externalCallsAllowed: z.literal(false),
+  pricingCatalogVersion: z.string().regex(/^\d{4}-\d{2}-\d{2}\.\d+$/),
   providers: z.array(ProviderPublicStatusSchema),
 })
 

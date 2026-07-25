@@ -29,10 +29,7 @@ import {
   assessProfileEvidence,
   type RealProfileSettings,
 } from '@shared/real-profile-settings'
-import {
-  createClosedMorellaPilotPreflight,
-  type MorellaPilotPreflight,
-} from '@modules/real-pipeline/real-pilot-gate'
+import type { RealConnectivityPreflight } from '@modules/real-pipeline/real-connectivity-preflight'
 import type { EditorialDraftVersionSummary } from '@modules/editorial-pipeline/repository'
 import {
   LIBRARY_PAGE_SUMMARY_LABEL,
@@ -765,8 +762,8 @@ function ProviderCenterPanel(): JSX.Element {
   return (
     <section>
       <div className="section-heading">
-        <div><span className="eyebrow">CONFIGURACIÓN LOCAL SEGURA</span><h2>Centro de proveedores</h2><p>Catálogo extensible. Todas las pruebas de este lote son simuladas y no usan red.</p></div>
-        <span className="safety-pill">Modo real inactivo</span>
+        <div><span className="eyebrow">CONFIGURACIÓN LOCAL SEGURA</span><h2>Centro de proveedores</h2><p>Clientes reales instalados detrás del gate; guardar y validar la configuración no usa red.</p></div>
+        <span className="safety-pill">Llamadas externas bloqueadas</span>
       </div>
       {!snapshot.secureStorageAvailable && (
         <div className="alert error" role="alert">
@@ -789,11 +786,17 @@ function ProviderCenterPanel(): JSX.Element {
                   <div><dt>Credencial</dt><dd>{provider.configured ? provider.credentialMask : 'No configurada'}</dd></div>
                   <div><dt>Conexión</dt><dd>{connectionLabel(provider.connectionState)}</dd></div>
                   <div><dt>Última prueba</dt><dd>{provider.lastTestAt ? formatDate(provider.lastTestAt) : 'Nunca'}</dd></div>
-                  <div><dt>Entorno</dt><dd>Simulado · sin red</dd></div>
+                  <div><dt>Modelo</dt><dd>{provider.selectedModel}</dd></div>
+                  <div><dt>Tarifa oficial</dt><dd className={provider.tariffStatus === 'current' ? '' : 'tariff-warning'}>{tariffStatusLabel(provider)}</dd></div>
+                  <div><dt>Precio</dt><dd>{provider.tariffSummary}</dd></div>
+                  <div><dt>Vigente desde</dt><dd>{provider.tariffEffectiveFrom ? formatDate(provider.tariffEffectiveFrom) : 'Sin verificar'}</dd></div>
+                  <div><dt>Tarifa verificada</dt><dd>{provider.tariffVerifiedAt ? formatDate(provider.tariffVerifiedAt) : 'Sin verificar'}</dd></div>
+                  <div><dt>Revisar antes de</dt><dd>{provider.tariffReviewAfter ? formatDate(provider.tariffReviewAfter) : 'Sin verificar'}</dd></div>
+                  <div><dt>Entorno</dt><dd>Cliente real preparado · red bloqueada</dd></div>
                 </dl>
                 <div className="provider-actions">
                   <button className="button secondary" disabled={working || !snapshot.secureStorageAvailable} onClick={() => openConfiguration(provider)}>{provider.configured ? 'Sustituir credencial' : 'Configurar'}</button>
-                  <button className="button ghost" disabled={working || !provider.configured} onClick={() => mutate(() => window.electronAPI.testProviderSimulated({ providerId: provider.id }))}>Probar (simulado)</button>
+                  <button className="button ghost" disabled={working || !provider.configured} onClick={() => mutate(() => window.electronAPI.testProviderSimulated({ providerId: provider.id }))}>Validar sin red</button>
                   <button className="button ghost" disabled={working || !provider.configured} onClick={() => mutate(() => window.electronAPI.setProviderActive({ providerId: provider.id, active: !provider.active }))}>{provider.active ? 'Desactivar' : 'Activar'}</button>
                   {provider.configured && <button className="button danger" disabled={working} onClick={() => removeCredential(provider)}>Eliminar</button>}
                 </div>
@@ -809,14 +812,14 @@ function ProviderCenterPanel(): JSX.Element {
           </div>
         </div>
       ))}
-      <p className="scope-note"><strong>Frontera de seguridad</strong><span>Las credenciales se cifran en Electron main mediante safeStorage. El renderer solo vuelve a recibir estado público y una máscara constante.</span></p>
+      <p className="scope-note"><strong>Frontera de seguridad</strong><span>Las credenciales se cifran en Electron main mediante safeStorage. El renderer solo recibe estado público y una máscara constante; validar aquí no prueba la clave contra Internet.</span></p>
     </section>
   )
 }
 
 function RealProfileSettingsPanel(): JSX.Element {
   const [settings, setSettings] = useState<RealProfileSettings | null>(null)
-  const [providerSnapshot, setProviderSnapshot] = useState<ProviderCenterSnapshot | null>(null)
+  const [preflight, setPreflight] = useState<RealConnectivityPreflight | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -824,11 +827,11 @@ function RealProfileSettingsPanel(): JSX.Element {
   useEffect(() => {
     Promise.all([
       window.electronAPI.getRealProfileSettings(),
-      window.electronAPI.listProviders(),
+      window.electronAPI.getRealConnectivityPreflight(),
     ])
-      .then(([nextSettings, nextProviders]) => {
+      .then(([nextSettings, nextPreflight]) => {
         setSettings(nextSettings)
-        setProviderSnapshot(nextProviders)
+        setPreflight(nextPreflight)
       })
       .catch(reason => setLocalError(errorText(reason)))
   }, [])
@@ -858,12 +861,11 @@ function RealProfileSettingsPanel(): JSX.Element {
     }
   }
 
-  if (!settings || !providerSnapshot) {
+  if (!settings || !preflight) {
     return <section><div className="empty-card provider-loading"><span className="spinner" /><h2>Cargando roles editoriales…</h2></div></section>
   }
   const evidence = assessProfileEvidence(settings, 0)
   const activeCount = settings.profiles.filter(profile => profile.enabled).length
-  const preflight = createClosedMorellaPilotPreflight(providerSnapshot)
   return (
     <section>
       <div className="section-heading">
@@ -900,13 +902,14 @@ function RealProfileSettingsPanel(): JSX.Element {
   )
 }
 
-function RealPilotPreflightPanel({ preflight }: { preflight: MorellaPilotPreflight }): JSX.Element {
+function RealPilotPreflightPanel({ preflight }: { preflight: RealConnectivityPreflight }): JSX.Element {
   const policy = preflight.policy
+  const readyForConnectivity = preflight.status === 'ready_for_live_connectivity_check'
   return (
     <section className="real-preflight" aria-label="Preflight del piloto real Morella">
       <header>
-        <div><span className="card-kicker">PILOTO ÚNICO · MORELLA</span><h3>Puerta de ejecución real</h3><p>Evaluación local y cerrada: no descifra claves ni conecta con proveedores, saldo o red.</p></div>
-        <span className={`state-badge ${preflight.ready ? 'state-approved' : 'state-blocked'}`}>{preflight.ready ? 'Preparado' : 'Bloqueado'}</span>
+        <div><span className="card-kicker">PILOTO ÚNICO · MORELLA</span><h3>Preflight real sin red</h3><p>Evalúa configuración pública e infraestructura local; no descifra claves ni conecta con proveedores, saldo o red.</p></div>
+        <span className={`state-badge ${readyForConnectivity ? 'state-approved' : 'state-blocked'}`}>{preflightStatusLabel(preflight.status)}</span>
       </header>
       <div className="real-policy-strip">
         <span>1 tarea</span><span>Concurrencia 1</span><span>0,20 EUR</span><span>Aviso 0,16</span>
@@ -921,8 +924,12 @@ function RealPilotPreflightPanel({ preflight }: { preflight: MorellaPilotPreflig
         ))}
       </div>
       <div className="alert warning" role="status">
-        <strong>No existe acción de ejecución.</strong>
-        <span>La feature flag sigue apagada y cada comprobación real pendiente debe resolverse en un gate posterior autorizado.</span>
+        <strong>La investigación real sigue bloqueada.</strong>
+        <span>Este resultado solo prepara una futura prueba de conectividad con autorización separada; no ejecuta Morella.</span>
+      </div>
+      <div className="form-actions">
+        <span className="muted">Llamadas externas realizadas por este preflight: {preflight.networkCallsPerformed}</span>
+        <button className="button primary" disabled>Preparar prueba de conectividad</button>
       </div>
     </section>
   )
@@ -958,6 +965,24 @@ function connectionLabel(value: ProviderPublicStatus['connectionState']): string
   if (value === 'simulated_ok') return 'Simulada correcta'
   if (value === 'simulated_error') return 'Simulada fallida'
   return 'Sin probar'
+}
+function tariffStatusLabel(provider: ProviderPublicStatus): string {
+  if (provider.tariffStatus === 'current') return `Vigente · ${provider.tariffCurrency ?? 'USD'}`
+  if (provider.tariffStatus === 'stale') return 'Caducada · requiere revisión'
+  return 'Sin verificar'
+}
+function preflightStatusLabel(value: RealConnectivityPreflight['status']): string {
+  const labels: Record<RealConnectivityPreflight['status'], string> = {
+    ready_for_live_connectivity_check: 'Preparado para conectividad',
+    missing_credentials: 'Faltan credenciales',
+    missing_tariff: 'Falta tarifa vigente',
+    unsafe_storage: 'Almacenamiento inseguro',
+    real_feature_disabled: 'Feature flag desactivada',
+    budget_invalid: 'Presupuesto inválido',
+    provider_inactive: 'Proveedor inactivo',
+    blocked: 'Bloqueado',
+  }
+  return labels[value]
 }
 function errorText(reason: unknown): string { return reason instanceof Error ? reason.message : String(reason) }
 function summaryFromResult(result: ResearchDestinationResult): LibraryItem { return { requestId: result.request.id, runId: result.run.id, destinationId: result.destination.id, destinationQuery: result.request.destinationQuerySnapshot, profiles: result.request.profiles, state: result.request.state, version: result.request.version, stage: result.run.stage, runState: result.run.state, errorCode: result.run.errorCode, errorMessage: result.run.errorMessage, failureClassification: result.run.failureClassification, failedAt: result.run.state === 'failed' ? result.run.completedAt : undefined, hasActiveIncident: ['failed', 'retry_pending'].includes(result.request.state) || ['failed', 'retry_pending'].includes(result.run.state), latestRunActualCost: result.run.actualCost, currency: result.run.currency, createdAt: result.request.createdAt, updatedAt: result.request.updatedAt } }

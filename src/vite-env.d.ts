@@ -40,6 +40,7 @@ import type {
   ProviderTestInput,
 } from './shared/provider-center-contracts'
 import type { RealProfileSettings } from './shared/real-profile-settings'
+import type { RealConnectivityPreflight } from './modules/real-pipeline/real-connectivity-preflight'
 
 declare global {
   interface Window {
@@ -77,6 +78,7 @@ declare global {
       setProviderActive: (input: ProviderActivationInput) => Promise<ProviderCenterSnapshot>
       removeProviderCredential: (input: ProviderDeleteInput) => Promise<ProviderCenterSnapshot>
       testProviderSimulated: (input: ProviderTestInput) => Promise<ProviderCenterSnapshot>
+      getRealConnectivityPreflight: () => Promise<RealConnectivityPreflight>
       getRealProfileSettings: () => Promise<RealProfileSettings>
       saveRealProfileSettings: (input: RealProfileSettings) => Promise<RealProfileSettings>
     }

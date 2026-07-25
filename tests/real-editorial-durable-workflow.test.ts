@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DurableRealEditorialPipeline,
   MemoryCostLedgerRepository,
+  missionForPilot,
   realEditorialPayloadHash,
   TavilyResearchError,
   type IntelligenceDraft,
@@ -72,7 +73,7 @@ class MemoryDurableRepository implements RealEditorialPilotRepository {
   ) {
     const identity = `${targetRunId}:${kind}:${key}`
     const values = this.artifacts.get(identity) ?? []
-    const hash = createHash('sha256').update(JSON.stringify(payload)).digest('hex')
+    const hash = realEditorialPayloadHash(payload)
     const existing = values.find(item => item.version === version)
     if (existing && existing.payloadHash !== hash) throw new Error('VERSION_CONFLICT')
     if (!existing) values.push({
@@ -170,6 +171,7 @@ class MemoryDurableRepository implements RealEditorialPilotRepository {
   }
 
   async reopenCancelled() {
+    if (this.pilot.state !== 'cancelled') return
     const artifact = await this.latestArtifact(runId, 'checkpoint', 'workflow')
     if (artifact) {
       const checkpoint = artifact.payload as RealWorkflowCheckpoint
@@ -463,6 +465,70 @@ describe('workflow editorial durable con clientes falsos', () => {
     expect(ledger.budgetSnapshot().task.spent).toBeCloseTo(0.2, 8)
   })
 
+  it('reutiliza la misión durable aunque el reloj de la reanudación sea posterior', async () => {
+    const repository = new MemoryDurableRepository()
+    const ledger = ledgerRepository()
+    const mission = missionForPilot(repository.pilot, new Date(now))
+    await repository.appendArtifact(pilotId, runId, 'mission', 'initial', 1, mission)
+    const original = await repository.latestArtifact(runId, 'mission', 'initial')
+    const research = new FakeResearchTool()
+    const result = await new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: { researchTool: research, intelligenceEngine: new FakeIntelligenceEngine() },
+      now: () => new Date('2026-07-25T22:25:25.272Z'),
+      id: () => '82500000-0000-4000-8000-000000000001',
+    }).execute(repository.pilot, new AbortController().signal)
+
+    expect(result.state).toBe('pending_human_review')
+    expect(research.rounds).toEqual([1, 2])
+    expect(repository.artifacts.get(`${runId}:mission:initial`)).toHaveLength(1)
+    expect(await repository.latestArtifact(runId, 'mission', 'initial')).toEqual(original)
+
+    const duplicateResearch = new FakeResearchTool()
+    const duplicate = await new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: {
+        researchTool: duplicateResearch,
+        intelligenceEngine: new FakeIntelligenceEngine(),
+      },
+      now: () => new Date('2026-07-25T22:30:00.000Z'),
+      id: () => '82500000-0000-4000-8000-000000000002',
+    }).execute(repository.pilot, new AbortController().signal)
+    expect(duplicate).toEqual(result)
+    expect(duplicateResearch.rounds).toEqual([])
+    expect(repository.artifacts.get(`${runId}:mission:initial`)).toHaveLength(1)
+  })
+
+  it('mantiene el conflicto si la misión durable pertenece a otra configuración', async () => {
+    const repository = new MemoryDurableRepository()
+    const ledger = ledgerRepository()
+    const mission = missionForPilot(repository.pilot, new Date(now))
+    await repository.appendArtifact(pilotId, runId, 'mission', 'initial', 1, mission)
+    const original = await repository.latestArtifact(runId, 'mission', 'initial')
+    repository.pilot = RealEditorialPilotRecordSchema.parse({
+      ...repository.pilot,
+      canonicalDestinationId: '81000000-0000-4000-8000-000000000004',
+    })
+    const research = new FakeResearchTool()
+
+    await expect(new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: { researchTool: research, intelligenceEngine: new FakeIntelligenceEngine() },
+      now: () => new Date('2026-07-25T22:25:25.272Z'),
+      id: () => '82600000-0000-4000-8000-000000000001',
+    }).execute(repository.pilot, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'VERSION_CONFLICT' })
+
+    expect(research.rounds).toEqual([])
+    expect(ledger.budgetSnapshot().task).toMatchObject({ reserved: 0, spent: 0 })
+    expect(await ledger.entries()).toEqual([])
+    expect(await repository.latestArtifact(runId, 'mission', 'initial')).toEqual(original)
+    expect(repository.artifacts.get(`${runId}:mission:initial`)).toHaveLength(1)
+  })
+
   it('reanuda tras reinicio desde el checkpoint sin repetir la ronda 1', async () => {
     const repository = new MemoryDurableRepository()
     const ledger = ledgerRepository()
@@ -478,17 +544,23 @@ describe('workflow editorial durable con clientes falsos', () => {
       id: () => '83000000-0000-4000-8000-000000000001',
     }).execute(repository.pilot, firstController.signal)).rejects.toMatchObject({ code: 'CANCELLED' })
     expect(firstResearch.rounds).toEqual([1])
+    const originalMission = await repository.latestArtifact(runId, 'mission', 'initial')
     expect((await repository.latestArtifact(runId, 'checkpoint', 'workflow'))?.payload)
       .toMatchObject({ completedRound: 1, state: 'cancelled' })
 
     await repository.reopenCancelled(pilotId)
+    const reopenedCheckpointCount = repository.artifacts.get(`${runId}:checkpoint:workflow`)?.length ?? 0
+    await repository.reopenCancelled(pilotId)
+    expect(repository.artifacts.get(`${runId}:checkpoint:workflow`)).toHaveLength(
+      reopenedCheckpointCount,
+    )
     const resumedResearch = new FakeResearchTool()
     const resumedIntelligence = new FakeIntelligenceEngine()
     const result = await new DurableRealEditorialPipeline({
       repository,
       ledgerRepository: ledger,
       providers: { researchTool: resumedResearch, intelligenceEngine: resumedIntelligence },
-      now: () => new Date(now),
+      now: () => new Date('2026-07-25T22:25:25.272Z'),
       id: () => '84000000-0000-4000-8000-000000000001',
     }).execute(repository.pilot, new AbortController().signal)
 
@@ -501,6 +573,7 @@ describe('workflow editorial durable con clientes falsos', () => {
     expect(repository.pilot.currentRunId).toBe(runId)
     expect(repository.pilot.budget?.taskId).toBe(`real-editorial-task:${pilotId}`)
     expect(repository.artifacts.get(`${runId}:mission:initial`)).toHaveLength(1)
+    expect(await repository.latestArtifact(runId, 'mission', 'initial')).toEqual(originalMission)
   })
 
   it('registra únicamente contadores agregados al descartar URLs de Tavily', async () => {

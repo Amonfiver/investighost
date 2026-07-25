@@ -6,6 +6,7 @@ import {
   type RealEditorialPilotSnapshot,
 } from '@shared/real-editorial-pilot-contracts'
 import {
+  RealResearchMissionSchema,
   RealRoundResultSchema,
   type RealResearchDossier,
   type RealResearchMission,
@@ -33,6 +34,8 @@ import type {
 } from './ports'
 import { createProviderCallPayloadFingerprint } from './provider-call-fingerprint'
 import {
+  realEditorialPayloadHash,
+  RealEditorialRepositoryError,
   type RealEditorialPilotRepository,
   SupabaseRealWorkflowCheckpointStore,
 } from './real-editorial-repository'
@@ -93,14 +96,10 @@ export class DurableRealEditorialPipeline {
     if (!acquired) throw new DurableRealEditorialError('GUARD_BUSY', 'La guarda editorial está ocupada')
 
     try {
-      const mission = missionForPilot(pilot, this.now())
-      await this.dependencies.repository.appendArtifact(
-        pilot.id,
-        pilot.currentRunId,
-        'mission',
-        'initial',
-        1,
-        mission,
+      const mission = await initialMissionForExecution(
+        this.dependencies.repository,
+        pilot,
+        this.now,
       )
       await this.dependencies.repository.appendEvent(
         pilot.id,
@@ -456,6 +455,45 @@ export function missionForPilot(
     },
     createdAt: now.toISOString(),
   }
+}
+
+async function initialMissionForExecution(
+  repository: RealEditorialPilotRepository,
+  pilot: RealEditorialPilotRecord,
+  now: () => Date,
+): Promise<RealResearchMission> {
+  const existing = await repository.latestArtifact(
+    pilot.currentRunId,
+    'mission',
+    'initial',
+  )
+  if (!existing) {
+    const mission = missionForPilot(pilot, now())
+    await repository.appendArtifact(
+      pilot.id,
+      pilot.currentRunId,
+      'mission',
+      'initial',
+      1,
+      mission,
+    )
+    return mission
+  }
+  if (existing.version !== 1) {
+    throw new RealEditorialRepositoryError(
+      'VERSION_CONFLICT',
+      'La misión durable tiene una versión incompatible',
+    )
+  }
+  const mission = RealResearchMissionSchema.parse(existing.payload)
+  const expected = missionForPilot(pilot, new Date(mission.createdAt))
+  if (realEditorialPayloadHash(expected) !== existing.payloadHash) {
+    throw new RealEditorialRepositoryError(
+      'VERSION_CONFLICT',
+      'La misión durable no coincide con la identidad y configuración del piloto',
+    )
+  }
+  return mission
 }
 
 function metadataFactory(

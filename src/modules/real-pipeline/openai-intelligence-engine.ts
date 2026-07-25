@@ -130,6 +130,7 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
       }),
       coverage: output.coverage,
       proposedQueries: output.proposedQueries,
+      gaps: output.gaps,
       decision: output.decision,
       usage: this.usage(response),
     }

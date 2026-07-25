@@ -12,6 +12,8 @@ PROMPT 04 añade el primer `ResearchTool` Tavily con Search/Extract, normalizaci
 
 PROMPT 05 añade el primer `IntelligenceEngine` OpenAI sobre el contrato de Responses API y Structured Outputs. El cliente permanece falso: solo procesa el expediente, diferencia coberturas y roles, mide uso simulado y no dispone de web search ni herramientas externas.
 
+PROMPT 06 cierra la orquestación controlada de investigación: ronda inicial, ampliación focalizada solo para carencias relevantes y parada definitiva tras ronda 2. Hashes de consulta, equivalencias, límites, checkpoints íntegros e idempotencia impiden loops, duplicados y doble coste.
+
 Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada y committeada; FASE 4A-01B está implementada técnicamente y pendiente de prueba humana. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia

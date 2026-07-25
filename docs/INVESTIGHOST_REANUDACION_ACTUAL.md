@@ -22,6 +22,8 @@ PROMPT 04 implementa Tavily Search/Extract detrás de `ResearchTool`, pero únic
 
 PROMPT 05 implementa OpenAI detrás de `IntelligenceEngine` con cliente Responses API falso y Structured Outputs derivados de Zod. Analiza solo el expediente, crea conocimiento maestro, contradicciones, carencias y consultas; genera Aventura/Estudiante y revisión final con coberturas distintas. Refusal, incomplete, JSON inválido, timeout, cancelación o intento de ampliar tras ronda 2 detienen la operación sin reintento ni red.
 
+PROMPT 06 conecta misión, `ResearchTool`, expediente e `IntelligenceEngine` en un orquestador estrictamente limitado a dos rondas. La segunda exige carencia high/critical resoluble, consulta no repetida/equivalente, límites y presupuesto. Checkpoints con integridad y operaciones idempotentes permiten reanudar sin repetir llamadas o coste simulado. Tras ronda 2 solo se continúa a redacción o `review_required`.
+
 Fecha de actualización: 2026-07-25
 Estado canónico: **FASE 3J CERRADA; FASE 4A-01 COMMITTEADA; FASE 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA**
 

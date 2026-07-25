@@ -2,6 +2,7 @@ import type {
   RealContinueDecision,
   RealCoverage,
   RealFocusedQuery,
+  RealKnowledgeGap,
   RealMasterKnowledge,
   RealResearchDossier,
   RealResearchMission,
@@ -30,6 +31,7 @@ export interface IntelligenceRoundAnalysis {
   masterKnowledge: RealMasterKnowledge
   coverage: RealCoverage
   proposedQueries: RealFocusedQuery[]
+  gaps: RealKnowledgeGap[]
   decision: RealContinueDecision
   usage: {
     inputTokens: number

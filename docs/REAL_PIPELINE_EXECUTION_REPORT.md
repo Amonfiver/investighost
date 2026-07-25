@@ -86,3 +86,20 @@ Este informe acumula la evidencia del lote autónomo PROMPT 01–10. Hasta que e
 - Coste real consumido: `0 EUR`.
 - Llamadas reales realizadas: `0`.
 - Fronteras negativas: cliente falso, sin instancia OpenAI, claves, red, tokens reales, web search, publicación, Trawel, producción ni Automatic.
+
+## PROMPT 06 — Dos rondas, ampliación focalizada y prevención de loops
+
+- Fecha/hora: 2026-07-25 (Europe/Madrid).
+- HEAD inicial: `de82014dc71223d77752430078cb440b5cfccfd7`.
+- HEAD final: commit único de este bloque, con mensaje `feat: limitar investigación real a dos rondas focalizadas`.
+- Commit: el hash queda reflejado en la auditoría consolidada posterior para evitar una referencia circular dentro del propio commit.
+- Archivos modificados: orquestador, checkpoint store, ejecutor idempotente, puertos, motor, pruebas y documentación.
+- Migraciones: ninguna.
+- Pruebas: suficiencia en ronda 1, ampliación en ronda 2, bloqueo de tercera, equivalencias/repetición, presupuesto, carencia crítica/secundaria, reanudación, cancelación, deduplicación y ausencia de doble coste.
+- Builds: suite específica, suite normal, typecheck, ESLint y builds renderer/main/preload ejecutados antes del commit.
+- Decisiones: las consultas se canonizan, ordenan y hashean; solo carencias high/critical resolubles habilitan ronda 2; los checkpoints se verifican por SHA-256; operaciones de proveedor son idempotentes; tras ronda 2 solo existen redacción o `review_required`.
+- Riesgos: el store durable usado por el piloto fake es un puerto con implementación en memoria reiniciable; no se añadió una migración fuera de alcance.
+- Deuda: el piloto integral conectará redacción/revisión y demostrará el flujo completo con dobles en PROMPT 08.
+- Coste real consumido: `0 EUR`.
+- Llamadas reales realizadas: `0`.
+- Fronteras negativas: máximo literal de dos rondas, sin loops, red, claves, proveedores reales, publicación, Trawel, producción ni Automatic.

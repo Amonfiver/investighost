@@ -22,6 +22,13 @@ import type {
 } from '@shared/manual-contracts'
 import type { LibraryItem } from '@shared/library-contracts'
 import type { EditorialDraftVersionSummary } from '@modules/editorial-pipeline/repository'
+import {
+  LIBRARY_PAGE_SUMMARY_LABEL,
+  LibraryNavigator,
+  libraryNavigationAvailability,
+  libraryPageNumber,
+  type LibraryNavigationState,
+} from './library-navigation'
 
 type View = 'library' | 'new' | 'detail' | 'contributions'
 type DetailTab = 'overview' | 'sources' | 'facts' | 'places' | 'activities' | 'drafts' | 'quality' | 'history'
@@ -50,21 +57,24 @@ const failureLabels: Record<string, string> = {
 }
 
 export function App(): JSX.Element {
+  const libraryNavigator = useMemo(
+    () => new LibraryNavigator(query => window.electronAPI.listManualResearch(query)),
+    [],
+  )
   const [view, setView] = useState<View>('library')
   const [status, setStatus] = useState<ManualPersistenceStatus | null>(null)
   const [actorId, setActorId] = useState('')
-  const [summaries, setSummaries] = useState<LibraryItem[]>([])
+  const [libraryNavigation, setLibraryNavigation] = useState(libraryNavigator.snapshot)
   const [selectedSummary, setSelectedSummary] = useState<LibraryItem | null>(null)
   const [selected, setSelected] = useState<ResearchDestinationResult | null>(null)
   const [versions, setVersions] = useState<EditorialDraftVersionSummary[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const refreshLibrary = useCallback(async () => {
-    const page = await window.electronAPI.listManualResearch()
-    setSummaries(page.items)
-    return page.items
-  }, [])
+  useEffect(
+    () => libraryNavigator.subscribe(setLibraryNavigation),
+    [libraryNavigator],
+  )
 
   useEffect(() => {
     Promise.all([
@@ -73,9 +83,9 @@ export function App(): JSX.Element {
     ]).then(async ([nextStatus, nextActor]) => {
       setStatus(nextStatus)
       setActorId(nextActor)
-      if (nextStatus.connected) await refreshLibrary()
+      if (nextStatus.connected) await libraryNavigator.first()
     }).catch(reason => setError(errorText(reason)))
-  }, [refreshLibrary])
+  }, [libraryNavigator])
 
   const openResearch = async (summary: LibraryItem) => {
     setBusy(true)
@@ -97,9 +107,9 @@ export function App(): JSX.Element {
   }
 
   const showIncident = async (incident: ManualResearchIncident) => {
-    const items = await refreshLibrary()
+    const page = await libraryNavigator.resetAfterMutation()
     setSelected(null)
-    setSelectedSummary(items.find(item => item.requestId === incident.requestId) ?? summaryFromIncident(incident))
+    setSelectedSummary(page?.items.find(item => item.requestId === incident.requestId) ?? summaryFromIncident(incident))
     setVersions([])
     setView('detail')
   }
@@ -121,7 +131,7 @@ export function App(): JSX.Element {
       setSelected(result)
       setSelectedSummary(summaryFromResult(result))
       setVersions(await window.electronAPI.listManualDraftVersions(result.request.id))
-      await refreshLibrary()
+      await libraryNavigator.resetAfterMutation()
       setView('detail')
     } catch (reason) {
       setError(errorText(reason))
@@ -143,7 +153,7 @@ export function App(): JSX.Element {
       setSelected(result)
       setSelectedSummary(summaryFromResult(result))
       setVersions(await window.electronAPI.listManualDraftVersions(result.request.id))
-      await refreshLibrary()
+      await libraryNavigator.resetAfterMutation()
       setView('detail')
     } catch (reason) {
       setError(errorText(reason))
@@ -160,7 +170,7 @@ export function App(): JSX.Element {
       setSelected(result)
       setSelectedSummary(summaryFromResult(result))
       setVersions(await window.electronAPI.listManualDraftVersions(result.request.id))
-      await refreshLibrary()
+      await libraryNavigator.resetAfterMutation()
       setView('detail')
     } catch (reason) {
       setError(errorText(reason))
@@ -174,7 +184,7 @@ export function App(): JSX.Element {
     setError(null)
     try {
       await window.electronAPI.cancelManualResearch({ requestId, actorId })
-      await refreshLibrary()
+      await libraryNavigator.resetAfterMutation()
       setSelected(null)
       setSelectedSummary(null)
       setView('library')
@@ -223,7 +233,7 @@ export function App(): JSX.Element {
           </div>
         </header>
 
-        <main className="content" aria-busy={busy}>
+        <main className="content" aria-busy={busy || (view === 'library' && libraryNavigation.loading)}>
           {error && <div className="alert error" role="alert"><strong>No se pudo completar la operación.</strong><span>{error}</span></div>}
           {!status?.connected && status?.error && (
             <div className="alert warning" role="status">
@@ -234,7 +244,17 @@ export function App(): JSX.Element {
           {busy && <div className="progress-banner" role="status"><span className="spinner" />Guardando progreso en Supabase local…</div>}
 
           {view === 'library' && (
-            <Library summaries={summaries} connected={Boolean(status?.connected)} onOpen={openResearch} onNew={() => go('new')} />
+            <Library
+              navigation={libraryNavigation}
+              connected={Boolean(status?.connected)}
+              busy={busy}
+              onOpen={openResearch}
+              onNew={() => go('new')}
+              onFirst={() => { void libraryNavigator.first() }}
+              onPrevious={() => { void libraryNavigator.previous() }}
+              onRefresh={() => { void libraryNavigator.refresh() }}
+              onNext={() => { void libraryNavigator.next() }}
+            />
           )}
           {view === 'new' && status?.connected && actorId && (
             <NewManualResearch actorId={actorId} busy={busy} onStart={completeStart} onCancel={() => go('library')} />
@@ -258,18 +278,28 @@ export function App(): JSX.Element {
   )
 }
 
-function Library({ summaries, connected, onOpen, onNew }: {
-  summaries: LibraryItem[]
+function Library({ navigation, connected, busy, onOpen, onNew, onFirst, onPrevious, onRefresh, onNext }: {
+  navigation: LibraryNavigationState
   connected: boolean
+  busy: boolean
   onOpen: (summary: LibraryItem) => void
   onNew: () => void
+  onFirst: () => void
+  onPrevious: () => void
+  onRefresh: () => void
+  onNext: () => void
 }): JSX.Element {
+  const summaries = navigation.page.items
+  const pageNumber = libraryPageNumber(navigation)
+  const availability = libraryNavigationAvailability(navigation)
+  const navigationBlocked = !connected || busy
   const completed = summaries.filter(item => item.state === 'completed').length
   const failures = summaries.filter(item => item.state === 'failed' || item.state === 'retry_pending').length
   return (
     <section>
-      <div className="metric-grid" aria-label="Resumen de biblioteca">
-        <Metric label="En esta página" value={summaries.length} detail="Primera página de Biblioteca" />
+      <p className="page-summary-label">{LIBRARY_PAGE_SUMMARY_LABEL}</p>
+      <div className="metric-grid" aria-label={LIBRARY_PAGE_SUMMARY_LABEL}>
+        <Metric label="En esta página" value={summaries.length} detail={`Página ${pageNumber} de Biblioteca`} />
         <Metric label="Completadas en página" value={completed} detail="Pipeline terminado" />
         <Metric label="Incidencias en página" value={failures} detail="Activas y recuperables" tone={failures ? 'warn' : 'normal'} />
         <Metric label="Publicaciones" value={0} detail="Bloqueadas por diseño" />
@@ -278,7 +308,39 @@ function Library({ summaries, connected, onOpen, onNew }: {
         <div><span className="eyebrow">BIBLIOTECA LOCAL</span><h2>Investigaciones Manuales</h2></div>
         <button className="button secondary" onClick={onNew} disabled={!connected}>Crear nueva</button>
       </div>
-      {summaries.length === 0 ? (
+      <nav className="library-pagination" aria-label="Navegación de páginas de Biblioteca">
+        <div className="library-page-status" role="status" aria-live="polite">
+          <strong>Página {pageNumber}</strong>
+          <span>{navigation.loading ? 'Cargando página…' : `${summaries.length} investigaciones visibles`}</span>
+        </div>
+        <div className="library-page-actions">
+          <button className="button ghost" onClick={onFirst} disabled={navigationBlocked || !availability.canFirst}>Primera página</button>
+          <button className="button secondary" onClick={onPrevious} disabled={navigationBlocked || !availability.canPrevious}>Anterior</button>
+          <button className="button ghost" onClick={onRefresh} disabled={navigationBlocked || !availability.canRefresh}>Actualizar</button>
+          <button className="button secondary" onClick={onNext} disabled={navigationBlocked || !availability.canNext}>Siguiente</button>
+        </div>
+      </nav>
+      {navigation.error && (
+        <div className={`library-read-error ${navigation.error.kind}`} role="alert">
+          <div>
+            <strong>{navigation.error.kind === 'cursor' ? 'La página ya no está disponible.' : 'Error de lectura de Biblioteca.'}</strong>
+            <p>{navigation.error.message}</p>
+            <small>{navigation.error.detail}</small>
+          </div>
+          {navigation.error.kind === 'cursor' && (
+            <button className="button secondary" onClick={onFirst} disabled={navigation.loading || !connected}>
+              Volver a la primera página
+            </button>
+          )}
+        </div>
+      )}
+      {navigation.loading && !navigation.initialized ? (
+        <div className="empty-card library-loading" role="status">
+          <span className="spinner" aria-hidden="true" />
+          <h3>Cargando página…</h3>
+          <p>Consultando la Biblioteca local sin modificar investigaciones ni costes.</p>
+        </div>
+      ) : summaries.length === 0 ? (
         <div className="empty-card">
           <span className="empty-icon">＋</span>
           <h3>Aún no hay investigaciones</h3>
@@ -288,7 +350,7 @@ function Library({ summaries, connected, onOpen, onNew }: {
       ) : (
         <div className="research-table" role="list">
           {summaries.map(summary => (
-            <button className="research-row" key={summary.requestId} onClick={() => onOpen(summary)} role="listitem">
+            <button className="research-row" key={summary.requestId} onClick={() => onOpen(summary)} role="listitem" disabled={navigation.loading || busy}>
               <span className="destination-avatar">{initials(summary.destinationQuery)}</span>
               <span className="research-main"><strong>{summary.destinationQuery}</strong><small>{summary.profiles.map(profileLabel).join(' · ')}</small>{summary.errorCode && <small className="incident-copy">{summary.errorCode} · {summary.errorMessage}</small>}</span>
               <span><StateBadge value={summary.state} /></span>
@@ -298,6 +360,9 @@ function Library({ summaries, connected, onOpen, onNew }: {
             </button>
           ))}
         </div>
+      )}
+      {navigation.initialized && !navigation.loading && summaries.length > 0 && !navigation.page.hasMore && (
+        <p className="library-end-message" role="status">No hay más resultados.</p>
       )}
     </section>
   )

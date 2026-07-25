@@ -1,9 +1,9 @@
 # Investighost — cierre y punto de reanudación actual
 
 Fecha de actualización: 2026-07-25
-Estado canónico: **FASE 3J CERRADA; FASE 4A-01 IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE GATE**
+Estado canónico: **FASE 3J CERRADA; FASE 4A-01 COMMITTEADA; FASE 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA**
 
-Este documento sustituye los puntos de reanudación anteriores. Se autorizó exclusivamente FASE 4A-01 para introducir el contrato compartido y la paginación estable de Biblioteca. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados.
+Este documento sustituye los puntos de reanudación anteriores. Tras quedar committeada FASE 4A-01, se autorizó exclusivamente FASE 4A-01B para exponer en Electron la navegación de la Biblioteca paginada. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados.
 
 ## 1. Decisión humana vigente
 
@@ -15,20 +15,19 @@ FASE 3J — APROBADA
 
 El gate humano del flujo Manual queda cerrado. La aprobación no inició ni autorizó FASE 4, Automatic, publicación, Trawel, producción, proveedores reales, IA real o carga de créditos.
 
-## 2. Estado Git al iniciar FASE 4A-01
+## 2. Estado Git al iniciar FASE 4A-01B
 
 - Proyecto Windows: `D:\Proyectos\investighost`.
 - Ruta WSL: `/mnt/d/Proyectos/investighost`.
 - Rama: `feat/investighost-reinvencion`.
 - Commit funcional de cierre 3J: `ac61700f27297d899e55f6460a76a6cac7bca72a`.
-- HEAD inicial de 4A-01: `5c55be66b3f40c75540d13a8e51aa935abac3e80` (`5c55be6`).
-- Commit documental ya existente: `docs: redefinir fase 4a tras el cierre de fase 3j`.
+- HEAD inicial de 4A-01B: `7b1dddea842d7cffd5a6a318fbcd40cbdd7850b4` (`7b1ddde`).
+- Commit de FASE 4A-01: `feat: añadir contrato y paginación estable a la biblioteca`.
 - Upstream: `origin/feat/investighost-reinvencion`.
-- Push de ambos commits previos: realizado a `origin/feat/investighost-reinvencion`.
-- Divergencia al iniciar 4A-01: 0 commits locales / 0 commits remotos.
-- Árbol limpio al iniciar 4A-01.
+- Divergencia al iniciar 4A-01B: 0 commits locales / 0 commits remotos.
+- Árbol limpio al iniciar 4A-01B.
 
-La indicación anterior de que `5c55be6` seguía pendiente de commit era obsoleta y queda corregida. La implementación actual de 4A-01 sí permanece local y sin commit ni push hasta recibir autorización expresa.
+La implementación de 4A-01B permanece local y sin commit ni push hasta recibir autorización expresa.
 
 ## 3. Estado general del proyecto
 
@@ -37,7 +36,8 @@ La indicación anterior de que `5c55be6` seguía pendiente de commit era obsolet
 - FASE 3J: aprobada humanamente y cerrada.
 - J01–J17: aprobados.
 - FASE 4 original: no iniciada literalmente; parte de su alcance quedó cubierta y aceptada dentro de FASE 3J.
-- FASE 4A-01 — contrato compartido y paginación estable: implementada técnicamente y pendiente de gate.
+- FASE 4A-01 — contrato compartido y paginación estable: implementada y committeada en `7b1ddde`.
+- FASE 4A-01B — navegación visible de la Biblioteca paginada: implementada técnicamente y pendiente de prueba humana.
 - FASE 4A-02 y resto de FASE 4A: no iniciados ni autorizados.
 - Automatic: no implementado.
 - Flujo activo: Manual local y simulado.
@@ -274,7 +274,8 @@ No se ejecutaron integraciones Supabase que creasen solicitudes temporales ni co
 
 ```text
 FASE 4A — CONSOLIDACIÓN OPERATIVA DE BIBLIOTECA
-4A-01 IMPLEMENTADA TÉCNICAMENTE — PENDIENTE DE GATE
+4A-01 IMPLEMENTADA Y COMMITTEADA
+4A-01B IMPLEMENTADA TÉCNICAMENTE — PENDIENTE DE PRUEBA HUMANA
 4A-02 Y BLOQUES POSTERIORES — NO INICIADOS
 ```
 
@@ -290,7 +291,7 @@ Alcance autorizado e implementado:
 - Keyset pagination en Supabase, sin offset y recuperando `pageSize + 1`.
 - Misma semántica en el repositorio de memoria.
 - Servicio, IPC, preload y tipos del renderer actualizados; la frontera IPC valida la consulta.
-- El renderer deja de depender del resumen interno del repositorio y continúa mostrando la primera página sin introducir la UI futura de paginación.
+- El renderer deja de depender del resumen interno del repositorio; en el cierre estricto de 4A-01 todavía mostraba únicamente la primera página.
 - Las métricas visibles se rotulan como datos de la página y el coste existente como coste del último run, no como coste acumulado definitivo.
 
 El resultado de página contiene `items`, `hasMore` y `nextCursor`. No devuelve un total ni contadores globales incompletos. `hasActiveIncident` y `hasHistoricalIncident` permanecen conceptos contractualmente distintos; el cálculo histórico completo queda aplazado al read model. El coste acumulado futuro seguirá usando `editorial_execution_controls.spent_cost`.
@@ -307,12 +308,44 @@ Pruebas y validaciones:
 
 Limitaciones deliberadas:
 
-- La UI continúa cargando solo la primera página; los controles de navegación pertenecen a 4A-03.
+- La navegación visible quedó fuera del commit base y se aborda separadamente en 4A-01B.
 - No hay búsqueda, filtros, ordenación seleccionable, totales, contadores globales, preferencias ni archivo.
 - Se conserva provisionalmente la selección del último run usada antes de 4A-01.
 - La consulta no incorpora geografía, borradores, eventos ni `spent_cost`.
 - La paginación garantiza recorrido estable sobre un conjunto sin mutaciones concurrentes; una política de snapshot para cambios simultáneos no forma parte de este bloque.
 - No se creó ni ejecutó migración.
+
+### FASE 4A-01B — navegación visible de Biblioteca
+
+Alcance autorizado e implementado:
+
+- Controles visibles `Primera página`, `Anterior`, `Actualizar` y `Siguiente`.
+- Indicador `Página N` y estados explícitos de carga, Biblioteca vacía, fin de resultados y error de lectura.
+- La UI utiliza `nextCursor` para avanzar y conserva en memoria una pila de los cursores usados para entrar en cada página.
+- `Anterior` recupera el cursor local de la página previa; no se añadió paginación inversa a PostgreSQL.
+- `Actualizar` consulta la página actual con el mismo cursor y conserva su número si sigue siendo válido.
+- Un cursor que falla o deja de devolver la página esperada produce un mensaje comprensible y una acción para volver a la primera página.
+- Las cargas son mutuamente excluyentes: durante una consulta se deshabilitan navegación y filas para impedir dobles pulsaciones y carreras.
+- Abrir un detalle no modifica página o pila; volver a Biblioteca conserva la navegación durante la sesión de Electron.
+- Crear, reintentar, reanudar, editar, regenerar, iniciar o resolver una revisión humana y cancelar reinician explícitamente la Biblioteca a página 1.
+- Las métricas se rotulan como `Resumen de esta página`; no se presentan como totales globales.
+- Toda la sesión de navegación vive en el renderer y desaparece al cerrar la aplicación.
+
+Pruebas y validaciones:
+
+- Controlador de navegación aislado: 19 pruebas aprobadas.
+- Se cubren páginas 1→2→3, regreso 3→2→1, primera página, refresco, cursor vencido, doble pulsación, detalle, reinicio por mutación, Biblioteca vacía y ausencia de llamadas de escritura.
+- Suite normal: 180 pruebas aprobadas; 9 integraciones opt-in omitidas.
+- Typecheck, ESLint y builds renderer/main/preload: aprobados.
+- `git diff --check`: aprobado.
+
+Limitaciones:
+
+- No se conserva página o pila al reiniciar Electron.
+- No hay número total de páginas, salto a una página arbitraria ni navegación inversa en SQL.
+- No se añadió una política de snapshot; una mutación concurrente puede invalidar un cursor y obliga a regresar a la primera página.
+- La prueba visual desde Electron queda pendiente. Si la Biblioteca humana no supera 25 solicitudes, se usará la prueba automatizada o un fixture controlado expresamente autorizado, sin crear datos persistentes por defecto.
+- No se iniciaron búsqueda, filtros, archivo, read model, contadores globales, preferencias o rediseño integral.
 
 La FASE 4 original proponía biblioteca, CRUD durable, versiones, edición, aprobación/rechazo, historial y prueba con una persona no técnica. FASE 3J ya aceptó humanamente gran parte de esas capacidades:
 
@@ -454,7 +487,7 @@ Si FASE 4A recibe autorización funcional, deberá entregar:
 
 ### Gate vigente
 
-FASE 4A-01 debe recibir revisión técnica y decisión humana antes de commit/push o de autorizar 4A-02. Los criterios están en `docs/ACCEPTANCE_TESTS.md`. Esta implementación no autoriza búsqueda, filtros, read model, archivo, contadores, preferencias ni cualquier fase posterior.
+FASE 4A-01B debe recibir una prueba humana breve desde Electron y decisión expresa antes de commit/push o de autorizar cualquier trabajo posterior. Los criterios están en `docs/ACCEPTANCE_TESTS.md`. Esta implementación no autoriza 4A-02, búsqueda, filtros, read model, archivo, contadores, preferencias ni cualquier fase posterior.
 
 ## 13. Decisiones estratégicas pendientes
 
@@ -509,7 +542,7 @@ Ambos:
 ## 14. Persistencia, seguridad y migraciones
 
 - No hay migración nueva para J14 o para el cierre.
-- FASE 4A-01 tampoco añade ni ejecuta migraciones, seeds o integraciones Supabase.
+- FASE 4A-01 y 4A-01B tampoco añaden ni ejecutan migraciones, seeds o integraciones Supabase.
 - No se alteró ni borró evidencia humana histórica.
 - No se ejecutó `supabase link`.
 - No se ejecutó `supabase db push`.
@@ -519,12 +552,14 @@ Ambos:
 - No se usó IA real.
 - No se cargaron créditos.
 - No se implementó Automatic.
-- Solo se inició el bloque autorizado 4A-01; 4A-02 no comenzó.
+- Solo se inició el bloque autorizado 4A-01B; 4A-02 no comenzó.
 
 ## 15. Siguiente trabajo
 
 ```text
-REVISAR Y DECIDIR EL GATE TÉCNICO DE FASE 4A-01
+EJECUTAR EL PILOTO HUMANO CONTROLADO DE FASE 4A-01B
 ```
 
-El commit y push de cierre de FASE 3J y el commit documental `5c55be6` ya existen en remoto. Los cambios de FASE 4A-01 deben permanecer sin commit ni push hasta autorización expresa. Aprobar este gate no autoriza automáticamente FASE 4A-02.
+La prueba propuesta es: abrir Biblioteca en página 1, avanzar a página 2, abrir una solicitud, volver conservando página 2, retroceder, regresar a la primera página y confirmar que navegar no crea solicitudes ni coste. Si no existen más de 25 solicitudes humanas, no deben crearse datos persistentes sin otra autorización; las pruebas sintéticas automatizadas demuestran el recorrido.
+
+El commit `7b1ddde` de FASE 4A-01 ya existe en remoto. Los cambios de FASE 4A-01B deben permanecer sin commit ni push hasta autorización expresa. Aprobar este gate no autoriza automáticamente FASE 4A-02. El siguiente paso recomendado tras el gate es un piloto real controlado, manteniendo publicaciones en cero y Trawel, Automatic, producción, IA y proveedores reales desconectados.

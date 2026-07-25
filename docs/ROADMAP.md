@@ -1,6 +1,6 @@
 # Roadmap recomendado de Investighost
 
-Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada técnicamente y pendiente de gate; FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
+Estado: Hoja de Ruta Canónica V3 formalizada; FASE 3A–3I completadas técnicamente y FASE 3J aprobada, cerrada y sincronizada. FASE 4A-01 está implementada y committeada; FASE 4A-01B está implementada técnicamente y pendiente de prueba humana. FASE 4A-02 y los bloques posteriores no están iniciados ni autorizados. Automatic continúa bloqueado y no implementado.
 
 ## Principios de secuencia
 
@@ -66,9 +66,9 @@ La formulación original incluía CRUD durable, búsqueda, filtros, versiones, e
 
 No se implementará literalmente la FASE 4 original: hacerlo duplicaría capacidades y podría introducir un CRUD destructivo incompatible con la trazabilidad aprobada.
 
-### 4A. Consolidación operativa de Biblioteca — 4A-01 pendiente de gate
+### 4A. Consolidación operativa de Biblioteca — 4A-01B pendiente de gate
 
-Estado: **4A-01 IMPLEMENTADA TÉCNICAMENTE — PENDIENTE DE GATE; RESTO NO INICIADO**.
+Estado: **4A-01 IMPLEMENTADA Y COMMITTEADA; 4A-01B IMPLEMENTADA TÉCNICAMENTE Y PENDIENTE DE PRUEBA HUMANA; 4A-02 NO INICIADA**.
 
 #### Objetivo
 
@@ -76,7 +76,7 @@ Hacer cómoda y segura la Biblioteca existente para un volumen creciente de inve
 
 #### 4A-01 — contrato compartido y paginación estable
 
-Implementación técnica terminada y aún no confirmada:
+Implementación técnica terminada y committeada en `7b1ddde`:
 
 - contrato Zod compartido y desacoplado del repositorio;
 - página predeterminada de 25 y máximo validado de 100;
@@ -91,6 +91,24 @@ Implementación técnica terminada y aún no confirmada:
 - cero migraciones, seeds, proveedores, costes, publicación o conexiones externas.
 
 Quedan expresamente fuera búsqueda, filtros, ordenación seleccionable, read model, geografía/títulos/estados editoriales, `spent_cost`, archivo/restauración, contadores, preferencias y rediseño UX. FASE 4A-02 no comenzó.
+
+#### 4A-01B — navegación visible de la Biblioteca paginada
+
+Implementación técnica terminada y pendiente de prueba humana:
+
+- botones visibles Primera página, Anterior, Actualizar y Siguiente;
+- indicador de página y estados de carga, vacío, fin y error;
+- pila de cursores local para volver hacia atrás sin paginación inversa en PostgreSQL;
+- refresco con el cursor actual;
+- recuperación comprensible ante cursor inválido o vencido;
+- exclusión de cargas simultáneas;
+- conservación de página al abrir y cerrar detalle durante la sesión;
+- reinicio seguro a página 1 después de cualquier mutación existente;
+- métricas identificadas como resumen exclusivo de la página;
+- 19 pruebas específicas y suite normal de 180 pruebas aprobadas;
+- cero migraciones, seeds, proveedores, coste, publicación o conexiones externas.
+
+La sesión no persiste tras reiniciar Electron y no existen total de páginas, salto directo, búsqueda, filtros, archivo o contadores globales. La prueba humana debe realizarse con datos ya existentes; si no hay más de 25 solicitudes, no se poblará la Biblioteca humana automáticamente.
 
 #### Alcance propuesto
 
@@ -128,7 +146,7 @@ Quedan expresamente fuera búsqueda, filtros, ordenación seleccionable, read mo
 
 #### Gate humano 4A
 
-El gate inmediato revisa exclusivamente 4A-01: contrato, cursor, recorrido completo, ausencia de mutaciones, compatibilidad de Biblioteca y fronteras negativas. FASE 4A-02 requerirá otra autorización expresa. El gate final de toda 4A seguirá exigiendo archivo no destructivo, conservación de trazabilidad, publicaciones en cero y ausencia de Trawel, producción y Automatic.
+El gate inmediato revisa exclusivamente 4A-01B desde Electron: avanzar, abrir un detalle, volver conservando página, retroceder, regresar a la primera página y confirmar ausencia de nuevas solicitudes o coste. FASE 4A-02 requerirá otra autorización expresa. El gate final de toda 4A seguirá exigiendo archivo no destructivo, conservación de trazabilidad, publicaciones en cero y ausencia de Trawel, producción y Automatic.
 
 ### 5. Cola editorial durable — no iniciada
 
@@ -161,7 +179,7 @@ Cobertura de tests, E2E, backups/restauración, seguridad, accesibilidad, rendim
 ## Orden inmediato vigente
 
 1. Mantener FASE 3J cerrada y sincronizada; no queda pendiente su commit o push.
-2. Someter FASE 4A-01 a revisión técnica y decisión humana; no hacer commit ni push antes de autorización.
+2. Ejecutar el piloto humano controlado de FASE 4A-01B; no hacer commit ni push antes de autorización.
 3. No iniciar FASE 4A-02, FASE 5 o cualquier bloque posterior sin un encargo nuevo.
 4. Mantener Automatic, producción, Trawel, proveedores reales y publicación bloqueados.
 

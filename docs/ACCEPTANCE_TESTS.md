@@ -196,7 +196,7 @@ Automatic permanece bloqueado. El cierre de FASE 3J no autoriza su implementaci�
 - Decisión inequívoca: **FASE 3J APROBADA**.
 - La aprobación no inicia FASE 4 ni autoriza Automatic, publicación, Trawel, producción o proveedores reales.
 
-## Gate técnico FASE 4A-01 — preparado, pendiente de decisión humana
+## Gate técnico FASE 4A-01 — implementado y committeado
 
 - La consulta de Biblioteca usa un contrato Zod compartido desde renderer/preload hasta servicio y repositorio.
 - La entrada se valida en IPC y no expone tipos internos del repositorio al renderer.
@@ -211,14 +211,45 @@ Automatic permanece bloqueado. El cierre de FASE 3J no autoriza su implementaci�
 - El resultado no presenta totales o contadores de una página como globales.
 - El coste disponible se identifica como `latestRunActualCost`; el coste acumulado definitivo sigue reservado a `editorial_execution_controls.spent_cost`.
 - Incidencia activa e histórica son conceptos contractualmente distintos; el agregado histórico queda fuera de 4A-01.
-- La Biblioteca actual carga y abre el detalle desde la primera página.
+- El commit base carga y abre el detalle desde la primera página; la navegación visible se valida separadamente en 4A-01B.
 - Pruebas específicas: 43 aprobadas. Suite normal: 161 aprobadas y 9 integraciones opt-in omitidas.
 - Typecheck, ESLint, builds renderer/main/preload y `git diff --check`: aprobados.
 - No existe migración nueva y no se ejecutaron migraciones, seeds o comandos Supabase.
 - Búsqueda, filtros, ordenación UI, read model, archivo, contadores y preferencias no se iniciaron.
 - Publicaciones permanecen en cero; Trawel, producción, Automatic, IA y proveedores reales siguen desconectados.
 
-El bloque queda preparado para revisión técnica y decisión humana. No autoriza commit/push ni FASE 4A-02 por sí solo.
+El bloque base está implementado y committeado en `7b1ddde`. No autoriza FASE 4A-02 por sí solo.
+
+## Gate técnico FASE 4A-01B — preparado, pendiente de prueba humana
+
+- Al abrir Biblioteca se consulta sin cursor, se muestra `Página 1`, `Anterior` queda deshabilitado y `Siguiente` depende de `hasMore`.
+- Avanzar utiliza exclusivamente el `nextCursor` de la página visible y reemplaza las filas sin duplicarlas.
+- La UI conserva una pila local de cursores: permite 1→2→3 y 3→2→1 sin implementar paginación inversa en PostgreSQL.
+- `Primera página` vacía la pila y consulta de nuevo sin cursor.
+- `Actualizar` reutiliza el cursor actual y conserva el número de página cuando la respuesta sigue siendo válida.
+- Un cursor inválido, vencido o que ya no devuelve resultados muestra un error comprensible y permite volver a la primera página.
+- Solo puede existir una carga de página en curso; navegación y filas quedan deshabilitadas durante la lectura.
+- Abrir un detalle desde la página 2 o posterior y volver no cambia página ni pila durante la sesión.
+- Crear, reintentar, reanudar, editar, regenerar, iniciar revisión, aprobar, rechazar, solicitar cambios, reabrir o cancelar reinicia la navegación a página 1.
+- Navegar no llama a operaciones de escritura y no crea o modifica solicitudes, runs, eventos, versiones, costes o `updated_at`.
+- Biblioteca vacía, fin de resultados y error de lectura tienen estados visibles diferenciados.
+- Los controles son botones de texto utilizables por teclado y conservan estados `disabled` coherentes.
+- Las métricas se presentan bajo `Resumen de esta página`; no existen totales o contadores globales nuevos.
+- Pruebas específicas: 19 aprobadas. Suite normal: 180 aprobadas y 9 integraciones opt-in omitidas.
+- Typecheck, ESLint, builds renderer/main/preload y `git diff --check`: aprobados.
+- No existe migración nueva y no se ejecutaron migraciones, seeds o comandos Supabase.
+- Búsqueda, filtros, archivo, ordenación seleccionable, read model, preferencias, contadores globales y FASE 4A-02 no se iniciaron.
+- Publicaciones permanecen en cero; Trawel, producción, Automatic, IA y proveedores reales siguen desconectados.
+
+Prueba humana pendiente:
+
+1. Abrir Biblioteca en página 1.
+2. Pulsar `Siguiente` y confirmar página 2.
+3. Abrir una solicitud y volver confirmando que continúa en página 2.
+4. Pulsar `Anterior` y `Primera página`.
+5. Confirmar que la navegación no creó solicitudes ni coste.
+
+Si la Biblioteca real no supera 25 solicitudes, no se crearán datos persistentes automáticamente. El recorrido queda demostrado por fixtures unitarios controlados hasta que se autorice otra preparación de datos. Superar este gate no autoriza 4A-02.
 
 ## Gate futuro FASE 4A — criterios documentales
 

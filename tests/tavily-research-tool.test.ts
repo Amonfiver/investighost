@@ -100,13 +100,112 @@ describe('Tavily ResearchTool sin red', () => {
       content: 'Contenido completo y sintético de Morella.',
     })
     expect(result.sources[0].contentHash).toMatch(/^[a-f0-9]{64}$/)
+    expect(result.urlSanitization).toEqual({
+      totalReceived: 2,
+      accepted: 2,
+      discarded: 0,
+      discardReasons: {},
+    })
   })
 
-  it('termina sin Extract cuando Search no devuelve resultados', async () => {
+  it('devuelve un error específico sin invocar Extract cuando no hay ninguna URL válida', async () => {
     const transport = new FixtureTransport([search([])])
+    await expect(tool(transport).research(
+      mission(),
+      new AbortController().signal,
+    )).rejects.toMatchObject({
+      code: 'NO_VALID_HTTPS_SOURCES',
+      urlSanitization: {
+        totalReceived: 0,
+        accepted: 0,
+        discarded: 0,
+      },
+    })
+
+    expect(transport.calls).toHaveLength(1)
+  })
+
+  it('conserva HTTPS y descarta HTTP individualmente sin llamadas adicionales', async () => {
+    const validUrl = 'https://example.test/morella'
+    const transport = new FixtureTransport([
+      search([
+        { url: validUrl, title: 'Válida', content: '', score: 0.9 },
+        { url: 'http://insecure.example/morella', title: 'HTTP', content: '', score: 0.8 },
+      ]),
+      extract([{ url: validUrl, raw_content: 'Contenido HTTPS.' }]),
+    ])
     const result = await tool(transport).research(mission(), new AbortController().signal)
 
-    expect(result.sources).toEqual([])
+    expect(result.sources.map(source => source.url)).toEqual([validUrl])
+    expect(result.urlSanitization).toEqual({
+      totalReceived: 3,
+      accepted: 2,
+      discarded: 1,
+      discardReasons: { http: 1 },
+    })
+    expect(transport.calls.map(call => call.pathname)).toEqual(['/search', '/extract'])
+  })
+
+  it.each([
+    ['', 'empty'],
+    ['/morella/patrimonio', 'relative'],
+    ['https://exa mple.test/morella', 'malformed'],
+    ['ftp://example.test/morella', 'unsupported_scheme'],
+  ])('descarta la URL %j como %s y no intenta Extract', async (url, reason) => {
+    const transport = new FixtureTransport([
+      search([{ url, title: 'Inválida', content: '', score: 0.9 }]),
+    ])
+
+    await expect(tool(transport).research(
+      mission(),
+      new AbortController().signal,
+    )).rejects.toMatchObject({
+      code: 'NO_VALID_HTTPS_SOURCES',
+      urlSanitization: {
+        totalReceived: 1,
+        accepted: 0,
+        discarded: 1,
+        discardReasons: { [reason]: 1 },
+      },
+      providerUsage: {
+        providerRequestIds: ['search-request'],
+        credits: 1,
+        calculatedCost: 0.008,
+        toolCalls: 1,
+      },
+    })
+    expect(transport.calls.map(call => call.pathname)).toEqual(['/search'])
+  })
+
+  it('agrega todos los motivos cuando todos los resultados son inválidos', async () => {
+    const transport = new FixtureTransport([
+      search([
+        { url: '', title: 'Vacía', content: '', score: 0.9 },
+        { url: '../relative', title: 'Relativa', content: '', score: 0.8 },
+        { url: 'https://bad host.test', title: 'Malformada', content: '', score: 0.7 },
+        { url: 'http://example.test', title: 'HTTP', content: '', score: 0.6 },
+        { url: 'mailto:info@example.test', title: 'Otro esquema', content: '', score: 0.5 },
+      ]),
+    ])
+
+    await expect(tool(transport).research(
+      mission(),
+      new AbortController().signal,
+    )).rejects.toMatchObject({
+      code: 'NO_VALID_HTTPS_SOURCES',
+      urlSanitization: {
+        totalReceived: 5,
+        accepted: 0,
+        discarded: 5,
+        discardReasons: {
+          empty: 1,
+          relative: 1,
+          malformed: 1,
+          http: 1,
+          unsupported_scheme: 1,
+        },
+      },
+    })
     expect(transport.calls).toHaveLength(1)
   })
 
@@ -116,14 +215,24 @@ describe('Tavily ResearchTool sin red', () => {
       search([{ url: brokenUrl, title: 'Rota', content: '', score: 0.5 }]),
       extract([], [{ url: brokenUrl, error: 'EXTRACT_UNAVAILABLE' }]),
     ])
-    const result = await tool(transport).research(mission(), new AbortController().signal)
-
-    expect(result.sources).toEqual([])
-    expect(result.failures).toEqual([{
-      url: 'https://example.test/morella',
-      code: 'EXTRACTION_FAILED',
-      message: 'EXTRACT_UNAVAILABLE',
-    }])
+    await expect(tool(transport).research(
+      mission(),
+      new AbortController().signal,
+    )).rejects.toMatchObject({
+      code: 'INSUFFICIENT_VALID_SOURCES',
+      urlSanitization: {
+        totalReceived: 2,
+        accepted: 1,
+        discarded: 1,
+        discardReasons: { extraction_failed: 1 },
+      },
+      providerUsage: {
+        providerRequestIds: ['search-request', 'extract-request'],
+        credits: 3,
+        calculatedCost: 0.024,
+        toolCalls: 2,
+      },
+    })
   })
 
   it('deduplica variantes técnicas de una URL y conserva el score superior', async () => {
@@ -140,6 +249,12 @@ describe('Tavily ResearchTool sin red', () => {
     expect((transport.calls[1].body.urls as string[])).toHaveLength(1)
     expect(result.sources).toHaveLength(1)
     expect(result.sources[0]).toMatchObject({ title: 'Mejor', score: 0.9 })
+    expect(result.urlSanitization).toMatchObject({
+      totalReceived: 3,
+      accepted: 2,
+      discarded: 1,
+      discardReasons: { duplicate: 1 },
+    })
   })
 
   it('acepta extracción parcial y conserva fallos por separado', async () => {

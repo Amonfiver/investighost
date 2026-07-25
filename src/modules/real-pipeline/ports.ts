@@ -11,6 +11,33 @@ import type {
   RealRoundResult,
 } from '@shared/real-pipeline-contracts'
 
+export type ProviderResultDiscardReason =
+  | 'empty'
+  | 'relative'
+  | 'malformed'
+  | 'http'
+  | 'unsupported_scheme'
+  | 'credentials'
+  | 'duplicate'
+  | 'limit'
+  | 'unmatched'
+  | 'empty_content'
+  | 'extraction_failed'
+
+export interface ProviderResultSanitization {
+  totalReceived: number
+  accepted: number
+  discarded: number
+  discardReasons: Partial<Record<ProviderResultDiscardReason, number>>
+}
+
+export interface ProviderFailureUsage {
+  providerRequestIds: string[]
+  credits: number
+  calculatedCost: number
+  toolCalls: number
+}
+
 export interface ResearchToolResult {
   round: RealRoundNumber
   sources: RealResearchSource[]
@@ -18,6 +45,7 @@ export interface ResearchToolResult {
   failures: Array<{ url: string; code: string; message: string }>
   usageUnits: number
   credits: number
+  urlSanitization?: ProviderResultSanitization
 }
 
 export interface ResearchTool {

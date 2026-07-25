@@ -17,7 +17,10 @@ select
   (select count(*) from public.editorial_research_runs) as manual_runs,
   (select count(*) from public.editorial_drafts) as manual_drafts,
   (select count(*) from public.provider_call_reservations) as connectivity_reservations,
-  (select coalesce(sum(spent_cost),0) from public.real_task_budgets) as connectivity_spent;
+  (select coalesce(sum(spent_cost),0) from public.real_task_budgets) as connectivity_spent,
+  (select count(*) from public.real_editorial_pilots) as real_pilots,
+  (select count(*) from public.editorial_work_items where mode = 'manual') as manual_work_items,
+  (select count(*) from public.editorial_work_items where mode = 'real_editorial_pilot') as real_work_items;
 
 select id as morella_id from public.geographic_entities
  where normalized_name = 'morella' and country_code = 'ES' and entity_type = 'locality'
@@ -164,8 +167,8 @@ select public.reserve_real_editorial_call(
   '85000000-0000-4000-8000-000000000002',
   'real-editorial-task:85000000-0000-4000-8000-000000000001',
   'real-editorial-batch:85000000-0000-4000-8000-000000000001',
-  'evaluating_round_1','analysis','openai','gpt-5.6-luna',1,null::uuid,
-  0.010000000,'EUR','morella-v1-openai-responses',
+  'researching_round_1','research','tavily','search-and-extract',1,null::uuid,
+  0.048000000,'EUR','morella-v1-tavily-search',
   'morella-real-editorial-v1','real-editorial-snapshot-v1',
   '6666666666666666666666666666666666666666666666666666666666666666'
 ) as sanitization_reservation_id \gset
@@ -176,8 +179,8 @@ begin
     perform public.settle_real_editorial_call(
       (select id from public.real_editorial_call_reservations
         where idempotency_key = 'integration-editorial-sanitization'),
-      'failed',0,null,0,0,1,
-      '[]'::jsonb,0,'Authorization: Bearer synthetic-secret',null
+      'failed',0.008000000,'sanitized-tavily-request',0,0,1,
+      '["search"]'::jsonb,1,'Authorization: Bearer synthetic-secret',null
     );
     raise exception 'SECRET_SANITIZATION_DID_NOT_FIRE';
   exception when check_violation then
@@ -186,8 +189,8 @@ begin
 end;
 $$;
 select public.settle_real_editorial_call(
-  :'sanitization_reservation_id'::uuid,'failed',0,null,0,0,1,
-  '[]'::jsonb,0,'SYNTHETIC_FAILURE',null
+  :'sanitization_reservation_id'::uuid,'failed',0.008000000,'sanitized-tavily-request',0,0,1,
+  '["search"]'::jsonb,1,'NO_VALID_HTTPS_SOURCES',null
 );
 
 update public.real_editorial_runs
@@ -223,10 +226,12 @@ begin
    where state in ('reserved','started','unknown');
   select spent_cost into spent from public.real_editorial_pilot_budgets
    where pilot_id = '85000000-0000-4000-8000-000000000001';
-  if editorial_count <> 2 or manual_mode_count <> base.manual_requests or real_mode_count <> 2 then
+  if editorial_count <> base.real_pilots + 2
+    or manual_mode_count <> base.manual_work_items
+    or real_mode_count <> base.real_work_items + 2 then
     raise exception 'MODE_DISCRIMINATOR_FAILED';
   end if;
-  if pending <> 0 or spent <> 0.02 then raise exception 'EDITORIAL_LEDGER_NOT_RECONCILED'; end if;
+  if pending <> 0 or spent <> 0.028 then raise exception 'EDITORIAL_LEDGER_NOT_RECONCILED'; end if;
   if (select state from public.real_editorial_pilots
       where id = '85000000-0000-4000-8000-000000000001') <> 'pending_human_review' then
     raise exception 'PENDING_HUMAN_REVIEW_MISSING';

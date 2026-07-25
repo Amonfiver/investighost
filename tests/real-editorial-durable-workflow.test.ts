@@ -4,6 +4,7 @@ import {
   DurableRealEditorialPipeline,
   MemoryCostLedgerRepository,
   realEditorialPayloadHash,
+  TavilyResearchError,
   type IntelligenceDraft,
   type IntelligenceEngine,
   type IntelligenceReview,
@@ -11,6 +12,7 @@ import {
   type RealEditorialArtifact,
   type RealEditorialArtifactKind,
   type RealEditorialPilotRepository,
+  type ProviderResultSanitization,
   type ResearchTool,
   type ResearchToolResult,
 } from '@modules/real-pipeline'
@@ -35,6 +37,7 @@ const destinationId = '81000000-0000-4000-8000-000000000003'
 class MemoryDurableRepository implements RealEditorialPilotRepository {
   readonly artifacts = new Map<string, RealEditorialArtifact[]>()
   readonly events: string[] = []
+  readonly eventDetails: Array<{ eventType: string; payload: Record<string, unknown> }> = []
   pilot = pilotRecord()
   result?: RealEditorialPilotSnapshot
 
@@ -153,8 +156,11 @@ class MemoryDurableRepository implements RealEditorialPilotRepository {
     _pilotId: string,
     _runId: string | undefined,
     eventType: string,
+    _state?: RealEditorialPilotState,
+    payload: Record<string, unknown> = {},
   ) {
     this.events.push(eventType)
+    this.eventDetails.push({ eventType, payload: structuredClone(payload) })
   }
 
   async recordIncident() {}
@@ -182,6 +188,8 @@ class FakeResearchTool implements ResearchTool {
   readonly simulation = true
   readonly rounds: number[] = []
 
+  constructor(private readonly sanitization?: ProviderResultSanitization) {}
+
   async research(mission: RealResearchMission): Promise<ResearchToolResult> {
     this.rounds.push(mission.round)
     const url = `https://fixtures.investighost.local/morella/round-${mission.round}`
@@ -203,7 +211,35 @@ class FakeResearchTool implements ResearchTool {
       failures: [],
       usageUnits: 0,
       credits: 0,
+      urlSanitization: this.sanitization,
     }
+  }
+}
+
+class InvalidUrlResearchTool implements ResearchTool {
+  readonly id = 'tavily'
+  readonly model = 'search-and-extract'
+  readonly simulation = true
+  calls = 0
+
+  async research(): Promise<ResearchToolResult> {
+    this.calls += 1
+    throw new TavilyResearchError(
+      'NO_VALID_HTTPS_SOURCES',
+      'Tavily no devolvió ninguna URL HTTPS absoluta y válida',
+      {
+        providerRequestIds: ['sanitized-request-id'],
+        credits: 1,
+        calculatedCost: 0.008,
+        toolCalls: 1,
+      },
+      {
+        totalReceived: 1,
+        accepted: 0,
+        discarded: 1,
+        discardReasons: { http: 1 },
+      },
+    )
   }
 }
 
@@ -461,5 +497,70 @@ describe('workflow editorial durable con clientes falsos', () => {
     expect(resumedIntelligence.calls).toEqual(['analysis-2', 'draft', 'review'])
     expect(ledger.budgetSnapshot().task.reserved).toBe(0)
     expect(ledger.budgetSnapshot().task.spent).toBeCloseTo(0.2, 8)
+    expect(repository.pilot.id).toBe(pilotId)
+    expect(repository.pilot.currentRunId).toBe(runId)
+    expect(repository.pilot.budget?.taskId).toBe(`real-editorial-task:${pilotId}`)
+    expect(repository.artifacts.get(`${runId}:mission:initial`)).toHaveLength(1)
+  })
+
+  it('registra únicamente contadores agregados al descartar URLs de Tavily', async () => {
+    const repository = new MemoryDurableRepository()
+    const ledger = ledgerRepository()
+    const research = new FakeResearchTool({
+      totalReceived: 3,
+      accepted: 2,
+      discarded: 1,
+      discardReasons: { http: 1 },
+    })
+    await new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: { researchTool: research, intelligenceEngine: new FakeIntelligenceEngine() },
+      now: () => new Date(now),
+      id: () => '85000000-0000-4000-8000-000000000001',
+    }).execute(repository.pilot, new AbortController().signal)
+
+    const warnings = repository.eventDetails.filter(
+      event => event.eventType === 'real.editorial.tavily.results.filtered',
+    )
+    expect(warnings).toHaveLength(2)
+    expect(warnings[0].payload).toEqual({
+      round: 1,
+      totalReceived: 3,
+      accepted: 2,
+      discarded: 1,
+      discardReasons: { http: 1 },
+    })
+    expect(JSON.stringify(warnings)).not.toContain('http://')
+    expect(JSON.stringify(warnings)).not.toMatch(/(?:tvly-|api[_ -]?key|authorization|bearer)/i)
+  })
+
+  it('registra la advertencia y concilia el coste conocido cuando todas las URL son inválidas', async () => {
+    const repository = new MemoryDurableRepository()
+    const ledger = ledgerRepository()
+    const research = new InvalidUrlResearchTool()
+
+    await expect(new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: { researchTool: research, intelligenceEngine: new FakeIntelligenceEngine() },
+      now: () => new Date(now),
+      id: () => '86000000-0000-4000-8000-000000000001',
+    }).execute(repository.pilot, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'NO_VALID_HTTPS_SOURCES' })
+
+    expect(research.calls).toBe(1)
+    expect(await repository.latestArtifact(runId, 'tavily_result', 'round-1')).toBeUndefined()
+    expect(repository.eventDetails).toContainEqual({
+      eventType: 'real.editorial.tavily.results.filtered',
+      payload: {
+        round: 1,
+        totalReceived: 1,
+        accepted: 0,
+        discarded: 1,
+        discardReasons: { http: 1 },
+      },
+    })
+    expect(ledger.budgetSnapshot().task).toMatchObject({ reserved: 0, spent: 0.008 })
   })
 })

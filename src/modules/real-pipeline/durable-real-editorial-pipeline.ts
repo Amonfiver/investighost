@@ -25,6 +25,8 @@ import type {
   IntelligenceEngine,
   IntelligenceReview,
   IntelligenceRoundAnalysis,
+  ProviderResultDiscardReason,
+  ProviderResultSanitization,
   RealPipelineProviderSelection,
   ResearchTool,
   ResearchToolResult,
@@ -268,9 +270,39 @@ class DurableResearchTool implements ResearchTool {
       `round-${mission.round}`,
     )
     if (existing) return structuredClone(existing.payload) as ResearchToolResult
-    const result = await this.delegate.research(mission, signal)
+    let result: ResearchToolResult
+    try {
+      result = await this.delegate.research(mission, signal)
+    } catch (error) {
+      const summary = sanitizationFromError(error)
+      if (summary?.discarded) await this.recordSanitization(mission, summary)
+      throw error
+    }
+    const summary = sanitizedSummary(result.urlSanitization)
+    if (summary?.discarded) {
+      await this.recordSanitization(mission, summary)
+    }
     await this.repository.saveResearchResult(this.pilotId, this.runId, mission, result)
     return result
+  }
+
+  private async recordSanitization(
+    mission: RealResearchMission,
+    summary: ProviderResultSanitization,
+  ): Promise<void> {
+    await this.repository.appendEvent(
+      this.pilotId,
+      this.runId,
+      'real.editorial.tavily.results.filtered',
+      undefined,
+      {
+        round: mission.round,
+        totalReceived: summary.totalReceived,
+        accepted: summary.accepted,
+        discarded: summary.discarded,
+        discardReasons: { ...summary.discardReasons },
+      },
+    )
   }
 }
 
@@ -509,6 +541,58 @@ function safeErrorCode(error: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object'
+}
+
+function sanitizationFromError(error: unknown): ProviderResultSanitization | undefined {
+  return isRecord(error) ? sanitizedSummary(error.urlSanitization) : undefined
+}
+
+const safeDiscardReasons: ProviderResultDiscardReason[] = [
+  'empty',
+  'relative',
+  'malformed',
+  'http',
+  'unsupported_scheme',
+  'credentials',
+  'duplicate',
+  'limit',
+  'unmatched',
+  'empty_content',
+  'extraction_failed',
+]
+
+function sanitizedSummary(candidate: unknown): ProviderResultSanitization | undefined {
+  if (!isRecord(candidate)) return undefined
+  const summary = candidate
+  if (
+    typeof summary.totalReceived !== 'number'
+    || typeof summary.accepted !== 'number'
+    || typeof summary.discarded !== 'number'
+    || !Number.isInteger(summary.totalReceived)
+    || !Number.isInteger(summary.accepted)
+    || !Number.isInteger(summary.discarded)
+    || summary.totalReceived < 0
+    || summary.accepted < 0
+    || summary.discarded < 0
+    || summary.totalReceived !== summary.accepted + summary.discarded
+    || !isRecord(summary.discardReasons)
+  ) return undefined
+  const discardReasons: ProviderResultSanitization['discardReasons'] = {}
+  for (const reason of safeDiscardReasons) {
+    const count = summary.discardReasons[reason]
+    if (typeof count === 'number' && Number.isInteger(count) && count > 0) {
+      discardReasons[reason] = count
+    }
+  }
+  if (Object.values(discardReasons).reduce((total, count) => total + (count ?? 0), 0) !== summary.discarded) {
+    return undefined
+  }
+  return {
+    totalReceived: summary.totalReceived,
+    accepted: summary.accepted,
+    discarded: summary.discarded,
+    discardReasons,
+  }
 }
 
 async function durableOperationResultAvailable(

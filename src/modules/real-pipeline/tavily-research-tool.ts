@@ -6,7 +6,13 @@ import {
   type RealResearchMission,
   type RealResearchSource,
 } from '@shared/real-pipeline-contracts'
-import type { ResearchTool, ResearchToolResult } from './ports'
+import type {
+  ProviderFailureUsage,
+  ProviderResultDiscardReason,
+  ProviderResultSanitization,
+  ResearchTool,
+  ResearchToolResult,
+} from './ports'
 import {
   assertLiveProviderNetworkPermit,
   type LiveProviderNetworkPermit,
@@ -19,7 +25,7 @@ const TavilyUsageSchema = z.object({
 const TavilySearchResponseSchema = z.object({
   request_id: z.string().trim().min(1),
   results: z.array(z.object({
-    url: z.string().url(),
+    url: z.unknown(),
     title: z.string().trim().min(1).max(500),
     content: z.string().default(''),
     score: z.number().min(0).max(1),
@@ -30,11 +36,11 @@ const TavilySearchResponseSchema = z.object({
 const TavilyExtractResponseSchema = z.object({
   request_id: z.string().trim().min(1),
   results: z.array(z.object({
-    url: z.string().url(),
+    url: z.unknown(),
     raw_content: z.string(),
   })),
   failed_results: z.array(z.object({
-    url: z.string().url(),
+    url: z.unknown(),
     error: z.string().trim().min(1).max(500),
   })),
   usage: TavilyUsageSchema,
@@ -110,6 +116,8 @@ const defaultLimits: TavilyResearchLimits = {
   maxCharactersPerSource: 100_000,
 }
 
+const MIN_VALID_SOURCES = 1
+
 export type TavilyResearchErrorCode =
   | 'NETWORK_DISABLED'
   | 'TIMEOUT'
@@ -117,10 +125,17 @@ export type TavilyResearchErrorCode =
   | 'RATE_LIMITED'
   | 'PROVIDER_ERROR'
   | 'INVALID_RESPONSE'
+  | 'NO_VALID_HTTPS_SOURCES'
+  | 'INSUFFICIENT_VALID_SOURCES'
   | 'LIMIT_EXCEEDED'
 
 export class TavilyResearchError extends Error {
-  constructor(readonly code: TavilyResearchErrorCode, message: string) {
+  constructor(
+    readonly code: TavilyResearchErrorCode,
+    message: string,
+    readonly providerUsage?: ProviderFailureUsage,
+    readonly urlSanitization?: ProviderResultSanitization,
+  ) {
     super(message)
     this.name = 'TavilyResearchError'
   }
@@ -161,6 +176,7 @@ export class TavilyResearchTool implements ResearchTool {
 
     const candidates = new Map<string, SearchCandidate>()
     const providerRequestIds: string[] = []
+    const sanitization = emptySanitization()
     let credits = 0
     for (const query of queries) {
       const response = await this.request('/search', {
@@ -173,11 +189,28 @@ export class TavilyResearchTool implements ResearchTool {
       providerRequestIds.push(response.request_id)
       credits += response.usage.credits
       for (const result of response.results) {
-        const normalizedUrl = normalizeTavilyUrl(result.url)
+        const inspected = inspectTavilyUrl(result.url)
+        sanitization.totalReceived += 1
+        if (!inspected.accepted) {
+          discard(sanitization, inspected.reason)
+          continue
+        }
+        const normalizedUrl = inspected.normalizedUrl
         const previous = candidates.get(normalizedUrl)
-        if (!previous || result.score > previous.score) {
+        if (previous) {
+          discard(sanitization, 'duplicate')
+          if (result.score > previous.score) {
+            candidates.set(normalizedUrl, {
+              url: normalizedUrl,
+              normalizedUrl,
+              title: result.title,
+              score: result.score,
+            })
+          }
+        } else {
+          sanitization.accepted += 1
           candidates.set(normalizedUrl, {
-            url: result.url,
+            url: normalizedUrl,
             normalizedUrl,
             title: result.title,
             score: result.score,
@@ -186,18 +219,21 @@ export class TavilyResearchTool implements ResearchTool {
       }
     }
 
-    const selected = [...candidates.values()]
+    const ranked = [...candidates.values()]
       .sort((left, right) => right.score - left.score || left.normalizedUrl.localeCompare(right.normalizedUrl))
-      .slice(0, Math.min(this.limits.maxUrls, mission.limits.maxSources))
+    const selected = ranked.slice(0, Math.min(this.limits.maxUrls, mission.limits.maxSources))
+    const excludedByLimit = ranked.length - selected.length
+    if (excludedByLimit > 0) {
+      sanitization.accepted -= excludedByLimit
+      discard(sanitization, 'limit', excludedByLimit)
+    }
     if (selected.length === 0) {
-      return {
-        round: mission.round,
-        sources: [],
-        providerRequestIds,
-        failures: [],
-        usageUnits: credits,
-        credits,
-      }
+      throw new TavilyResearchError(
+        'NO_VALID_HTTPS_SOURCES',
+        'Tavily no devolvió ninguna URL HTTPS absoluta y válida',
+        failureUsage(providerRequestIds, credits),
+        sanitization,
+      )
     }
 
     const extraction = await this.request('/extract', {
@@ -212,17 +248,34 @@ export class TavilyResearchTool implements ResearchTool {
     const sources: RealResearchSource[] = []
     const seenContent = new Set<string>()
     for (const extracted of extraction.results) {
-      const normalizedUrl = normalizeTavilyUrl(extracted.url)
+      const inspected = inspectTavilyUrl(extracted.url)
+      sanitization.totalReceived += 1
+      if (!inspected.accepted) {
+        discard(sanitization, inspected.reason)
+        continue
+      }
+      const normalizedUrl = inspected.normalizedUrl
       const search = selectedByUrl.get(normalizedUrl)
-      if (!search || !extracted.raw_content.trim()) continue
+      if (!search) {
+        discard(sanitization, 'unmatched')
+        continue
+      }
+      if (!extracted.raw_content.trim()) {
+        discard(sanitization, 'empty_content')
+        continue
+      }
       const content = extracted.raw_content.slice(
         0,
         Math.min(this.limits.maxCharactersPerSource, mission.limits.maxCharactersPerSource),
       )
       const contentHash = sha256(content)
       const technicalKey = `${normalizedUrl}:${contentHash}`
-      if (seenContent.has(technicalKey)) continue
+      if (seenContent.has(technicalKey)) {
+        discard(sanitization, 'duplicate')
+        continue
+      }
       seenContent.add(technicalKey)
+      sanitization.accepted += 1
       sources.push(RealResearchSourceSchema.parse({
         id: `tavily-${sha256(normalizedUrl).slice(0, 32)}`,
         round: mission.round,
@@ -236,13 +289,34 @@ export class TavilyResearchTool implements ResearchTool {
       }))
     }
 
-    const failures = extraction.failed_results
-      .filter(item => selectedByUrl.has(normalizeTavilyUrl(item.url)))
-      .map(item => ({
-        url: normalizeTavilyUrl(item.url),
+    const failures: ResearchToolResult['failures'] = []
+    for (const item of extraction.failed_results) {
+      const inspected = inspectTavilyUrl(item.url)
+      sanitization.totalReceived += 1
+      if (!inspected.accepted) {
+        discard(sanitization, inspected.reason)
+        continue
+      }
+      if (!selectedByUrl.has(inspected.normalizedUrl)) {
+        discard(sanitization, 'unmatched')
+        continue
+      }
+      discard(sanitization, 'extraction_failed')
+      failures.push({
+        url: inspected.normalizedUrl,
         code: 'EXTRACTION_FAILED',
         message: sanitizeFailure(item.error),
-      }))
+      })
+    }
+
+    if (sources.length < MIN_VALID_SOURCES) {
+      throw new TavilyResearchError(
+        'INSUFFICIENT_VALID_SOURCES',
+        'Tavily no dejó ninguna fuente HTTPS válida con contenido utilizable; se exige al menos una',
+        failureUsage(providerRequestIds, credits),
+        sanitization,
+      )
+    }
 
     return {
       round: mission.round,
@@ -251,6 +325,7 @@ export class TavilyResearchTool implements ResearchTool {
       failures,
       usageUnits: credits,
       credits,
+      urlSanitization: sanitization,
     }
   }
 
@@ -305,10 +380,40 @@ interface SearchCandidate {
 }
 
 export function normalizeTavilyUrl(value: string): string {
-  const url = new URL(value)
-  if (url.protocol !== 'https:') {
-    throw new TavilyResearchError('INVALID_RESPONSE', 'Tavily devolvió una URL no HTTPS')
+  const inspected = inspectTavilyUrl(value)
+  if (!inspected.accepted) {
+    throw new TavilyResearchError(
+      'INVALID_RESPONSE',
+      `Tavily devolvió una URL descartada (${inspected.reason})`,
+    )
   }
+  return inspected.normalizedUrl
+}
+
+type UrlOnlyDiscardReason = Exclude<
+  ProviderResultDiscardReason,
+  'duplicate' | 'limit' | 'unmatched' | 'empty_content' | 'extraction_failed'
+>
+
+type InspectedTavilyUrl =
+  | { accepted: true; normalizedUrl: string }
+  | { accepted: false; reason: UrlOnlyDiscardReason }
+
+function inspectTavilyUrl(value: unknown): InspectedTavilyUrl {
+  if (typeof value !== 'string') return { accepted: false, reason: 'malformed' }
+  if (value.trim().length === 0) return { accepted: false, reason: 'empty' }
+  if (value !== value.trim() || /\s/.test(value)) return { accepted: false, reason: 'malformed' }
+  if (/^(?:[./?#]|\.\.\/)/.test(value)) return { accepted: false, reason: 'relative' }
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return { accepted: false, reason: 'malformed' }
+  }
+  if (url.protocol === 'http:') return { accepted: false, reason: 'http' }
+  if (url.protocol !== 'https:') return { accepted: false, reason: 'unsupported_scheme' }
+  if (!url.hostname || url.origin === 'null') return { accepted: false, reason: 'malformed' }
+  if (url.username || url.password) return { accepted: false, reason: 'credentials' }
   url.hash = ''
   url.hostname = url.hostname.toLowerCase()
   for (const key of [...url.searchParams.keys()]) {
@@ -316,7 +421,29 @@ export function normalizeTavilyUrl(value: string): string {
   }
   url.searchParams.sort()
   if (url.pathname !== '/') url.pathname = url.pathname.replace(/\/+$/, '')
-  return url.toString()
+  return { accepted: true, normalizedUrl: url.toString() }
+}
+
+function emptySanitization(): ProviderResultSanitization {
+  return { totalReceived: 0, accepted: 0, discarded: 0, discardReasons: {} }
+}
+
+function discard(
+  summary: ProviderResultSanitization,
+  reason: ProviderResultDiscardReason,
+  count = 1,
+): void {
+  summary.discarded += count
+  summary.discardReasons[reason] = (summary.discardReasons[reason] ?? 0) + count
+}
+
+function failureUsage(providerRequestIds: string[], credits: number): ProviderFailureUsage {
+  return {
+    providerRequestIds: [...providerRequestIds],
+    credits,
+    calculatedCost: credits * 0.008,
+    toolCalls: providerRequestIds.length,
+  }
 }
 
 async function withTavilyTimeout<T>(

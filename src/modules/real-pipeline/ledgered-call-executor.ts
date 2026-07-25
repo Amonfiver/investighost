@@ -5,6 +5,7 @@ import type {
   ProviderCallSettlement,
 } from '@shared/real-cost-contracts'
 import { CostLedgerService } from './cost-ledger'
+import type { ProviderFailureUsage } from './ports'
 import { RealWorkflowError, type WorkflowCallExecutor } from './real-workflow'
 
 export interface LedgeredCallMetadataFactory {
@@ -94,16 +95,22 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     } catch (error) {
       const ambiguous = errorCode(error) === 'TIMEOUT'
       const cancelled = errorCode(error) === 'CANCELLED'
+      const providerUsage = failureUsage(error)
       try {
         await this.ledger.settle({
           reservationId: reservation.id,
           outcome: ambiguous ? 'unknown' : cancelled ? 'cancelled' : 'failed',
-          calculatedCost: ambiguous ? undefined : 0,
+          calculatedCost: ambiguous
+            ? undefined
+            : cancelled
+              ? 0
+              : providerUsage?.calculatedCost ?? 0,
           usage: {
+            remoteId: providerUsage?.providerRequestIds[0],
             inputTokens: 0,
             outputTokens: 0,
-            toolCalls: 1,
-            credits: 0,
+            toolCalls: providerUsage?.toolCalls ?? 1,
+            credits: providerUsage?.credits ?? 0,
           },
           sanitizedError: errorCode(error),
         })
@@ -143,6 +150,33 @@ function errorCode(error: unknown): string {
     return /^[A-Z0-9_]{1,120}$/.test(error.code) ? error.code : 'PROVIDER_OPERATION_FAILED'
   }
   return 'PROVIDER_OPERATION_FAILED'
+}
+
+function failureUsage(error: unknown): ProviderFailureUsage | undefined {
+  if (!error || typeof error !== 'object' || !('providerUsage' in error)) return undefined
+  const usage = error.providerUsage
+  if (!usage || typeof usage !== 'object') return undefined
+  const providerRequestIds = 'providerRequestIds' in usage && Array.isArray(usage.providerRequestIds)
+    ? usage.providerRequestIds.filter(value => typeof value === 'string')
+    : []
+  const credits = 'credits' in usage && typeof usage.credits === 'number'
+    ? usage.credits
+    : Number.NaN
+  const calculatedCost = 'calculatedCost' in usage && typeof usage.calculatedCost === 'number'
+    ? usage.calculatedCost
+    : Number.NaN
+  const toolCalls = 'toolCalls' in usage && typeof usage.toolCalls === 'number'
+    ? usage.toolCalls
+    : Number.NaN
+  if (
+    !Number.isFinite(credits)
+    || credits < 0
+    || !Number.isFinite(calculatedCost)
+    || calculatedCost < 0
+    || !Number.isInteger(toolCalls)
+    || toolCalls < 0
+  ) return undefined
+  return { providerRequestIds, credits, calculatedCost, toolCalls }
 }
 
 function settlementFromResult<T>(

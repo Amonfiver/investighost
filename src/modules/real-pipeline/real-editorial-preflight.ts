@@ -16,6 +16,7 @@ export const RealEditorialPreflightInputSchema = z.object({
   guardFree: z.boolean(),
   activeExecutions: z.number().int().nonnegative(),
   pendingReservations: z.number().int().nonnegative(),
+  recoverableReservations: z.number().int().nonnegative().default(0),
   humanRequiredCalls: z.number().int().nonnegative(),
   openAIResponsesCapability: z.object({
     sdkVersion: z.string().trim().min(1).max(80),
@@ -174,8 +175,10 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
   add(
     'pending_reservations',
     'Reservas pendientes',
-    input.pendingReservations === 0,
-    'No hay reservas editoriales pendientes.',
+    input.pendingReservations === input.recoverableReservations,
+    input.pendingReservations === 0
+      ? 'No hay reservas editoriales pendientes.'
+      : `${input.recoverableReservations} reserva(s) se conciliará(n) desde un artefacto durable sin repetir proveedor.`,
     `Hay ${input.pendingReservations} reserva(s) pendiente(s).`,
   )
   add(

@@ -363,6 +363,12 @@ export const RealEditorialPilotProgressSchema = z.object({
   currentRound: z.number().int().min(0).max(2),
   accumulatedCost: z.number().nonnegative(),
   incidentCount: z.number().int().nonnegative(),
+  latestIncident: z.object({
+    code: IdentifierSchema,
+    classification: z.enum(['recoverable', 'permanent', 'ambiguous', 'human_required']),
+    message: z.string().trim().min(1).max(1_000),
+    createdAt: TimestampSchema,
+  }).optional(),
   pendingReservations: z.number().int().nonnegative(),
   humanRequiredCall: RealEditorialAmbiguousCallSchema.optional(),
   resumeAvailable: z.boolean(),

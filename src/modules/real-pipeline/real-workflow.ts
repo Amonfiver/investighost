@@ -46,6 +46,7 @@ export interface RealWorkflowCheckpoint {
   queryHashes: string[]
   providerCalls: number
   simulatedCost: number
+  lastAnalysisCost?: number
   updatedAt: string
 }
 
@@ -103,7 +104,7 @@ export class MemoryWorkflowCallExecutor implements WorkflowCallExecutor {
     try {
       const result = await promise
       this.completed.set(operationId, structuredClone(result))
-      this.spentCost += estimatedCost
+      this.spentCost = Number((this.spentCost + estimatedCost).toFixed(9))
       return structuredClone(result)
     } finally {
       this.running.delete(operationId)
@@ -126,12 +127,16 @@ export class MemoryWorkflowCallExecutor implements WorkflowCallExecutor {
 export interface RealWorkflowConfiguration {
   researchCostPerRound: number
   analysisCostPerRound: number
+  completionCostAfterFirstRound: number
+  budgetLimit: number
   now?: () => Date
 }
 
 const defaultConfiguration: RealWorkflowConfiguration = {
   researchCostPerRound: 0,
   analysisCostPerRound: 0,
+  completionCostAfterFirstRound: 0,
+  budgetLimit: Number.POSITIVE_INFINITY,
 }
 
 export type RealWorkflowErrorCode =
@@ -200,6 +205,41 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
           checkpoint = { ...checkpoint, state: next.state, nextRoundQueries: [], updatedAt: this.now().toISOString() }
           await this.checkpoints.save(checkpoint)
           return outcome(checkpoint)
+        }
+        const completionCost = moneyValue(
+          this.configuration.completionCostAfterFirstRound
+          + Math.max(
+            0,
+            (checkpoint.lastAnalysisCost ?? this.configuration.analysisCostPerRound)
+            - this.configuration.analysisCostPerRound,
+          ),
+        )
+        if (completionCost > 0 && !this.callExecutor.canReserve(completionCost)) {
+          const spentCost = this.callExecutor.snapshot().spentCost
+          const availableCost = Math.max(0, this.configuration.budgetLimit - spentCost)
+          const shortfallCost = Math.max(
+            0,
+            completionCost - availableCost,
+          )
+          checkpoint = {
+            ...checkpoint,
+            state: 'review_required',
+            nextRoundQueries: [],
+            simulatedCost: spentCost,
+            updatedAt: this.now().toISOString(),
+          }
+          await this.checkpoints.save(checkpoint)
+          throw new RealWorkflowError(
+            'BUDGET_EXCEEDED',
+            [
+              `La estimación operativa para completar el piloto es ${money(
+                completionCost,
+              )} EUR adicionales`,
+              `el ledger deja ${money(availableCost)} EUR disponibles`,
+              `faltan ${money(shortfallCost)} EUR`,
+              'se requiere decisión humana',
+            ].join('; '),
+          )
         }
         checkpoint = {
           ...checkpoint,
@@ -337,7 +377,7 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
         throw new RealWorkflowError('LIMIT_EXCEEDED', 'El proveedor superó el máximo de llamadas')
       }
       dossier = this.mergeDossier(mission, checkpoint.dossier, research)
-      simulatedCost += this.configuration.researchCostPerRound
+      simulatedCost = this.callExecutor.snapshot().spentCost
       await this.checkpoints.save({
         ...checkpoint,
         state: analyzingState,
@@ -366,7 +406,8 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
       unresolvedGaps: analysis.gaps,
       nextRoundQueries: analysis.proposedQueries,
       providerCalls: providerCalls + 1,
-      simulatedCost: simulatedCost + this.configuration.analysisCostPerRound,
+      simulatedCost: this.callExecutor.snapshot().spentCost,
+      lastAnalysisCost: moneyValue(analysis.usage.estimatedCost),
       updatedAt: this.now().toISOString(),
     }
   }
@@ -477,6 +518,14 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
   private assertNotCancelled(signal: AbortSignal): void {
     if (signal.aborted) throw new RealWorkflowError('CANCELLED', 'La ejecución fue cancelada')
   }
+}
+
+function money(value: number): string {
+  return value.toFixed(6)
+}
+
+function moneyValue(value: number): number {
+  return Number(value.toFixed(9))
 }
 
 export function queryHash(query: string): string {

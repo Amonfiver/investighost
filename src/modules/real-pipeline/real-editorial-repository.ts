@@ -90,6 +90,7 @@ export interface RealEditorialRepositoryInspection {
   guardFree: boolean
   activeExecutions: number
   pendingReservations: number
+  recoverableReservations: number
   humanRequiredCalls: number
   manualMorellaCount: number
   identicalPilotCount: number
@@ -188,6 +189,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         duplicate,
         budget,
         connectivity,
+        recoverableReservations,
       ] = await Promise.all([
         this.client.from('real_editorial_pilot_policies').select('id')
           .eq('id', REAL_EDITORIAL_PILOT_POLICY.id).maybeSingle(),
@@ -220,6 +222,9 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         this.client.from('real_editorial_connectivity_evidence').select('provider_id,outcome')
           .eq('pilot_policy_id', REAL_EDITORIAL_PILOT_POLICY.id)
           .eq('source_kind', 'connectivity_check').eq('outcome', 'succeeded'),
+        currentPilotId
+          ? this.recoverableStartedReservations(currentPilotId)
+          : Promise.resolve(0),
       ])
       const results = [
         policy,
@@ -247,6 +252,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         guardFree: !guard.data?.owner_execution_id || guardExpired,
         activeExecutions: active.count ?? 0,
         pendingReservations: pending.count ?? 0,
+        recoverableReservations,
         humanRequiredCalls: humanRequired.count ?? 0,
         manualMorellaCount: manualMorella.count ?? 0,
         identicalPilotCount: duplicate.count ?? 0,
@@ -255,6 +261,29 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     } catch {
       return unavailableInspection()
     }
+  }
+
+  private async recoverableStartedReservations(pilotId: string): Promise<number> {
+    const reservations = await this.client.from('real_editorial_call_reservations')
+      .select('run_id,stage,operation')
+      .eq('pilot_id', pilotId)
+      .eq('state', 'started')
+      .eq('operation', 'analysis')
+    if (reservations.error) throw reservations.error
+    let recoverable = 0
+    for (const row of reservations.data ?? []) {
+      const roundMatch = /^([12])_analysis$/.exec(String(row.stage))
+      if (!roundMatch) continue
+      const artifact = await this.latestArtifact(
+        String(row.run_id),
+        'round',
+        `round-${roundMatch[1]}`,
+      )
+      if (artifact && isRecord(artifact.payload) && isRecord(artifact.payload.analysis)) {
+        recoverable += 1
+      }
+    }
+    return recoverable
   }
 
   async prepare(candidate: RealEditorialPilotPrepare): Promise<RealEditorialPilotRecord> {
@@ -1161,6 +1190,7 @@ function unavailableInspection(): RealEditorialRepositoryInspection {
     guardFree: false,
     activeExecutions: 0,
     pendingReservations: 0,
+    recoverableReservations: 0,
     humanRequiredCalls: 0,
     manualMorellaCount: 0,
     identicalPilotCount: 0,

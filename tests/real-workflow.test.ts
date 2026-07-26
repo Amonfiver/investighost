@@ -197,7 +197,15 @@ function analysis(options: {
 
 function setup(
   analyses: Array<IntelligenceRoundAnalysis | Error>,
-  options: { duplicate?: boolean; taskBudget?: number; dailyBudget?: number } = {},
+  options: {
+    duplicate?: boolean
+    taskBudget?: number
+    dailyBudget?: number
+    researchCostPerRound?: number
+    analysisCostPerRound?: number
+    completionCostAfterFirstRound?: number
+    budgetLimit?: number
+  } = {},
 ) {
   const research = new FakeResearchTool(options.duplicate)
   const intelligence = new FakeIntelligenceEngine(analyses)
@@ -208,8 +216,10 @@ function setup(
     checkpoints,
     calls,
     {
-      researchCostPerRound: 0.06,
-      analysisCostPerRound: 0.04,
+      researchCostPerRound: options.researchCostPerRound ?? 0.06,
+      analysisCostPerRound: options.analysisCostPerRound ?? 0.04,
+      completionCostAfterFirstRound: options.completionCostAfterFirstRound ?? 0,
+      budgetLimit: options.budgetLimit ?? Number.POSITIVE_INFINITY,
       now: () => new Date(timestamp),
     },
   )
@@ -281,6 +291,33 @@ describe('orquestador real de dos rondas focalizadas', () => {
     expect(result.state).toBe('review_required')
     expect(context.research.calls).toEqual([1])
     expect(result.simulatedCost).toBe(0.1)
+  })
+
+  it('exige decisión humana antes de otra llamada si el coste restante no cabe en 0,20 EUR', async () => {
+    const context = setup([analysis({ importance: 'critical' })], {
+      dailyBudget: 0.2,
+      researchCostPerRound: 0.05,
+      analysisCostPerRound: 0.049838,
+      completionCostAfterFirstRound: 0.13,
+      budgetLimit: 0.2,
+    })
+
+    await expect(context.workflow.execute(
+      context.initialMission,
+      new AbortController().signal,
+    )).rejects.toMatchObject({
+      code: 'BUDGET_EXCEEDED',
+      message: expect.stringContaining('faltan 0.029838 EUR'),
+    })
+
+    expect(context.research.calls).toEqual([1])
+    expect(context.intelligence.calls).toEqual([1])
+    expect(await context.checkpoints.load(context.initialMission.taskId)).toMatchObject({
+      state: 'review_required',
+      completedRound: 1,
+      simulatedCost: 0.099838,
+    })
+    expect(context.calls.snapshot().spentCost).toBeCloseTo(0.099838, 9)
   })
 
   it('amplía una carencia crítica y manda a revisión si sigue abierta', async () => {

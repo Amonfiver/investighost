@@ -64,6 +64,7 @@ export class RealEditorialPilotRuntime {
       guardFree: inspection.guardFree,
       activeExecutions: inspection.activeExecutions,
       pendingReservations: inspection.pendingReservations,
+      recoverableReservations: inspection.recoverableReservations,
       humanRequiredCalls: inspection.humanRequiredCalls,
       openAIResponsesCapability: inspectInstalledOpenAIResponsesCapability(),
       openAIRequestContract: {
@@ -101,9 +102,10 @@ export class RealEditorialPilotRuntime {
     const [snapshot, incidents, run, inspection, humanRequiredCall, resumeAvailable] =
       await Promise.all([
       this.repository.getResult(pilotId),
-      this.client.from('real_editorial_incidents').select('id', { head: true, count: 'exact' })
-        .eq('pilot_id', pilotId),
-      this.client.from('real_editorial_runs').select('current_round,accumulated_cost')
+      this.client.from('real_editorial_incidents')
+        .select('code,classification,message,created_at', { count: 'exact' })
+        .eq('pilot_id', pilotId).order('created_at', { ascending: false }).limit(1),
+      this.client.from('real_editorial_runs').select('current_round')
         .eq('id', pilot.currentRunId).eq('pilot_id', pilotId).single(),
       this.repository.inspect(pilot.identityKey, pilotId),
       this.repository.getHumanRequiredCall(pilotId),
@@ -114,8 +116,16 @@ export class RealEditorialPilotRuntime {
       pilot,
       snapshot,
       currentRound: Number(run.data.current_round),
-      accumulatedCost: Number(run.data.accumulated_cost),
+      accumulatedCost: realEditorialAuthoritativeSpentCost(pilot),
       incidentCount: incidents.count ?? 0,
+      latestIncident: incidents.data?.[0]
+        ? {
+            code: incidents.data[0].code,
+            classification: incidents.data[0].classification,
+            message: incidents.data[0].message,
+            createdAt: incidents.data[0].created_at,
+          }
+        : undefined,
       pendingReservations: inspection.pendingReservations,
       humanRequiredCall,
       resumeAvailable,
@@ -223,6 +233,12 @@ export class RealEditorialPilotRuntime {
       this.controllers.delete(pilotId)
     }
   }
+}
+
+export function realEditorialAuthoritativeSpentCost(
+  pilot: { budget?: { spentCost: number } },
+): number {
+  return pilot.budget?.spentCost ?? 0
 }
 
 let runtime: RealEditorialPilotRuntime | undefined

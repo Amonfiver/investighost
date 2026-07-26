@@ -15,6 +15,7 @@ function metadata(): LedgeredCallMetadataFactory {
   return {
     create(targetOperationId, attempt, estimatedCost, retryOfCallId) {
       const research = targetOperationId.endsWith(':research')
+      const costAdjustment = targetOperationId.endsWith(':cost-adjustment')
       return {
         idempotencyKey: `${targetOperationId}:attempt:${attempt}`,
         executionId: 'real-editorial:run-morella',
@@ -22,8 +23,8 @@ function metadata(): LedgeredCallMetadataFactory {
         runId: 'run-morella',
         taskId: 'task-morella',
         batchId: 'batch-morella',
-        stage: research ? '1_research' : '1_analysis',
-        operation: research ? 'research' : 'analysis',
+        stage: research ? '1_research' : costAdjustment ? 'analysis_cost_adjustment' : '1_analysis',
+        operation: research ? 'research' : costAdjustment ? 'cost_adjustment' : 'analysis',
         providerId: research ? 'tavily' : 'openai',
         model: research ? 'search-and-extract' : 'gpt-5.6-luna',
         attempt,
@@ -290,5 +291,97 @@ describe('conciliación de fallos facturables y reanudación idempotente', () =>
       reserved: 0,
       spent: 0.001,
     })
+  })
+
+  it('concilia de forma append-only un coste real superior a la reserva sin repetir proveedor', async () => {
+    let sequence = 0
+    const analysisOperation = 'task-morella:round:1:analysis'
+    const repository = new MemoryCostLedgerRepository(
+      { task: 0.2, batch: 0.2, daily: 0.2, currency: 'EUR' },
+      {
+        now: () => new Date(now),
+        id: () => `cost-adjustment-ledger-id-${++sequence}`,
+      },
+      {
+        task: { spent: 0.05 },
+        batch: { spent: 0.05 },
+        daily: { spent: 0.05 },
+      },
+    )
+    const ledger = new CostLedgerService(repository, { now: () => new Date(now) })
+    await ledger.acquireExecution(
+      'real-editorial:run-morella',
+      'lease-cost-adjustment',
+      new Date('2026-07-26T00:00:00.000Z'),
+    )
+    const historical = await ledger.reserve(metadata().create(
+      analysisOperation,
+      1,
+      0.022,
+    ))
+    await ledger.start(historical.id)
+    const durableAnalysis = {
+      usage: {
+        inputTokens: 26_942,
+        outputTokens: 3_816,
+        estimatedCost: 0.049838,
+      },
+    }
+    const durableReader = vi.fn(async () => durableAnalysis)
+    const resumed = new LedgeredWorkflowCallExecutor(
+      ledger,
+      metadata(),
+      0.2,
+      async target => target === analysisOperation,
+      0.05,
+    )
+
+    await expect(resumed.execute(analysisOperation, 0.022, durableReader))
+      .resolves.toEqual(durableAnalysis)
+
+    expect(durableReader).toHaveBeenCalledOnce()
+    expect(resumed.snapshot().spentCost).toBeCloseTo(0.099838, 9)
+    expect(resumed.canReserve(0.100162)).toBe(true)
+    expect(resumed.canReserve(0.100163)).toBe(false)
+    expect(repository.budgetSnapshot().task).toMatchObject({ reserved: 0, limit: 0.2 })
+    expect(repository.budgetSnapshot().task.spent).toBeCloseTo(0.099838, 9)
+    expect(await repository.findByIdempotencyKey(`${analysisOperation}:attempt:1`))
+      .toMatchObject({
+        state: 'reconciled',
+        calculatedCost: 0.022,
+      })
+    const adjustmentKey = `${analysisOperation}:cost-adjustment:attempt:1`
+    const adjustment = await repository.findByIdempotencyKey(adjustmentKey)
+    expect(adjustment).toMatchObject({
+      state: 'reconciled',
+      calculatedCost: 0.027838,
+      input: {
+        operation: 'cost_adjustment',
+        retryOfCallId: historical.callId,
+      },
+    })
+    const adjustmentEntries = await repository.entries(adjustment?.callId)
+    expect(adjustmentEntries.at(-1)).toMatchObject({
+      state: 'succeeded',
+      toolCalls: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      sanitizedError: 'ACTUAL_COST_DURABLE_ADJUSTMENT',
+    })
+
+    const duplicateReader = vi.fn(async () => durableAnalysis)
+    const duplicated = new LedgeredWorkflowCallExecutor(
+      ledger,
+      metadata(),
+      0.2,
+      async target => target === analysisOperation,
+      0.099838,
+    )
+    const entryCount = (await repository.entries()).length
+    await duplicated.execute(analysisOperation, 0.022, duplicateReader)
+    expect(duplicateReader).toHaveBeenCalledOnce()
+    expect(await repository.entries()).toHaveLength(entryCount)
+    expect(repository.budgetSnapshot().task.reserved).toBe(0)
+    expect(repository.budgetSnapshot().task.spent).toBeCloseTo(0.099838, 9)
   })
 })

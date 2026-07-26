@@ -49,6 +49,7 @@ function input(overrides: Partial<Input> = {}): Input {
     guardFree: true,
     activeExecutions: 0,
     pendingReservations: 0,
+    recoverableReservations: 0,
     humanRequiredCalls: 0,
     openAIResponsesCapability: {
       sdkVersion: '6.34.0',
@@ -141,6 +142,19 @@ describe('preflight editorial real independiente', () => {
     ['conectividad', { connectivityValidated: false }],
   ])('bloquea por %s', (_label, override) => {
     expect(evaluateRealEditorialPreflight(input(override)).status).toBe('blocked')
+  })
+
+  it('autoriza conciliar una reserva iniciada cuando el análisis durable ya existe', () => {
+    const result = evaluateRealEditorialPreflight(input({
+      pendingReservations: 1,
+      recoverableReservations: 1,
+    }))
+
+    expect(result.status).toBe('ready_for_real_editorial_pilot')
+    expect(result.checks.find(check => check.code === 'pending_reservations')).toMatchObject({
+      status: 'pass',
+      detail: expect.stringContaining('sin repetir proveedor'),
+    })
   })
 
   it('bloquea un SDK sin Responses antes de autorizar gasto o red', () => {

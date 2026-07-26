@@ -122,6 +122,7 @@ export class DurableRealEditorialPipeline {
           pilot.currentRunId,
           operationId,
         ),
+        pilot.budget.spentCost,
       )
       const workflow = new ControlledRealWorkflow(
         durableProviders,
@@ -134,6 +135,12 @@ export class DurableRealEditorialPipeline {
         {
           researchCostPerRound: REAL_EDITORIAL_OPERATION_BUDGETS.researchPerRound,
           analysisCostPerRound: REAL_EDITORIAL_OPERATION_BUDGETS.analysisPerRound,
+          completionCostAfterFirstRound:
+            REAL_EDITORIAL_OPERATION_BUDGETS.researchPerRound
+            + REAL_EDITORIAL_OPERATION_BUDGETS.analysisPerRound
+            + REAL_EDITORIAL_OPERATION_BUDGETS.drafting
+            + REAL_EDITORIAL_OPERATION_BUDGETS.finalReview,
+          budgetLimit: REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur,
           now: this.now,
         },
       )
@@ -194,7 +201,7 @@ export class DurableRealEditorialPipeline {
           pilot.currentRunId,
           code,
           code === 'TIMEOUT' ? 'ambiguous' : 'human_required',
-          'La ejecución editorial real se detuvo; revisar el ledger y el checkpoint durable.',
+          safeIncidentMessage(error),
         )
         await this.dependencies.repository.appendEvent(
           pilot.id,
@@ -597,6 +604,20 @@ function safeErrorCode(error: unknown): string {
     && /^[A-Z0-9_]{1,120}$/.test(error.code)
   ) return error.code
   return 'REAL_EDITORIAL_EXECUTION_HALTED'
+}
+
+function safeIncidentMessage(error: unknown): string {
+  if (
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && error.code === 'BUDGET_EXCEEDED'
+    && 'message' in error
+    && typeof error.message === 'string'
+  ) {
+    return error.message.slice(0, 1_000)
+  }
+  return 'La ejecución editorial real se detuvo; revisar el ledger y el checkpoint durable.'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

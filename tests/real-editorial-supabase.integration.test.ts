@@ -193,8 +193,49 @@ select public.settle_real_editorial_call(
   '["search"]'::jsonb,1,'NO_VALID_HTTPS_SOURCES',null
 );
 
+select public.reserve_real_editorial_call(
+  'integration-editorial-analysis:attempt:3',
+  'real-editorial:85000000-0000-4000-8000-000000000002',
+  '85000000-0000-4000-8000-000000000001',
+  '85000000-0000-4000-8000-000000000002',
+  'real-editorial-task:85000000-0000-4000-8000-000000000001',
+  'real-editorial-batch:85000000-0000-4000-8000-000000000001',
+  '1_analysis','analysis','openai','gpt-5.6-luna',3,null::uuid,
+  0.022000000,'EUR','morella-v1-openai-responses',
+  'morella-real-editorial-v1','real-editorial-snapshot-v1',
+  '7777777777777777777777777777777777777777777777777777777777777777'
+) as analysis_reservation_id \gset
+select public.start_real_editorial_call(:'analysis_reservation_id'::uuid);
+select call_id as analysis_call_id
+  from public.real_editorial_call_reservations
+ where id = :'analysis_reservation_id'::uuid \gset
+
+select public.reserve_real_editorial_call(
+  'integration-editorial-analysis:cost-adjustment:attempt:3',
+  'real-editorial:85000000-0000-4000-8000-000000000002',
+  '85000000-0000-4000-8000-000000000001',
+  '85000000-0000-4000-8000-000000000002',
+  'real-editorial-task:85000000-0000-4000-8000-000000000001',
+  'real-editorial-batch:85000000-0000-4000-8000-000000000001',
+  'analysis_cost-adjustment','cost-adjustment','openai','gpt-5.6-luna',3,
+  :'analysis_call_id'::uuid,
+  0.027838000,'EUR','morella-v1-openai-responses',
+  'morella-real-editorial-v1','real-editorial-snapshot-v1',
+  '8888888888888888888888888888888888888888888888888888888888888888'
+) as adjustment_reservation_id \gset
+select public.settle_real_editorial_call(
+  :'adjustment_reservation_id'::uuid,'succeeded',0.027838000,null,0,0,0,
+  '[]'::jsonb,0,'ACTUAL_COST_DURABLE_ADJUSTMENT',
+  '9999999999999999999999999999999999999999999999999999999999999999'
+);
+select public.settle_real_editorial_call(
+  :'analysis_reservation_id'::uuid,'succeeded',0.022000000,null,26942,3816,1,
+  '[]'::jsonb,0,null,
+  '9999999999999999999999999999999999999999999999999999999999999999'
+);
+
 update public.real_editorial_runs
- set state = 'pending_human_review',current_round = 2,accumulated_cost = 0.020000000,completed_at = now()
+ set state = 'pending_human_review',current_round = 2,accumulated_cost = 0.077838000,completed_at = now()
  where id = '85000000-0000-4000-8000-000000000002';
 update public.real_editorial_pilots
  set state = 'pending_human_review'
@@ -223,7 +264,8 @@ begin
   select count(*) into manual_mode_count from public.editorial_work_items where mode = 'manual';
   select count(*) into real_mode_count from public.editorial_work_items where mode = 'real_editorial_pilot';
   select count(*) into pending from public.real_editorial_call_reservations
-   where state in ('reserved','started','unknown');
+   where pilot_id = '85000000-0000-4000-8000-000000000001'
+     and state in ('reserved','started','unknown');
   select spent_cost into spent from public.real_editorial_pilot_budgets
    where pilot_id = '85000000-0000-4000-8000-000000000001';
   if editorial_count <> base.real_pilots + 2
@@ -231,7 +273,17 @@ begin
     or real_mode_count <> base.real_work_items + 2 then
     raise exception 'MODE_DISCRIMINATOR_FAILED';
   end if;
-  if pending <> 0 or spent <> 0.028 then raise exception 'EDITORIAL_LEDGER_NOT_RECONCILED'; end if;
+  if pending <> 0 or spent <> 0.077838 then
+    raise exception 'EDITORIAL_LEDGER_NOT_RECONCILED pending=% spent=%',pending,spent;
+  end if;
+  if (select count(*) from public.real_editorial_call_reservations
+      where retry_of_call_id = (
+        select call_id from public.real_editorial_call_reservations
+         where idempotency_key = 'integration-editorial-analysis:attempt:3'
+      )
+        and operation = 'cost-adjustment' and state = 'reconciled') <> 1 then
+    raise exception 'EDITORIAL_COST_ADJUSTMENT_NOT_LINKED';
+  end if;
   if (select state from public.real_editorial_pilots
       where id = '85000000-0000-4000-8000-000000000001') <> 'pending_human_review' then
     raise exception 'PENDING_HUMAN_REVIEW_MISSING';

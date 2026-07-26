@@ -22,7 +22,8 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
   private readonly running = new Map<string, Promise<unknown>>()
   private readonly attempts = new Map<string, number>()
   private readonly previousReservations = new Map<string, ProviderCallReservation>()
-  private spentCost = 0
+  private spentCost: number
+  private readonly initialSpendIsAuthoritative: boolean
   private activeOperation?: string
 
   constructor(
@@ -31,7 +32,17 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     private readonly budgetLimit: number,
     private readonly durableResultAvailable: (operationId: string) => Promise<boolean> =
       async () => false,
-  ) {}
+    initialSpentCost?: number,
+  ) {
+    if (
+      initialSpentCost !== undefined
+      && (!Number.isFinite(initialSpentCost) || initialSpentCost < 0)
+    ) {
+      throw new TypeError('El gasto inicial del ledger debe ser un importe no negativo')
+    }
+    this.spentCost = initialSpentCost ?? 0
+    this.initialSpendIsAuthoritative = initialSpentCost !== undefined
+  }
 
   async execute<T>(operationId: string, estimatedCost: number, operation: () => Promise<T>): Promise<T> {
     if (this.completed.has(operationId)) return structuredClone(this.completed.get(operationId)) as T
@@ -80,15 +91,22 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
       }
       const result = await operation()
       this.completed.set(operationId, structuredClone(result))
-      this.spentCost += reservation.calculatedCost ?? 0
+      if (!this.initialSpendIsAuthoritative) {
+        this.spentCost = money(this.spentCost + (reservation.calculatedCost ?? 0))
+      }
       return structuredClone(result)
     }
     if (reservation.state === 'started' && await this.durableResultAvailable(operationId)) {
       const result = await operation()
       const settlement = settlementFromResult(reservation.id, result, estimatedCost)
-      await this.ledger.settle(settlement)
+      await this.settleWithDurableCostAdjustment(
+        operationId,
+        attempt,
+        reservation,
+        settlement,
+      )
       this.completed.set(operationId, structuredClone(result))
-      this.spentCost += settlement.calculatedCost
+      this.spentCost = money(this.spentCost + settlement.calculatedCost)
       return structuredClone(result)
     }
     if (reservation.state !== 'reserved') {
@@ -141,9 +159,14 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     }
     try {
       const settlement = settlementFromResult(reservation.id, result, estimatedCost)
-      await this.ledger.settle(settlement)
+      await this.settleWithDurableCostAdjustment(
+        operationId,
+        attempt,
+        reservation,
+        settlement,
+      )
       this.completed.set(operationId, structuredClone(result))
-      this.spentCost += settlement.calculatedCost
+      this.spentCost = money(this.spentCost + settlement.calculatedCost)
       return structuredClone(result)
     } finally {
       this.running.delete(operationId)
@@ -161,6 +184,59 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
 
   snapshot() {
     return { operationIds: [...this.completed.keys()], spentCost: this.spentCost }
+  }
+
+  private async settleWithDurableCostAdjustment(
+    operationId: string,
+    attempt: number,
+    reservation: ProviderCallReservation,
+    settlement: ProviderCallSettlement & { calculatedCost: number },
+  ): Promise<void> {
+    const adjustmentCost = money(settlement.calculatedCost - reservation.reservedCost)
+    if (adjustmentCost <= 0) {
+      await this.ledger.settle(settlement)
+      return
+    }
+
+    const adjustmentOperationId = `${operationId}:cost-adjustment`
+    const adjustment = await this.ledger.reserve(this.metadata.create(
+      adjustmentOperationId,
+      attempt,
+      adjustmentCost,
+      reservation.callId,
+    ))
+    if (adjustment.state === 'unknown') {
+      throw new RealWorkflowError(
+        'BUDGET_EXCEEDED',
+        'El ajuste económico durable requiere una decisión humana',
+      )
+    }
+    if (!['reserved', 'started', 'reconciled'].includes(adjustment.state)) {
+      throw new RealWorkflowError(
+        'LIMIT_EXCEEDED',
+        'El ajuste económico durable quedó en un estado terminal incompatible',
+      )
+    }
+
+    if (adjustment.state !== 'reconciled') {
+      await this.ledger.settle({
+        reservationId: adjustment.id,
+        outcome: 'succeeded',
+        calculatedCost: adjustmentCost,
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          toolCalls: 0,
+          credits: 0,
+          outputHash: settlement.usage.outputHash,
+        },
+        sanitizedError: 'ACTUAL_COST_DURABLE_ADJUSTMENT',
+      })
+    }
+    await this.ledger.settle({
+      ...settlement,
+      calculatedCost: reservation.reservedCost,
+    })
   }
 }
 
@@ -287,4 +363,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function number(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function money(value: number): number {
+  return Number(Math.max(0, value).toFixed(9))
 }

@@ -1134,6 +1134,12 @@ function RealEditorialPilotPanel(): JSX.Element {
           <div><dt>Publicaciones</dt><dd>{pilot.publicationCount}</dd></div>
         </dl>
       )}
+      {progress?.latestIncident?.classification === 'human_required' && (
+        <div className="alert warning">
+          <strong>Decisión humana requerida.</strong>
+          <span>{progress.latestIncident.message}</span>
+        </div>
+      )}
       {progress?.humanRequiredCall && (
         <RealEditorialAmbiguousCallPanel
           call={progress.humanRequiredCall}

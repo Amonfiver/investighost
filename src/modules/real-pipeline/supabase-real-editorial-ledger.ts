@@ -30,7 +30,7 @@ export class SupabaseRealEditorialLedgerRepository implements CostLedgerReposito
       p_lease_token: leaseToken,
       p_expires_at: expiresAt,
     })
-    if (error) throw ledgerError(error)
+    if (error) throw ledgerError(error, 'acquire_real_editorial_guard')
     return data === true
   }
 
@@ -38,7 +38,7 @@ export class SupabaseRealEditorialLedgerRepository implements CostLedgerReposito
     const { data, error } = await this.client.rpc('release_real_editorial_guard', {
       p_lease_token: leaseToken,
     })
-    if (error) throw ledgerError(error)
+    if (error) throw ledgerError(error, 'release_real_editorial_guard')
     return data === true
   }
 
@@ -47,14 +47,14 @@ export class SupabaseRealEditorialLedgerRepository implements CostLedgerReposito
   ): Promise<ProviderCallReservation | undefined> {
     const { data, error } = await this.client.from('real_editorial_call_reservations')
       .select('*').eq('idempotency_key', idempotencyKey).maybeSingle()
-    if (error) throw ledgerError(error)
+    if (error) throw ledgerError(error, 'read_reservation_by_idempotency')
     return data ? reservationFromRow(data) : undefined
   }
 
   async findByCallId(callId: string): Promise<ProviderCallReservation | undefined> {
     const { data, error } = await this.client.from('real_editorial_call_reservations')
       .select('*').eq('call_id', callId).maybeSingle()
-    if (error) throw ledgerError(error)
+    if (error) throw ledgerError(error, 'read_reservation_by_call')
     return data ? reservationFromRow(data) : undefined
   }
 
@@ -81,7 +81,7 @@ export class SupabaseRealEditorialLedgerRepository implements CostLedgerReposito
       p_schema_version: input.schemaVersion,
       p_input_hash: input.inputHash,
     })
-    if (error) throw ledgerError(error)
+    if (error) throw ledgerError(error, 'reserve_real_editorial_call')
     const stored = typeof data === 'string' ? await this.readReservation(data) : undefined
     if (!stored) throw new CostLedgerError('RESERVATION_NOT_FOUND', 'La reserva editorial no se creó')
     return stored
@@ -91,7 +91,7 @@ export class SupabaseRealEditorialLedgerRepository implements CostLedgerReposito
     const { data, error } = await this.client.rpc('start_real_editorial_call', {
       p_reservation_id: reservationId,
     })
-    if (error) throw ledgerError(error)
+    if (error) throw ledgerError(error, 'start_real_editorial_call')
     if (data !== true) throw new CostLedgerError(
       'INVALID_RESERVATION_STATE',
       'La reserva editorial no pudo iniciarse',
@@ -116,7 +116,7 @@ export class SupabaseRealEditorialLedgerRepository implements CostLedgerReposito
       p_sanitized_error: settlement.sanitizedError ?? null,
       p_output_hash: settlement.usage.outputHash ?? null,
     })
-    if (error) throw ledgerError(error)
+    if (error) throw ledgerError(error, 'settle_real_editorial_call')
     if (data !== true) throw new CostLedgerError(
       'INVALID_RESERVATION_STATE',
       'La reserva editorial no pudo conciliarse',
@@ -132,7 +132,7 @@ export class SupabaseRealEditorialLedgerRepository implements CostLedgerReposito
       .order('created_at', { ascending: true }).order('sequence', { ascending: true })
     if (callId) query = query.eq('call_id', callId)
     const { data, error } = await query
-    if (error) throw ledgerError(error)
+    if (error) throw ledgerError(error, 'read_real_editorial_provider_calls')
     return (data ?? []).map(entryFromRow)
   }
 
@@ -140,7 +140,7 @@ export class SupabaseRealEditorialLedgerRepository implements CostLedgerReposito
     const { data, error } = await this.client.from('real_editorial_call_reservations')
       .select('*').eq('id', id).eq('pilot_id', this.pilotId).eq('run_id', this.runId)
       .maybeSingle()
-    if (error) throw ledgerError(error)
+    if (error) throw ledgerError(error, 'read_real_editorial_reservation')
     return data ? reservationFromRow(data) : undefined
   }
 
@@ -216,7 +216,7 @@ function entryFromRow(row: Record<string, unknown>): ProviderCallLedgerEntry {
   }
 }
 
-function ledgerError(error: { message: string }): CostLedgerError {
+function ledgerError(error: { message: string }, operation: string): CostLedgerError {
   const codes: Array<[string, CostLedgerErrorCode]> = [
     ['IDEMPOTENCY_CONFLICT', 'IDEMPOTENCY_CONFLICT'],
     ['AMBIGUOUS_TIMEOUT_NOT_RETRYABLE', 'AMBIGUOUS_TIMEOUT_NOT_RETRYABLE'],
@@ -230,5 +230,8 @@ function ledgerError(error: { message: string }): CostLedgerError {
   ]
   const code = codes.find(([databaseCode]) => error.message.includes(databaseCode))?.[1]
     ?? 'INVALID_RESERVATION_STATE'
-  return new CostLedgerError(code, 'El ledger editorial durable rechazó la operación')
+  return new CostLedgerError(
+    code,
+    `El ledger editorial durable rechazó ${operation} (${code})`,
+  )
 }

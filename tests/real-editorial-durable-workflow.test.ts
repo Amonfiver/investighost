@@ -567,6 +567,17 @@ describe('workflow editorial durable con clientes falsos', () => {
       state: 'analyzing_round_1',
       completedRound: 0,
     })
+    await repository.appendArtifact(
+      pilotId,
+      runId,
+      'checkpoint',
+      'workflow',
+      (storedCheckpoint?.version ?? 0) + 1,
+      {
+        ...(storedCheckpoint?.payload as RealWorkflowCheckpoint),
+        state: 'researching_round_1',
+      },
+    )
 
     const resumedResearch = new FakeResearchTool()
     const resumedIntelligence = new FakeIntelligenceEngine()
@@ -624,6 +635,63 @@ describe('workflow editorial durable con clientes falsos', () => {
     }).execute(repository.pilot, new AbortController().signal)
     expect(duplicate).toEqual(result)
     expect(duplicateResearch.rounds).toEqual([])
+  })
+
+  it('rechaza rounds corruptas antes de reservar o invocar OpenAI', async () => {
+    const repository = new MemoryDurableRepository()
+    const ledger = ledgerRepository()
+    const initialIntelligence = new FailingAnalysisEngine()
+
+    await expect(new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: {
+        researchTool: new FakeResearchTool(),
+        intelligenceEngine: initialIntelligence,
+      },
+      now: () => new Date(now),
+      id: () => '82800000-0000-4000-8000-000000000001',
+    }).execute(repository.pilot, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'CLIENT_ERROR' })
+
+    const stored = await repository.latestArtifact(runId, 'checkpoint', 'workflow')
+    const storedPayload = stored?.payload as RealWorkflowCheckpoint
+    await repository.appendArtifact(
+      pilotId,
+      runId,
+      'checkpoint',
+      'workflow',
+      (stored?.version ?? 0) + 1,
+      {
+        ...storedPayload,
+        state: 'researching_round_1',
+        dossier: {
+          ...storedPayload.dossier,
+          rounds: [1, 1],
+        },
+      },
+    )
+    const resumedResearch = new FakeResearchTool()
+    const resumedIntelligence = new FakeIntelligenceEngine()
+    const reservationsBefore = (await ledger.entries()).length
+
+    await expect(new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: {
+        researchTool: resumedResearch,
+        intelligenceEngine: resumedIntelligence,
+      },
+      now: () => new Date('2026-07-25T22:43:45.000Z'),
+      id: () => '82800000-0000-4000-8000-000000000002',
+    }).execute(repository.pilot, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'CHECKPOINT_INVALID' })
+
+    expect(resumedResearch.rounds).toEqual([])
+    expect(resumedIntelligence.calls).toEqual([])
+    expect(await ledger.entries()).toHaveLength(reservationsBefore)
+    expect(ledger.budgetSnapshot().task).toMatchObject({ reserved: 0, spent: 0.048 })
+    expect(repository.artifacts.get(`${runId}:tavily_result:round-1`)).toHaveLength(1)
   })
 
   it('reanuda tras reinicio desde el checkpoint sin repetir la ronda 1', async () => {

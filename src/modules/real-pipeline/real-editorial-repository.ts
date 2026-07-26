@@ -18,9 +18,11 @@ import {
   type RealEditorialPilotSnapshot,
   type RealEditorialPilotState,
 } from '@shared/real-editorial-pilot-contracts'
-import type {
-  RealResearchDossier,
-  RealResearchMission,
+import {
+  RealResearchDossierSchema,
+  type RealResearchDossier,
+  type RealRoundNumber,
+  type RealResearchMission,
 } from '@shared/real-pipeline-contracts'
 import type {
   RealWorkflowCheckpoint,
@@ -811,7 +813,14 @@ export class SupabaseRealWorkflowCheckpointStore implements RealWorkflowCheckpoi
     if (checkpoint.taskId !== taskId || checkpoint.version !== 'real-workflow-v1') {
       throw new RealEditorialRepositoryError('CHECKPOINT_INVALID', 'El checkpoint pertenece a otra tarea')
     }
-    return structuredClone(checkpoint)
+    const [roundOne, roundTwo] = await Promise.all([
+      this.repository.latestArtifact(this.runId, 'tavily_result', 'round-1'),
+      this.repository.latestArtifact(this.runId, 'tavily_result', 'round-2'),
+    ])
+    return restoreRealWorkflowCheckpointRounds(
+      structuredClone(checkpoint),
+      { 1: roundOne, 2: roundTwo },
+    )
   }
 
   async save(checkpoint: RealWorkflowCheckpoint): Promise<void> {
@@ -842,6 +851,120 @@ export class SupabaseRealWorkflowCheckpointStore implements RealWorkflowCheckpoi
         query,
       )
     }
+  }
+}
+
+export function restoreRealWorkflowCheckpointRounds(
+  checkpoint: RealWorkflowCheckpoint,
+  artifacts: Partial<Record<RealRoundNumber, RealEditorialArtifact | undefined>>,
+): RealWorkflowCheckpoint {
+  const completedAnalysisRound = checkpoint.completedRound
+  const durableResearch = ([1, 2] as const).flatMap(round => {
+    const artifact = artifacts[round]
+    if (!artifact) return []
+    if (
+      artifact.kind !== 'tavily_result'
+      || artifact.key !== `round-${round}`
+      || !isRecord(artifact.payload)
+      || artifact.payload.round !== round
+      || !Array.isArray(artifact.payload.sources)
+    ) {
+      throw invalidRoundCheckpoint('El resultado durable de investigación no corresponde a su ronda')
+    }
+    return [{ round, artifact, result: artifact.payload as unknown as ResearchToolResult }]
+  })
+  const durableResearchRounds = durableResearch.map(item => item.round)
+  if (!durableResearchRounds.every((round, index) => round === index + 1)) {
+    throw invalidRoundCheckpoint('Las rondas durables de investigación no son correlativas')
+  }
+  if (
+    completedAnalysisRound > durableResearchRounds.length
+    || durableResearchRounds.length - completedAnalysisRound > 1
+  ) {
+    throw invalidRoundCheckpoint('El índice de análisis no coincide con las rondas durables')
+  }
+
+  let storedDossier: RealResearchDossier | undefined
+  if (checkpoint.dossier) {
+    const parsed = RealResearchDossierSchema.safeParse(checkpoint.dossier)
+    if (!parsed.success) {
+      throw invalidRoundCheckpoint('El expediente del checkpoint no supera el esquema estricto')
+    }
+    storedDossier = parsed.data
+    const mission = checkpoint.initialMission
+    if (
+      storedDossier.requestId !== mission.requestId
+      || storedDossier.runId !== mission.runId
+      || storedDossier.taskId !== mission.taskId
+      || storedDossier.destinationId !== mission.destination.canonicalId
+    ) {
+      throw invalidRoundCheckpoint('El expediente del checkpoint pertenece a otra ejecución')
+    }
+    if (
+      storedDossier.rounds.length > durableResearchRounds.length
+      || !storedDossier.rounds.every((round, index) => round === durableResearchRounds[index])
+    ) {
+      throw invalidRoundCheckpoint('El expediente no coincide con las rondas durables de investigación')
+    }
+  }
+
+  if (durableResearch.length === 0) {
+    if (storedDossier) {
+      throw invalidRoundCheckpoint('El expediente declara rondas sin resultados Tavily durables')
+    }
+    return checkpoint
+  }
+
+  const sources = new Map<string, unknown>()
+  for (const item of durableResearch) {
+    for (const source of item.result.sources) {
+      if (!isRecord(source) || typeof source.normalizedUrl !== 'string') {
+        throw invalidRoundCheckpoint('Una fuente durable no supera el contrato editorial')
+      }
+      if (!sources.has(source.normalizedUrl)) sources.set(source.normalizedUrl, source)
+    }
+  }
+  if (storedDossier) {
+    const storedSourceCount = durableResearch
+      .filter(item => storedDossier?.rounds.includes(item.round))
+      .flatMap(item => item.result.sources)
+      .reduce((unique, source) => {
+        if (!isRecord(source) || typeof source.normalizedUrl !== 'string') {
+          throw invalidRoundCheckpoint('Una fuente durable no supera el contrato editorial')
+        }
+        if (!unique.has(source.normalizedUrl)) unique.set(source.normalizedUrl, source)
+        return unique
+      }, new Map<string, unknown>())
+    if (realEditorialPayloadHash([...storedSourceCount.values()])
+      !== realEditorialPayloadHash(storedDossier.sources)) {
+      throw invalidRoundCheckpoint('Las fuentes del expediente no coinciden con los artefactos durables')
+    }
+  }
+
+  const mission = checkpoint.initialMission
+  const dossier = RealResearchDossierSchema.safeParse({
+    requestId: mission.requestId,
+    runId: mission.runId,
+    taskId: mission.taskId,
+    destinationId: mission.destination.canonicalId,
+    rounds: durableResearchRounds,
+    sources: [...sources.values()],
+    evidence: storedDossier?.evidence ?? [],
+    generatedAt: storedDossier?.generatedAt ?? durableResearch.at(-1)?.artifact.createdAt,
+  })
+  if (!dossier.success) {
+    throw invalidRoundCheckpoint('No se pudo reconstruir el expediente desde los artefactos durables')
+  }
+
+  const pendingAnalysisRound = durableResearchRounds[completedAnalysisRound]
+  return {
+    ...checkpoint,
+    state: pendingAnalysisRound === 1
+      ? 'analyzing_round_1'
+      : pendingAnalysisRound === 2
+        ? 'analyzing_round_2'
+        : checkpoint.state,
+    dossier: dossier.data,
   }
 }
 
@@ -988,6 +1111,14 @@ function persistenceError(error: { message: string; code?: string }): RealEditor
     'La persistencia editorial real rechazó la operación',
     error,
   )
+}
+
+function invalidRoundCheckpoint(message: string): RealEditorialRepositoryError {
+  return new RealEditorialRepositoryError('CHECKPOINT_INVALID', message)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function humanResolutionPersistenceError(

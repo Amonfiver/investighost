@@ -182,7 +182,12 @@ describe('contratos neutrales del pipeline real', () => {
   })
 
   it('conserva expedientes correlativos y no permite una tercera ronda', () => {
+    expect(RealResearchDossierSchema.parse(dossier([1])).rounds).toEqual([1])
     expect(RealResearchDossierSchema.parse(dossier([1, 2])).rounds).toEqual([1, 2])
+    expect(RealResearchDossierSchema.safeParse({ ...dossier(), rounds: [0] }).success).toBe(false)
+    expect(RealResearchDossierSchema.safeParse({ ...dossier(), rounds: [1, 1] }).success).toBe(false)
+    expect(RealResearchDossierSchema.safeParse({ ...dossier(), rounds: [1, 3] }).success).toBe(false)
+    expect(RealResearchDossierSchema.safeParse({ ...dossier(), rounds: [2, 1] }).success).toBe(false)
     expect(RealResearchDossierSchema.safeParse({ ...dossier(), rounds: [2] }).success).toBe(false)
     expect(RealResearchDossierSchema.safeParse({ ...dossier(), rounds: [1, 2, 3] }).success).toBe(false)
   })

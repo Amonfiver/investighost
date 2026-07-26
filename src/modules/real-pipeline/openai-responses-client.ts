@@ -6,10 +6,12 @@ import type {
 import { VERSION as OPENAI_SDK_VERSION } from 'openai/version'
 import {
   OpenAIIntelligenceError,
+  type OpenAIRemoteErrorMetadata,
   type OpenAIResponseEnvelope,
   type OpenAIResponseRequest,
   type OpenAIResponsesClient,
 } from './openai-intelligence-engine'
+import { inspectOpenAIResponseRequest } from './openai-responses-payload'
 import {
   assertLiveProviderNetworkPermit,
   type LiveProviderNetworkPermit,
@@ -75,6 +77,14 @@ export class OpenAISdkResponsesClient implements OpenAIResponsesClient {
     assertLiveProviderNetworkPermit(this.networkPermit)
     const capability = inspectOpenAIResponsesClient(this.client)
     if (!capability.available) throw capabilityError(capability, false)
+    const payload = inspectOpenAIResponseRequest(request)
+    if (!payload.valid) {
+      const first = payload.issues[0]
+      throw new OpenAIIntelligenceError(
+        'INVALID_REQUEST',
+        `La petición OpenAI Responses no supera la validación local (${first?.path ?? 'contrato'})`,
+      )
+    }
     let response: Response
     try {
       response = await this.client.responses.create(
@@ -216,14 +226,18 @@ function classifyOpenAIError(
     return new OpenAIIntelligenceError('TIMEOUT', 'OpenAI superó el tiempo máximo')
   }
   const status = numberField(error, 'status')
-  const code = stringField(error, 'code')
-  const param = stringField(error, 'param')
-  const usage = providerUsage(stringField(error, 'requestID'))
+  const body = isRecord(error) && isRecord(error.error) ? error.error : undefined
+  const code = stringField(error, 'code') ?? stringField(body, 'code')
+  const param = stringField(error, 'param') ?? stringField(body, 'param')
+  const requestId = stringField(error, 'requestID') ?? stringField(error, 'request_id')
+  const usage = providerUsage(requestId)
+  const remoteError = remoteErrorMetadata(error, body, status, code, param, requestId)
   if (status === 401 || code === 'invalid_api_key') {
     return new OpenAIIntelligenceError(
       'AUTHENTICATION_ERROR',
       'OpenAI rechazó la credencial',
       usage,
+      remoteError,
     )
   }
   if (code === 'model_not_found' || param === 'model') {
@@ -231,13 +245,20 @@ function classifyOpenAIError(
       'MODEL_UNAVAILABLE',
       'OpenAI no admite el modelo seleccionado',
       usage,
+      remoteError,
     )
   }
   if (status !== undefined) {
+    const detail = [
+      `HTTP ${status}`,
+      remoteError.code ? `code ${remoteError.code}` : undefined,
+      remoteError.param ? `param ${remoteError.param}` : undefined,
+    ].filter(Boolean).join('; ')
     return new OpenAIIntelligenceError(
       'REMOTE_HTTP_ERROR',
-      `OpenAI rechazó la petición (HTTP ${status})`,
+      `OpenAI rechazó la petición (${detail})`,
       usage,
+      remoteError,
     )
   }
   if (error instanceof OpenAI.APIConnectionError) {
@@ -278,4 +299,46 @@ function numberField(value: unknown, key: string): number | undefined {
 function stringField(value: unknown, key: string): string | undefined {
   if (!isRecord(value)) return undefined
   return typeof value[key] === 'string' ? value[key] : undefined
+}
+
+function remoteErrorMetadata(
+  error: unknown,
+  body: Record<string, unknown> | undefined,
+  status: number | undefined,
+  code: string | undefined,
+  param: string | undefined,
+  requestId: string | undefined,
+): OpenAIRemoteErrorMetadata {
+  return {
+    status,
+    type: sanitizedRemoteField(
+      stringField(error, 'type') ?? stringField(body, 'type'),
+      120,
+    ),
+    code: sanitizedRemoteField(code, 120),
+    param: sanitizedRemoteField(param, 160),
+    requestId: sanitizedRemoteField(requestId, 160),
+    message: sanitizedRemoteField(
+      stringField(error, 'message') ?? stringField(body, 'message'),
+      240,
+    ),
+  }
+}
+
+function sanitizedRemoteField(value: string | undefined, maximum: number): string | undefined {
+  if (!value) return undefined
+  const sanitized = value
+    .replace(/\b(?:sk|tvly)-[A-Za-z0-9_-]+\b/gi, '[redacted]')
+    .replace(/\b(?:api[_ -]?key|authorization|bearer(?:\s+\S+)?)\b/gi, '[redacted]')
+  const withoutControls = [...sanitized]
+    .map(character => {
+      const codePoint = character.charCodeAt(0)
+      return codePoint < 32 || codePoint === 127 ? ' ' : character
+    })
+    .join('')
+  const compact = withoutControls
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maximum)
+  return compact || undefined
 }

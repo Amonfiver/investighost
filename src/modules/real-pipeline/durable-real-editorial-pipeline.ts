@@ -321,6 +321,13 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
     this.simulation = delegate.simulation
   }
 
+  validateAnalyze(
+    mission: RealResearchMission,
+    dossier: RealResearchDossier,
+  ): void {
+    this.delegate.validateAnalyze?.(mission, dossier)
+  }
+
   async analyze(
     mission: RealResearchMission,
     dossier: RealResearchDossier,
@@ -356,6 +363,13 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
     return analysis
   }
 
+  validateDraft(
+    mission: RealResearchMission,
+    knowledge: Parameters<IntelligenceEngine['draft']>[1],
+  ): void {
+    this.delegate.validateDraft?.(mission, knowledge)
+  }
+
   async draft(
     mission: RealResearchMission,
     knowledge: Parameters<IntelligenceEngine['draft']>[1],
@@ -386,6 +400,14 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
       completedRound,
     )
     return drafts
+  }
+
+  validateReview(
+    mission: RealResearchMission,
+    knowledge: Parameters<IntelligenceEngine['review']>[1],
+    drafts: IntelligenceDraft[],
+  ): void {
+    this.delegate.validateReview?.(mission, knowledge, drafts)
   }
 
   async review(

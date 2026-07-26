@@ -13,6 +13,11 @@ const IdentifierSchema = z.string().trim().min(1).max(160)
 const TimestampSchema = z.string().datetime({ offset: true })
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/)
 
+export const REAL_EDITORIAL_OPENAI_MODEL = {
+  displayName: 'GPT-5.6 Luna',
+  apiId: 'gpt-5.6-luna',
+} as const
+
 export const REAL_EDITORIAL_PILOT_POLICY = {
   id: 'morella-real-editorial-pilot-v1',
   destination: 'Morella',
@@ -40,7 +45,7 @@ export const REAL_EDITORIAL_PILOT_POLICY = {
   providers: {
     research: 'tavily',
     intelligence: 'openai',
-    model: 'gpt-5.6-luna',
+    model: REAL_EDITORIAL_OPENAI_MODEL.apiId,
   },
 } as const
 

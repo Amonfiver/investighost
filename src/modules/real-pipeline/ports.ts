@@ -101,16 +101,29 @@ export interface IntelligenceEngine {
   readonly id: string
   readonly model: string
   readonly simulation: boolean
+  validateAnalyze?(
+    mission: RealResearchMission,
+    dossier: RealResearchDossier,
+  ): void
   analyze(
     mission: RealResearchMission,
     dossier: RealResearchDossier,
     signal: AbortSignal,
   ): Promise<IntelligenceRoundAnalysis>
+  validateDraft?(
+    mission: RealResearchMission,
+    knowledge: RealMasterKnowledge,
+  ): void
   draft(
     mission: RealResearchMission,
     knowledge: RealMasterKnowledge,
     signal: AbortSignal,
   ): Promise<IntelligenceDraft[]>
+  validateReview?(
+    mission: RealResearchMission,
+    knowledge: RealMasterKnowledge,
+    drafts: IntelligenceDraft[],
+  ): void
   review(
     mission: RealResearchMission,
     knowledge: RealMasterKnowledge,

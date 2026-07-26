@@ -95,7 +95,12 @@ function openAIRequest() {
         type: 'json_schema' as const,
         name: 'fixture',
         strict: true as const,
-        schema: { type: 'object', additionalProperties: false },
+        schema: {
+          type: 'object',
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        },
       },
     },
     max_output_tokens: 100,
@@ -288,6 +293,7 @@ describe('clientes reales cerrados por permisos e inyectables sin red', () => {
         signal,
       }),
     ])
+    expect(JSON.stringify(requests)).not.toContain(openAICredential)
     expect(response).toMatchObject({
       id: 'resp_synthetic',
       status: 'completed',
@@ -317,6 +323,59 @@ describe('clientes reales cerrados por permisos e inyectables sin red', () => {
 
     await expect(client.create(openAIRequest(), new AbortController().signal))
       .rejects.toMatchObject({ code })
+  })
+
+  it('conserva metadatos sanitizados de un HTTP 400 sin clasificarlo como red', async () => {
+    const client = new OpenAISdkResponsesClient(openAICredential, permit(), {
+      clientFactory: () => ({
+        responses: {
+          create: async () => {
+            throw {
+              status: 400,
+              requestID: 'req_schema_synthetic',
+              error: {
+                type: 'invalid_request_error',
+                code: 'invalid_json_schema',
+                param: 'text.format.schema',
+                message: 'Invalid schema for response_format: object must be closed.',
+              },
+            }
+          },
+        },
+      }),
+    })
+
+    await expect(client.create(openAIRequest(), new AbortController().signal))
+      .rejects.toMatchObject({
+        code: 'REMOTE_HTTP_ERROR',
+        remoteError: {
+          status: 400,
+          type: 'invalid_request_error',
+          code: 'invalid_json_schema',
+          param: 'text.format.schema',
+          requestId: 'req_schema_synthetic',
+          message: 'Invalid schema for response_format: object must be closed.',
+        },
+        providerUsage: {
+          providerRequestIds: ['req_schema_synthetic'],
+          calculatedCost: 0,
+          credits: 0,
+        },
+      })
+  })
+
+  it('rechaza un payload incompatible sin invocar responses.create', async () => {
+    const create = vi.fn()
+    const client = new OpenAISdkResponsesClient(openAICredential, permit(), {
+      clientFactory: () => ({ responses: { create } }),
+    })
+    const request = { ...openAIRequest(), response_format: { type: 'json_object' } }
+
+    await expect(client.create(
+      request as Parameters<OpenAISdkResponsesClient['create']>[0],
+      new AbortController().signal,
+    )).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+    expect(create).not.toHaveBeenCalled()
   })
 
   it('distingue una respuesta remota inválida de la ausencia de Responses', async () => {
@@ -358,6 +417,39 @@ describe('clientes reales cerrados por permisos e inyectables sin red', () => {
     expect(failure).toBeInstanceOf(Error)
     expect(failure).toMatchObject({ code: 'CLIENT_ERROR' })
     expect(String(failure)).not.toContain(openAICredential)
+  })
+
+  it('sanea también el cuerpo remoto antes de exponer sus metadatos', async () => {
+    const client = new OpenAISdkResponsesClient(openAICredential, permit(), {
+      clientFactory: () => ({
+        responses: {
+          create: async () => {
+            throw {
+              status: 400,
+              requestID: 'req_sanitized',
+              error: {
+                type: 'invalid_request_error',
+                code: 'invalid_json_schema',
+                param: 'text.format.schema',
+                message: `Authorization Bearer ${openAICredential}`,
+              },
+            }
+          },
+        },
+      }),
+    })
+
+    let failure: unknown
+    try {
+      await client.create(openAIRequest(), new AbortController().signal)
+    } catch (error) {
+      failure = error
+    }
+
+    expect(JSON.stringify(failure)).not.toContain(openAICredential)
+    expect(failure).toMatchObject({
+      remoteError: { message: '[redacted] [redacted]' },
+    })
   })
 
   it('marca los errores del gate como no reintentables', () => {

@@ -35,12 +35,13 @@ import {
   type RealConnectivityResult,
 } from '@shared/real-connectivity-contracts'
 import type { EditorialDraftVersionSummary } from '@modules/editorial-pipeline/repository'
-import type {
-  RealEditorialAmbiguousCall,
-  RealEditorialAmbiguousCallDecision,
-  RealEditorialAmbiguousCallResolution,
-  RealEditorialPilotProgress,
-  RealEditorialPreflight,
+import {
+  REAL_EDITORIAL_OPENAI_MODEL,
+  type RealEditorialAmbiguousCall,
+  type RealEditorialAmbiguousCallDecision,
+  type RealEditorialAmbiguousCallResolution,
+  type RealEditorialPilotProgress,
+  type RealEditorialPreflight,
 } from '@shared/real-editorial-pilot-contracts'
 import {
   LIBRARY_PAGE_SUMMARY_LABEL,
@@ -878,7 +879,8 @@ function RealProfileSettingsPanel(): JSX.Element {
     const confirmed = window.confirm(
       'Prueba real mínima autorizada\n\n'
       + '• 1 Tavily Search basic (máximo 1 resultado)\n'
-      + '• 1 OpenAI Responses con gpt-5.6-luna\n'
+      + `• 1 OpenAI Responses con ${REAL_EDITORIAL_OPENAI_MODEL.displayName}`
+      + ` (API: ${REAL_EDITORIAL_OPENAI_MODEL.apiId})\n`
       + '• Máximo total: 0,02 EUR\n'
       + '• Sin Morella, contenido editorial, publicación, Trawel ni Automatic\n'
       + '• Sin reintentos; un timeout ambiguo detiene la prueba\n\n'
@@ -1390,7 +1392,12 @@ function RealConnectivityResultPanel({ result }: { result: RealConnectivityResul
       <div className="connectivity-call-grid">
         {result.calls.map(call => (
           <article key={call.providerId}>
-            <strong>{call.providerId === 'tavily' ? 'Tavily Search basic' : 'OpenAI gpt-5.6-luna'}</strong>
+            <strong>
+              {call.providerId === 'tavily'
+                ? 'Tavily Search basic'
+                : `OpenAI ${REAL_EDITORIAL_OPENAI_MODEL.displayName}`
+                  + ` (API: ${REAL_EDITORIAL_OPENAI_MODEL.apiId})`}
+            </strong>
             <dl className="definition-grid">
               <div><dt>Estado</dt><dd>{call.status}</dd></div>
               <div><dt>Duración</dt><dd>{call.durationMs} ms</dd></div>

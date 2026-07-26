@@ -20,24 +20,13 @@ import type {
   IntelligenceRoundAnalysis,
   ProviderFailureUsage,
 } from './ports'
+import {
+  inspectOpenAIResponseRequest,
+  type OpenAIResponsePayloadIssue,
+  type OpenAIResponseRequest,
+} from './openai-responses-payload'
 
-export interface OpenAIResponseRequest {
-  model: string
-  input: Array<{
-    role: 'system' | 'user'
-    content: string
-  }>
-  text: {
-    format: {
-      type: 'json_schema'
-      name: string
-      strict: true
-      schema: Record<string, unknown>
-    }
-  }
-  max_output_tokens: number
-  store: false
-}
+export type { OpenAIResponseRequest } from './openai-responses-payload'
 
 export interface OpenAIResponseEnvelope {
   id: string
@@ -87,6 +76,7 @@ const defaultConfiguration: OpenAIIntelligenceConfiguration = {
 export type OpenAIIntelligenceErrorCode =
   | 'REFUSAL'
   | 'INCOMPLETE'
+  | 'INVALID_REQUEST'
   | 'INVALID_RESPONSE'
   | 'TIMEOUT'
   | 'CANCELLED'
@@ -103,11 +93,21 @@ export type OpenAIIntelligenceErrorCode =
   | 'REMOTE_INVALID_RESPONSE'
   | 'PROVIDER_ERROR'
 
+export interface OpenAIRemoteErrorMetadata {
+  status?: number
+  type?: string
+  code?: string
+  param?: string
+  requestId?: string
+  message?: string
+}
+
 export class OpenAIIntelligenceError extends Error {
   constructor(
     readonly code: OpenAIIntelligenceErrorCode,
     message: string,
     readonly providerUsage?: ProviderFailureUsage,
+    readonly remoteError?: OpenAIRemoteErrorMetadata,
   ) {
     super(message)
     this.name = 'OpenAIIntelligenceError'
@@ -136,11 +136,12 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
   ): Promise<IntelligenceRoundAnalysis> {
     const mission = RealResearchMissionSchema.parse(missionCandidate)
     const dossier = RealResearchDossierSchema.parse(dossierCandidate)
-    const response = await this.call('round_analysis', {
-      mission,
-      dossier,
-      instruction: 'Analiza únicamente el expediente recibido. No navegues ni presupongas fuentes externas.',
-    }, OpenAIRoundAnalysisOutputSchema, signal)
+    const response = await this.call(
+      'round_analysis',
+      analysisPayload(mission, dossier),
+      OpenAIRoundAnalysisOutputSchema,
+      signal,
+    )
     const output = parseStructuredOutput(response, OpenAIRoundAnalysisOutputSchema)
     if (mission.round === 2 && output.decision.action === 'continue_focused') {
       throw new OpenAIIntelligenceError('INVALID_RESPONSE', 'El motor intentó proponer una tercera investigación')
@@ -162,6 +163,15 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     }
   }
 
+  validateAnalyze(
+    missionCandidate: RealResearchMission,
+    dossierCandidate: RealResearchDossier,
+  ): void {
+    const mission = RealResearchMissionSchema.parse(missionCandidate)
+    const dossier = RealResearchDossierSchema.parse(dossierCandidate)
+    this.buildRequest('round_analysis', analysisPayload(mission, dossier), OpenAIRoundAnalysisOutputSchema)
+  }
+
   async draft(
     missionCandidate: RealResearchMission,
     knowledgeCandidate: RealMasterKnowledge,
@@ -171,17 +181,12 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     const knowledge = RealMasterKnowledgeSchema.parse(knowledgeCandidate)
     const drafts: IntelligenceDraft[] = []
     for (const profile of mission.profiles.filter(item => item.enabled)) {
-      const response = await this.call(`draft_${profile.profile}`, {
-        profile: profile.profile,
-        targetWords: profile.targetWords,
-        mission: {
-          destination: mission.destination,
-          language: mission.language,
-          depth: mission.depth,
-        },
-        masterKnowledge: knowledge,
-        instruction: roleInstruction(profile.profile, profile.targetWords, profile.depth ?? mission.depth),
-      }, OpenAIDraftOutputSchema, signal)
+      const response = await this.call(
+        `draft_${profile.profile}`,
+        draftPayload(mission, knowledge, profile),
+        OpenAIDraftOutputSchema,
+        signal,
+      )
       const output = parseStructuredOutput(response, OpenAIDraftOutputSchema)
       if (output.profile !== profile.profile || output.coverage.profile !== profile.profile) {
         throw new OpenAIIntelligenceError('INVALID_RESPONSE', 'El borrador no corresponde al perfil solicitado')
@@ -199,6 +204,21 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     return drafts
   }
 
+  validateDraft(
+    missionCandidate: RealResearchMission,
+    knowledgeCandidate: RealMasterKnowledge,
+  ): void {
+    const mission = RealResearchMissionSchema.parse(missionCandidate)
+    const knowledge = RealMasterKnowledgeSchema.parse(knowledgeCandidate)
+    for (const profile of mission.profiles.filter(item => item.enabled)) {
+      this.buildRequest(
+        `draft_${profile.profile}`,
+        draftPayload(mission, knowledge, profile),
+        OpenAIDraftOutputSchema,
+      )
+    }
+  }
+
   async review(
     missionCandidate: RealResearchMission,
     knowledgeCandidate: RealMasterKnowledge,
@@ -207,17 +227,12 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
   ): Promise<IntelligenceReview> {
     const mission = RealResearchMissionSchema.parse(missionCandidate)
     const knowledge = RealMasterKnowledgeSchema.parse(knowledgeCandidate)
-    const response = await this.call('final_review', {
-      profiles: mission.profiles.filter(item => item.enabled),
-      masterKnowledge: knowledge,
-      drafts: drafts.map(({ profile, title, content, approximateWordCount }) => ({
-        profile,
-        title,
-        content,
-        approximateWordCount,
-      })),
-      instruction: 'Revisa fidelidad al conocimiento maestro, diferenciación de roles y suficiencia.',
-    }, OpenAIReviewOutputSchema, signal)
+    const response = await this.call(
+      'final_review',
+      reviewPayload(mission, knowledge, drafts),
+      OpenAIReviewOutputSchema,
+      signal,
+    )
     const output = parseStructuredOutput(response, OpenAIReviewOutputSchema)
     return {
       outcome: output.outcome,
@@ -228,37 +243,27 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     }
   }
 
+  validateReview(
+    missionCandidate: RealResearchMission,
+    knowledgeCandidate: RealMasterKnowledge,
+    drafts: IntelligenceDraft[],
+  ): void {
+    const mission = RealResearchMissionSchema.parse(missionCandidate)
+    const knowledge = RealMasterKnowledgeSchema.parse(knowledgeCandidate)
+    this.buildRequest(
+      'final_review',
+      reviewPayload(mission, knowledge, drafts),
+      OpenAIReviewOutputSchema,
+    )
+  }
+
   private async call(
     operation: string,
     payload: Record<string, unknown>,
     outputSchema: ZodTypeAny,
     signal: AbortSignal,
   ): Promise<OpenAIResponseEnvelope> {
-    const structuredFormat = zodTextFormat(outputSchema, operation)
-    const request: OpenAIResponseRequest = {
-      model: this.configuration.model,
-      input: [
-        {
-          role: 'system',
-          content: [
-            `Investighost · prompt ${this.configuration.promptVersion}.`,
-            'Trabaja solo con el JSON proporcionado.',
-            'No uses navegación web, herramientas externas ni conocimientos no respaldados por el expediente.',
-          ].join(' '),
-        },
-        { role: 'user', content: JSON.stringify({ operation, ...payload }) },
-      ],
-      text: {
-        format: {
-          type: 'json_schema',
-          name: structuredFormat.name,
-          strict: true,
-          schema: structuredFormat.schema as Record<string, unknown>,
-        },
-      },
-      max_output_tokens: this.configuration.maxOutputTokens,
-      store: false,
-    }
+    const request = this.buildRequest(operation, payload, outputSchema)
     let response: OpenAIResponseEnvelope
     try {
       response = await withOpenAITimeout(
@@ -285,6 +290,43 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     return response
   }
 
+  private buildRequest(
+    operation: string,
+    payload: Record<string, unknown>,
+    outputSchema: ZodTypeAny,
+  ): OpenAIResponseRequest {
+    const structuredFormat = zodTextFormat(outputSchema, operation)
+    const request: OpenAIResponseRequest = {
+      model: this.configuration.model,
+      input: [
+        {
+          role: 'system',
+          content: [
+            `Investighost · prompt ${this.configuration.promptVersion}.`,
+            'Trabaja solo con el JSON proporcionado.',
+            'No uses navegación web, herramientas externas ni conocimientos no respaldados por el expediente.',
+          ].join(' '),
+        },
+        { role: 'user', content: JSON.stringify({ operation, ...payload }) },
+      ],
+      text: {
+        format: {
+          type: 'json_schema',
+          name: structuredFormat.name,
+          strict: true,
+          schema: structuredFormat.schema as Record<string, unknown>,
+        },
+      },
+      max_output_tokens: this.configuration.maxOutputTokens,
+      store: false,
+    }
+    const inspection = inspectOpenAIResponseRequest(request)
+    if (!inspection.valid) {
+      throw invalidRequestError(inspection.issues)
+    }
+    return request
+  }
+
   private usage(response: OpenAIResponseEnvelope) {
     const inputTokens = response.usage.input_tokens
     const outputTokens = response.usage.output_tokens
@@ -294,6 +336,111 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
       + cachedInputTokens * this.configuration.cachedInputCostPerMillion / 1_000_000
       + outputTokens * this.configuration.outputCostPerMillion / 1_000_000
     return { inputTokens, outputTokens, estimatedCost, currency: this.configuration.currency }
+  }
+}
+
+export interface OpenAIEditorialContractInspection {
+  valid: boolean
+  operations: Array<{
+    operation: 'round_analysis' | 'draft' | 'final_review'
+    valid: boolean
+    issues: OpenAIResponsePayloadIssue[]
+  }>
+}
+
+export function inspectOpenAIEditorialResponseContracts(
+  model: string,
+): OpenAIEditorialContractInspection {
+  const definitions = [
+    ['round_analysis', OpenAIRoundAnalysisOutputSchema],
+    ['draft', OpenAIDraftOutputSchema],
+    ['final_review', OpenAIReviewOutputSchema],
+  ] as const
+  const operations = definitions.map(([operation, schema]) => {
+    const structuredFormat = zodTextFormat(schema, operation)
+    const request: OpenAIResponseRequest = {
+      model,
+      input: [
+        { role: 'system', content: 'Preflight local sin red.' },
+        { role: 'user', content: '{"preflight":true}' },
+      ],
+      text: {
+        format: {
+          type: 'json_schema',
+          name: structuredFormat.name,
+          strict: true,
+          schema: structuredFormat.schema as Record<string, unknown>,
+        },
+      },
+      max_output_tokens: 12_000,
+      store: false,
+    }
+    const inspection = inspectOpenAIResponseRequest(request)
+    return { operation, ...inspection }
+  })
+  return {
+    valid: operations.every(operation => operation.valid),
+    operations,
+  }
+}
+
+function invalidRequestError(issues: OpenAIResponsePayloadIssue[]): OpenAIIntelligenceError {
+  const first = issues[0]
+  const detail = first ? `${first.path}: ${first.message}` : 'contrato incompatible'
+  return new OpenAIIntelligenceError(
+    'INVALID_REQUEST',
+    `La petición OpenAI Responses no supera la validación local (${detail})`,
+  )
+}
+
+function analysisPayload(
+  mission: RealResearchMission,
+  dossier: RealResearchDossier,
+): Record<string, unknown> {
+  return {
+    mission,
+    dossier,
+    instruction: 'Analiza únicamente el expediente recibido. No navegues ni presupongas fuentes externas.',
+  }
+}
+
+function draftPayload(
+  mission: RealResearchMission,
+  knowledge: RealMasterKnowledge,
+  profile: RealResearchMission['profiles'][number],
+): Record<string, unknown> {
+  return {
+    profile: profile.profile,
+    targetWords: profile.targetWords,
+    mission: {
+      destination: mission.destination,
+      language: mission.language,
+      depth: mission.depth,
+    },
+    masterKnowledge: knowledge,
+    instruction: roleInstruction(
+      profile.profile,
+      profile.targetWords,
+      profile.depth ?? mission.depth,
+    ),
+  }
+}
+
+function reviewPayload(
+  mission: RealResearchMission,
+  knowledge: RealMasterKnowledge,
+  drafts: IntelligenceDraft[],
+): Record<string, unknown> {
+  return {
+    profiles: mission.profiles.filter(item => item.enabled),
+    masterKnowledge: knowledge,
+    drafts: drafts.map(({ profile, title, content, approximateWordCount }) => ({
+      profile,
+      title,
+      content,
+      approximateWordCount,
+    })),
+    instruction: 'Revisa fidelidad al conocimiento maestro, diferenciación de roles y suficiencia.',
   }
 }
 

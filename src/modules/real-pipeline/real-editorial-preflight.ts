@@ -32,6 +32,14 @@ export const RealEditorialPreflightInputSchema = z.object({
     value => value.available === (value.status === 'available'),
     'La disponibilidad debe coincidir con el estado del SDK',
   ),
+  openAIRequestContract: z.object({
+    valid: z.boolean(),
+    issueCount: z.number().int().nonnegative(),
+    detail: z.string().trim().min(1).max(500),
+  }).refine(
+    value => value.valid === (value.issueCount === 0),
+    'La validez del payload debe coincidir con el número de incompatibilidades',
+  ),
   duplicateResolution: z.enum([
     'manual_only_coexists',
     'no_conflict',
@@ -113,6 +121,13 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
       && input.openAIResponsesCapability.status === 'available',
     `SDK ${input.openAIResponsesCapability.sdkVersion}: responses.create disponible localmente.`,
     openAICapabilityBlockDetail(input.openAIResponsesCapability),
+  )
+  add(
+    'openai_payload_contract',
+    'Payload OpenAI Responses',
+    input.openAIRequestContract.valid,
+    input.openAIRequestContract.detail,
+    input.openAIRequestContract.detail,
   )
   add(
     'connectivity_validated',

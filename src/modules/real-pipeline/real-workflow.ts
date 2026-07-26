@@ -348,6 +348,7 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
       })
     }
     if (!dossier) throw new RealWorkflowError('CHECKPOINT_INVALID', 'Falta el expediente de la ronda')
+    this.providers.intelligenceEngine.validateAnalyze?.(mission, dossier)
     const analysis = await this.callExecutor.execute(
       analysisOperationId,
       this.configuration.analysisCostPerRound,

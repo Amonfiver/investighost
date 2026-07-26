@@ -337,6 +337,15 @@ class FailingAnalysisEngine extends FakeIntelligenceEngine {
   }
 }
 
+class InvalidPayloadEngine extends FakeIntelligenceEngine {
+  validateAnalyze(): void {
+    throw new OpenAIIntelligenceError(
+      'INVALID_REQUEST',
+      'Payload sintético incompatible',
+    )
+  }
+}
+
 function pilotRecord(): RealEditorialPilotRecord {
   return RealEditorialPilotRecordSchema.parse({
     id: pilotId,
@@ -635,6 +644,109 @@ describe('workflow editorial durable con clientes falsos', () => {
     }).execute(repository.pilot, new AbortController().signal)
     expect(duplicate).toEqual(result)
     expect(duplicateResearch.rounds).toEqual([])
+  })
+
+  it('encadena un tercer intento OpenAI sin duplicar Tavily, piloto, run ni presupuesto', async () => {
+    const repository = new MemoryDurableRepository()
+    const ledger = ledgerRepository()
+    const firstResearch = new FakeResearchTool()
+    const executeWith = (
+      researchTool: ResearchTool,
+      intelligenceEngine: IntelligenceEngine,
+      suffix: string,
+    ) => new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: { researchTool, intelligenceEngine },
+      now: () => new Date(now),
+      id: () => `87000000-0000-4000-8000-${suffix.padStart(12, '0')}`,
+    }).execute(repository.pilot, new AbortController().signal)
+
+    await expect(executeWith(firstResearch, new FailingAnalysisEngine(), '1'))
+      .rejects.toMatchObject({ code: 'CLIENT_ERROR' })
+    const storedResearch = await repository.latestArtifact(
+      runId,
+      'tavily_result',
+      'round-1',
+    )
+    const secondResearch = new FakeResearchTool()
+    await expect(executeWith(secondResearch, new FailingAnalysisEngine(), '2'))
+      .rejects.toMatchObject({ code: 'CLIENT_ERROR' })
+
+    const thirdResearch = new FakeResearchTool()
+    const result = await executeWith(thirdResearch, new FakeIntelligenceEngine(), '3')
+
+    expect(result.state).toBe('pending_human_review')
+    expect(firstResearch.rounds).toEqual([1])
+    expect(secondResearch.rounds).toEqual([])
+    expect(thirdResearch.rounds).toEqual([2])
+    expect(repository.artifacts.get(`${runId}:tavily_result:round-1`)).toHaveLength(1)
+    expect(await repository.latestArtifact(runId, 'tavily_result', 'round-1'))
+      .toEqual(storedResearch)
+    const analysisOne = await ledger.findByIdempotencyKey(
+      `real-editorial-task:${pilotId}:round:1:analysis:attempt:1`,
+    )
+    const analysisTwo = await ledger.findByIdempotencyKey(
+      `real-editorial-task:${pilotId}:round:1:analysis:attempt:2`,
+    )
+    expect(analysisOne).toMatchObject({ state: 'failed', calculatedCost: 0 })
+    expect(analysisTwo).toMatchObject({
+      state: 'failed',
+      calculatedCost: 0,
+      input: { retryOfCallId: analysisOne?.callId },
+    })
+    expect(await ledger.findByIdempotencyKey(
+      `real-editorial-task:${pilotId}:round:1:analysis:attempt:3`,
+    )).toMatchObject({
+      state: 'reconciled',
+      input: { retryOfCallId: analysisTwo?.callId },
+    })
+    expect(repository.pilot).toMatchObject({
+      id: pilotId,
+      currentRunId: runId,
+      budget: {
+        taskId: `real-editorial-task:${pilotId}`,
+        taskLimitCost: 0.2,
+      },
+    })
+    expect(ledger.budgetSnapshot().task).toMatchObject({ reserved: 0, spent: 0.2 })
+
+    const duplicateResearch = new FakeResearchTool()
+    const duplicateIntelligence = new FakeIntelligenceEngine()
+    await expect(executeWith(duplicateResearch, duplicateIntelligence, '4'))
+      .resolves.toEqual(result)
+    expect(duplicateResearch.rounds).toEqual([])
+    expect(duplicateIntelligence.calls).toEqual([])
+    expect(await ledger.findByIdempotencyKey(
+      `real-editorial-task:${pilotId}:round:1:analysis:attempt:4`,
+    )).toBeUndefined()
+  })
+
+  it('valida el payload OpenAI antes de crear su reserva o invocar el cliente', async () => {
+    const repository = new MemoryDurableRepository()
+    const ledger = ledgerRepository()
+    const intelligence = new InvalidPayloadEngine()
+
+    await expect(new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: {
+        researchTool: new FakeResearchTool(),
+        intelligenceEngine: intelligence,
+      },
+      now: () => new Date(now),
+      id: () => '87500000-0000-4000-8000-000000000001',
+    }).execute(repository.pilot, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+
+    expect(intelligence.calls).toEqual([])
+    expect(await ledger.findByIdempotencyKey(
+      `real-editorial-task:${pilotId}:round:1:analysis:attempt:1`,
+    )).toBeUndefined()
+    expect(ledger.budgetSnapshot().task).toMatchObject({
+      reserved: 0,
+      spent: 0.048,
+    })
   })
 
   it('rechaza rounds corruptas antes de reservar o invocar OpenAI', async () => {

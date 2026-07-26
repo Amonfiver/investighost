@@ -3,6 +3,7 @@ import {
   CostLedgerService,
   DurableRealEditorialPipeline,
   evaluateRealEditorialPreflight,
+  inspectOpenAIEditorialResponseContracts,
   inspectInstalledOpenAIResponsesCapability,
   realEditorialIdentityKey,
   SupabaseRealEditorialLedgerRepository,
@@ -10,6 +11,7 @@ import {
   withLiveProviderClients,
 } from '@modules/real-pipeline'
 import {
+  REAL_EDITORIAL_PILOT_POLICY,
   RealEditorialPilotActionSchema,
   RealEditorialAmbiguousCallResolutionSchema,
   RealEditorialPilotCancelSchema,
@@ -46,6 +48,11 @@ export class RealEditorialPilotRuntime {
           ? 'manual_only_coexists'
           : 'no_conflict'
     const providerCenter = await getProviderCenterRuntime()
+    const openAIRequestContract = inspectOpenAIEditorialResponseContracts(
+      REAL_EDITORIAL_PILOT_POLICY.providers.model,
+    )
+    const firstContractIssue = openAIRequestContract.operations
+      .flatMap(operation => operation.issues)[0]
     return evaluateRealEditorialPreflight({
       featureEnabled: resolveRealEditorialFeatureFlag(
         process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN,
@@ -59,6 +66,14 @@ export class RealEditorialPilotRuntime {
       pendingReservations: inspection.pendingReservations,
       humanRequiredCalls: inspection.humanRequiredCalls,
       openAIResponsesCapability: inspectInstalledOpenAIResponsesCapability(),
+      openAIRequestContract: {
+        valid: openAIRequestContract.valid,
+        issueCount: openAIRequestContract.operations
+          .reduce((total, operation) => total + operation.issues.length, 0),
+        detail: openAIRequestContract.valid
+          ? 'Modelo, input y esquemas estrictos compatibles según validación local.'
+          : `Payload incompatible: ${firstContractIssue?.path ?? 'contrato desconocido'}.`,
+      },
       duplicateResolution,
       pilot,
       boundaries: {

@@ -55,6 +55,11 @@ function input(overrides: Partial<Input> = {}): Input {
       status: 'available',
       available: true,
     },
+    openAIRequestContract: {
+      valid: true,
+      issueCount: 0,
+      detail: 'Contrato local compatible.',
+    },
     duplicateResolution: 'manual_only_coexists',
     boundaries: {
       regenerationBlocked: true,
@@ -153,6 +158,24 @@ describe('preflight editorial real independiente', () => {
     expect(result.checks.find(check => check.code === 'openai_responses_sdk')).toMatchObject({
       status: 'block',
     })
+  })
+
+  it('bloquea un campo incompatible del payload antes de autorizar gasto o red', () => {
+    const result = evaluateRealEditorialPreflight(input({
+      openAIRequestContract: {
+        valid: false,
+        issueCount: 1,
+        detail: 'Payload incompatible: $.text.format.schema.additionalProperties.',
+      },
+    }))
+
+    expect(result.status).toBe('blocked')
+    expect(result.startActionEnabled).toBe(false)
+    expect(result.networkCallsPerformed).toBe(0)
+    expect(result.checks.find(check => check.code === 'openai_payload_contract'))
+      .toMatchObject({
+        status: 'block',
+      })
   })
 
   it.each([

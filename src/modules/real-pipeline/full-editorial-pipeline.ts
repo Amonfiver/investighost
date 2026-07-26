@@ -50,11 +50,13 @@ export class FullRealEditorialPipeline {
         'La investigación requiere revisión humana antes de redactar',
       )
     }
+    this.intelligence.validateDraft?.(mission, research.masterKnowledge)
     const drafts = await this.calls.execute(
       `${mission.taskId}:drafting`,
       this.configuration.draftingCost,
       () => this.intelligence.draft(mission, research.masterKnowledge, signal),
     )
+    this.intelligence.validateReview?.(mission, research.masterKnowledge, drafts)
     const review = await this.calls.execute(
       `${mission.taskId}:final-review`,
       this.configuration.reviewCost,

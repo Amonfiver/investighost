@@ -43,9 +43,9 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     if (!this.canReserve(estimatedCost)) {
       throw new RealWorkflowError('BUDGET_EXCEEDED', 'El presupuesto impide reservar la operación')
     }
-    const attempt = (this.attempts.get(operationId) ?? 0) + 1
+    let attempt = (this.attempts.get(operationId) ?? 0) + 1
+    let previous = this.previousReservations.get(operationId)
     this.attempts.set(operationId, attempt)
-    const previous = this.previousReservations.get(operationId)
     let reservation = await this.ledger.reserve(this.metadata.create(
       operationId,
       attempt,
@@ -53,14 +53,21 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
       previous?.callId,
     ))
     this.previousReservations.set(operationId, reservation)
-    if (['failed', 'cancelled'].includes(reservation.state)) {
-      const retryAttempt = attempt + 1
-      this.attempts.set(operationId, retryAttempt)
+    while (['failed', 'cancelled'].includes(reservation.state)) {
+      if (attempt >= 10) {
+        throw new RealWorkflowError(
+          'LIMIT_EXCEEDED',
+          'La operación alcanzó el máximo de intentos durables',
+        )
+      }
+      previous = reservation
+      attempt += 1
+      this.attempts.set(operationId, attempt)
       reservation = await this.ledger.reserve(this.metadata.create(
         operationId,
-        retryAttempt,
+        attempt,
         estimatedCost,
-        reservation.callId,
+        previous?.callId,
       ))
       this.previousReservations.set(operationId, reservation)
     }
@@ -124,7 +131,7 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
             toolCalls: providerUsage?.toolCalls ?? 1,
             credits: providerUsage?.credits ?? 0,
           },
-          sanitizedError: code,
+          sanitizedError: sanitizedProviderError(error, code),
         })
       } finally {
         this.running.delete(operationId)
@@ -189,6 +196,45 @@ function failureUsage(error: unknown): ProviderFailureUsage | undefined {
     || toolCalls < 0
   ) return undefined
   return { providerRequestIds, credits, calculatedCost, toolCalls }
+}
+
+function sanitizedProviderError(error: unknown, fallback: string): string {
+  if (!isRecord(error) || !isRecord(error.remoteError)) return fallback
+  const remote = error.remoteError
+  const fields = [
+    fallback,
+    numericMetadata(remote.status, 'status'),
+    textMetadata(remote.type, 'type'),
+    textMetadata(remote.code, 'code'),
+    textMetadata(remote.param, 'param'),
+    textMetadata(remote.requestId, 'request_id'),
+    textMetadata(remote.message, 'message'),
+  ].filter((value): value is string => Boolean(value))
+  return fields.join('|').slice(0, 500)
+}
+
+function numericMetadata(value: unknown, label: string): string | undefined {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${label}=${value}`
+    : undefined
+}
+
+function textMetadata(value: unknown, label: string): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const sanitized = value
+    .replace(/\b(?:sk|tvly)-[A-Za-z0-9_-]+\b/gi, '[redacted]')
+    .replace(/\b(?:api[_ -]?key|authorization|bearer(?:\s+\S+)?)\b/gi, '[redacted]')
+    .replace(/\|/g, ' ')
+  const withoutControls = [...sanitized]
+    .map(character => {
+      const codePoint = character.charCodeAt(0)
+      return codePoint < 32 || codePoint === 127 ? ' ' : character
+    })
+    .join('')
+  const compact = withoutControls
+    .replace(/\s+/g, ' ')
+    .trim()
+  return compact ? `${label}=${compact}` : undefined
 }
 
 function settlementFromResult<T>(

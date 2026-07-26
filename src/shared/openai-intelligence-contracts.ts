@@ -8,27 +8,44 @@ import {
   RealKnowledgeGapSchema,
 } from './real-pipeline-contracts'
 
-const adventureRequirements = ['routes', 'specific_places', 'access', 'duration', 'costs', 'season', 'risks']
-const studentRequirements = ['history', 'dates', 'population', 'monuments', 'culture', 'daily_life']
+const CoverageScoreSchema = z.number().min(0).max(1)
+const CoverageWarningsSchema = z.array(z.string().trim().min(1).max(500))
 
-export const OpenAIProfileCoverageSchema = z.object({
-  profile: RealEditorialProfileSchema,
-  score: z.number().min(0).max(1),
-  sufficient: z.boolean(),
-  requirements: z.record(z.number().min(0).max(1)),
-  warnings: z.array(z.string().trim().min(1).max(500)),
-}).superRefine((value, context) => {
-  const required = value.profile === 'adventure' ? adventureRequirements : studentRequirements
-  for (const requirement of required) {
-    if (value.requirements[requirement] === undefined) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['requirements', requirement],
-        message: `Falta cobertura obligatoria: ${requirement}`,
-      })
-    }
-  }
+const AdventureRequirementsSchema = z.object({
+  routes: CoverageScoreSchema,
+  specific_places: CoverageScoreSchema,
+  access: CoverageScoreSchema,
+  duration: CoverageScoreSchema,
+  costs: CoverageScoreSchema,
+  season: CoverageScoreSchema,
+  risks: CoverageScoreSchema,
 })
+
+const StudentRequirementsSchema = z.object({
+  history: CoverageScoreSchema,
+  dates: CoverageScoreSchema,
+  population: CoverageScoreSchema,
+  monuments: CoverageScoreSchema,
+  culture: CoverageScoreSchema,
+  daily_life: CoverageScoreSchema,
+})
+
+export const OpenAIProfileCoverageSchema = z.discriminatedUnion('profile', [
+  z.object({
+    profile: z.literal('adventure'),
+    score: CoverageScoreSchema,
+    sufficient: z.boolean(),
+    requirements: AdventureRequirementsSchema,
+    warnings: CoverageWarningsSchema,
+  }),
+  z.object({
+    profile: z.literal('student'),
+    score: CoverageScoreSchema,
+    sufficient: z.boolean(),
+    requirements: StudentRequirementsSchema,
+    warnings: CoverageWarningsSchema,
+  }),
+])
 
 export const OpenAIRoundAnalysisOutputSchema = z.object({
   claims: z.array(RealKnowledgeClaimSchema),

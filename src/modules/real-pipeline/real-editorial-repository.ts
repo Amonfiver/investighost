@@ -5,6 +5,9 @@ import {
   RealEditorialAmbiguousCallResolutionResultSchema,
   RealEditorialAmbiguousCallResolutionSchema,
   RealEditorialAmbiguousCallSchema,
+  RealEditorialBudgetResolutionResultSchema,
+  RealEditorialBudgetResolutionSchema,
+  RealEditorialBudgetReviewSchema,
   RealEditorialPilotBudgetSchema,
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotRecordSchema,
@@ -12,6 +15,9 @@ import {
   type RealEditorialAmbiguousCall,
   type RealEditorialAmbiguousCallResolution,
   type RealEditorialAmbiguousCallResolutionResult,
+  type RealEditorialBudgetResolution,
+  type RealEditorialBudgetResolutionResult,
+  type RealEditorialBudgetReview,
   type RealEditorialPilotBudget,
   type RealEditorialPilotPrepare,
   type RealEditorialPilotRecord,
@@ -20,6 +26,7 @@ import {
 } from '@shared/real-editorial-pilot-contracts'
 import {
   RealResearchDossierSchema,
+  RealContinueDecisionSchema,
   type RealResearchDossier,
   type RealRoundNumber,
   type RealResearchMission,
@@ -69,6 +76,10 @@ export type RealEditorialRepositoryErrorCode =
   | 'HUMAN_RESOLUTION_CONFLICT'
   | 'HUMAN_RESOLUTION_BUDGET_EXCEEDED'
   | 'HUMAN_RESOLUTION_NOT_ALLOWED'
+  | 'BUDGET_REVIEW_REQUIRED'
+  | 'BUDGET_DECISION_CONFLICT'
+  | 'BUDGET_EXTENSION_INVALID'
+  | 'BUDGET_DECISION_NOT_ALLOWED'
   | 'PERSISTENCE_ERROR'
 
 export class RealEditorialRepositoryError extends Error {
@@ -113,6 +124,16 @@ export interface RealEditorialPilotRepository {
   getPilot(pilotId: string): Promise<RealEditorialPilotRecord | undefined>
   findByIdentity(identityKey: string): Promise<RealEditorialPilotRecord | undefined>
   getResult(pilotId: string): Promise<RealEditorialPilotSnapshot | undefined>
+  getBudgetReview(pilotId: string): Promise<RealEditorialBudgetReview | undefined>
+  openBudgetReview(
+    pilotId: string,
+    runId: string,
+    incidentId: string,
+    remainingEstimatedCostEur: number,
+  ): Promise<string>
+  resolveBudgetReview(
+    input: RealEditorialBudgetResolution,
+  ): Promise<RealEditorialBudgetResolutionResult>
   appendArtifact(
     pilotId: string,
     runId: string,
@@ -162,7 +183,7 @@ export interface RealEditorialPilotRepository {
     code: string,
     classification: 'recoverable' | 'permanent' | 'ambiguous' | 'human_required',
     message: string,
-  ): Promise<void>
+  ): Promise<string>
   cancel(pilotId: string, reason: string): Promise<void>
   reopenCancelled(pilotId: string): Promise<void>
 }
@@ -359,6 +380,200 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     return RealEditorialPilotSnapshotSchema.parse(artifact.payload)
   }
 
+  async getBudgetReview(pilotId: string): Promise<RealEditorialBudgetReview | undefined> {
+    const pilot = await this.getPilot(pilotId)
+    if (!pilot) throw new RealEditorialRepositoryError('PILOT_NOT_FOUND', 'El piloto no existe')
+    if (!pilot.budget) return undefined
+    const reviewResult = await this.client.from('real_editorial_budget_reviews')
+      .select('*').eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+      .order('opened_at', { ascending: false }).limit(1).maybeSingle()
+    assertNoError(reviewResult.error, 'No se pudo leer la decisión presupuestaria')
+    if (!reviewResult.data) return undefined
+    const review = reviewResult.data
+    const [decisionResult, tavilyResult, analysisResult] = await Promise.all([
+      review.latest_decision_id
+        ? this.client.from('real_editorial_budget_decisions').select('*')
+          .eq('id', review.latest_decision_id).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      this.client.from('real_editorial_artifacts').select('id', { head: true, count: 'exact' })
+        .eq('run_id', pilot.currentRunId).eq('artifact_kind', 'tavily_result')
+        .eq('artifact_key', 'round-1'),
+      this.client.from('real_editorial_artifacts').select('id', { head: true, count: 'exact' })
+        .eq('run_id', pilot.currentRunId).eq('artifact_kind', 'round')
+        .eq('artifact_key', 'round-1'),
+    ])
+    assertNoError(decisionResult.error, 'No se pudo leer la última decisión presupuestaria')
+    assertNoError(tavilyResult.error, 'No se pudo verificar el resultado Tavily durable')
+    assertNoError(analysisResult.error, 'No se pudo verificar el análisis OpenAI durable')
+    const maximum = pilot.budget.taskLimitCost
+    const spent = pilot.budget.spentCost
+    const reserved = pilot.budget.reservedCost
+    const remaining = Number(review.remaining_estimated_cost)
+    const total = moneyValue(spent + reserved + remaining)
+    const decision = decisionResult.data
+    return RealEditorialBudgetReviewSchema.parse({
+      reviewId: review.id,
+      pilotId,
+      runId: pilot.currentRunId,
+      incidentId: review.incident_id,
+      status: review.status,
+      currency: 'EUR',
+      source: 'real_editorial_pilot_budgets',
+      currentMaximumCostEur: maximum,
+      previousMaximumCostEur: decision
+        ? Number(decision.previous_maximum_cost)
+        : Number(review.initial_maximum_cost),
+      spentCostEur: spent,
+      reservedCostEur: reserved,
+      availableCostEur: moneyValue(Math.max(0, maximum - spent - reserved)),
+      remainingEstimatedCostEur: remaining,
+      totalEstimatedCostEur: total,
+      shortfallCostEur: moneyValue(Math.max(0, total - maximum)),
+      marginCostEur: moneyValue(maximum - total),
+      openedAt: review.opened_at,
+      resolvedAt: review.resolved_at ?? undefined,
+      tavilyRoundOnePersisted: (tavilyResult.count ?? 0) > 0,
+      openAIAnalysisRoundOnePersisted: (analysisResult.count ?? 0) > 0,
+      latestDecision: decision
+        ? {
+            decisionId: decision.id,
+            actorId: decision.actor_id,
+            decision: decision.decision,
+            previousMaximumCostEur: Number(decision.previous_maximum_cost),
+            newMaximumCostEur: Number(decision.new_maximum_cost),
+            reason: decision.reason,
+            note: decision.note ?? undefined,
+            decidedAt: decision.decided_at,
+          }
+        : undefined,
+    })
+  }
+
+  async openBudgetReview(
+    pilotId: string,
+    runId: string,
+    incidentId: string,
+    remainingEstimatedCostEur: number,
+  ): Promise<string> {
+    const { data, error } = await this.client.rpc('open_real_editorial_budget_review', {
+      p_pilot_id: pilotId,
+      p_run_id: runId,
+      p_incident_id: incidentId,
+      p_remaining_estimated_cost: remainingEstimatedCostEur,
+    })
+    if (error || typeof data !== 'string') {
+      throw budgetDecisionPersistenceError(error ?? { message: 'BUDGET_REVIEW_NOT_CREATED' })
+    }
+    return data
+  }
+
+  async resolveBudgetReview(
+    candidate: RealEditorialBudgetResolution,
+  ): Promise<RealEditorialBudgetResolutionResult> {
+    const input = RealEditorialBudgetResolutionSchema.parse(candidate)
+    const decisionKey = createHash('sha256').update(JSON.stringify({
+      pilotId: input.pilotId,
+      runId: input.runId,
+      actorId: input.actorId,
+      decision: input.decision,
+      newMaximumCostEur: input.decision === 'authorize_extension'
+        ? input.newMaximumCostEur
+        : null,
+      reason: input.reason,
+      note: input.note ?? null,
+    })).digest('hex')
+    const existing = await this.client.from('real_editorial_budget_decisions')
+      .select('*').eq('decision_key', decisionKey).maybeSingle()
+    assertNoError(existing.error, 'No se pudo comprobar la idempotencia presupuestaria')
+    if (existing.data) return this.budgetResolutionResult(existing.data)
+
+    const pilot = await this.getPilot(input.pilotId)
+    if (!pilot?.budget || pilot.currentRunId !== input.runId) {
+      throw new RealEditorialRepositoryError(
+        'BUDGET_REVIEW_REQUIRED',
+        'La decisión no corresponde al piloto y run activos',
+      )
+    }
+    const review = await this.getBudgetReview(input.pilotId)
+    if (!review) {
+      throw new RealEditorialRepositoryError(
+        'BUDGET_REVIEW_REQUIRED',
+        'No existe una barrera económica pendiente',
+      )
+    }
+
+    let checkpointVersion: number | null = null
+    let checkpointPreviousHash: string | null = null
+    let checkpointPayload: Record<string, unknown> | null = null
+    let checkpointPayloadHash: string | null = null
+    if (input.decision === 'authorize_extension'
+      && !['authorized', 'cancelled'].includes(review.status)) {
+      const checkpoint = await this.latestArtifact(input.runId, 'checkpoint', 'workflow')
+      if (!checkpoint) {
+        throw new RealEditorialRepositoryError(
+          'CHECKPOINT_INVALID',
+          'La barrera económica no conserva su checkpoint',
+        )
+      }
+      checkpointPayload = reopenBudgetCheckpoint(checkpoint.payload, this.now())
+      checkpointVersion = checkpoint.version + 1
+      checkpointPreviousHash = checkpoint.payloadHash
+      checkpointPayloadHash = realEditorialPayloadHash(checkpointPayload)
+    }
+    const newMaximum = input.decision === 'authorize_extension'
+      ? input.newMaximumCostEur
+      : pilot.budget.taskLimitCost
+    const { data, error } = await this.client.rpc('resolve_real_editorial_budget_review', {
+      p_decision_key: decisionKey,
+      p_pilot_id: input.pilotId,
+      p_run_id: input.runId,
+      p_actor_id: input.actorId,
+      p_decision: input.decision,
+      p_new_maximum_cost: newMaximum,
+      p_reason: input.reason,
+      p_note: input.note ?? null,
+      p_checkpoint_version: checkpointVersion,
+      p_checkpoint_previous_hash: checkpointPreviousHash,
+      p_checkpoint_payload: checkpointPayload,
+      p_checkpoint_payload_hash: checkpointPayloadHash,
+    })
+    if (error) throw budgetDecisionPersistenceError(error)
+    const stored = await this.client.from('real_editorial_budget_decisions')
+      .select('*').eq('id', String(data)).single()
+    assertNoError(stored.error, 'No se pudo verificar la decisión presupuestaria durable')
+    return this.budgetResolutionResult(stored.data)
+  }
+
+  private async budgetResolutionResult(
+    decision: Record<string, unknown>,
+  ): Promise<RealEditorialBudgetResolutionResult> {
+    const review = await this.getBudgetReview(String(decision.pilot_id))
+    if (!review) {
+      throw new RealEditorialRepositoryError(
+        'BUDGET_REVIEW_REQUIRED',
+        'La decisión durable no conserva su revisión presupuestaria',
+      )
+    }
+    return RealEditorialBudgetResolutionResultSchema.parse({
+      decisionId: decision.id,
+      pilotId: decision.pilot_id,
+      runId: decision.run_id,
+      actorId: decision.actor_id,
+      decision: decision.decision,
+      previousMaximumCostEur: Number(decision.previous_maximum_cost),
+      newMaximumCostEur: Number(decision.new_maximum_cost),
+      reason: decision.reason,
+      note: decision.note ?? undefined,
+      decidedAt: decision.decided_at,
+      nextAction: decision.decision === 'keep_limit'
+        ? 'blocked'
+        : decision.decision === 'cancel_permanently'
+          ? 'cancelled'
+          : 'resume_from_checkpoint',
+      review,
+    })
+  }
+
   async getHumanRequiredCall(pilotId: string): Promise<RealEditorialAmbiguousCall | undefined> {
     const pilot = await this.getPilot(pilotId)
     if (!pilot) throw new RealEditorialRepositoryError('PILOT_NOT_FOUND', 'El piloto no existe')
@@ -487,7 +702,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
   async canResumeFromCheckpoint(pilotId: string): Promise<boolean> {
     const pilot = await this.getPilot(pilotId)
     if (!pilot || !['preflight', 'cancelled'].includes(pilot.state)) return false
-    const [checkpoint, unresolved, permanentCancellation] = await Promise.all([
+    const [checkpoint, unresolved, permanentCancellation, budgetReview] = await Promise.all([
       this.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
       this.client.from('real_editorial_ambiguous_calls').select('call_id', {
         head: true,
@@ -498,11 +713,17 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         count: 'exact',
       }).eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
         .eq('terminal_decision', 'cancel_permanently'),
+      this.client.from('real_editorial_budget_reviews').select('status')
+        .eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+        .order('opened_at', { ascending: false }).limit(1).maybeSingle(),
     ])
     assertNoError(unresolved.error, 'No se pudo comprobar la ambigüedad pendiente')
     assertNoError(permanentCancellation.error, 'No se pudo comprobar la cancelación definitiva')
+    assertNoError(budgetReview.error, 'No se pudo comprobar la decisión presupuestaria')
+    const budgetAllowsResume = !budgetReview.data
+      || budgetReview.data.status === 'authorized'
     return Boolean(checkpoint) && (unresolved.count ?? 0) === 0
-      && (permanentCancellation.count ?? 0) === 0
+      && (permanentCancellation.count ?? 0) === 0 && budgetAllowsResume
   }
 
   async appendArtifact(
@@ -743,9 +964,10 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     code: string,
     classification: 'recoverable' | 'permanent' | 'ambiguous' | 'human_required',
     message: string,
-  ): Promise<void> {
+  ): Promise<string> {
+    const incidentId = this.id()
     const { error } = await this.client.from('real_editorial_incidents').insert({
-      id: this.id(),
+      id: incidentId,
       pilot_id: pilotId,
       run_id: runId,
       code,
@@ -754,6 +976,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       created_at: this.now().toISOString(),
     })
     if (error) throw persistenceError(error)
+    return incidentId
   }
 
   async cancel(pilotId: string, reason: string): Promise<void> {
@@ -1072,11 +1295,39 @@ function validBudgetRow(row: Record<string, unknown>): boolean {
 }
 
 function validBudget(budget: RealEditorialPilotBudget): boolean {
-  return budget.taskLimitCost === REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur
-    && budget.batchLimitCost === REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur
-    && budget.dailyLimitCost === REAL_EDITORIAL_PILOT_POLICY.dailyLimitCostEur
+  return budget.taskLimitCost >= REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur
+    && budget.taskLimitCost === budget.batchLimitCost
+    && budget.batchLimitCost === budget.dailyLimitCost
+    && budget.dailyLimitCost <= budget.technicalLimitCost
     && budget.technicalLimitCost === REAL_EDITORIAL_PILOT_POLICY.technicalLimitCostEur
     && budget.reservedCost + budget.spentCost <= budget.taskLimitCost
+}
+
+function reopenBudgetCheckpoint(payload: unknown, now: Date): Record<string, unknown> {
+  if (!isRecord(payload)) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'El checkpoint presupuestario no es un objeto',
+    )
+  }
+  const decision = RealContinueDecisionSchema.safeParse(payload.lastDecision)
+  if (
+    payload.state !== 'review_required'
+    || payload.completedRound !== 1
+    || !decision.success
+    || decision.data.action !== 'continue_focused'
+  ) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'El checkpoint no conserva una segunda ronda focalizada pendiente',
+    )
+  }
+  return {
+    ...payload,
+    state: 'researching_round_2',
+    nextRoundQueries: decision.data.queries,
+    updatedAt: now.toISOString(),
+  }
 }
 
 function mapWorkflowState(state: RealWorkflowCheckpoint['state']): RealEditorialPilotState {
@@ -1181,6 +1432,50 @@ function humanResolutionPersistenceError(
     'HUMAN_RESOLUTION_NOT_ALLOWED',
     'La resolución humana durable fue rechazada',
   )
+}
+
+function budgetDecisionPersistenceError(
+  error: { message: string; code?: string },
+): RealEditorialRepositoryError {
+  if (
+    error.message.includes('BUDGET_EXTENSION_BELOW_LEDGER')
+    || error.message.includes('BUDGET_EXTENSION_BELOW_TOTAL_ESTIMATE')
+    || error.message.includes('BUDGET_EXTENSION_NOT_GREATER')
+    || error.message.includes('BUDGET_EXTENSION_ABOVE_TECHNICAL_LIMIT')
+    || error.message.includes('BUDGET_DECISION_MAXIMUM_INVALID')
+  ) {
+    return new RealEditorialRepositoryError(
+      'BUDGET_EXTENSION_INVALID',
+      'El nuevo máximo no cubre el ledger y el trabajo restante o supera el límite técnico',
+    )
+  }
+  if (
+    error.message.includes('BUDGET_DECISION_IDEMPOTENCY_CONFLICT')
+    || error.message.includes('BUDGET_DECISION_ALREADY_TERMINAL')
+    || error.message.includes('BUDGET_REVIEW_CONFLICT')
+  ) {
+    return new RealEditorialRepositoryError(
+      'BUDGET_DECISION_CONFLICT',
+      'La barrera económica ya tiene una decisión humana incompatible',
+    )
+  }
+  if (
+    error.message.includes('BUDGET_REVIEW_NOT_FOUND')
+    || error.message.includes('BUDGET_REVIEW_INCIDENT_INVALID')
+  ) {
+    return new RealEditorialRepositoryError(
+      'BUDGET_REVIEW_REQUIRED',
+      'No existe una barrera económica pendiente para este piloto y run',
+    )
+  }
+  return new RealEditorialRepositoryError(
+    'BUDGET_DECISION_NOT_ALLOWED',
+    'La decisión presupuestaria durable fue rechazada',
+  )
+}
+
+function moneyValue(value: number): number {
+  return Number(value.toFixed(9))
 }
 
 function unavailableInspection(): RealEditorialRepositoryInspection {

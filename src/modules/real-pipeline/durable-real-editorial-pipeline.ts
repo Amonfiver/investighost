@@ -116,7 +116,7 @@ export class DurableRealEditorialPipeline {
       const calls = new LedgeredWorkflowCallExecutor(
         ledger,
         metadataFactory(pilot, executionId),
-        REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur,
+        pilot.budget.taskLimitCost,
         operationId => durableOperationResultAvailable(
           this.dependencies.repository,
           pilot.currentRunId,
@@ -140,7 +140,8 @@ export class DurableRealEditorialPipeline {
             + REAL_EDITORIAL_OPERATION_BUDGETS.analysisPerRound
             + REAL_EDITORIAL_OPERATION_BUDGETS.drafting
             + REAL_EDITORIAL_OPERATION_BUDGETS.finalReview,
-          budgetLimit: REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur,
+          budgetLimit: pilot.budget.taskLimitCost,
+          ledgerBudgetAuthoritative: true,
           now: this.now,
         },
       )
@@ -196,13 +197,22 @@ export class DurableRealEditorialPipeline {
     } catch (error) {
       if (!signal.aborted) {
         const code = safeErrorCode(error)
-        await this.dependencies.repository.recordIncident(
+        const incidentId = await this.dependencies.repository.recordIncident(
           pilot.id,
           pilot.currentRunId,
           code,
           code === 'TIMEOUT' ? 'ambiguous' : 'human_required',
           safeIncidentMessage(error),
         )
+        const budgetRequirement = budgetRequirementFromError(error)
+        if (code === 'BUDGET_EXCEEDED' && budgetRequirement) {
+          await this.dependencies.repository.openBudgetReview(
+            pilot.id,
+            pilot.currentRunId,
+            incidentId,
+            budgetRequirement.remainingEstimatedCostEur,
+          )
+        }
         await this.dependencies.repository.appendEvent(
           pilot.id,
           pilot.currentRunId,
@@ -618,6 +628,17 @@ function safeIncidentMessage(error: unknown): string {
     return error.message.slice(0, 1_000)
   }
   return 'La ejecución editorial real se detuvo; revisar el ledger y el checkpoint durable.'
+}
+
+function budgetRequirementFromError(
+  error: unknown,
+): { remainingEstimatedCostEur: number } | undefined {
+  if (!isRecord(error) || !isRecord(error.budgetRequirement)) return undefined
+  const remaining = error.budgetRequirement.remainingEstimatedCostEur
+  if (typeof remaining !== 'number' || !Number.isFinite(remaining) || remaining <= 0) {
+    return undefined
+  }
+  return { remainingEstimatedCostEur: remaining }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

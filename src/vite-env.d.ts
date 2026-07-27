@@ -48,6 +48,8 @@ import type {
 import type {
   RealEditorialAmbiguousCallResolution,
   RealEditorialAmbiguousCallResolutionResult,
+  RealEditorialBudgetResolution,
+  RealEditorialBudgetResolutionResult,
   RealEditorialPilotAction,
   RealEditorialPilotCancel,
   RealEditorialPilotPrepare,
@@ -108,6 +110,9 @@ declare global {
       resolveRealEditorialAmbiguousCall: (
         input: RealEditorialAmbiguousCallResolution
       ) => Promise<RealEditorialAmbiguousCallResolutionResult>
+      resolveRealEditorialBudget: (
+        input: RealEditorialBudgetResolution
+      ) => Promise<RealEditorialBudgetResolutionResult>
     }
   }
 }

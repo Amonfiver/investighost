@@ -32,6 +32,9 @@ describe('superficie de preparación y conectividad real controlada', () => {
     expect(renderer).toContain('Iniciar piloto real')
     expect(renderer).toContain('disabled={!preflight.startActionEnabled || operation !== null}')
     expect(renderer).toContain('Reanudar desde checkpoint')
+    expect(renderer).toContain('DECISIÓN HUMANA DE PRESUPUESTO')
+    expect(renderer).toContain("pilot.state === 'preflight' && !progress?.checkpointAvailable")
+    expect(renderer).toContain('!progress?.humanRequiredCall && !progress?.budgetReview')
   })
 
   it('main expone IPC editorial validado tras una feature flag independiente', async () => {
@@ -44,7 +47,9 @@ describe('superficie de preparación y conectividad real controlada', () => {
     expect(main).toContain("ipcMain.handle('real-editorial:start'")
     expect(main).toContain("ipcMain.handle('real-editorial:cancel'")
     expect(main).toContain("ipcMain.handle('real-editorial:resume'")
+    expect(main).toContain("ipcMain.handle('real-editorial:resolve-budget'")
     expect(runtime).toContain('process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN')
+    expect(runtime).toContain('RealEditorialBudgetResolutionSchema.parse')
     expect(runtime).not.toMatch(/KIMI_API_KEY|BRAVE_SEARCH_API_KEY|OPENAI_API_KEY|TAVILY_API_KEY/)
     expect(runtime).toContain('withLiveProviderClients')
     expect(runtime).not.toContain('api.tavily.com')

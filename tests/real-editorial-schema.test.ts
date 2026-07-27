@@ -8,6 +8,7 @@ const migrations = [
   '20260725220500_real_editorial_prepare_concurrency.sql',
   '20260725221500_real_editorial_connectivity_evidence.sql',
   '20260726013000_real_editorial_ambiguous_call_resolution.sql',
+  '20260727090000_real_editorial_budget_decision.sql',
 ]
 
 async function migration(name: string): Promise<string> {
@@ -97,5 +98,25 @@ describe('esquema durable del piloto editorial real', () => {
     expect(sql).toContain("'LEGACY_OPENAI_PROVIDER_ERROR'")
     expect(sql).toContain('HUMAN_RESOLUTION_BUDGET_EXCEEDED')
     expect(sql).not.toMatch(/(?:drop|truncate)\s+table/i)
+  })
+
+  it('añade decisión presupuestaria humana sin duplicar identidad ni ledger', async () => {
+    const sql = await migration(migrations[6])
+
+    expect(sql).toContain('create table public.real_editorial_budget_reviews')
+    expect(sql).toContain('create table public.real_editorial_budget_decisions')
+    expect(sql).toContain('real_editorial_budget_decisions_append_only')
+    expect(sql).toContain('open_real_editorial_budget_review')
+    expect(sql).toContain('resolve_real_editorial_budget_review')
+    expect(sql).toContain('BUDGET_EXTENSION_BELOW_LEDGER')
+    expect(sql).toContain('BUDGET_EXTENSION_BELOW_TOTAL_ESTIMATE')
+    expect(sql).toContain('BUDGET_DECISION_IDEMPOTENCY_CONFLICT')
+    expect(sql).toContain("'real.editorial.budget.human_decided'")
+    expect(sql).toContain("set task_limit_cost = normalized_new_maximum")
+    expect(sql).toContain('batch_limit_cost = normalized_new_maximum')
+    expect(sql).toContain('daily_limit_cost = normalized_new_maximum')
+    expect(sql).not.toMatch(/insert into public\.real_editorial_(?:pilots|runs|pilot_budgets)/i)
+    expect(sql).not.toMatch(/(?:delete|truncate)\s+from\s+public\.real_editorial/i)
+    expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
   })
 })

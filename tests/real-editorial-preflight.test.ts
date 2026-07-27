@@ -51,6 +51,7 @@ function input(overrides: Partial<Input> = {}): Input {
     pendingReservations: 0,
     recoverableReservations: 0,
     humanRequiredCalls: 0,
+    budgetDecisionStatus: 'none',
     openAIResponsesCapability: {
       sdkVersion: '6.34.0',
       status: 'available',
@@ -139,9 +140,22 @@ describe('preflight editorial real independiente', () => {
     ['ejecución activa', { activeExecutions: 1 }],
     ['reserva pendiente', { pendingReservations: 1 }],
     ['decisión humana pendiente', { humanRequiredCalls: 1 }],
+    ['déficit presupuestario pendiente', { budgetDecisionStatus: 'pending' as const }],
+    ['límite mantenido', { budgetDecisionStatus: 'kept' as const }],
     ['conectividad', { connectivityValidated: false }],
   ])('bloquea por %s', (_label, override) => {
     expect(evaluateRealEditorialPreflight(input(override)).status).toBe('blocked')
+  })
+
+  it('una ampliación humana durable habilita el gate sin fijar automáticamente el importe', () => {
+    const result = evaluateRealEditorialPreflight(input({
+      budgetDecisionStatus: 'authorized',
+    }))
+    expect(result.status).toBe('ready_for_real_editorial_pilot')
+    expect(result.checks.find(check => check.code === 'budget_decision')).toMatchObject({
+      status: 'pass',
+      detail: expect.stringContaining('ampliación manual'),
+    })
   })
 
   it('autoriza conciliar una reserva iniciada cuando el análisis durable ya existe', () => {

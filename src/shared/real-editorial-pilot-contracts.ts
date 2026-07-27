@@ -170,6 +170,11 @@ const HumanResolutionNoteSchema = z.string().trim().min(1).max(1_000).refine(
   'La nota no puede contener credenciales ni cabeceras de autorización',
 )
 
+const HumanBudgetReasonSchema = z.string().trim().min(1).max(500).refine(
+  value => !/(?:sk-|tvly-|api[_ -]?key|authorization|bearer\s)/i.test(value),
+  'El motivo no puede contener credenciales ni cabeceras de autorización',
+)
+
 export const RealEditorialAmbiguousCallResolutionSchema = z.object({
   pilotId: z.string().uuid(),
   runId: z.string().uuid(),
@@ -259,6 +264,83 @@ export const RealEditorialAmbiguousCallResolutionResultSchema = z.object({
   nextAction: z.enum(['blocked', 'resume_from_checkpoint', 'cancelled']),
 })
 
+export const RealEditorialBudgetDecisionSchema = z.enum([
+  'keep_limit',
+  'authorize_extension',
+  'cancel_permanently',
+])
+
+const RealEditorialBudgetDecisionBaseSchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  actorId: z.string().uuid(),
+  reason: HumanBudgetReasonSchema,
+  note: HumanResolutionNoteSchema.optional(),
+  confirmed: z.literal(true),
+})
+
+export const RealEditorialBudgetResolutionSchema = z.discriminatedUnion('decision', [
+  RealEditorialBudgetDecisionBaseSchema.extend({
+    decision: z.literal('keep_limit'),
+  }).strict(),
+  RealEditorialBudgetDecisionBaseSchema.extend({
+    decision: z.literal('authorize_extension'),
+    newMaximumCostEur: z.number().finite().nonnegative()
+      .max(REAL_EDITORIAL_PILOT_POLICY.technicalLimitCostEur),
+  }).strict(),
+  RealEditorialBudgetDecisionBaseSchema.extend({
+    decision: z.literal('cancel_permanently'),
+  }).strict(),
+])
+
+export const RealEditorialBudgetReviewSchema = z.object({
+  reviewId: z.string().uuid(),
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  incidentId: z.string().uuid(),
+  status: z.enum(['pending', 'kept', 'authorized', 'cancelled']),
+  currency: z.literal('EUR'),
+  source: z.literal('real_editorial_pilot_budgets'),
+  currentMaximumCostEur: z.number().nonnegative(),
+  previousMaximumCostEur: z.number().nonnegative(),
+  spentCostEur: z.number().nonnegative(),
+  reservedCostEur: z.number().nonnegative(),
+  availableCostEur: z.number().nonnegative(),
+  remainingEstimatedCostEur: z.number().nonnegative(),
+  totalEstimatedCostEur: z.number().nonnegative(),
+  shortfallCostEur: z.number().nonnegative(),
+  marginCostEur: z.number(),
+  openedAt: TimestampSchema,
+  resolvedAt: TimestampSchema.optional(),
+  tavilyRoundOnePersisted: z.boolean(),
+  openAIAnalysisRoundOnePersisted: z.boolean(),
+  latestDecision: z.object({
+    decisionId: z.string().uuid(),
+    actorId: z.string().uuid(),
+    decision: RealEditorialBudgetDecisionSchema,
+    previousMaximumCostEur: z.number().nonnegative(),
+    newMaximumCostEur: z.number().nonnegative(),
+    reason: HumanBudgetReasonSchema,
+    note: HumanResolutionNoteSchema.optional(),
+    decidedAt: TimestampSchema,
+  }).optional(),
+})
+
+export const RealEditorialBudgetResolutionResultSchema = z.object({
+  decisionId: z.string().uuid(),
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  actorId: z.string().uuid(),
+  decision: RealEditorialBudgetDecisionSchema,
+  previousMaximumCostEur: z.number().nonnegative(),
+  newMaximumCostEur: z.number().nonnegative(),
+  reason: HumanBudgetReasonSchema,
+  note: HumanResolutionNoteSchema.optional(),
+  decidedAt: TimestampSchema,
+  nextAction: z.enum(['blocked', 'resume_from_checkpoint', 'cancelled']),
+  review: RealEditorialBudgetReviewSchema,
+})
+
 export const RealEditorialPilotBudgetSchema = z.object({
   pilotId: z.string().uuid(),
   taskId: IdentifierSchema,
@@ -268,14 +350,38 @@ export const RealEditorialPilotBudgetSchema = z.object({
   currency: z.literal('EUR'),
   targetCost: z.literal(REAL_EDITORIAL_PILOT_POLICY.targetCostEur),
   warningCost: z.literal(REAL_EDITORIAL_PILOT_POLICY.warningCostEur),
-  taskLimitCost: z.literal(REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur),
-  batchLimitCost: z.literal(REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur),
-  dailyLimitCost: z.literal(REAL_EDITORIAL_PILOT_POLICY.dailyLimitCostEur),
+  taskLimitCost: z.number()
+    .min(REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur)
+    .max(REAL_EDITORIAL_PILOT_POLICY.technicalLimitCostEur),
+  batchLimitCost: z.number()
+    .min(REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur)
+    .max(REAL_EDITORIAL_PILOT_POLICY.technicalLimitCostEur),
+  dailyLimitCost: z.number()
+    .min(REAL_EDITORIAL_PILOT_POLICY.dailyLimitCostEur)
+    .max(REAL_EDITORIAL_PILOT_POLICY.technicalLimitCostEur),
   manualExtensionCost: z.literal(REAL_EDITORIAL_PILOT_POLICY.manualExtensionCostEur),
   technicalLimitCost: z.literal(REAL_EDITORIAL_PILOT_POLICY.technicalLimitCostEur),
   reservedCost: z.number().nonnegative(),
   spentCost: z.number().nonnegative(),
   confirmedAt: TimestampSchema,
+}).superRefine((value, context) => {
+  if (
+    value.taskLimitCost !== value.batchLimitCost
+    || value.batchLimitCost !== value.dailyLimitCost
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['taskLimitCost'],
+      message: 'Los máximos de tarea, lote y día deben permanecer sincronizados',
+    })
+  }
+  if (value.spentCost + value.reservedCost > value.taskLimitCost) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['spentCost'],
+      message: 'El gasto y las reservas no pueden superar el máximo autorizado',
+    })
+  }
 })
 
 export const RealEditorialPilotRecordSchema = z.object({
@@ -371,6 +477,8 @@ export const RealEditorialPilotProgressSchema = z.object({
   }).optional(),
   pendingReservations: z.number().int().nonnegative(),
   humanRequiredCall: RealEditorialAmbiguousCallSchema.optional(),
+  budgetReview: RealEditorialBudgetReviewSchema.optional(),
+  checkpointAvailable: z.boolean(),
   resumeAvailable: z.boolean(),
   guardFree: z.boolean(),
 })
@@ -427,6 +535,14 @@ export type RealEditorialAmbiguousCallResolution = z.infer<
 export type RealEditorialAmbiguousCall = z.infer<typeof RealEditorialAmbiguousCallSchema>
 export type RealEditorialAmbiguousCallResolutionResult = z.infer<
   typeof RealEditorialAmbiguousCallResolutionResultSchema
+>
+export type RealEditorialBudgetDecision = z.infer<typeof RealEditorialBudgetDecisionSchema>
+export type RealEditorialBudgetResolution = z.infer<
+  typeof RealEditorialBudgetResolutionSchema
+>
+export type RealEditorialBudgetReview = z.infer<typeof RealEditorialBudgetReviewSchema>
+export type RealEditorialBudgetResolutionResult = z.infer<
+  typeof RealEditorialBudgetResolutionResultSchema
 >
 export type RealEditorialPilotBudget = z.infer<typeof RealEditorialPilotBudgetSchema>
 export type RealEditorialPilotRecord = z.infer<typeof RealEditorialPilotRecordSchema>

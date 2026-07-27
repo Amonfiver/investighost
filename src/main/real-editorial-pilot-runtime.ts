@@ -14,6 +14,7 @@ import {
   REAL_EDITORIAL_PILOT_POLICY,
   RealEditorialPilotActionSchema,
   RealEditorialAmbiguousCallResolutionSchema,
+  RealEditorialBudgetResolutionSchema,
   RealEditorialPilotCancelSchema,
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotProgressSchema,
@@ -39,7 +40,10 @@ export class RealEditorialPilotRuntime {
       ? await this.repository.getPilot(pilotId)
       : await this.repository.findByIdentity(defaultIdentity)
     const identity = pilot ? realEditorialIdentityKey(pilot.variantKey) : defaultIdentity
-    const inspection = await this.repository.inspect(identity, pilot?.id)
+    const [inspection, budgetReview] = await Promise.all([
+      this.repository.inspect(identity, pilot?.id),
+      pilot ? this.repository.getBudgetReview(pilot.id) : Promise.resolve(undefined),
+    ])
     const duplicateResolution = pilot
       ? 'current_pilot'
       : inspection.identicalPilotCount > 0
@@ -66,6 +70,7 @@ export class RealEditorialPilotRuntime {
       pendingReservations: inspection.pendingReservations,
       recoverableReservations: inspection.recoverableReservations,
       humanRequiredCalls: inspection.humanRequiredCalls,
+      budgetDecisionStatus: budgetReview?.status ?? 'none',
       openAIResponsesCapability: inspectInstalledOpenAIResponsesCapability(),
       openAIRequestContract: {
         valid: openAIRequestContract.valid,
@@ -99,7 +104,16 @@ export class RealEditorialPilotRuntime {
     const { pilotId } = RealEditorialPilotActionSchema.parse(candidate)
     const pilot = await this.repository.getPilot(pilotId)
     if (!pilot) throw new Error('El piloto editorial no existe')
-    const [snapshot, incidents, run, inspection, humanRequiredCall, resumeAvailable] =
+    const [
+      snapshot,
+      incidents,
+      run,
+      inspection,
+      humanRequiredCall,
+      budgetReview,
+      workflowCheckpoint,
+      resumeAvailable,
+    ] =
       await Promise.all([
       this.repository.getResult(pilotId),
       this.client.from('real_editorial_incidents')
@@ -109,6 +123,8 @@ export class RealEditorialPilotRuntime {
         .eq('id', pilot.currentRunId).eq('pilot_id', pilotId).single(),
       this.repository.inspect(pilot.identityKey, pilotId),
       this.repository.getHumanRequiredCall(pilotId),
+      this.repository.getBudgetReview(pilotId),
+      this.repository.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
       this.repository.canResumeFromCheckpoint(pilotId),
     ])
     if (incidents.error || run.error) throw new Error('No se pudo leer el progreso durable')
@@ -128,6 +144,8 @@ export class RealEditorialPilotRuntime {
         : undefined,
       pendingReservations: inspection.pendingReservations,
       humanRequiredCall,
+      budgetReview,
+      checkpointAvailable: Boolean(workflowCheckpoint),
       resumeAvailable,
       guardFree: inspection.guardFree,
     })
@@ -175,6 +193,28 @@ export class RealEditorialPilotRuntime {
     return this.repository.resolveHumanRequiredCall(input)
   }
 
+  async resolveBudgetDecision(candidate: unknown) {
+    const input = RealEditorialBudgetResolutionSchema.parse(candidate)
+    if (!resolveRealEditorialFeatureFlag(process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN)) {
+      throw new Error('La feature flag editorial real no autoriza la decisión presupuestaria')
+    }
+    if (input.actorId !== MANUAL_LOCAL_ACTOR_ID) {
+      throw new Error('El actor humano no coincide con el operador local autorizado')
+    }
+    if (this.controllers.has(input.pilotId)) {
+      throw new Error('No se puede decidir el presupuesto mientras el piloto se ejecuta')
+    }
+    const pilot = await this.repository.getPilot(input.pilotId)
+    if (!pilot || pilot.currentRunId !== input.runId) {
+      throw new Error('La decisión no corresponde al piloto y run activos')
+    }
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    if (!inspection.guardFree) {
+      throw new Error('La guarda editorial debe estar libre para decidir el presupuesto')
+    }
+    return this.repository.resolveBudgetReview(input)
+  }
+
   async start(candidate: unknown) {
     const { pilotId } = RealEditorialPilotActionSchema.parse(candidate)
     if (this.controllers.has(pilotId)) throw new Error('El piloto ya se está ejecutando')
@@ -184,6 +224,9 @@ export class RealEditorialPilotRuntime {
     }
     const pilot = await this.repository.getPilot(pilotId)
     if (!pilot?.budget) throw new Error('Falta el presupuesto durable del piloto')
+    if (pilot.state !== 'preflight') {
+      throw new Error('El estado durable no autoriza iniciar; debe prepararse o reanudarse')
+    }
     const featureToken = process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN
     if (!featureToken) throw new Error('La feature flag editorial real no está disponible')
 

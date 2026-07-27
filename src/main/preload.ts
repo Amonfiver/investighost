@@ -22,6 +22,7 @@ import type {
 } from '@shared/real-connectivity-contracts'
 import type {
   RealEditorialAmbiguousCallResolution,
+  RealEditorialBudgetResolution,
   RealEditorialPilotAction,
   RealEditorialPilotCancel,
   RealEditorialPilotPrepare,
@@ -85,6 +86,8 @@ const electronAPI = {
     ipcRenderer.invoke('real-editorial:resume', input),
   resolveRealEditorialAmbiguousCall: (input: RealEditorialAmbiguousCallResolution) =>
     ipcRenderer.invoke('real-editorial:resolve-ambiguous-call', input),
+  resolveRealEditorialBudget: (input: RealEditorialBudgetResolution) =>
+    ipcRenderer.invoke('real-editorial:resolve-budget', input),
 }
 
 // Exponer como window.electronAPI

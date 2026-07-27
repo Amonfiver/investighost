@@ -129,6 +129,7 @@ export interface RealWorkflowConfiguration {
   analysisCostPerRound: number
   completionCostAfterFirstRound: number
   budgetLimit: number
+  ledgerBudgetAuthoritative: boolean
   now?: () => Date
 }
 
@@ -137,6 +138,7 @@ const defaultConfiguration: RealWorkflowConfiguration = {
   analysisCostPerRound: 0,
   completionCostAfterFirstRound: 0,
   budgetLimit: Number.POSITIVE_INFINITY,
+  ledgerBudgetAuthoritative: false,
 }
 
 export type RealWorkflowErrorCode =
@@ -149,7 +151,16 @@ export type RealWorkflowErrorCode =
   | 'THIRD_ROUND_BLOCKED'
 
 export class RealWorkflowError extends Error {
-  constructor(readonly code: RealWorkflowErrorCode, message: string) {
+  constructor(
+    readonly code: RealWorkflowErrorCode,
+    message: string,
+    readonly budgetRequirement?: {
+      remainingEstimatedCostEur: number
+      spentCostEur: number
+      availableCostEur: number
+      shortfallCostEur: number
+    },
+  ) {
     super(message)
     this.name = 'RealWorkflowError'
   }
@@ -224,7 +235,8 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
           checkpoint = {
             ...checkpoint,
             state: 'review_required',
-            nextRoundQueries: [],
+            nextRoundQueries: next.queries,
+            queryHashes: [...checkpoint.queryHashes, ...next.queryHashes],
             simulatedCost: spentCost,
             updatedAt: this.now().toISOString(),
           }
@@ -239,6 +251,12 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
               `faltan ${money(shortfallCost)} EUR`,
               'se requiere decisión humana',
             ].join('; '),
+            {
+              remainingEstimatedCostEur: completionCost,
+              spentCostEur: spentCost,
+              availableCostEur: availableCost,
+              shortfallCostEur: shortfallCost,
+            },
           )
         }
         checkpoint = {
@@ -351,7 +369,8 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
     }
     const estimatedRoundCost = (researchAlreadyCheckpointed ? 0 : this.configuration.researchCostPerRound)
       + this.configuration.analysisCostPerRound
-    if (checkpoint.simulatedCost + estimatedRoundCost > mission.limits.taskBudgetEur
+    if ((!this.configuration.ledgerBudgetAuthoritative
+        && checkpoint.simulatedCost + estimatedRoundCost > mission.limits.taskBudgetEur)
       || !this.callExecutor.canExecute(analysisOperationId, this.configuration.analysisCostPerRound)
       || (!researchAlreadyCheckpointed
         && !this.callExecutor.canExecute(researchOperationId, this.configuration.researchCostPerRound))) {
@@ -433,7 +452,9 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
     const secondRoundCost = this.configuration.researchCostPerRound + this.configuration.analysisCostPerRound
     const expectedCalls = queries.length + 2
     if (checkpoint.providerCalls + expectedCalls > checkpoint.initialMission.limits.maxProviderCalls
-      || checkpoint.simulatedCost + secondRoundCost > checkpoint.initialMission.limits.taskBudgetEur
+      || (!this.configuration.ledgerBudgetAuthoritative
+        && checkpoint.simulatedCost + secondRoundCost
+          > checkpoint.initialMission.limits.taskBudgetEur)
       || !this.callExecutor.canReserve(secondRoundCost)) {
       return { terminal: true, state: 'review_required' }
     }

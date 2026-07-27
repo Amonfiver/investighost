@@ -220,6 +220,12 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 .ambiguous-call-review > header h4 { margin: 3px 0 0; font-size: 17px; }
 .ambiguous-call-review > p { color: #66522f; }
 .ambiguity-resolution-form { margin: 12px 0; }
+.budget-decision-review { margin: 16px 0; padding: 16px; border: 1px solid #d99b45; border-radius: 12px; background: #fffaf1; }
+.budget-decision-review > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.budget-decision-review > header h4 { margin: 3px 0 0; font-size: 17px; }
+.budget-decision-review > p { color: #66522f; }
+.budget-decision-form { margin: 12px 0; }
+.budget-decision-form output { display: flex; align-items: center; min-height: 40px; padding: 0 11px; color: var(--ink); background: #fbfcfb; border: 1px solid #cfd8d3; border-radius: 8px; }
 .editorial-actions { flex-wrap: wrap; }
 .editorial-actions .muted { margin-right: auto; }
 

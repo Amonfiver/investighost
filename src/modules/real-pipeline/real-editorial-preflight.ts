@@ -18,6 +18,13 @@ export const RealEditorialPreflightInputSchema = z.object({
   pendingReservations: z.number().int().nonnegative(),
   recoverableReservations: z.number().int().nonnegative().default(0),
   humanRequiredCalls: z.number().int().nonnegative(),
+  budgetDecisionStatus: z.enum([
+    'none',
+    'pending',
+    'kept',
+    'authorized',
+    'cancelled',
+  ]).default('none'),
   openAIResponsesCapability: z.object({
     sdkVersion: z.string().trim().min(1).max(80),
     status: z.enum([
@@ -155,7 +162,11 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
     'budget',
     'Presupuesto propio Morella',
     input.budgetValid,
-    'Presupuesto de tarea, lote y día confirmado en 0,20 EUR.',
+    input.pilot?.budget
+      ? `Máximo humano vigente de tarea, lote y día: ${
+        input.pilot.budget.taskLimitCost.toFixed(6)
+      } EUR; gasto y reservas proceden del ledger.`
+      : 'Presupuesto durable pendiente de materializar.',
     'El piloto todavía no tiene un presupuesto durable confirmado y válido.',
   )
   add(
@@ -187,6 +198,17 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
     input.humanRequiredCalls === 0,
     'No hay llamadas remotas que requieran resolución humana.',
     `Hay ${input.humanRequiredCalls} llamada(s) bloqueada(s) por consumo ambiguo.`,
+  )
+  add(
+    'budget_decision',
+    'Decisión humana de presupuesto',
+    ['none', 'authorized'].includes(input.budgetDecisionStatus),
+    input.budgetDecisionStatus === 'authorized'
+      ? 'La ampliación manual quedó autorizada de forma durable.'
+      : 'No hay una barrera económica pendiente.',
+    input.budgetDecisionStatus === 'cancelled'
+      ? 'El run fue cancelado definitivamente por decisión humana.'
+      : 'El límite vigente se mantiene y el déficit continúa bloqueado.',
   )
 
   const duplicateResolved = input.duplicateResolution !== 'identical_real_pilot_exists'

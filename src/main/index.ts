@@ -264,6 +264,10 @@ ipcMain.handle('real-editorial:resolve-ambiguous-call', async (_event, input: un
   return getRealEditorialPilotRuntime().resolveAmbiguousCall(input)
 })
 
+ipcMain.handle('real-editorial:resolve-budget', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().resolveBudgetDecision(input)
+})
+
 async function providerCenterAction<T>(
   action: (service: Awaited<ReturnType<typeof getProviderCenterRuntime>>) => Promise<T>,
 ): Promise<T> {

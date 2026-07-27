@@ -37,9 +37,13 @@ import {
 import type { EditorialDraftVersionSummary } from '@modules/editorial-pipeline/repository'
 import {
   REAL_EDITORIAL_OPENAI_MODEL,
+  REAL_EDITORIAL_PILOT_POLICY,
   type RealEditorialAmbiguousCall,
   type RealEditorialAmbiguousCallDecision,
   type RealEditorialAmbiguousCallResolution,
+  type RealEditorialBudgetDecision,
+  type RealEditorialBudgetResolution,
+  type RealEditorialBudgetReview,
   type RealEditorialPilotProgress,
   type RealEditorialPreflight,
 } from '@shared/real-editorial-pilot-contracts'
@@ -1127,7 +1131,10 @@ function RealEditorialPilotPanel(): JSX.Element {
           <div><dt>Modo</dt><dd>real_editorial_pilot</dd></div>
           <div><dt>Estado</dt><dd>{stateLabels[pilot.state] ?? pilot.state}</dd></div>
           <div><dt>Run</dt><dd className="technical-id">{pilot.currentRunId}</dd></div>
-          <div><dt>Presupuesto</dt><dd>{pilot.budgetConfirmed ? '0,20 EUR confirmado' : 'Pendiente'}</dd></div>
+          <div>
+            <dt>Máximo vigente</dt>
+            <dd>{pilot.budget ? formatMoney(pilot.budget.taskLimitCost) : 'Pendiente'}</dd>
+          </div>
           <div><dt>Ronda</dt><dd>{progress?.currentRound ?? 0} / 2</dd></div>
           <div><dt>Coste</dt><dd>{formatMoney(progress?.accumulatedCost ?? pilot.budget?.spentCost ?? 0)}</dd></div>
           <div><dt>Reservas pendientes</dt><dd>{progress?.pendingReservations ?? 0}</dd></div>
@@ -1148,6 +1155,18 @@ function RealEditorialPilotPanel(): JSX.Element {
           onResolve={input => run(
             'human-resolution',
             () => window.electronAPI.resolveRealEditorialAmbiguousCall(input),
+            input.pilotId,
+          )}
+        />
+      )}
+      {progress?.budgetReview && (
+        <RealEditorialBudgetDecisionPanel
+          review={progress.budgetReview}
+          actorId={actorId}
+          busy={operation !== null}
+          onResolve={input => run(
+            'budget-decision',
+            () => window.electronAPI.resolveRealEditorialBudget(input),
             input.pilotId,
           )}
         />
@@ -1180,9 +1199,8 @@ function RealEditorialPilotPanel(): JSX.Element {
             {operation === 'budget' ? 'Confirmando…' : 'Confirmar presupuesto 0,20 EUR'}
           </button>
         )}
-        {pilot && !active && !progress?.resumeAvailable
-          && pilot.state !== 'cancelled' && pilot.state !== 'pending_human_review'
-          && !progress?.humanRequiredCall && (
+        {pilot && pilot.state === 'preflight' && !progress?.checkpointAvailable
+          && !progress?.humanRequiredCall && !progress?.budgetReview && (
           <button
             className="button primary"
             disabled={!preflight.startActionEnabled || operation !== null}
@@ -1223,6 +1241,183 @@ function RealEditorialPilotPanel(): JSX.Element {
           </button>
         )}
       </div>
+    </section>
+  )
+}
+
+interface RealEditorialBudgetDecisionPanelProps {
+  review: RealEditorialBudgetReview
+  actorId: string | null
+  busy: boolean
+  onResolve: (input: RealEditorialBudgetResolution) => void
+}
+
+export function RealEditorialBudgetDecisionPanel({
+  review,
+  actorId,
+  busy,
+  onResolve,
+}: RealEditorialBudgetDecisionPanelProps): JSX.Element {
+  const [newMaximum, setNewMaximum] = useState('')
+  const [reason, setReason] = useState('')
+  const [note, setNote] = useState('')
+  const parsedMaximum = Number(newMaximum)
+  const validMaximum = newMaximum !== ''
+    && Number.isFinite(parsedMaximum)
+    && parsedMaximum > review.currentMaximumCostEur
+    && parsedMaximum >= review.totalEstimatedCostEur
+    && parsedMaximum <= REAL_EDITORIAL_PILOT_POLICY.technicalLimitCostEur
+  const margin = validMaximum
+    ? parsedMaximum - review.totalEstimatedCostEur
+    : undefined
+  const terminal = review.status === 'authorized' || review.status === 'cancelled'
+
+  const submit = (decision: RealEditorialBudgetDecision) => {
+    if (!actorId || !reason.trim()) return
+    const labels: Record<RealEditorialBudgetDecision, string> = {
+      keep_limit: 'mantener el límite actual',
+      authorize_extension: 'autorizar la ampliación manual',
+      cancel_permanently: 'cancelar definitivamente',
+    }
+    if (!window.confirm(
+      `Confirmar ${labels[decision]}. La decisión quedará registrada de forma durable.`,
+    )) return
+    const base = {
+      pilotId: review.pilotId,
+      runId: review.runId,
+      actorId,
+      reason: reason.trim(),
+      note: note.trim() || undefined,
+      confirmed: true as const,
+    }
+    onResolve(decision === 'authorize_extension'
+      ? { ...base, decision, newMaximumCostEur: parsedMaximum }
+      : { ...base, decision })
+  }
+
+  return (
+    <section
+      className="budget-decision-review"
+      aria-label="Decisión humana de presupuesto"
+    >
+      <header>
+        <div>
+          <span className="card-kicker">DECISIÓN HUMANA DE PRESUPUESTO</span>
+          <h4>El máximo vigente no cubre el trabajo restante</h4>
+        </div>
+        <span className={`state-badge ${
+          review.status === 'authorized' ? 'state-approved' : 'state-blocked'
+        }`}>
+          {review.status}
+        </span>
+      </header>
+      <p>
+        Los importes proceden del ledger durable. Esta decisión no llama a Tavily ni a OpenAI
+        y no crea otro piloto, run o presupuesto.
+      </p>
+      <dl className="definition-grid compact">
+        <div><dt>Gasto actual</dt><dd>{formatPreciseMoney(review.spentCostEur)}</dd></div>
+        <div><dt>Máximo anterior</dt><dd>{formatPreciseMoney(review.previousMaximumCostEur)}</dd></div>
+        <div><dt>Máximo vigente</dt><dd>{formatPreciseMoney(review.currentMaximumCostEur)}</dd></div>
+        <div><dt>Disponible</dt><dd>{formatPreciseMoney(review.availableCostEur)}</dd></div>
+        <div>
+          <dt>Coste restante estimado</dt>
+          <dd>{formatPreciseMoney(review.remainingEstimatedCostEur)}</dd>
+        </div>
+        <div><dt>Déficit</dt><dd>{formatPreciseMoney(review.shortfallCostEur)}</dd></div>
+        <div><dt>Total estimado</dt><dd>{formatPreciseMoney(review.totalEstimatedCostEur)}</dd></div>
+        <div><dt>Reservado</dt><dd>{formatPreciseMoney(review.reservedCostEur)}</dd></div>
+      </dl>
+      {review.latestDecision && (
+        <div className={review.status === 'authorized' ? 'alert success' : 'alert warning'}>
+          <strong>
+            {review.latestDecision.decision === 'authorize_extension'
+              ? 'Ampliación humana autorizada.'
+              : review.latestDecision.decision === 'cancel_permanently'
+                ? 'Cancelación definitiva registrada.'
+                : 'Se mantiene el límite actual.'}
+          </strong>
+          <span>
+            Actor {review.latestDecision.actorId} · {formatDate(review.latestDecision.decidedAt)}
+            {' · '}{review.latestDecision.reason}
+          </span>
+        </div>
+      )}
+      {review.status === 'authorized' && (
+        <div className="alert success">
+          <strong>Checkpoint listo para reanudarse.</strong>
+          <span>
+            Tavily ronda 1 y el análisis OpenAI ronda 1 ya están guardados.
+            Solo se ejecutará el trabajo restante.
+          </span>
+        </div>
+      )}
+      {!terminal && (
+        <>
+          <div className="form-grid budget-decision-form">
+            <label className="field">
+              <span>Nuevo máximo total (EUR)</span>
+              <input
+                type="number"
+                min={review.totalEstimatedCostEur}
+                max={REAL_EDITORIAL_PILOT_POLICY.technicalLimitCostEur}
+                step="0.000001"
+                value={newMaximum}
+                onChange={event => setNewMaximum(event.target.value)}
+                placeholder="Introducir manualmente"
+              />
+            </label>
+            <label className="field">
+              <span>Margen tras ampliación</span>
+              <output>{margin === undefined ? 'Pendiente' : formatPreciseMoney(margin)}</output>
+            </label>
+            <label className="field full">
+              <span>Motivo de la decisión</span>
+              <input
+                maxLength={500}
+                value={reason}
+                onChange={event => setReason(event.target.value)}
+                placeholder="Motivo operativo obligatorio"
+              />
+            </label>
+            <label className="field full">
+              <span>Nota opcional, sin claves ni cabeceras</span>
+              <textarea
+                rows={3}
+                maxLength={1_000}
+                value={note}
+                onChange={event => setNote(event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="form-actions">
+            <span className="muted">
+              Actor: {actorId ?? 'No disponible'} · se pedirá confirmación antes de guardar.
+            </span>
+            <button
+              className="button ghost"
+              disabled={busy || !actorId || !reason.trim()}
+              onClick={() => submit('keep_limit')}
+            >
+              Mantener límite
+            </button>
+            <button
+              className="button primary"
+              disabled={busy || !actorId || !reason.trim() || !validMaximum}
+              onClick={() => submit('authorize_extension')}
+            >
+              Autorizar ampliación
+            </button>
+            <button
+              className="button danger"
+              disabled={busy || !actorId || !reason.trim()}
+              onClick={() => submit('cancel_permanently')}
+            >
+              Cancelar definitivamente
+            </button>
+          </div>
+        </>
+      )}
     </section>
   )
 }
@@ -1459,6 +1654,14 @@ function sourceUnavailableEventDetail(event: ResearchDestinationResult['events']
 }
 function initials(value: string): string { return value.split(/\s+/).slice(0, 2).map(item => item[0]?.toUpperCase()).join('') }
 function formatMoney(value?: number, currency = 'EUR'): string { return value === undefined ? '—' : new Intl.NumberFormat('es-ES', { style: 'currency', currency }).format(value) }
+function formatPreciseMoney(value: number): string {
+  return new Intl.NumberFormat('es-ES', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  }).format(value)
+}
 function formatDate(value: Date | string): string { return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
 function formatTime(value: Date | string): string { return new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(value)) }
 function connectionLabel(value: ProviderPublicStatus['connectionState']): string {

@@ -65,6 +65,9 @@ class MemoryDurableRepository implements RealEditorialPilotRepository {
     return identityKey === this.pilot.identityKey ? structuredClone(this.pilot) : undefined
   }
   async getResult(id: string) { return id === this.pilot.id ? structuredClone(this.result) : undefined }
+  async getBudgetReview() { return undefined }
+  async openBudgetReview() { return '81000000-0000-4000-8000-000000000099' }
+  async resolveBudgetReview() { throw new Error('No usado por este doble') }
 
   async appendArtifact(
     _pilotId: string,
@@ -167,7 +170,7 @@ class MemoryDurableRepository implements RealEditorialPilotRepository {
     this.eventDetails.push({ eventType, payload: structuredClone(payload) })
   }
 
-  async recordIncident() {}
+  async recordIncident() { return '81000000-0000-4000-8000-000000000098' }
 
   async cancel() {
     await this.updateState(pilotId, runId, 'cancelled')

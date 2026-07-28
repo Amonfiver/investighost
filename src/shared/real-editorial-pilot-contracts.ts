@@ -12,6 +12,14 @@ import {
 const IdentifierSchema = z.string().trim().min(1).max(160)
 const TimestampSchema = z.string().datetime({ offset: true })
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/)
+const EuroAmountSchema = z.number().finite().nonnegative().refine(
+  hasRealEditorialMoneyPrecision,
+  'El importe no puede superar nueve decimales',
+)
+const PositiveEuroAmountSchema = z.number().finite().positive().refine(
+  hasRealEditorialMoneyPrecision,
+  'El importe no puede superar nueve decimales',
+)
 
 export const REAL_EDITORIAL_OPENAI_MODEL = {
   displayName: 'GPT-5.6 Luna',
@@ -48,6 +56,14 @@ export const REAL_EDITORIAL_PILOT_POLICY = {
     model: REAL_EDITORIAL_OPENAI_MODEL.apiId,
   },
 } as const
+
+const CurrentMaximumCostSchema = z.number().finite()
+  .min(REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur)
+  .max(REAL_EDITORIAL_PILOT_POLICY.technicalLimitCostEur)
+  .refine(
+    hasRealEditorialMoneyPrecision,
+    'El importe no puede superar nueve decimales',
+  )
 
 export const REAL_EDITORIAL_FEATURE_TOKEN = 'morella-real-editorial-pilot-authorized'
 
@@ -234,10 +250,11 @@ export const RealEditorialAmbiguousCallSchema = z.object({
   reviewState: z.literal('human_required'),
   occurredAt: TimestampSchema,
   openedAt: TimestampSchema,
-  localKnownCostEur: z.number().nonnegative(),
-  maximumExposureEur: z.number().positive(),
-  spentCostEur: z.number().nonnegative(),
-  automaticLimitEur: z.literal(REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur),
+  localKnownCostEur: EuroAmountSchema,
+  maximumExposureEur: PositiveEuroAmountSchema,
+  spentCostEur: EuroAmountSchema,
+  initialAutomaticLimitEur: z.literal(REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur),
+  currentMaximumCostEur: CurrentMaximumCostSchema,
   incidentId: z.string().uuid().optional(),
   incidentCode: IdentifierSchema.optional(),
   latestDecision: z.object({
@@ -246,7 +263,24 @@ export const RealEditorialAmbiguousCallSchema = z.object({
     decidedAt: TimestampSchema,
     note: HumanResolutionNoteSchema.optional(),
   }).optional(),
+}).superRefine((value, context) => {
+  if (
+    value.sourceState === 'unknown'
+    && value.spentCostEur + value.maximumExposureEur
+      > value.currentMaximumCostEur + 0.000000001
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['currentMaximumCostEur'],
+      message: 'El máximo vigente no cubre el gasto confirmado y la reserva ambigua',
+    })
+  }
 })
+
+function hasRealEditorialMoneyPrecision(value: number): boolean {
+  const rounded = Number(value.toFixed(9))
+  return Math.abs(value - rounded) <= Number.EPSILON * Math.max(1, Math.abs(value))
+}
 
 export const RealEditorialAmbiguousCallResolutionResultSchema = z.object({
   resolutionId: z.string().uuid(),

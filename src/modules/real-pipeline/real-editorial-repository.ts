@@ -636,7 +636,8 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       localKnownCostEur: Number(reservation.calculated_cost ?? 0),
       maximumExposureEur: Number(reservation.reserved_cost),
       spentCostEur: pilot.budget.spentCost,
-      automaticLimitEur: pilot.budget.taskLimitCost,
+      initialAutomaticLimitEur: REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur,
+      currentMaximumCostEur: pilot.budget.taskLimitCost,
       incidentId: incidentResult.data?.id ?? undefined,
       incidentCode: incidentResult.data?.code ?? undefined,
       latestDecision: latestDecisionResult.data

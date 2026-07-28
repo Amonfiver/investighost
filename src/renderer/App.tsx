@@ -1494,7 +1494,8 @@ export function RealEditorialAmbiguousCallPanel({
         <div><dt>Estado</dt><dd>{call.reviewState}</dd></div>
         <div><dt>Coste local conocido</dt><dd>{formatMoney(call.localKnownCostEur)}</dd></div>
         <div><dt>Exposición máxima de la llamada</dt><dd>{formatMoney(call.maximumExposureEur)}</dd></div>
-        <div><dt>Gastado / máximo automático</dt><dd>{formatMoney(call.spentCostEur)} / {formatMoney(call.automaticLimitEur)}</dd></div>
+        <div><dt>Límite automático inicial</dt><dd>{formatMoney(call.initialAutomaticLimitEur)}</dd></div>
+        <div><dt>Gastado / máximo vigente</dt><dd>{formatMoney(call.spentCostEur)} / {formatMoney(call.currentMaximumCostEur)}</dd></div>
       </dl>
       {call.latestDecision && (
         <div className="alert warning">
@@ -1526,7 +1527,7 @@ export function RealEditorialAmbiguousCallPanel({
             <input
               type="number"
               min="0"
-              max={call.automaticLimitEur - call.spentCostEur}
+              max={call.currentMaximumCostEur - call.spentCostEur}
               step="0.000001"
               value={recognizedCost}
               onChange={event => setRecognizedCost(event.target.value)}

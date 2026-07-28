@@ -27,6 +27,8 @@ import {
 import {
   RealResearchDossierSchema,
   RealContinueDecisionSchema,
+  RealFocusedQuerySchema,
+  type RealFocusedQuery,
   type RealResearchDossier,
   type RealRoundNumber,
   type RealResearchMission,
@@ -200,6 +202,12 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     currentPilotId?: string,
   ): Promise<RealEditorialRepositoryInspection> {
     try {
+      let activeExecutionsQuery = this.client.from('real_editorial_runs')
+        .select('id', { head: true, count: 'exact' })
+        .in('state', activeStates)
+      if (currentPilotId) {
+        activeExecutionsQuery = activeExecutionsQuery.neq('pilot_id', currentPilotId)
+      }
       const [
         policy,
         guard,
@@ -216,8 +224,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
           .eq('id', REAL_EDITORIAL_PILOT_POLICY.id).maybeSingle(),
         this.client.from('real_editorial_execution_guard').select('owner_execution_id,expires_at')
           .eq('guard_name', 'morella-real-editorial').maybeSingle(),
-        this.client.from('real_editorial_runs').select('id', { head: true, count: 'exact' })
-          .in('state', activeStates),
+        activeExecutionsQuery,
         this.client.from('real_editorial_call_reservations').select('id', { head: true, count: 'exact' })
           .in('state', ['reserved', 'started', 'unknown']),
         this.client.from('real_editorial_ambiguous_calls').select('call_id', {
@@ -701,8 +708,8 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
 
   async canResumeFromCheckpoint(pilotId: string): Promise<boolean> {
     const pilot = await this.getPilot(pilotId)
-    if (!pilot || !['preflight', 'cancelled'].includes(pilot.state)) return false
-    const [checkpoint, unresolved, permanentCancellation, budgetReview] = await Promise.all([
+    if (!pilot || !resumableStates.includes(pilot.state)) return false
+    const [checkpoint, unresolved, permanentCancellation, budgetReview, guard] = await Promise.all([
       this.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
       this.client.from('real_editorial_ambiguous_calls').select('call_id', {
         head: true,
@@ -716,14 +723,22 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       this.client.from('real_editorial_budget_reviews').select('status')
         .eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
         .order('opened_at', { ascending: false }).limit(1).maybeSingle(),
+      this.client.from('real_editorial_execution_guard').select('owner_execution_id,expires_at')
+        .eq('guard_name', 'morella-real-editorial').maybeSingle(),
     ])
     assertNoError(unresolved.error, 'No se pudo comprobar la ambigüedad pendiente')
     assertNoError(permanentCancellation.error, 'No se pudo comprobar la cancelación definitiva')
     assertNoError(budgetReview.error, 'No se pudo comprobar la decisión presupuestaria')
+    assertNoError(guard.error, 'No se pudo comprobar la guarda editorial')
     const budgetAllowsResume = !budgetReview.data
       || budgetReview.data.status === 'authorized'
+    const guardExpired = guard.data?.expires_at
+      ? new Date(String(guard.data.expires_at)).getTime() <= this.now().getTime()
+      : false
+    const guardAllowsResume = !guard.data?.owner_execution_id || guardExpired
     return Boolean(checkpoint) && (unresolved.count ?? 0) === 0
       && (permanentCancellation.count ?? 0) === 0 && budgetAllowsResume
+      && guardAllowsResume
   }
 
   async appendArtifact(
@@ -748,10 +763,22 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     if (!error) return
     if (error.code !== '23505') throw persistenceError(error)
     const existing = await this.latestArtifact(runId, kind, key)
+    if (existing && existing.version === version && kind === 'query') {
+      canonicalRealEditorialFocusedQuery(existing, payload)
+      return
+    }
     if (!existing || existing.version !== version || existing.payloadHash !== payloadHash) {
+      const differences = existing
+        ? realEditorialPayloadDifferencePaths(existing.payload, payload)
+        : ['$']
+      const versionDifference = existing?.version === version
+        ? []
+        : [`version(${existing?.version ?? 'ausente'}→${version})`]
       throw new RealEditorialRepositoryError(
         'VERSION_CONFLICT',
-        'El artefacto durable ya existe con otro contenido',
+        `El artefacto durable ${kind}/${key} v${version} diverge en: ${
+          [...versionDifference, ...differences].slice(0, 12).join(', ')
+        }`,
       )
     }
   }
@@ -1065,12 +1092,23 @@ export class SupabaseRealWorkflowCheckpointStore implements RealWorkflowCheckpoi
     if (checkpoint.taskId !== taskId || checkpoint.version !== 'real-workflow-v1') {
       throw new RealEditorialRepositoryError('CHECKPOINT_INVALID', 'El checkpoint pertenece a otra tarea')
     }
-    const [roundOne, roundTwo] = await Promise.all([
+    const parsedQueries = RealFocusedQuerySchema.array().safeParse(checkpoint.nextRoundQueries)
+    if (!parsedQueries.success) {
+      throw new RealEditorialRepositoryError(
+        'CHECKPOINT_INVALID',
+        'Las consultas focalizadas del checkpoint no superan el contrato durable',
+      )
+    }
+    const [roundOne, roundTwo, ...storedQueries] = await Promise.all([
       this.repository.latestArtifact(this.runId, 'tavily_result', 'round-1'),
       this.repository.latestArtifact(this.runId, 'tavily_result', 'round-2'),
+      ...parsedQueries.data.map(query =>
+        this.repository.latestArtifact(this.runId, 'query', query.id)),
     ])
+    const nextRoundQueries = parsedQueries.data.map((query, index) =>
+      canonicalRealEditorialFocusedQuery(storedQueries[index], query))
     return restoreRealWorkflowCheckpointRounds(
-      structuredClone(checkpoint),
+      { ...structuredClone(checkpoint), nextRoundQueries },
       { 1: roundOne, 2: roundTwo },
     )
   }
@@ -1354,6 +1392,81 @@ export function realEditorialPayloadHash(payload: unknown): string {
   return createHash('sha256').update(JSON.stringify(canonicalJson(payload))).digest('hex')
 }
 
+export function canonicalRealEditorialFocusedQuery(
+  existing: RealEditorialArtifact | undefined,
+  candidate: unknown,
+): RealFocusedQuery {
+  const parsedCandidate = RealFocusedQuerySchema.safeParse(candidate)
+  if (!parsedCandidate.success) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'La consulta focalizada candidata no supera el contrato durable',
+    )
+  }
+  if (!existing) return parsedCandidate.data
+  if (existing.kind !== 'query' || existing.key !== parsedCandidate.data.id || existing.version !== 1) {
+    throw new RealEditorialRepositoryError(
+      'VERSION_CONFLICT',
+      `El artefacto durable query/${parsedCandidate.data.id} no pertenece a la misma etapa y versión`,
+    )
+  }
+  const parsedExisting = RealFocusedQuerySchema.safeParse(existing.payload)
+  if (!parsedExisting.success) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      `El artefacto durable query/${parsedCandidate.data.id} está incompleto o es inválido`,
+    )
+  }
+  const semanticDifferences = (['id', 'gapId', 'query'] as const)
+    .filter(field => parsedExisting.data[field] !== parsedCandidate.data[field])
+  if (semanticDifferences.length > 0) {
+    throw new RealEditorialRepositoryError(
+      'VERSION_CONFLICT',
+      `El artefacto durable query/${parsedCandidate.data.id} v1 diverge en campos semánticos: ${
+        semanticDifferences.join(', ')
+      }`,
+    )
+  }
+  return parsedExisting.data
+}
+
+export function realEditorialPayloadDifferencePaths(
+  existing: unknown,
+  candidate: unknown,
+  path = '$',
+): string[] {
+  if (Object.is(existing, candidate)) return []
+  if (Array.isArray(existing) || Array.isArray(candidate)) {
+    if (!Array.isArray(existing) || !Array.isArray(candidate)) return [path]
+    const differences = existing.length === candidate.length ? [] : [`${path}.length`]
+    for (let index = 0; index < Math.max(existing.length, candidate.length); index += 1) {
+      if (index >= existing.length || index >= candidate.length) {
+        differences.push(`${path}[${index}]`)
+      } else {
+        differences.push(
+          ...realEditorialPayloadDifferencePaths(existing[index], candidate[index], `${path}[${index}]`),
+        )
+      }
+    }
+    return differences
+  }
+  if (isRecord(existing) && isRecord(candidate)) {
+    const differences: string[] = []
+    const keys = [...new Set([...Object.keys(existing), ...Object.keys(candidate)])].sort()
+    for (const key of keys) {
+      if (!(key in existing) || !(key in candidate)) {
+        differences.push(`${path}.${key}`)
+      } else {
+        differences.push(
+          ...realEditorialPayloadDifferencePaths(existing[key], candidate[key], `${path}.${key}`),
+        )
+      }
+    }
+    return differences
+  }
+  return [path]
+}
+
 function canonicalJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalJson)
   if (value && typeof value === 'object') {
@@ -1493,7 +1606,7 @@ function unavailableInspection(): RealEditorialRepositoryInspection {
   }
 }
 
-const activeStates = [
+const activeStates: RealEditorialPilotState[] = [
   'researching_round_1',
   'evaluating_round_1',
   'researching_round_2',
@@ -1501,6 +1614,12 @@ const activeStates = [
   'generating_adventure',
   'generating_student',
   'final_review',
+]
+
+const resumableStates: RealEditorialPilotState[] = [
+  'preflight',
+  'cancelled',
+  ...activeStates,
 ]
 
 const terminalStates: RealEditorialPilotState[] = [

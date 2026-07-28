@@ -140,6 +140,9 @@ class MemoryDurableRepository implements RealEditorialPilotRepository {
     for (const gap of analysis.gaps) {
       await this.appendArtifact(pilotId, runId, 'gap', gap.id, mission.round, gap)
     }
+    for (const query of analysis.proposedQueries) {
+      await this.appendArtifact(pilotId, runId, 'query', query.id, 1, query)
+    }
   }
 
   async saveDrafts(_pilotId: string, _runId: string, drafts: IntelligenceDraft[]) {
@@ -327,6 +330,31 @@ class FakeIntelligenceEngine implements IntelligenceEngine {
       promptVersion: 'fake-v1',
       schemaVersion: 'fake-v1',
       usage: { inputTokens: 100, outputTokens: 50, estimatedCost: 0.02, currency: 'EUR' },
+    }
+  }
+}
+
+class DivergentQueryRationaleEngine extends FakeIntelligenceEngine {
+  override async analyze(mission: RealResearchMission): Promise<IntelligenceRoundAnalysis> {
+    const analysis = await super.analyze(mission)
+    if (mission.round !== 1 || analysis.decision.action !== 'continue_focused') return analysis
+    const proposed = {
+      ...analysis.proposedQueries[0],
+      id: 'q3',
+      gapId: analysis.gaps[0].id,
+      query: 'Morella rutas duración dificultad temporada y seguridad',
+      rationale: 'Obtener duración, dificultad, temporada y riesgos.',
+    }
+    return {
+      ...analysis,
+      proposedQueries: [proposed],
+      decision: {
+        ...analysis.decision,
+        queries: [{
+          ...proposed,
+          rationale: 'Obtener duración, dificultad, temporada y seguridad.',
+        }],
+      },
     }
   }
 }
@@ -855,6 +883,121 @@ describe('workflow editorial durable con clientes falsos', () => {
     expect(repository.pilot.budget?.taskId).toBe(`real-editorial-task:${pilotId}`)
     expect(repository.artifacts.get(`${runId}:mission:initial`)).toHaveLength(1)
     expect(await repository.latestArtifact(runId, 'mission', 'initial')).toEqual(originalMission)
+  })
+
+  it('reanuda tras ampliar presupuesto reutilizando la query durable equivalente', async () => {
+    const repository = new MemoryDurableRepository()
+    const ledger = ledgerRepository()
+    const firstResearch = new FakeResearchTool()
+    const firstController = new AbortController()
+    const firstIntelligence = new DivergentQueryRationaleEngine(firstController)
+
+    await expect(new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: { researchTool: firstResearch, intelligenceEngine: firstIntelligence },
+      now: () => new Date(now),
+      id: () => '88000000-0000-4000-8000-000000000001',
+    }).execute(repository.pilot, firstController.signal)).rejects.toMatchObject({
+      code: 'CANCELLED',
+    })
+
+    const roundOneResearch = await repository.latestArtifact(runId, 'tavily_result', 'round-1')
+    const roundOneAnalysis = await repository.latestArtifact(runId, 'round', 'round-1')
+    const durableQuery = await repository.latestArtifact(runId, 'query', 'q3')
+    const halted = await repository.latestArtifact(runId, 'checkpoint', 'workflow')
+    const haltedCheckpoint = halted?.payload as RealWorkflowCheckpoint
+    expect(durableQuery?.payload).toMatchObject({
+      id: 'q3',
+      rationale: 'Obtener duración, dificultad, temporada y riesgos.',
+    })
+    expect(haltedCheckpoint.lastDecision).toMatchObject({
+      action: 'continue_focused',
+      queries: [{
+        id: 'q3',
+        rationale: 'Obtener duración, dificultad, temporada y seguridad.',
+      }],
+    })
+
+    await repository.appendArtifact(
+      pilotId,
+      runId,
+      'checkpoint',
+      'workflow',
+      (halted?.version ?? 0) + 1,
+      {
+        ...haltedCheckpoint,
+        state: 'researching_round_2',
+        nextRoundQueries: haltedCheckpoint.lastDecision?.action === 'continue_focused'
+          ? haltedCheckpoint.lastDecision.queries
+          : [],
+        updatedAt: '2026-07-28T17:16:29.183Z',
+      },
+    )
+    const spentCost = ledger.budgetSnapshot().task.spent
+    repository.pilot = RealEditorialPilotRecordSchema.parse({
+      ...repository.pilot,
+      state: 'researching_round_2',
+      budget: {
+        ...repository.pilot.budget,
+        taskLimitCost: 0.27,
+        batchLimitCost: 0.27,
+        dailyLimitCost: 0.27,
+        spentCost,
+      },
+    })
+
+    const resumedResearch = new FakeResearchTool()
+    const resumedIntelligence = new FakeIntelligenceEngine()
+    const result = await new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: {
+        researchTool: resumedResearch,
+        intelligenceEngine: resumedIntelligence,
+      },
+      now: () => new Date('2026-07-28T17:18:01.188Z'),
+      id: () => '88000000-0000-4000-8000-000000000002',
+    }).execute(repository.pilot, new AbortController().signal)
+
+    expect(result).toMatchObject({
+      state: 'pending_human_review',
+      publicationCount: 0,
+      trawelConnected: false,
+      automaticEnabled: false,
+    })
+    expect(firstResearch.rounds).toEqual([1])
+    expect(resumedResearch.rounds).toEqual([2])
+    expect(resumedIntelligence.calls).toEqual(['analysis-2', 'draft', 'review'])
+    expect(await repository.latestArtifact(runId, 'tavily_result', 'round-1'))
+      .toEqual(roundOneResearch)
+    expect(await repository.latestArtifact(runId, 'round', 'round-1'))
+      .toEqual(roundOneAnalysis)
+    expect(repository.artifacts.get(`${runId}:tavily_result:round-1`)).toHaveLength(1)
+    expect(repository.artifacts.get(`${runId}:round:round-1`)).toHaveLength(1)
+    expect(repository.artifacts.get(`${runId}:query:q3`)).toHaveLength(1)
+
+    const ledgerEntries = await ledger.entries()
+    const artifactCounts = new Map(
+      [...repository.artifacts].map(([key, values]) => [key, values.length]),
+    )
+    const duplicateResearch = new FakeResearchTool()
+    const duplicateIntelligence = new FakeIntelligenceEngine()
+    await expect(new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: {
+        researchTool: duplicateResearch,
+        intelligenceEngine: duplicateIntelligence,
+      },
+      now: () => new Date('2026-07-28T17:20:00.000Z'),
+      id: () => '88000000-0000-4000-8000-000000000003',
+    }).execute(repository.pilot, new AbortController().signal)).resolves.toEqual(result)
+    expect(duplicateResearch.rounds).toEqual([])
+    expect(duplicateIntelligence.calls).toEqual([])
+    expect(await ledger.entries()).toEqual(ledgerEntries)
+    expect(new Map([...repository.artifacts].map(([key, values]) => [key, values.length])))
+      .toEqual(artifactCounts)
   })
 
   it('registra únicamente contadores agregados al descartar URLs de Tavily', async () => {

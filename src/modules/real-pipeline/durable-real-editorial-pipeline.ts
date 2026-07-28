@@ -627,6 +627,16 @@ function safeIncidentMessage(error: unknown): string {
   ) {
     return error.message.slice(0, 1_000)
   }
+  if (
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && error.code === 'VERSION_CONFLICT'
+    && 'message' in error
+    && typeof error.message === 'string'
+  ) {
+    return error.message.slice(0, 1_000)
+  }
   return 'La ejecución editorial real se detuvo; revisar el ledger y el checkpoint durable.'
 }
 

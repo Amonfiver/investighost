@@ -81,7 +81,7 @@ insert into public.real_editorial_artifacts (
       "action":"continue_focused",
       "nextRound":2,
       "reason":"Ampliación focalizada.",
-      "queries":[{"id":"q1","gapId":"g1","query":"consulta focalizada","rationale":"resolver carencia"}]
+      "queries":[{"id":"q3","gapId":"g3","query":"Morella rutas duración dificultad temporada y seguridad","rationale":"Obtener duración, dificultad, temporada y seguridad."}]
     },
     "nextRoundQueries":[],
     "queryHashes":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
@@ -103,6 +103,13 @@ insert into public.real_editorial_artifacts (
   '96000000-0000-4000-8000-000000000002',
   'round','round-1',1,'{"round":1,"analysis":{"decision":"synthetic"}}'::jsonb,
   'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+),
+(
+  '96000000-0000-4000-8000-000000000001',
+  '96000000-0000-4000-8000-000000000002',
+  'query','q3',1,
+  '{"id":"q3","gapId":"g3","query":"Morella rutas duración dificultad temporada y seguridad","rationale":"Obtener duración, dificultad, temporada y riesgos."}'::jsonb,
+  '2bd7a5b5096725ea5a278195925bcad726cb58ce871da23beecf016a90d8a513'
 );
 
 select public.open_real_editorial_budget_review(
@@ -230,9 +237,9 @@ select public.resolve_real_editorial_budget_review(
       "action":"continue_focused",
       "nextRound":2,
       "reason":"Ampliación focalizada.",
-      "queries":[{"id":"q1","gapId":"g1","query":"consulta focalizada","rationale":"resolver carencia"}]
+      "queries":[{"id":"q3","gapId":"g3","query":"Morella rutas duración dificultad temporada y seguridad","rationale":"Obtener duración, dificultad, temporada y seguridad."}]
     },
-    "nextRoundQueries":[{"id":"q1","gapId":"g1","query":"consulta focalizada","rationale":"resolver carencia"}],
+    "nextRoundQueries":[{"id":"q3","gapId":"g3","query":"Morella rutas duración dificultad temporada y seguridad","rationale":"Obtener duración, dificultad, temporada y seguridad."}],
     "queryHashes":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
     "providerCalls":2,
     "simulatedCost":0.099838,
@@ -318,6 +325,21 @@ begin
         where run_id = '96000000-0000-4000-8000-000000000002'
           and artifact_kind = 'round' and artifact_key = 'round-1') <> 1 then
     raise exception 'PERSISTED_PROVIDER_RESULTS_CHANGED';
+  end if;
+  if (select count(*) from public.real_editorial_artifacts
+       where run_id = '96000000-0000-4000-8000-000000000002'
+         and artifact_kind = 'query' and artifact_key = 'q3') <> 1
+    or (select payload->>'rationale' from public.real_editorial_artifacts
+        where run_id = '96000000-0000-4000-8000-000000000002'
+          and artifact_kind = 'query' and artifact_key = 'q3') <>
+       'Obtener duración, dificultad, temporada y riesgos.'
+    or (select payload#>>'{nextRoundQueries,0,rationale}'
+          from public.real_editorial_artifacts
+         where run_id = '96000000-0000-4000-8000-000000000002'
+           and artifact_kind = 'checkpoint' and artifact_key = 'workflow'
+         order by version desc limit 1) <>
+       'Obtener duración, dificultad, temporada y seguridad.' then
+    raise exception 'FOCUSED_QUERY_COLLISION_FIXTURE_INVALID';
   end if;
   begin
     perform public.resolve_real_editorial_budget_review(

@@ -19,6 +19,7 @@ import {
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotProgressSchema,
   type RealEditorialPilotProgress,
+  type RealEditorialPilotState,
   type RealEditorialPreflight,
 } from '@shared/real-editorial-pilot-contracts'
 import { createLocalSupabaseClientFromEnv } from '@services/supabase'
@@ -162,11 +163,20 @@ export class RealEditorialPilotRuntime {
 
   async resume(candidate: unknown) {
     const { pilotId } = RealEditorialPilotActionSchema.parse(candidate)
+    const pilot = await this.repository.getPilot(pilotId)
+    if (pilot?.state === 'pending_human_review') {
+      if (!readRealEditorialAuthorization().enabled) {
+        throw new Error('La feature flag editorial real no autoriza la reanudación')
+      }
+      const stored = await this.repository.getResult(pilotId)
+      if (!stored) throw new Error('El piloto terminado no conserva su resultado durable')
+      return stored
+    }
     if (!await this.repository.canResumeFromCheckpoint(pilotId)) {
       throw new Error('El checkpoint no está autorizado para reanudarse')
     }
     await this.repository.reopenCancelled(pilotId)
-    return this.start({ pilotId })
+    return this.execute({ pilotId }, true)
   }
 
   async resolveAmbiguousCall(candidate: unknown) {
@@ -214,6 +224,10 @@ export class RealEditorialPilotRuntime {
   }
 
   async start(candidate: unknown) {
+    return this.execute(candidate, false)
+  }
+
+  private async execute(candidate: unknown, resumeRequested: boolean) {
     const { pilotId } = RealEditorialPilotActionSchema.parse(candidate)
     if (this.controllers.has(pilotId)) throw new Error('El piloto ya se está ejecutando')
     const preflight = await this.preflight(pilotId)
@@ -222,8 +236,11 @@ export class RealEditorialPilotRuntime {
     }
     const pilot = await this.repository.getPilot(pilotId)
     if (!pilot?.budget) throw new Error('Falta el presupuesto durable del piloto')
-    if (pilot.state !== 'preflight') {
+    if (!resumeRequested && pilot.state !== 'preflight') {
       throw new Error('El estado durable no autoriza iniciar; debe prepararse o reanudarse')
+    }
+    if (resumeRequested && !realEditorialResumeStateAllowsExecution(pilot.state)) {
+      throw new Error('El estado durable no autoriza reanudar desde checkpoint')
     }
     const authorization = readRealEditorialAuthorization()
     if (!authorization.enabled || !authorization.featureToken) {
@@ -283,6 +300,21 @@ export function realEditorialAuthoritativeSpentCost(
   pilot: { budget?: { spentCost: number } },
 ): number {
   return pilot.budget?.spentCost ?? 0
+}
+
+export function realEditorialResumeStateAllowsExecution(
+  state: RealEditorialPilotState,
+): boolean {
+  return [
+    'preflight',
+    'researching_round_1',
+    'evaluating_round_1',
+    'researching_round_2',
+    'evaluating_round_2',
+    'generating_adventure',
+    'generating_student',
+    'final_review',
+  ].includes(state)
 }
 
 let runtime: RealEditorialPilotRuntime | undefined

@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  realEditorialPayloadHash,
   SupabaseRealEditorialPilotRepository,
   type RealEditorialArtifact,
 } from '@modules/real-pipeline'
@@ -91,6 +92,16 @@ function humanRequiredCall(
     initialAutomaticLimitEur: 0.2,
     currentMaximumCostEur,
     incidentCode: 'TIMEOUT',
+    prudentialReconciliation: {
+      query: 'Morella turismo oficial horarios tarifas 2026',
+      maximumSubrequestCostEur: 0.008,
+      releasedReserveEur: 0.04,
+      currency: 'EUR',
+      providerConfirmed: false,
+      possibleDuplicateCharge: true,
+      checkpointVersion: 12,
+      workflowVersion: 'real-workflow-v1',
+    },
   })
 }
 
@@ -189,6 +200,14 @@ function query(result: unknown) {
 }
 
 function repositoryClient() {
+  const checkpointPayload = {
+    version: 'real-workflow-v1',
+    state: 'researching_round_2',
+    completedRound: 1,
+    nextRoundQueries: [{
+      query: 'Morella turismo oficial horarios tarifas 2026',
+    }],
+  }
   const results: Record<string, unknown> = {
     real_editorial_ambiguous_calls: {
       data: {
@@ -206,10 +225,14 @@ function repositoryClient() {
         call_id: callId,
         provider_id: 'tavily',
         operation: 'research',
+        model: 'search-and-extract',
         attempt: 1,
         retry_of_call_id: null,
+        state: 'unknown',
         calculated_cost: null,
         reserved_cost: 0.048,
+        currency: 'EUR',
+        tariff_id: 'morella-v1-tavily-search',
       },
       error: null,
     },
@@ -221,11 +244,37 @@ function repositoryClient() {
       data: null,
       error: null,
     },
+    real_editorial_tariffs: {
+      data: {
+        provider_id: 'tavily',
+        model: 'search-and-extract',
+        operation: 'search',
+        currency: 'EUR',
+        unit_scale: 1,
+        credit_unit_cost: 0.008,
+      },
+      error: null,
+    },
+    real_editorial_events: {
+      data: null,
+      error: null,
+    },
+    real_editorial_artifacts: {
+      data: {
+        artifact_kind: 'checkpoint',
+        artifact_key: 'workflow',
+        version: 12,
+        payload: checkpointPayload,
+        payload_hash: realEditorialPayloadHash(checkpointPayload),
+        created_at: timestamp,
+      },
+      error: null,
+    },
   }
   return {
     from: vi.fn((table: string) => {
       const builder: Record<string, (...args: unknown[]) => unknown> = {}
-      for (const method of ['select', 'eq', 'is', 'order', 'limit']) {
+      for (const method of ['select', 'eq', 'is', 'in', 'order', 'limit']) {
         builder[method] = () => builder
       }
       builder.single = () => Promise.resolve(results[table])
@@ -255,6 +304,11 @@ describe('lectura de progreso tras una ampliación humana', () => {
         currentMaximumCostEur,
         providerId: 'tavily',
         reviewState: 'human_required',
+        prudentialReconciliation: {
+          maximumSubrequestCostEur: 0.008,
+          releasedReserveEur: 0.04,
+          providerConfirmed: false,
+        },
       })
       expect(progress.budgetReview?.status)
         .toBe(currentMaximumCostEur === 0.27 ? 'authorized' : undefined)
@@ -281,7 +335,61 @@ describe('lectura de progreso tras una ampliación humana', () => {
       currentMaximumCostEur: 0.27,
       spentCostEur: 0.099838,
       maximumExposureEur: 0.048,
+      prudentialReconciliation: {
+        query: 'Morella turismo oficial horarios tarifas 2026',
+        maximumSubrequestCostEur: 0.008,
+        releasedReserveEur: 0.04,
+        checkpointVersion: 12,
+      },
     })
+  })
+
+  it('refleja la conciliación prudencial sin ejecutar la reanudación disponible', async () => {
+    const target = runtimeFor(0.27)
+    const reconciledPilot = RealEditorialPilotRecordSchema.parse({
+      ...pilot(0.27),
+      state: 'preflight',
+      budget: {
+        ...pilot(0.27).budget,
+        spentCost: 0.107838,
+        reservedCost: 0,
+      },
+    })
+    vi.mocked(target.repository.getPilot).mockResolvedValue(reconciledPilot)
+    vi.mocked(target.repository.inspect).mockResolvedValue({
+      pendingReservations: 0,
+      guardFree: true,
+    } as never)
+    vi.mocked(target.repository.getHumanRequiredCall).mockResolvedValue(undefined)
+    vi.mocked(target.repository.getBudgetReview).mockResolvedValue({
+      ...authorizedReview(),
+      spentCostEur: 0.107838,
+      reservedCostEur: 0,
+      availableCostEur: 0.162162,
+      totalEstimatedCostEur: 0.265676,
+      shortfallCostEur: 0,
+      marginCostEur: 0.004324,
+    })
+    vi.mocked(target.repository.canResumeFromCheckpoint).mockResolvedValue(true)
+    const start = vi.spyOn(target.runtime, 'start')
+    const resume = vi.spyOn(target.runtime, 'resume')
+
+    const progress = await target.runtime.progress({ pilotId })
+
+    expect(progress.pilot.budget).toMatchObject({
+      taskLimitCost: 0.27,
+      spentCost: 0.107838,
+      reservedCost: 0,
+    })
+    expect(progress.budgetReview).toMatchObject({
+      status: 'authorized',
+      availableCostEur: 0.162162,
+    })
+    expect(progress.humanRequiredCall).toBeUndefined()
+    expect(progress.checkpointAvailable).toBe(true)
+    expect(progress.resumeAvailable).toBe(true)
+    expect(start).not.toHaveBeenCalled()
+    expect(resume).not.toHaveBeenCalled()
   })
 
   it('main, preload y renderer usan el contrato compartido de progreso', async () => {

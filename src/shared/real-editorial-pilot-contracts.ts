@@ -178,6 +178,7 @@ export const RealEditorialAmbiguousCallDecisionSchema = z.enum([
   'no_consumption',
   'consumption_confirmed',
   'indeterminate',
+  'prudential_cost_assumed',
   'cancel_permanently',
 ])
 
@@ -187,6 +188,11 @@ const HumanResolutionNoteSchema = z.string().trim().min(1).max(1_000).refine(
 )
 
 const HumanBudgetReasonSchema = z.string().trim().min(1).max(500).refine(
+  value => !/(?:sk-|tvly-|api[_ -]?key|authorization|bearer\s)/i.test(value),
+  'El motivo no puede contener credenciales ni cabeceras de autorización',
+)
+
+const HumanResolutionReasonSchema = z.string().trim().min(1).max(500).refine(
   value => !/(?:sk-|tvly-|api[_ -]?key|authorization|bearer\s)/i.test(value),
   'El motivo no puede contener credenciales ni cabeceras de autorización',
 )
@@ -202,9 +208,49 @@ export const RealEditorialAmbiguousCallResolutionSchema = z.object({
   credits: z.number().finite().nonnegative().optional(),
   inputTokens: z.number().int().nonnegative().optional(),
   outputTokens: z.number().int().nonnegative().optional(),
+  prudentialCostEur: PositiveEuroAmountSchema.optional(),
+  currency: z.literal('EUR').optional(),
+  reason: HumanResolutionReasonSchema.optional(),
+  acceptsPotentialDuplicateCharge: z.literal(true).optional(),
   note: HumanResolutionNoteSchema.optional(),
   confirmed: z.literal(true),
 }).superRefine((value, context) => {
+  const prudentialFields = [
+    'prudentialCostEur',
+    'currency',
+    'reason',
+    'acceptsPotentialDuplicateCharge',
+  ] as const
+  if (value.decision === 'prudential_cost_assumed') {
+    for (const field of prudentialFields) {
+      if (value[field] === undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: 'La conciliación prudencial requiere coste, moneda, motivo y riesgo aceptado',
+        })
+      }
+    }
+    for (const field of ['recognizedCostEur', 'credits', 'inputTokens', 'outputTokens'] as const) {
+      if (value[field] !== undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: 'El coste prudencial no es consumo confirmado por el proveedor',
+        })
+      }
+    }
+    return
+  }
+  for (const field of prudentialFields) {
+    if (value[field] !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: 'Los datos prudenciales solo corresponden a esa conciliación',
+      })
+    }
+  }
   const usageProvided = (value.recognizedCostEur ?? 0) > 0
     || (value.credits ?? 0) > 0
     || (value.inputTokens ?? 0) > 0
@@ -263,6 +309,16 @@ export const RealEditorialAmbiguousCallSchema = z.object({
     decidedAt: TimestampSchema,
     note: HumanResolutionNoteSchema.optional(),
   }).optional(),
+  prudentialReconciliation: z.object({
+    query: z.string().trim().min(1).max(2_000),
+    maximumSubrequestCostEur: PositiveEuroAmountSchema,
+    releasedReserveEur: EuroAmountSchema,
+    currency: z.literal('EUR'),
+    providerConfirmed: z.literal(false),
+    possibleDuplicateCharge: z.literal(true),
+    checkpointVersion: z.number().int().positive(),
+    workflowVersion: IdentifierSchema,
+  }).optional(),
 }).superRefine((value, context) => {
   if (
     value.sourceState === 'unknown'
@@ -273,6 +329,21 @@ export const RealEditorialAmbiguousCallSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['currentMaximumCostEur'],
       message: 'El máximo vigente no cubre el gasto confirmado y la reserva ambigua',
+    })
+  }
+  const prudential = value.prudentialReconciliation
+  if (
+    prudential
+    && Math.abs(
+      prudential.maximumSubrequestCostEur
+      + prudential.releasedReserveEur
+      - value.maximumExposureEur,
+    ) > 0.000000001
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['prudentialReconciliation', 'releasedReserveEur'],
+      message: 'El coste prudencial y la liberación deben conciliar toda la reserva',
     })
   }
 })
@@ -296,6 +367,42 @@ export const RealEditorialAmbiguousCallResolutionResultSchema = z.object({
   note: HumanResolutionNoteSchema.optional(),
   decidedAt: TimestampSchema,
   nextAction: z.enum(['blocked', 'resume_from_checkpoint', 'cancelled']),
+  prudentialReconciliation: z.object({
+    reservationId: z.string().uuid(),
+    providerId: IdentifierSchema,
+    operation: IdentifierSchema,
+    query: z.string().trim().min(1).max(2_000),
+    prudentialCostEur: PositiveEuroAmountSchema,
+    releasedReserveEur: EuroAmountSchema,
+    currency: z.literal('EUR'),
+    reason: HumanResolutionReasonSchema,
+    origin: z.literal('human_prudential_reconciliation'),
+    providerConfirmed: z.literal(false),
+    possibleDuplicateChargeAccepted: z.literal(true),
+    checkpointVersion: z.number().int().positive(),
+    workflowVersion: IdentifierSchema,
+  }).optional(),
+}).superRefine((value, context) => {
+  if (
+    value.decision === 'prudential_cost_assumed'
+    && !value.prudentialReconciliation
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['prudentialReconciliation'],
+      message: 'Falta la trazabilidad de la conciliación prudencial',
+    })
+  }
+  if (
+    value.decision !== 'prudential_cost_assumed'
+    && value.prudentialReconciliation
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['prudentialReconciliation'],
+      message: 'La trazabilidad prudencial no corresponde a esta decisión',
+    })
+  }
 })
 
 export const RealEditorialBudgetDecisionSchema = z.enum([

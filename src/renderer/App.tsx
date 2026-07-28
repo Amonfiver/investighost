@@ -1441,14 +1441,18 @@ export function RealEditorialAmbiguousCallPanel({
   const [credits, setCredits] = useState('')
   const [inputTokens, setInputTokens] = useState('')
   const [outputTokens, setOutputTokens] = useState('')
+  const [reason, setReason] = useState('')
   const [note, setNote] = useState('')
   const consumption = decision === 'consumption_confirmed'
+  const prudential = decision === 'prudential_cost_assumed'
+  const providerName = providerDisplayName(call.providerId)
   const submit = () => {
     if (!actorId) return
     const label = humanResolutionDecisionLabel(decision)
-    if (!window.confirm(
-      `Confirmar “${label}”. La decisión quedará registrada de forma durable y no borrará la llamada histórica.`,
-    )) return
+    const confirmation = prudential && call.prudentialReconciliation
+      ? `Confirmar “${label}”. ${providerName} no confirmó el consumo. Se imputarán ${formatPreciseMoney(call.prudentialReconciliation.maximumSubrequestCostEur)} y se liberarán ${formatPreciseMoney(call.prudentialReconciliation.releasedReserveEur)}. Se acepta el riesgo de un posible doble consumo real. La operación no reanudará el pipeline.`
+      : `Confirmar “${label}”. La decisión quedará registrada de forma durable y no borrará la llamada histórica.`
+    if (!window.confirm(confirmation)) return
     onResolve({
       pilotId: call.pilotId,
       runId: call.runId,
@@ -1459,6 +1463,14 @@ export function RealEditorialAmbiguousCallPanel({
       credits: consumption && credits ? Number(credits) : undefined,
       inputTokens: consumption && inputTokens ? Number(inputTokens) : undefined,
       outputTokens: consumption && outputTokens ? Number(outputTokens) : undefined,
+      prudentialCostEur: prudential
+        ? call.prudentialReconciliation?.maximumSubrequestCostEur
+        : undefined,
+      currency: prudential
+        ? call.prudentialReconciliation?.currency
+        : undefined,
+      reason: prudential ? reason.trim() : undefined,
+      acceptsPotentialDuplicateCharge: prudential ? true : undefined,
       note: note.trim() || undefined,
       confirmed: true,
     })
@@ -1473,6 +1485,8 @@ export function RealEditorialAmbiguousCallPanel({
         || Number(inputTokens) > 0
         || Number(outputTokens) > 0
       )
+  const validPrudential = !prudential
+    || Boolean(call.prudentialReconciliation && reason.trim())
   return (
     <section className="ambiguous-call-review" aria-label="Resolución humana de llamada remota">
       <header>
@@ -1484,7 +1498,7 @@ export function RealEditorialAmbiguousCallPanel({
       </header>
       <p>
         No se realizará otro intento hasta que compruebes esta llamada en el panel del proveedor.
-        Resolverla no llama a OpenAI ni repite Tavily.
+        Resolverla no llama al proveedor ni reanuda automáticamente el pipeline.
       </p>
       <dl className="definition-grid compact">
         <div><dt>Proveedor</dt><dd>{call.providerId}</dd></div>
@@ -1508,7 +1522,7 @@ export function RealEditorialAmbiguousCallPanel({
       )}
       <div className="form-grid ambiguity-resolution-form">
         <label className="field full">
-          <span>Decisión tras comprobar el panel de OpenAI</span>
+          <span>Decisión tras comprobar el panel de {providerName}</span>
           <select
             value={decision}
             onChange={event => setDecision(
@@ -1518,6 +1532,12 @@ export function RealEditorialAmbiguousCallPanel({
             <option value="no_consumption">El proveedor no registró consumo</option>
             <option value="consumption_confirmed">El proveedor sí registró consumo</option>
             <option value="indeterminate">No puedo determinarlo</option>
+            <option
+              value="prudential_cost_assumed"
+              disabled={!call.prudentialReconciliation}
+            >
+              Asumir coste prudencial y permitir reintento
+            </option>
             <option value="cancel_permanently">Cancelar definitivamente</option>
           </select>
         </label>
@@ -1546,6 +1566,37 @@ export function RealEditorialAmbiguousCallPanel({
             <input type="number" min="0" step="1" value={outputTokens} onChange={event => setOutputTokens(event.target.value)} />
           </label>
         </>}
+        {prudential && call.prudentialReconciliation && (
+          <div className="alert warning field full">
+            <strong>{providerName} no ha confirmado el consumo.</strong>
+            <span>
+              Se imputará por prudencia el máximo estimado de la subpetición,
+              {' '}{formatPreciseMoney(call.prudentialReconciliation.maximumSubrequestCostEur)};
+              se liberará {formatPreciseMoney(call.prudentialReconciliation.releasedReserveEur)}.
+              La decisión será auditada y solo habilitará el reintento desde checkpoint.
+            </span>
+            <span>
+              No se recuperará un posible resultado anterior y podría existir un pequeño doble
+              consumo real si el proveedor procesó la primera petición.
+            </span>
+            <span className="technical-id">
+              Query: {call.prudentialReconciliation.query}
+            </span>
+          </div>
+        )}
+        {prudential && (
+          <label className="field full">
+            <span>Motivo obligatorio de la conciliación prudencial</span>
+            <textarea
+              rows={2}
+              maxLength={500}
+              required
+              value={reason}
+              onChange={event => setReason(event.target.value)}
+              placeholder="Justificación humana para asumir el coste máximo estimado"
+            />
+          </label>
+        )}
         <label className="field full">
           <span>Nota opcional, sin claves ni cabeceras</span>
           <textarea
@@ -1563,7 +1614,7 @@ export function RealEditorialAmbiguousCallPanel({
         </span>
         <button
           className={decision === 'cancel_permanently' ? 'button danger' : 'button secondary'}
-          disabled={busy || !actorId || !validConsumption}
+          disabled={busy || !actorId || !validConsumption || !validPrudential}
           onClick={submit}
         >
           {busy ? 'Guardando decisión…' : 'Guardar decisión humana'}
@@ -1576,8 +1627,16 @@ export function RealEditorialAmbiguousCallPanel({
 function humanResolutionDecisionLabel(decision: RealEditorialAmbiguousCallDecision): string {
   if (decision === 'no_consumption') return 'El proveedor no registró consumo'
   if (decision === 'consumption_confirmed') return 'El proveedor sí registró consumo'
+  if (decision === 'prudential_cost_assumed') {
+    return 'Asumir coste prudencial y permitir reintento'
+  }
   if (decision === 'cancel_permanently') return 'Cancelar definitivamente'
   return 'No puedo determinarlo'
+}
+
+function providerDisplayName(providerId: string): string {
+  if (providerId === 'openai') return 'OpenAI'
+  return providerId.charAt(0).toUpperCase() + providerId.slice(1)
 }
 
 function RealConnectivityResultPanel({ result }: { result: RealConnectivityResult }): JSX.Element {

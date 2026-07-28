@@ -620,6 +620,11 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       )
     }
     const reservation = reservationResult.data
+    const prudentialReconciliation = await this.prudentialReconciliationFor(
+      pilot,
+      ambiguity,
+      reservation,
+    )
     return RealEditorialAmbiguousCallSchema.parse({
       callId: ambiguity.call_id,
       reservationId: ambiguity.reservation_id,
@@ -638,6 +643,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       spentCostEur: pilot.budget.spentCost,
       initialAutomaticLimitEur: REAL_EDITORIAL_PILOT_POLICY.automaticStopCostEur,
       currentMaximumCostEur: pilot.budget.taskLimitCost,
+      prudentialReconciliation,
       incidentId: incidentResult.data?.id ?? undefined,
       incidentCode: incidentResult.data?.code ?? undefined,
       latestDecision: latestDecisionResult.data
@@ -665,21 +671,38 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       credits: input.credits ?? null,
       inputTokens: input.inputTokens ?? null,
       outputTokens: input.outputTokens ?? null,
+      prudentialCostEur: input.prudentialCostEur ?? null,
+      currency: input.currency ?? null,
+      reason: input.reason ?? null,
+      acceptsPotentialDuplicateCharge: input.acceptsPotentialDuplicateCharge ?? null,
       note: input.note ?? null,
     })).digest('hex')
-    const { data, error } = await this.client.rpc('resolve_real_editorial_ambiguous_call', {
-      p_resolution_key: resolutionKey,
-      p_pilot_id: input.pilotId,
-      p_run_id: input.runId,
-      p_call_id: input.callId,
-      p_actor_id: input.actorId,
-      p_decision: input.decision,
-      p_recognized_cost: input.recognizedCostEur ?? null,
-      p_credits: input.credits ?? null,
-      p_input_tokens: input.inputTokens ?? null,
-      p_output_tokens: input.outputTokens ?? null,
-      p_note: input.note ?? null,
-    })
+    const { data, error } = input.decision === 'prudential_cost_assumed'
+      ? await this.client.rpc('reconcile_real_editorial_ambiguous_call_prudential', {
+          p_resolution_key: resolutionKey,
+          p_pilot_id: input.pilotId,
+          p_run_id: input.runId,
+          p_call_id: input.callId,
+          p_actor_id: input.actorId,
+          p_prudential_cost: input.prudentialCostEur,
+          p_currency: input.currency,
+          p_reason: input.reason,
+          p_note: input.note ?? null,
+          p_duplicate_charge_risk_accepted: input.acceptsPotentialDuplicateCharge,
+        })
+      : await this.client.rpc('resolve_real_editorial_ambiguous_call', {
+          p_resolution_key: resolutionKey,
+          p_pilot_id: input.pilotId,
+          p_run_id: input.runId,
+          p_call_id: input.callId,
+          p_actor_id: input.actorId,
+          p_decision: input.decision,
+          p_recognized_cost: input.recognizedCostEur ?? null,
+          p_credits: input.credits ?? null,
+          p_input_tokens: input.inputTokens ?? null,
+          p_output_tokens: input.outputTokens ?? null,
+          p_note: input.note ?? null,
+        })
     if (error) throw humanResolutionPersistenceError(error)
     const resolutionId = String(data)
     const stored = await this.client.from('real_editorial_call_human_resolutions')
@@ -704,7 +727,116 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         : stored.data.decision === 'cancel_permanently'
           ? 'cancelled'
           : 'resume_from_checkpoint',
+      prudentialReconciliation: stored.data.decision === 'prudential_cost_assumed'
+        ? {
+            reservationId: stored.data.reservation_id,
+            providerId: stored.data.provider_id,
+            operation: stored.data.operation,
+            query: stored.data.query,
+            prudentialCostEur: Number(stored.data.prudential_cost),
+            releasedReserveEur: Number(stored.data.released_reserve),
+            currency: stored.data.currency,
+            reason: stored.data.reason,
+            origin: stored.data.origin,
+            providerConfirmed: stored.data.provider_confirmed,
+            possibleDuplicateChargeAccepted:
+              stored.data.duplicate_charge_risk_accepted,
+            checkpointVersion: Number(stored.data.checkpoint_version),
+            workflowVersion: stored.data.workflow_version,
+          }
+        : undefined,
     })
+  }
+
+  private async prudentialReconciliationFor(
+    pilot: RealEditorialPilotRecord,
+    ambiguity: Record<string, unknown>,
+    reservation: Record<string, unknown>,
+  ): Promise<RealEditorialAmbiguousCall['prudentialReconciliation']> {
+    if (
+      ambiguity.source_state !== 'unknown'
+      || reservation.state !== 'unknown'
+      || reservation.provider_id !== 'tavily'
+      || reservation.operation !== 'research'
+    ) return undefined
+    const [tariffResult, requestEventResult, checkpoint] = await Promise.all([
+      this.client.from('real_editorial_tariffs')
+        .select('provider_id,model,operation,currency,unit_scale,credit_unit_cost')
+        .eq('id', reservation.tariff_id).maybeSingle(),
+      this.client.from('real_editorial_events').select('payload')
+        .eq('pilot_id', pilot.id).eq('run_id', pilot.currentRunId)
+        .in('event_type', [
+          'real.editorial.tavily.request.started',
+          'real.editorial.tavily.request.ambiguous',
+        ])
+        .eq('payload->>callId', ambiguity.call_id)
+        .order('occurred_at', { ascending: false }).limit(1).maybeSingle(),
+      this.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
+    ])
+    assertNoError(tariffResult.error, 'No se pudo leer la tarifa de la llamada ambigua')
+    assertNoError(requestEventResult.error, 'No se pudo leer la subpetición Tavily ambigua')
+    if (!tariffResult.data || !checkpoint || !isRecord(checkpoint.payload)) {
+      throw new RealEditorialRepositoryError(
+        'CHECKPOINT_INVALID',
+        'La llamada ambigua no conserva tarifa, query y checkpoint conciliables',
+      )
+    }
+    const tariff = tariffResult.data
+    const unitScale = Number(tariff.unit_scale)
+    const unitCost = Number(tariff.credit_unit_cost)
+    if (
+      tariff.provider_id !== reservation.provider_id
+      || tariff.model !== reservation.model
+      || tariff.operation !== 'search'
+      || tariff.currency !== reservation.currency
+      || !Number.isFinite(unitScale)
+      || unitScale <= 0
+      || !Number.isFinite(unitCost)
+      || unitCost <= 0
+    ) {
+      throw new RealEditorialRepositoryError(
+        'BUDGET_INVALID',
+        'La tarifa durable no permite calcular el coste prudencial',
+      )
+    }
+    const eventPayload = requestEventResult.data?.payload
+    const query = isRecord(eventPayload) && typeof eventPayload.query === 'string'
+      ? eventPayload.query
+      : focusedQueryFromCheckpoint(checkpoint.payload)
+    const workflowVersion = checkpoint.payload.version
+    if (
+      !query
+      || typeof workflowVersion !== 'string'
+      || workflowVersion.length === 0
+    ) {
+      throw new RealEditorialRepositoryError(
+        'CHECKPOINT_INVALID',
+        'La query Tavily ambigua no puede vincularse al checkpoint durable',
+      )
+    }
+    const maximumSubrequestCostEur = moneyValue(unitCost / unitScale)
+    const maximumExposureEur = Number(reservation.reserved_cost)
+    if (
+      maximumSubrequestCostEur <= 0
+      || maximumSubrequestCostEur > maximumExposureEur
+    ) {
+      throw new RealEditorialRepositoryError(
+        'BUDGET_INVALID',
+        'El coste prudencial no cabe en la reserva durable',
+      )
+    }
+    return {
+      query,
+      maximumSubrequestCostEur,
+      releasedReserveEur: moneyValue(
+        maximumExposureEur - maximumSubrequestCostEur,
+      ),
+      currency: 'EUR',
+      providerConfirmed: false,
+      possibleDuplicateCharge: true,
+      checkpointVersion: checkpoint.version,
+      workflowVersion,
+    }
   }
 
   async canResumeFromCheckpoint(pilotId: string): Promise<boolean> {
@@ -1521,7 +1653,13 @@ function humanResolutionPersistenceError(
   if (error.message.includes('HUMAN_RESOLUTION_BUDGET_EXCEEDED')) {
     return new RealEditorialRepositoryError(
       'HUMAN_RESOLUTION_BUDGET_EXCEEDED',
-      'El coste reconocido superaría el máximo automático de 0,20 EUR',
+      'El coste conciliado superaría el máximo vigente durable',
+    )
+  }
+  if (error.message.includes('PRUDENTIAL_PROVIDER_RESULT_BECAME_DURABLE')) {
+    return new RealEditorialRepositoryError(
+      'HUMAN_RESOLUTION_CONFLICT',
+      'El proveedor ya conserva un resultado durable y exige otra conciliación',
     )
   }
   if (
@@ -1535,11 +1673,25 @@ function humanResolutionPersistenceError(
   }
   if (
     error.message.includes('AMBIGUOUS_CALL_NOT_FOUND')
+    || error.message.includes('AMBIGUOUS_RESERVATION_MISMATCH')
     || error.message.includes('AMBIGUOUS_RESERVATION_STATE_CHANGED')
   ) {
     return new RealEditorialRepositoryError(
       'HUMAN_RESOLUTION_REQUIRED',
       'La llamada ya no está pendiente de revisión humana',
+    )
+  }
+  if (
+    error.message.includes('PRUDENTIAL_COST_INVALID')
+    || error.message.includes('PRUDENTIAL_COST_ABOVE_RESERVATION')
+    || error.message.includes('PRUDENTIAL_COST_ABOVE_SUBREQUEST_MAXIMUM')
+    || error.message.includes('PRUDENTIAL_COST_MUST_EQUAL_SUBREQUEST_MAXIMUM')
+    || error.message.includes('PRUDENTIAL_CURRENCY')
+    || error.message.includes('PRUDENTIAL_TARIFF_INVALID')
+  ) {
+    return new RealEditorialRepositoryError(
+      'HUMAN_RESOLUTION_NOT_ALLOWED',
+      'El coste prudencial debe coincidir con el máximo tarifado de la subpetición y caber en la reserva',
     )
   }
   return new RealEditorialRepositoryError(
@@ -1590,6 +1742,20 @@ function budgetDecisionPersistenceError(
 
 function moneyValue(value: number): number {
   return Number(value.toFixed(9))
+}
+
+function focusedQueryFromCheckpoint(
+  payload: Record<string, unknown>,
+): string | undefined {
+  if (payload.state !== 'researching_round_2' || payload.completedRound !== 1) {
+    return undefined
+  }
+  const first = Array.isArray(payload.nextRoundQueries)
+    ? payload.nextRoundQueries[0]
+    : undefined
+  return isRecord(first) && typeof first.query === 'string' && first.query.trim()
+    ? first.query
+    : undefined
 }
 
 function unavailableInspection(): RealEditorialRepositoryInspection {

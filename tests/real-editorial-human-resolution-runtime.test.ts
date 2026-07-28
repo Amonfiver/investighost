@@ -6,6 +6,7 @@ import {
   REAL_EDITORIAL_FEATURE_TOKEN,
   REAL_EDITORIAL_PILOT_POLICY,
   RealEditorialPilotRecordSchema,
+  type RealEditorialAmbiguousCallResolution,
 } from '@shared/real-editorial-pilot-contracts'
 
 const pilotId = '92000000-0000-4000-8000-000000000001'
@@ -72,16 +73,36 @@ const resolution = {
   confirmed: true as const,
 }
 
+const prudentialResolution = {
+  pilotId,
+  runId,
+  callId,
+  actorId,
+  decision: 'prudential_cost_assumed' as const,
+  prudentialCostEur: 0.008,
+  currency: 'EUR' as const,
+  reason: 'El proveedor no ofrece evidencia granular del consumo.',
+  note: 'Se acepta el coste máximo estimado sin confirmar consumo remoto.',
+  acceptsPotentialDuplicateCharge: true as const,
+  confirmed: true as const,
+}
+
 function runtime(guardFree = true) {
-  const resolveHumanRequiredCall = vi.fn(async () => ({
+  const resolveHumanRequiredCall = vi.fn(async (
+    input: RealEditorialAmbiguousCallResolution,
+  ) => ({
     resolutionId: '92000000-0000-4000-8000-000000000006',
-    ...resolution,
+    ...input,
     recognizedCostEur: 0,
     credits: 0,
     inputTokens: 0,
     outputTokens: 0,
     decidedAt: '2026-07-26T00:00:00.000Z',
-    nextAction: 'resume_from_checkpoint',
+    nextAction: input.decision === 'indeterminate'
+      ? 'blocked'
+      : input.decision === 'cancel_permanently'
+        ? 'cancelled'
+        : 'resume_from_checkpoint',
   }))
   const repository = {
     getPilot: vi.fn(async () => pilot),
@@ -141,5 +162,30 @@ describe('permiso local para resolver una llamada ambigua', () => {
     })
     expect(target.resolveHumanRequiredCall).toHaveBeenCalledOnce()
     expect(target.resolveHumanRequiredCall).toHaveBeenCalledWith(resolution)
+  })
+
+  it('solo persiste la conciliación prudencial y no inicia ni reanuda el pipeline', async () => {
+    process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN = REAL_EDITORIAL_FEATURE_TOKEN
+    const target = runtime()
+    const start = vi.spyOn(target.runtime, 'start')
+    const resume = vi.spyOn(target.runtime, 'resume')
+
+    await expect(target.runtime.resolveAmbiguousCall(prudentialResolution))
+      .resolves.toMatchObject({
+        callId,
+        decision: 'prudential_cost_assumed',
+        prudentialCostEur: 0.008,
+        nextAction: 'resume_from_checkpoint',
+      })
+
+    expect(target.resolveHumanRequiredCall).toHaveBeenCalledOnce()
+    expect(target.resolveHumanRequiredCall).toHaveBeenCalledWith(prudentialResolution)
+    expect(start).not.toHaveBeenCalled()
+    expect(resume).not.toHaveBeenCalled()
+    expect(pilot).toMatchObject({
+      publicationCount: 0,
+      trawelConnected: false,
+      automaticEnabled: false,
+    })
   })
 })

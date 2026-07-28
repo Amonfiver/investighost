@@ -9,6 +9,7 @@ const migrations = [
   '20260725221500_real_editorial_connectivity_evidence.sql',
   '20260726013000_real_editorial_ambiguous_call_resolution.sql',
   '20260727090000_real_editorial_budget_decision.sql',
+  '20260728213000_real_editorial_prudential_reconciliation.sql',
 ]
 
 async function migration(name: string): Promise<string> {
@@ -117,6 +118,24 @@ describe('esquema durable del piloto editorial real', () => {
     expect(sql).toContain('daily_limit_cost = normalized_new_maximum')
     expect(sql).not.toMatch(/insert into public\.real_editorial_(?:pilots|runs|pilot_budgets)/i)
     expect(sql).not.toMatch(/(?:delete|truncate)\s+from\s+public\.real_editorial/i)
+    expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
+  })
+
+  it('concilia prudencialmente una subpetición sin afirmar consumo confirmado', async () => {
+    const sql = await migration(migrations[7])
+
+    expect(sql).toContain('prudential_cost_assumed')
+    expect(sql).toContain('reconcile_real_editorial_ambiguous_call_prudential')
+    expect(sql).toContain('tariff.credit_unit_cost / tariff.unit_scale')
+    expect(sql).toContain('PRUDENTIAL_COST_ABOVE_RESERVATION')
+    expect(sql).toContain('PRUDENTIAL_COST_ABOVE_SUBREQUEST_MAXIMUM')
+    expect(sql).toContain('PRUDENTIAL_PROVIDER_RESULT_BECAME_DURABLE')
+    expect(sql).toContain("'human_prudential_reconciliation'")
+    expect(sql).toContain("'providerConfirmed',false")
+    expect(sql).toContain("'possibleDuplicateChargeAccepted',true")
+    expect(sql).toContain("'HUMAN_PRUDENTIAL_COST_ASSUMED'")
+    expect(sql).not.toMatch(/insert into public\.real_editorial_(?:pilots|runs)\b/i)
+    expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
     expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
   })
 })

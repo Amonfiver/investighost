@@ -53,7 +53,7 @@ function resolution(overrides: Record<string, unknown> = {}) {
 }
 
 describe('contrato e interfaz mínima de resolución humana', () => {
-  it('admite las cuatro decisiones y exige evidencia para consumo confirmado', () => {
+  it('admite las cinco decisiones y separa coste prudencial de consumo confirmado', () => {
     expect(RealEditorialAmbiguousCallResolutionSchema.parse(resolution()).decision)
       .toBe('no_consumption')
     expect(RealEditorialAmbiguousCallResolutionSchema.parse(resolution({
@@ -73,9 +73,16 @@ describe('contrato e interfaz mínima de resolución humana', () => {
       inputTokens: 20,
       outputTokens: 10,
     })).decision).toBe('consumption_confirmed')
+    expect(RealEditorialAmbiguousCallResolutionSchema.parse(resolution({
+      decision: 'prudential_cost_assumed',
+      prudentialCostEur: 0.008,
+      currency: 'EUR',
+      reason: 'El proveedor no permite determinar el consumo individual.',
+      acceptsPotentialDuplicateCharge: true,
+    })).decision).toBe('prudential_cost_assumed')
   })
 
-  it('rechaza coste negativo, coste fuera de consumo, falta de confirmación y secretos', () => {
+  it('rechaza coste negativo, campos cruzados, falta de confirmación y secretos', () => {
     expect(RealEditorialAmbiguousCallResolutionSchema.safeParse(resolution({
       decision: 'consumption_confirmed',
       recognizedCostEur: -0.01,
@@ -88,6 +95,34 @@ describe('contrato e interfaz mínima de resolución humana', () => {
       ...resolution(),
       confirmed: false,
     }).success).toBe(false)
+    expect(RealEditorialAmbiguousCallResolutionSchema.safeParse(resolution({
+      decision: 'prudential_cost_assumed',
+      prudentialCostEur: -0.008,
+      currency: 'EUR',
+      reason: 'Conciliación sintética.',
+      acceptsPotentialDuplicateCharge: true,
+    })).success).toBe(false)
+    expect(RealEditorialAmbiguousCallResolutionSchema.safeParse(resolution({
+      decision: 'prudential_cost_assumed',
+      prudentialCostEur: 0.008,
+      currency: 'EUR',
+      reason: '',
+      acceptsPotentialDuplicateCharge: true,
+    })).success).toBe(false)
+    expect(RealEditorialAmbiguousCallResolutionSchema.safeParse(resolution({
+      decision: 'prudential_cost_assumed',
+      prudentialCostEur: 0.008,
+      currency: 'EUR',
+      reason: 'Conciliación sintética.',
+      acceptsPotentialDuplicateCharge: false,
+    })).success).toBe(false)
+    expect(RealEditorialAmbiguousCallResolutionSchema.safeParse(resolution({
+      decision: 'prudential_cost_assumed',
+      prudentialCostEur: 0.008,
+      currency: 'USD',
+      reason: 'Conciliación sintética.',
+      acceptsPotentialDuplicateCharge: true,
+    })).success).toBe(false)
     const unsafe = RealEditorialAmbiguousCallResolutionSchema.safeParse(resolution({
       note: 'Authorization: Bearer synthetic-secret',
     }))
@@ -170,6 +205,8 @@ describe('contrato e interfaz mínima de resolución humana', () => {
     expect(html).toContain('El proveedor no registró consumo')
     expect(html).toContain('El proveedor sí registró consumo')
     expect(html).toContain('No puedo determinarlo')
+    expect(html).toContain('Decisión tras comprobar el panel de OpenAI')
+    expect(html).toContain('Asumir coste prudencial y permitir reintento')
     expect(html).toContain('Cancelar definitivamente')
     expect(html).not.toContain('spinner')
     expect(html).not.toContain('log de actividad')
@@ -185,6 +222,16 @@ describe('contrato e interfaz mínima de resolución humana', () => {
           spentCostEur: 0.099838,
           maximumExposureEur: 0.048,
           currentMaximumCostEur: 0.27,
+          prudentialReconciliation: {
+            query: 'Morella turismo oficial horarios y tarifas',
+            maximumSubrequestCostEur: 0.008,
+            releasedReserveEur: 0.04,
+            currency: 'EUR',
+            providerConfirmed: false,
+            possibleDuplicateCharge: true,
+            checkpointVersion: 12,
+            workflowVersion: 'real-workflow-v1',
+          },
         }),
         actorId,
         busy: false,
@@ -197,5 +244,8 @@ describe('contrato e interfaz mínima de resolución humana', () => {
     expect(html).toContain('Gastado / máximo vigente')
     expect(html).toContain('0,10')
     expect(html).toContain('0,27')
+    expect(html).toContain('Decisión tras comprobar el panel de Tavily')
+    expect(html).toContain('Asumir coste prudencial y permitir reintento')
+    expect(html).not.toContain('panel de OpenAI')
   })
 })

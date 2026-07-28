@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import {
   CostLedgerService,
   DurableRealEditorialPipeline,
+  DurableRealEditorialTavilyRequestJournal,
   evaluateRealEditorialPreflight,
   inspectOpenAIEditorialResponseContracts,
   inspectInstalledOpenAIResponsesCapability,
@@ -288,6 +289,13 @@ export class RealEditorialPilotRuntime {
           },
           guardLease: { executionId, leaseToken },
         }).execute(pilot, controller.signal),
+        {
+          tavilyRequestJournal: new DurableRealEditorialTavilyRequestJournal(
+            this.repository,
+            pilot.id,
+            pilot.currentRunId,
+          ),
+        },
       )
     } finally {
       await ledger.releaseExecution(leaseToken)

@@ -178,6 +178,94 @@ describe('conciliación de fallos facturables y reanudación idempotente', () =>
     expect(await repository.findByIdempotencyKey(`${operationId}:attempt:2`)).toBeUndefined()
   })
 
+  it('libera una cancelación confirmada y crea un único intento nuevo sin coste duplicado', async () => {
+    let sequence = 0
+    const repository = new MemoryCostLedgerRepository(
+      { task: 0.2, batch: 0.2, daily: 0.2, currency: 'EUR' },
+      {
+        now: () => new Date(now),
+        id: () => `confirmed-cancellation-ledger-id-${++sequence}`,
+      },
+    )
+    const ledger = new CostLedgerService(repository, { now: () => new Date(now) })
+    await ledger.acquireExecution(
+      'real-editorial:run-morella',
+      'lease-morella-confirmed-cancellation',
+      new Date('2026-07-26T00:00:00.000Z'),
+    )
+    const cancelledCall = vi.fn(async () => {
+      throw new TavilyResearchError(
+        'TIMEOUT_CANCELLED',
+        'El transporte confirmó la cancelación',
+        undefined,
+        undefined,
+        {
+          providerOutcome: 'cancelled_confirmed',
+          correlationId: 'b'.repeat(64),
+          stage: 'round-2:search:1',
+          query: 'Morella patrimonio oficial',
+          timeoutMs: 60_000,
+          retrySafe: true,
+          detail: 'Cancelación remota confirmada.',
+        },
+      )
+    })
+
+    await expect(new LedgeredWorkflowCallExecutor(
+      ledger,
+      metadata(),
+      0.2,
+    ).execute(operationId, 0.048, cancelledCall))
+      .rejects.toMatchObject({ code: 'TIMEOUT_CANCELLED' })
+
+    expect(repository.budgetSnapshot().task).toMatchObject({
+      reserved: 0,
+      spent: 0,
+    })
+    const cancelled = await repository.findByIdempotencyKey(`${operationId}:attempt:1`)
+    expect(cancelled).toMatchObject({
+      state: 'cancelled',
+      calculatedCost: 0,
+    })
+
+    const resumedCall = vi.fn(async context => {
+      expect(context).toMatchObject({
+        operationId,
+        attempt: 2,
+      })
+      return {
+        providerRequestIds: ['cached-search', 'new-extract'],
+        billableProviderRequestIds: ['new-extract'],
+        credits: 3,
+        billableCredits: 2,
+      }
+    })
+    await new LedgeredWorkflowCallExecutor(
+      ledger,
+      metadata(),
+      0.2,
+    ).execute(operationId, 0.048, resumedCall)
+
+    expect(resumedCall).toHaveBeenCalledOnce()
+    expect(repository.budgetSnapshot().task).toMatchObject({
+      reserved: 0,
+      spent: 0.016,
+    })
+    const resumed = await repository.findByIdempotencyKey(`${operationId}:attempt:2`)
+    expect(resumed).toMatchObject({
+      state: 'reconciled',
+      calculatedCost: 0.016,
+      input: { retryOfCallId: cancelled?.callId },
+    })
+    expect((await repository.entries(resumed?.callId)).at(-1)).toMatchObject({
+      state: 'succeeded',
+      calculatedCost: 0.016,
+      credits: 2,
+      toolCalls: 1,
+    })
+    expect(await repository.findByIdempotencyKey(`${operationId}:attempt:3`)).toBeUndefined()
+  })
+
   it('enlaza attempt 3 tras dos fallos terminales y protege una doble reanudación', async () => {
     let sequence = 0
     const repository = new MemoryCostLedgerRepository(

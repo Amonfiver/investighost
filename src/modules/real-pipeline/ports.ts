@@ -38,13 +38,22 @@ export interface ProviderFailureUsage {
   toolCalls: number
 }
 
+export interface ProviderCallExecutionContext {
+  operationId: string
+  reservationId: string
+  callId: string
+  attempt: number
+}
+
 export interface ResearchToolResult {
   round: RealRoundNumber
   sources: RealResearchSource[]
   providerRequestIds: string[]
+  billableProviderRequestIds?: string[]
   failures: Array<{ url: string; code: string; message: string }>
   usageUnits: number
   credits: number
+  billableCredits?: number
   urlSanitization?: ProviderResultSanitization
 }
 
@@ -52,7 +61,11 @@ export interface ResearchTool {
   readonly id: string
   readonly model: string
   readonly simulation: boolean
-  research(mission: RealResearchMission, signal: AbortSignal): Promise<ResearchToolResult>
+  research(
+    mission: RealResearchMission,
+    signal: AbortSignal,
+    context?: ProviderCallExecutionContext,
+  ): Promise<ResearchToolResult>
 }
 
 export interface IntelligenceRoundAnalysis {

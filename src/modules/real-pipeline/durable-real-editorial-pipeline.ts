@@ -26,6 +26,7 @@ import type {
   IntelligenceEngine,
   IntelligenceReview,
   IntelligenceRoundAnalysis,
+  ProviderCallExecutionContext,
   ProviderResultDiscardReason,
   ProviderResultSanitization,
   RealPipelineProviderSelection,
@@ -40,6 +41,13 @@ import {
   SupabaseRealWorkflowCheckpointStore,
 } from './real-editorial-repository'
 import { ControlledRealWorkflow } from './real-workflow'
+import type {
+  TavilyHttpResponse,
+  TavilyJournaledResponse,
+  TavilyRequestFailureState,
+  TavilyRequestIdentity,
+  TavilyRequestJournal,
+} from './tavily-research-tool'
 
 export const REAL_EDITORIAL_OPERATION_BUDGETS = {
   researchPerRound: 0.048,
@@ -201,7 +209,7 @@ export class DurableRealEditorialPipeline {
           pilot.id,
           pilot.currentRunId,
           code,
-          code === 'TIMEOUT' ? 'ambiguous' : 'human_required',
+          incidentClassification(code),
           safeIncidentMessage(error),
         )
         const budgetRequirement = budgetRequirementFromError(error)
@@ -242,6 +250,146 @@ export class DurableRealEditorialError extends Error {
   }
 }
 
+export class DurableRealEditorialTavilyRequestJournal implements TavilyRequestJournal {
+  constructor(
+    private readonly repository: RealEditorialPilotRepository,
+    private readonly pilotId: string,
+    private readonly runId: string,
+  ) {}
+
+  async load(identity: TavilyRequestIdentity): Promise<TavilyJournaledResponse | undefined> {
+    const artifact = await this.repository.latestArtifact(
+      this.runId,
+      'tavily_result',
+      tavilyRequestArtifactKey(identity),
+    )
+    if (!artifact) return undefined
+    if (artifact.version !== 1 || !isRecord(artifact.payload)) {
+      throw new RealEditorialRepositoryError(
+        'CHECKPOINT_INVALID',
+        `La respuesta Tavily ${identity.correlationId} no conserva su contrato durable`,
+      )
+    }
+    const payload = artifact.payload
+    if (
+      payload.version !== 'tavily-request-v1'
+      || payload.correlationId !== identity.correlationId
+      || payload.requestHash !== identity.requestHash
+      || payload.pathname !== identity.pathname
+      || typeof payload.responseStatus !== 'number'
+      || !Number.isInteger(payload.responseStatus)
+      || !('responseBody' in payload)
+    ) {
+      throw new RealEditorialRepositoryError(
+        'VERSION_CONFLICT',
+        `La respuesta Tavily ${identity.correlationId} diverge en identidad, etapa o payload`,
+      )
+    }
+    return {
+      response: {
+        status: payload.responseStatus,
+        body: structuredClone(payload.responseBody),
+      },
+      billable: false,
+    }
+  }
+
+  async started(identity: TavilyRequestIdentity): Promise<void> {
+    await this.repository.appendEvent(
+      this.pilotId,
+      this.runId,
+      'real.editorial.tavily.request.started',
+      undefined,
+      {
+        ...tavilyRequestEventPayload(identity),
+        providerState: 'dispatch_initiated',
+        retrySafe: false,
+      },
+    )
+  }
+
+  async completed(
+    identity: TavilyRequestIdentity,
+    response: TavilyHttpResponse,
+    late: boolean,
+  ): Promise<void> {
+    await this.repository.appendArtifact(
+      this.pilotId,
+      this.runId,
+      'tavily_result',
+      tavilyRequestArtifactKey(identity),
+      1,
+      {
+        version: 'tavily-request-v1',
+        correlationId: identity.correlationId,
+        requestHash: identity.requestHash,
+        pathname: identity.pathname,
+        query: identity.query ?? null,
+        round: identity.round,
+        requestIndex: identity.requestIndex,
+        originCallId: identity.context.callId,
+        originReservationId: identity.context.reservationId,
+        originAttempt: identity.context.attempt,
+        responseStatus: response.status,
+        responseBody: response.body,
+      },
+    )
+    await this.repository.appendEvent(
+      this.pilotId,
+      this.runId,
+      late
+        ? 'real.editorial.tavily.request.late_completed'
+        : 'real.editorial.tavily.request.completed',
+      undefined,
+      {
+        ...tavilyRequestEventPayload(identity),
+        providerState: late ? 'late_response_persisted' : 'completed',
+        providerRequestId: tavilyResponseRequestId(response),
+        credits: tavilyResponseCredits(response),
+        retrySafe: true,
+      },
+    )
+  }
+
+  async reused(identity: TavilyRequestIdentity, response: TavilyHttpResponse): Promise<void> {
+    await this.repository.appendEvent(
+      this.pilotId,
+      this.runId,
+      'real.editorial.tavily.request.reused',
+      undefined,
+      {
+        ...tavilyRequestEventPayload(identity),
+        providerState: 'durable_response_reused',
+        providerRequestId: tavilyResponseRequestId(response),
+        credits: tavilyResponseCredits(response),
+        retrySafe: true,
+      },
+    )
+  }
+
+  async failed(
+    identity: TavilyRequestIdentity,
+    state: TavilyRequestFailureState,
+  ): Promise<void> {
+    await this.repository.appendEvent(
+      this.pilotId,
+      this.runId,
+      state.providerOutcome === 'ambiguous'
+        ? 'real.editorial.tavily.request.ambiguous'
+        : state.providerOutcome === 'cancelled_confirmed'
+          ? 'real.editorial.tavily.request.cancelled'
+          : 'real.editorial.tavily.request.not_sent',
+      undefined,
+      {
+        ...tavilyRequestEventPayload(identity),
+        providerState: state.providerOutcome,
+        retrySafe: state.retrySafe,
+        detail: state.detail,
+      },
+    )
+  }
+}
+
 function durableProvidersFor(
   providers: RealPipelineProviderSelection,
   repository: RealEditorialPilotRepository,
@@ -263,6 +411,43 @@ function durableProvidersFor(
   }
 }
 
+function tavilyRequestArtifactKey(identity: TavilyRequestIdentity): string {
+  return `request-${identity.correlationId}`
+}
+
+function tavilyRequestEventPayload(
+  identity: TavilyRequestIdentity,
+): Record<string, unknown> {
+  return {
+    version: identity.version,
+    correlationId: identity.correlationId,
+    requestHash: identity.requestHash,
+    pathname: identity.pathname,
+    query: identity.query,
+    round: identity.round,
+    requestIndex: identity.requestIndex,
+    timeoutMs: identity.timeoutMs,
+    operationId: identity.context.operationId,
+    reservationId: identity.context.reservationId,
+    callId: identity.context.callId,
+    attempt: identity.context.attempt,
+  }
+}
+
+function tavilyResponseRequestId(response: TavilyHttpResponse): string | undefined {
+  return isRecord(response.body) && typeof response.body.request_id === 'string'
+    ? response.body.request_id
+    : undefined
+}
+
+function tavilyResponseCredits(response: TavilyHttpResponse): number | undefined {
+  return isRecord(response.body)
+    && isRecord(response.body.usage)
+    && typeof response.body.usage.credits === 'number'
+    ? response.body.usage.credits
+    : undefined
+}
+
 class DurableResearchTool implements ResearchTool {
   readonly id: string
   readonly model: string
@@ -279,7 +464,11 @@ class DurableResearchTool implements ResearchTool {
     this.simulation = delegate.simulation
   }
 
-  async research(mission: RealResearchMission, signal: AbortSignal): Promise<ResearchToolResult> {
+  async research(
+    mission: RealResearchMission,
+    signal: AbortSignal,
+    context?: ProviderCallExecutionContext,
+  ): Promise<ResearchToolResult> {
     const existing = await this.repository.latestArtifact(
       this.runId,
       'tavily_result',
@@ -288,7 +477,7 @@ class DurableResearchTool implements ResearchTool {
     if (existing) return structuredClone(existing.payload) as ResearchToolResult
     let result: ResearchToolResult
     try {
-      result = await this.delegate.research(mission, signal)
+      result = await this.delegate.research(mission, signal, context)
     } catch (error) {
       const summary = sanitizationFromError(error)
       if (summary?.discarded) await this.recordSanitization(mission, summary)
@@ -637,7 +826,29 @@ function safeIncidentMessage(error: unknown): string {
   ) {
     return error.message.slice(0, 1_000)
   }
+  if (
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && [
+      'TIMEOUT',
+      'TIMEOUT_CANCELLED',
+      'NETWORK_AMBIGUOUS',
+    ].includes(String(error.code))
+    && 'message' in error
+    && typeof error.message === 'string'
+  ) {
+    return error.message.slice(0, 1_000)
+  }
   return 'La ejecución editorial real se detuvo; revisar el ledger y el checkpoint durable.'
+}
+
+function incidentClassification(
+  code: string,
+): 'recoverable' | 'ambiguous' | 'human_required' {
+  if (code === 'TIMEOUT' || code === 'NETWORK_AMBIGUOUS') return 'ambiguous'
+  if (code === 'TIMEOUT_CANCELLED') return 'recoverable'
+  return 'human_required'
 }
 
 function budgetRequirementFromError(

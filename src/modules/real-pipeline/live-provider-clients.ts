@@ -11,7 +11,12 @@ import {
 } from './live-provider-access'
 import { OpenAIIntelligenceEngine } from './openai-intelligence-engine'
 import { OpenAISdkResponsesClient } from './openai-responses-client'
-import { TavilyFetchTransport, TavilyResearchTool } from './tavily-research-tool'
+import {
+  readRealTavilyTimeoutPolicy,
+  TavilyFetchTransport,
+  TavilyResearchTool,
+  type TavilyRequestJournal,
+} from './tavily-research-tool'
 import type { z } from 'zod'
 
 type LiveProviderGateInput = Omit<
@@ -24,10 +29,16 @@ export interface LiveProviderClients {
   openai: OpenAIIntelligenceEngine
 }
 
+export interface LiveProviderClientOptions {
+  tavilyRequestJournal?: TavilyRequestJournal
+  environment?: NodeJS.ProcessEnv
+}
+
 export async function withLiveProviderClients<T>(
   providerCenter: ProviderCenterService,
   gate: LiveProviderGateInput,
   operation: (clients: LiveProviderClients) => Promise<T>,
+  options: LiveProviderClientOptions = {},
 ): Promise<T> {
   const providerSnapshot = providerCenter.snapshot()
   const permit = issueLiveProviderNetworkPermit({
@@ -43,8 +54,13 @@ export async function withLiveProviderClients<T>(
           credential: tavilyCredential,
           networkPermit: permit,
         }),
-        {},
-        { simulation: false },
+        {
+          timeoutMs: readRealTavilyTimeoutPolicy(options.environment).timeoutMs,
+        },
+        {
+          simulation: false,
+          requestJournal: options.tavilyRequestJournal,
+        },
       )
       const openai = new OpenAIIntelligenceEngine(
         new OpenAISdkResponsesClient(openAICredential, permit),

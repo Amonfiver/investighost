@@ -1,10 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  DEFAULT_REAL_TAVILY_TIMEOUT_MS,
+  MAX_REAL_TAVILY_TIMEOUT_MS,
+  MIN_REAL_TAVILY_TIMEOUT_MS,
+  readRealTavilyTimeoutPolicy,
+  REAL_TAVILY_TIMEOUT_ENV,
   TavilyFetchTransport,
   TavilyResearchTool,
   type TavilyHttpResponse,
+  type TavilyRequestFailureState,
+  type TavilyRequestIdentity,
+  type TavilyRequestJournal,
   type TavilyTransport,
 } from '@modules/real-pipeline/tavily-research-tool'
+import type { ProviderCallExecutionContext } from '@modules/real-pipeline'
 import type { RealResearchMission } from '@shared/real-pipeline-contracts'
 
 const timestamp = '2026-07-25T11:00:00.000Z'
@@ -72,6 +81,7 @@ class FixtureTransport implements TavilyTransport {
   constructor(
     private readonly responses: TavilyHttpResponse[],
     private readonly behavior?: (signal: AbortSignal) => Promise<TavilyHttpResponse>,
+    readonly abortGuarantee: 'best_effort' | 'confirmed' = 'best_effort',
   ) {}
 
   async post(pathname: '/search' | '/extract', body: Record<string, unknown>, signal: AbortSignal) {
@@ -87,7 +97,79 @@ function tool(transport: TavilyTransport, limits: Record<string, number> = {}) {
   return new TavilyResearchTool(transport, limits, { now: () => new Date(timestamp) })
 }
 
+const executionContext: ProviderCallExecutionContext = {
+  operationId: 'task-morella:round:2:research',
+  reservationId: 'reservation-tavily-1',
+  callId: 'call-tavily-1',
+  attempt: 1,
+}
+
+class MemoryTavilyRequestJournal implements TavilyRequestJournal {
+  readonly responses = new Map<string, TavilyHttpResponse>()
+  readonly startedRequests: TavilyRequestIdentity[] = []
+  readonly completedRequests: Array<{ identity: TavilyRequestIdentity; late: boolean }> = []
+  readonly reusedRequests: TavilyRequestIdentity[] = []
+  readonly failures: TavilyRequestFailureState[] = []
+
+  async load(identity: TavilyRequestIdentity) {
+    const response = this.responses.get(identity.correlationId)
+    return response ? { response: structuredClone(response), billable: false } : undefined
+  }
+
+  async started(identity: TavilyRequestIdentity) {
+    this.startedRequests.push(structuredClone(identity))
+  }
+
+  async completed(
+    identity: TavilyRequestIdentity,
+    response: TavilyHttpResponse,
+    late: boolean,
+  ) {
+    this.responses.set(identity.correlationId, structuredClone(response))
+    this.completedRequests.push({ identity: structuredClone(identity), late })
+  }
+
+  async reused(identity: TavilyRequestIdentity) {
+    this.reusedRequests.push(structuredClone(identity))
+  }
+
+  async failed(_identity: TavilyRequestIdentity, state: TavilyRequestFailureState) {
+    this.failures.push(structuredClone(state))
+  }
+}
+
+class FailingDiagnosticJournal extends MemoryTavilyRequestJournal {
+  override async failed() {
+    throw new Error('JOURNAL_DIAGNOSTIC_FAILURE')
+  }
+}
+
 describe('Tavily ResearchTool sin red', () => {
+  it('aplica una política de timeout acotada, configurable y segura', () => {
+    expect(readRealTavilyTimeoutPolicy({})).toEqual({
+      timeoutMs: DEFAULT_REAL_TAVILY_TIMEOUT_MS,
+      source: 'default',
+    })
+    expect(readRealTavilyTimeoutPolicy({
+      [REAL_TAVILY_TIMEOUT_ENV]: String(MIN_REAL_TAVILY_TIMEOUT_MS),
+    })).toEqual({
+      timeoutMs: MIN_REAL_TAVILY_TIMEOUT_MS,
+      source: 'environment',
+    })
+    expect(readRealTavilyTimeoutPolicy({
+      [REAL_TAVILY_TIMEOUT_ENV]: String(MAX_REAL_TAVILY_TIMEOUT_MS + 1),
+    })).toEqual({
+      timeoutMs: DEFAULT_REAL_TAVILY_TIMEOUT_MS,
+      source: 'invalid_environment_fallback',
+    })
+    expect(readRealTavilyTimeoutPolicy({
+      [REAL_TAVILY_TIMEOUT_ENV]: '10s',
+    })).toEqual({
+      timeoutMs: DEFAULT_REAL_TAVILY_TIMEOUT_MS,
+      source: 'invalid_environment_fallback',
+    })
+  })
+
   it('ejecuta Search y Extract, normaliza, hashea y conserva score', async () => {
     const transport = new FixtureTransport([search(), extract()])
     const result = await tool(transport).research(mission(), new AbortController().signal)
@@ -289,7 +371,38 @@ describe('Tavily ResearchTool sin red', () => {
     expect(aborted).toBe(true)
   })
 
-  it('propaga cancelación humana y aborta el transporte', async () => {
+  it('libera el reintento solo cuando el transporte confirma la cancelación', async () => {
+    const journal = new MemoryTavilyRequestJournal()
+    const transport = new FixtureTransport([], signal => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('abortado')), { once: true })
+    }), 'confirmed')
+    const research = new TavilyResearchTool(transport, { timeoutMs: 5 }, {
+      now: () => new Date(timestamp),
+      requestJournal: journal,
+    })
+
+    await expect(research.research(
+      mission({ round: 2, focusedQueries: ['Morella patrimonio oficial'] }),
+      new AbortController().signal,
+      executionContext,
+    )).rejects.toMatchObject({
+      code: 'TIMEOUT_CANCELLED',
+      requestState: {
+        providerOutcome: 'cancelled_confirmed',
+        retrySafe: true,
+        query: 'Morella patrimonio oficial',
+      },
+    })
+    expect(journal.failures).toEqual([
+      expect.objectContaining({
+        providerOutcome: 'cancelled_confirmed',
+        retrySafe: true,
+      }),
+    ])
+    expect(journal.responses).toHaveLength(0)
+  })
+
+  it('mantiene ambigua una cancelación humana tras iniciar el envío', async () => {
     const controller = new AbortController()
     const transport = new FixtureTransport([], signal => new Promise((_resolve, reject) => {
       signal.addEventListener('abort', () => reject(new Error('abortado')), { once: true })
@@ -297,7 +410,95 @@ describe('Tavily ResearchTool sin red', () => {
     const execution = tool(transport).research(mission(), controller.signal)
     controller.abort()
 
-    await expect(execution).rejects.toMatchObject({ code: 'CANCELLED' })
+    await expect(execution).rejects.toMatchObject({ code: 'NETWORK_AMBIGUOUS' })
+  })
+
+  it('persiste una respuesta tardía y la reutiliza sin repetir Search ni su coste', async () => {
+    const journal = new MemoryTavilyRequestJournal()
+    const lateTransport = new FixtureTransport([], async () => {
+      await new Promise(resolve => setTimeout(resolve, 20))
+      return search(undefined, 'late-search-request', 1)
+    })
+    const firstTool = new TavilyResearchTool(lateTransport, { timeoutMs: 5 }, {
+      now: () => new Date(timestamp),
+      requestJournal: journal,
+    })
+    const roundTwoMission = mission({
+      round: 2,
+      focusedQueries: ['Morella patrimonio oficial'],
+    })
+
+    await expect(firstTool.research(
+      roundTwoMission,
+      new AbortController().signal,
+      executionContext,
+    )).rejects.toMatchObject({
+      code: 'TIMEOUT',
+      requestState: {
+        providerOutcome: 'ambiguous',
+        retrySafe: false,
+        query: 'Morella patrimonio oficial',
+      },
+    })
+    await vi.waitFor(() => {
+      expect(journal.completedRequests).toEqual([
+        expect.objectContaining({ late: true }),
+      ])
+    })
+    expect(journal.failures).toEqual([
+      expect.objectContaining({ providerOutcome: 'ambiguous', retrySafe: false }),
+    ])
+
+    const resumedTransport = new FixtureTransport([
+      extract(undefined, [], 'resumed-extract-request', 2),
+    ])
+    const resumedTool = new TavilyResearchTool(resumedTransport, { timeoutMs: 5 }, {
+      now: () => new Date(timestamp),
+      requestJournal: journal,
+    })
+    const result = await resumedTool.research(
+      roundTwoMission,
+      new AbortController().signal,
+      {
+        ...executionContext,
+        reservationId: 'reservation-tavily-2',
+        callId: 'call-tavily-2',
+        attempt: 2,
+      },
+    )
+
+    expect(resumedTransport.calls.map(call => call.pathname)).toEqual(['/extract'])
+    expect(journal.reusedRequests).toHaveLength(1)
+    expect(result.providerRequestIds).toEqual([
+      'late-search-request',
+      'resumed-extract-request',
+    ])
+    expect(result.credits).toBe(3)
+    expect(result.billableProviderRequestIds).toEqual(['resumed-extract-request'])
+    expect(result.billableCredits).toBe(2)
+  })
+
+  it('no degrada un timeout ambiguo a fallo sin coste si falla el evento diagnóstico', async () => {
+    const journal = new FailingDiagnosticJournal()
+    const transport = new FixtureTransport([], signal => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('abortado')), { once: true })
+    }))
+    const research = new TavilyResearchTool(transport, { timeoutMs: 5 }, {
+      now: () => new Date(timestamp),
+      requestJournal: journal,
+    })
+
+    await expect(research.research(
+      mission({ round: 2, focusedQueries: ['Morella patrimonio oficial'] }),
+      new AbortController().signal,
+      executionContext,
+    )).rejects.toMatchObject({
+      code: 'TIMEOUT',
+      requestState: {
+        providerOutcome: 'ambiguous',
+        retrySafe: false,
+      },
+    })
   })
 
   it.each([

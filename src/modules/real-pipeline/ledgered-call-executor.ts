@@ -5,7 +5,10 @@ import type {
   ProviderCallSettlement,
 } from '@shared/real-cost-contracts'
 import { CostLedgerService } from './cost-ledger'
-import type { ProviderFailureUsage } from './ports'
+import type {
+  ProviderCallExecutionContext,
+  ProviderFailureUsage,
+} from './ports'
 import { RealWorkflowError, type WorkflowCallExecutor } from './real-workflow'
 
 export interface LedgeredCallMetadataFactory {
@@ -44,7 +47,11 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     this.initialSpendIsAuthoritative = initialSpentCost !== undefined
   }
 
-  async execute<T>(operationId: string, estimatedCost: number, operation: () => Promise<T>): Promise<T> {
+  async execute<T>(
+    operationId: string,
+    estimatedCost: number,
+    operation: (context?: ProviderCallExecutionContext) => Promise<T>,
+  ): Promise<T> {
     if (this.completed.has(operationId)) return structuredClone(this.completed.get(operationId)) as T
     const current = this.running.get(operationId)
     if (current) return structuredClone(await current) as T
@@ -89,7 +96,7 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
           'La llamada conciliada no conserva un resultado durable reutilizable',
         )
       }
-      const result = await operation()
+      const result = await operation(executionContext(operationId, reservation))
       this.completed.set(operationId, structuredClone(result))
       if (!this.initialSpendIsAuthoritative) {
         this.spentCost = money(this.spentCost + (reservation.calculatedCost ?? 0))
@@ -97,7 +104,7 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
       return structuredClone(result)
     }
     if (reservation.state === 'started' && await this.durableResultAvailable(operationId)) {
-      const result = await operation()
+      const result = await operation(executionContext(operationId, reservation))
       const settlement = settlementFromResult(reservation.id, result, estimatedCost)
       await this.settleWithDurableCostAdjustment(
         operationId,
@@ -117,7 +124,9 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     }
     await this.ledger.start(reservation.id)
 
-    const execution = Promise.resolve().then(operation)
+    const execution = Promise.resolve().then(
+      () => operation(executionContext(operationId, reservation)),
+    )
     this.running.set(operationId, execution)
     this.activeOperation = operationId
     let result: T
@@ -125,13 +134,16 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
       result = await execution
     } catch (error) {
       const code = errorCode(error)
-      const ambiguous = [
+      const outcome = providerOutcome(error)
+      const cancellationConfirmed = code === 'TIMEOUT_CANCELLED'
+        || outcome === 'cancelled_confirmed'
+      const ambiguous = outcome === 'ambiguous' || ([
         'TIMEOUT',
         'NETWORK_AMBIGUOUS',
         'REMOTE_RESPONSE_ERROR',
         'REMOTE_INVALID_RESPONSE',
-      ].includes(code)
-      const cancelled = code === 'CANCELLED'
+      ].includes(code) && !cancellationConfirmed)
+      const cancelled = code === 'CANCELLED' || cancellationConfirmed
       const providerUsage = failureUsage(error)
       try {
         await this.ledger.settle({
@@ -274,6 +286,18 @@ function failureUsage(error: unknown): ProviderFailureUsage | undefined {
   return { providerRequestIds, credits, calculatedCost, toolCalls }
 }
 
+function providerOutcome(
+  error: unknown,
+): 'not_sent' | 'cancelled_confirmed' | 'ambiguous' | undefined {
+  if (!isRecord(error) || !isRecord(error.requestState)) return undefined
+  const outcome = error.requestState.providerOutcome
+  return outcome === 'not_sent'
+    || outcome === 'cancelled_confirmed'
+    || outcome === 'ambiguous'
+    ? outcome
+    : undefined
+}
+
 function sanitizedProviderError(error: unknown, fallback: string): string {
   if (!isRecord(error) || !isRecord(error.remoteError)) return fallback
   const remote = error.remoteError
@@ -325,23 +349,36 @@ function settlementFromResult<T>(
   let outputTokens = 0
   let calculatedCost = 0
   let credits = 0
-  let toolCalls = 1
+  let toolCalls = 0
   let remoteId: string | undefined
+  let billableUsageIsExplicit = false
   for (const record of records) {
     if (isRecord(record.usage)) {
       inputTokens += number(record.usage.inputTokens)
       outputTokens += number(record.usage.outputTokens)
       calculatedCost += number(record.usage.estimatedCost)
     }
-    credits += number(record.credits)
-    if (Array.isArray(record.providerRequestIds)) {
-      const ids = record.providerRequestIds.filter(value => typeof value === 'string')
+    const hasBillableCredits = 'billableCredits' in record
+      && typeof record.billableCredits === 'number'
+      && Number.isFinite(record.billableCredits)
+      && record.billableCredits >= 0
+    if (hasBillableCredits) billableUsageIsExplicit = true
+    credits += hasBillableCredits
+      ? number(record.billableCredits)
+      : number(record.credits)
+    const requestIds = Array.isArray(record.billableProviderRequestIds)
+      ? record.billableProviderRequestIds
+      : record.providerRequestIds
+    if (Array.isArray(requestIds)) {
+      if (Array.isArray(record.billableProviderRequestIds)) billableUsageIsExplicit = true
+      const ids = requestIds.filter(value => typeof value === 'string')
       toolCalls = Math.max(toolCalls, ids.length)
       remoteId ??= ids[0]
     }
   }
   if (credits > 0 && calculatedCost === 0) calculatedCost = credits * 0.008
-  if (calculatedCost === 0) calculatedCost = fallbackCost
+  if (calculatedCost === 0 && !billableUsageIsExplicit) calculatedCost = fallbackCost
+  if (toolCalls === 0 && !billableUsageIsExplicit) toolCalls = 1
   return {
     reservationId,
     outcome: 'succeeded',
@@ -354,6 +391,18 @@ function settlementFromResult<T>(
       credits,
       outputHash: createHash('sha256').update(JSON.stringify(result)).digest('hex'),
     },
+  }
+}
+
+function executionContext(
+  operationId: string,
+  reservation: ProviderCallReservation,
+): ProviderCallExecutionContext {
+  return {
+    operationId,
+    reservationId: reservation.id,
+    callId: reservation.callId,
+    attempt: reservation.input.attempt,
   }
 }
 

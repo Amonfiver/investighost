@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import {
   DurableRealEditorialPipeline,
+  DurableRealEditorialTavilyRequestJournal,
   MemoryCostLedgerRepository,
   missionForPilot,
   OpenAIIntelligenceError,
@@ -17,6 +18,7 @@ import {
   type ProviderResultSanitization,
   type ResearchTool,
   type ResearchToolResult,
+  type TavilyRequestIdentity,
 } from '@modules/real-pipeline'
 import {
   REAL_EDITORIAL_PILOT_POLICY,
@@ -40,6 +42,11 @@ class MemoryDurableRepository implements RealEditorialPilotRepository {
   readonly artifacts = new Map<string, RealEditorialArtifact[]>()
   readonly events: string[] = []
   readonly eventDetails: Array<{ eventType: string; payload: Record<string, unknown> }> = []
+  readonly incidents: Array<{
+    code: string
+    classification: string
+    message: string
+  }> = []
   pilot = pilotRecord()
   result?: RealEditorialPilotSnapshot
 
@@ -173,7 +180,16 @@ class MemoryDurableRepository implements RealEditorialPilotRepository {
     this.eventDetails.push({ eventType, payload: structuredClone(payload) })
   }
 
-  async recordIncident() { return '81000000-0000-4000-8000-000000000098' }
+  async recordIncident(
+    _pilotId: string,
+    _runId: string,
+    code: string,
+    classification: string,
+    message: string,
+  ) {
+    this.incidents.push({ code, classification, message })
+    return '81000000-0000-4000-8000-000000000098'
+  }
 
   async cancel() {
     await this.updateState(pilotId, runId, 'cancelled')
@@ -249,6 +265,31 @@ class InvalidUrlResearchTool implements ResearchTool {
         accepted: 0,
         discarded: 1,
         discardReasons: { http: 1 },
+      },
+    )
+  }
+}
+
+class ConfirmedTimeoutResearchTool implements ResearchTool {
+  readonly id = 'tavily'
+  readonly model = 'search-and-extract'
+  readonly simulation = false
+
+  async research(): Promise<ResearchToolResult> {
+    throw new TavilyResearchError(
+      'TIMEOUT_CANCELLED',
+      'Tavily ronda 1, search 1, query “Morella patrimonio oficial” superó 60000 ms; '
+        + 'el transporte confirmó la cancelación; el reintento controlado es seguro',
+      undefined,
+      undefined,
+      {
+        providerOutcome: 'cancelled_confirmed',
+        correlationId: 'f'.repeat(64),
+        stage: 'round-1:search:1',
+        query: 'Morella patrimonio oficial',
+        timeoutMs: 60_000,
+        retrySafe: true,
+        detail: 'Cancelación confirmada.',
       },
     )
   }
@@ -516,6 +557,40 @@ describe('workflow editorial durable con clientes falsos', () => {
     expect(await repository.latestArtifact(runId, 'final_review', 'final')).toBeDefined()
     expect(ledger.budgetSnapshot().task.reserved).toBe(0)
     expect(ledger.budgetSnapshot().task.spent).toBeCloseTo(0.2, 8)
+  })
+
+  it('registra un timeout cancelado con certeza y libera su reserva sin continuar', async () => {
+    const repository = new MemoryDurableRepository()
+    const ledger = ledgerRepository()
+    const intelligence = new FakeIntelligenceEngine()
+
+    await expect(new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: {
+        researchTool: new ConfirmedTimeoutResearchTool(),
+        intelligenceEngine: intelligence,
+      },
+      now: () => new Date(now),
+      id: () => '82100000-0000-4000-8000-000000000001',
+    }).execute(repository.pilot, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'TIMEOUT_CANCELLED' })
+
+    expect(ledger.budgetSnapshot().task).toMatchObject({
+      reserved: 0,
+      spent: 0,
+    })
+    expect(repository.incidents).toEqual([
+      expect.objectContaining({
+        code: 'TIMEOUT_CANCELLED',
+        classification: 'recoverable',
+        message: expect.stringContaining('reintento controlado es seguro'),
+      }),
+    ])
+    expect(repository.events).toContain('real.editorial.execution.halted')
+    expect(intelligence.calls).toEqual([])
+    expect(await repository.latestArtifact(runId, 'tavily_result', 'round-1'))
+      .toBeUndefined()
   })
 
   it('reutiliza la misión durable aunque el reloj de la reanudación sea posterior', async () => {
@@ -1059,5 +1134,96 @@ describe('workflow editorial durable con clientes falsos', () => {
       },
     })
     expect(ledger.budgetSnapshot().task).toMatchObject({ reserved: 0, spent: 0.008 })
+  })
+
+  it('conserva y reutiliza una respuesta Tavily tardía por identidad durable exacta', async () => {
+    const repository = new MemoryDurableRepository()
+    const journal = new DurableRealEditorialTavilyRequestJournal(
+      repository,
+      pilotId,
+      runId,
+    )
+    const firstIdentity: TavilyRequestIdentity = {
+      version: 'tavily-request-v1',
+      correlationId: 'c'.repeat(64),
+      requestHash: 'd'.repeat(64),
+      pathname: '/search',
+      query: 'Morella patrimonio oficial',
+      round: 2,
+      requestIndex: 1,
+      timeoutMs: 60_000,
+      context: {
+        operationId: `real-editorial-task:${pilotId}:round:2:research`,
+        reservationId: 'reservation-tavily-attempt-1',
+        callId: 'call-tavily-attempt-1',
+        attempt: 1,
+      },
+    }
+    const response = {
+      status: 200,
+      body: {
+        request_id: 'tavily-request-late',
+        results: [{
+          url: 'https://example.test/morella',
+          title: 'Morella oficial',
+          content: 'Resumen',
+          score: 0.9,
+        }],
+        usage: { credits: 1 },
+      },
+    }
+
+    await journal.started(firstIdentity)
+    await journal.failed(firstIdentity, {
+      providerOutcome: 'ambiguous',
+      correlationId: firstIdentity.correlationId,
+      stage: 'round-2:search:1',
+      query: firstIdentity.query,
+      timeoutMs: firstIdentity.timeoutMs,
+      retrySafe: false,
+      detail: 'El aborto local no confirma el resultado remoto.',
+    })
+    await journal.completed(firstIdentity, response, true)
+
+    const secondIdentity: TavilyRequestIdentity = {
+      ...firstIdentity,
+      context: {
+        ...firstIdentity.context,
+        reservationId: 'reservation-tavily-attempt-2',
+        callId: 'call-tavily-attempt-2',
+        attempt: 2,
+      },
+    }
+    await expect(journal.load(secondIdentity)).resolves.toEqual({
+      response,
+      billable: false,
+    })
+    await journal.reused(secondIdentity, response)
+
+    const artifact = await repository.latestArtifact(
+      runId,
+      'tavily_result',
+      `request-${firstIdentity.correlationId}`,
+    )
+    expect(artifact?.payload).toMatchObject({
+      version: 'tavily-request-v1',
+      correlationId: firstIdentity.correlationId,
+      requestHash: firstIdentity.requestHash,
+      originAttempt: 1,
+      responseStatus: 200,
+      responseBody: {
+        request_id: 'tavily-request-late',
+        usage: { credits: 1 },
+      },
+    })
+    expect(repository.events).toEqual([
+      'real.editorial.tavily.request.started',
+      'real.editorial.tavily.request.ambiguous',
+      'real.editorial.tavily.request.late_completed',
+      'real.editorial.tavily.request.reused',
+    ])
+    expect(repository.artifacts.get(
+      `${runId}:tavily_result:request-${firstIdentity.correlationId}`,
+    )).toHaveLength(1)
   })
 })

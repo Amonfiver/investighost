@@ -16,6 +16,7 @@ import {
 import type {
   IntelligenceRoundAnalysis,
   InvestighostRealWorkflow,
+  ProviderCallExecutionContext,
   RealPipelineProviderSelection,
   ResearchToolResult,
 } from './ports'
@@ -79,7 +80,11 @@ export class MemoryRealWorkflowCheckpointStore implements RealWorkflowCheckpoint
 }
 
 export interface WorkflowCallExecutor {
-  execute<T>(operationId: string, estimatedCost: number, operation: () => Promise<T>): Promise<T>
+  execute<T>(
+    operationId: string,
+    estimatedCost: number,
+    operation: (context?: ProviderCallExecutionContext) => Promise<T>,
+  ): Promise<T>
   canReserve(estimatedCost: number): boolean
   canExecute(operationId: string, estimatedCost: number): boolean
   snapshot(): { operationIds: string[]; spentCost: number }
@@ -92,7 +97,11 @@ export class MemoryWorkflowCallExecutor implements WorkflowCallExecutor {
 
   constructor(private readonly dailyBudget: number) {}
 
-  async execute<T>(operationId: string, estimatedCost: number, operation: () => Promise<T>): Promise<T> {
+  async execute<T>(
+    operationId: string,
+    estimatedCost: number,
+    operation: (context?: ProviderCallExecutionContext) => Promise<T>,
+  ): Promise<T> {
     if (this.completed.has(operationId)) return structuredClone(this.completed.get(operationId)) as T
     const current = this.running.get(operationId)
     if (current) return structuredClone(await current) as T
@@ -389,7 +398,7 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
       const research = await this.callExecutor.execute(
         researchOperationId,
         this.configuration.researchCostPerRound,
-        () => this.providers.researchTool.research(mission, signal),
+        context => this.providers.researchTool.research(mission, signal, context),
       )
       providerCalls += research.providerRequestIds.length
       if (providerCalls + 1 > mission.limits.maxProviderCalls) {

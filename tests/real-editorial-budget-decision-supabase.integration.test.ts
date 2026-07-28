@@ -218,7 +218,7 @@ select public.resolve_real_editorial_budget_review(
   '96000000-0000-4000-8000-000000000001',
   '96000000-0000-4000-8000-000000000002',
   '96000000-0000-4000-8000-000000000004',
-  'authorize_extension',0.260000000,'Ampliación humana sintética.',null,
+  'authorize_extension',0.270000000,'Ampliación humana sintética.',null,
   2,'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   '{
     "version":"real-workflow-v1",
@@ -246,7 +246,7 @@ select public.resolve_real_editorial_budget_review(
   '96000000-0000-4000-8000-000000000001',
   '96000000-0000-4000-8000-000000000002',
   '96000000-0000-4000-8000-000000000004',
-  'authorize_extension',0.260000000,'Ampliación humana sintética.',null,
+  'authorize_extension',0.270000000,'Ampliación humana sintética.',null,
   2,'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   null,null
 ) as repeated_extension_id \gset
@@ -258,11 +258,11 @@ begin
     raise exception 'IDENTICAL_EXTENSION_NOT_IDEMPOTENT';
   end if;
   if (select task_limit_cost from public.real_editorial_pilot_budgets
-       where pilot_id = '96000000-0000-4000-8000-000000000001') <> 0.26
+       where pilot_id = '96000000-0000-4000-8000-000000000001') <> 0.27
     or (select batch_limit_cost from public.real_editorial_pilot_budgets
-        where pilot_id = '96000000-0000-4000-8000-000000000001') <> 0.26
+        where pilot_id = '96000000-0000-4000-8000-000000000001') <> 0.27
     or (select daily_limit_cost from public.real_editorial_pilot_budgets
-        where pilot_id = '96000000-0000-4000-8000-000000000001') <> 0.26 then
+        where pilot_id = '96000000-0000-4000-8000-000000000001') <> 0.27 then
     raise exception 'EXTENDED_LIMITS_NOT_SYNCHRONIZED';
   end if;
   if (select spent_cost from public.real_editorial_pilot_budgets
@@ -325,7 +325,7 @@ begin
       '96000000-0000-4000-8000-000000000001',
       '96000000-0000-4000-8000-000000000002',
       '96000000-0000-4000-8000-000000000004',
-      'authorize_extension',0.270000000,'Ampliación incompatible.',null,
+      'authorize_extension',0.280000000,'Ampliación incompatible.',null,
       null,null,null,null
     );
     raise exception 'INCOMPATIBLE_EXTENSION_NOT_REJECTED';

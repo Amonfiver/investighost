@@ -18,13 +18,13 @@ import {
   RealEditorialPilotCancelSchema,
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotProgressSchema,
-  resolveRealEditorialFeatureFlag,
   type RealEditorialPilotProgress,
   type RealEditorialPreflight,
 } from '@shared/real-editorial-pilot-contracts'
 import { createLocalSupabaseClientFromEnv } from '@services/supabase'
 import { MANUAL_LOCAL_ACTOR_ID } from '@modules/editorial-pipeline/manual-runtime'
 import { getProviderCenterRuntime } from './provider-center-runtime'
+import { readRealEditorialAuthorization } from './real-editorial-authorization'
 
 export class RealEditorialPilotRuntime {
   private readonly controllers = new Map<string, AbortController>()
@@ -58,9 +58,7 @@ export class RealEditorialPilotRuntime {
     const firstContractIssue = openAIRequestContract.operations
       .flatMap(operation => operation.issues)[0]
     return evaluateRealEditorialPreflight({
-      featureEnabled: resolveRealEditorialFeatureFlag(
-        process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN,
-      ),
+      featureEnabled: readRealEditorialAuthorization().enabled,
       providerCenter: providerCenter.snapshot(),
       repositoryAvailable: inspection.repositoryAvailable,
       budgetValid: inspection.budgetValid,
@@ -173,7 +171,7 @@ export class RealEditorialPilotRuntime {
 
   async resolveAmbiguousCall(candidate: unknown) {
     const input = RealEditorialAmbiguousCallResolutionSchema.parse(candidate)
-    if (!resolveRealEditorialFeatureFlag(process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN)) {
+    if (!readRealEditorialAuthorization().enabled) {
       throw new Error('La feature flag editorial real no autoriza la resolución')
     }
     if (input.actorId !== MANUAL_LOCAL_ACTOR_ID) {
@@ -195,7 +193,7 @@ export class RealEditorialPilotRuntime {
 
   async resolveBudgetDecision(candidate: unknown) {
     const input = RealEditorialBudgetResolutionSchema.parse(candidate)
-    if (!resolveRealEditorialFeatureFlag(process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN)) {
+    if (!readRealEditorialAuthorization().enabled) {
       throw new Error('La feature flag editorial real no autoriza la decisión presupuestaria')
     }
     if (input.actorId !== MANUAL_LOCAL_ACTOR_ID) {
@@ -227,8 +225,11 @@ export class RealEditorialPilotRuntime {
     if (pilot.state !== 'preflight') {
       throw new Error('El estado durable no autoriza iniciar; debe prepararse o reanudarse')
     }
-    const featureToken = process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN
-    if (!featureToken) throw new Error('La feature flag editorial real no está disponible')
+    const authorization = readRealEditorialAuthorization()
+    if (!authorization.enabled || !authorization.featureToken) {
+      throw new Error('La feature flag editorial real no está disponible')
+    }
+    const featureToken = authorization.featureToken
 
     const controller = new AbortController()
     this.controllers.set(pilotId, controller)

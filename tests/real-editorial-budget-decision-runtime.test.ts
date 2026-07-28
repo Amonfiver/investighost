@@ -7,11 +7,13 @@ import {
   REAL_EDITORIAL_PILOT_POLICY,
   RealEditorialPilotRecordSchema,
 } from '@shared/real-editorial-pilot-contracts'
+import { REAL_EXECUTION_FEATURE_TOKEN } from '@modules/real-pipeline/real-pilot-gate'
 
 const pilotId = '95000000-0000-4000-8000-000000000001'
 const runId = '95000000-0000-4000-8000-000000000002'
 const actorId = MANUAL_LOCAL_ACTOR_ID
 const previousFlag = process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN
+const previousConnectivityFlag = process.env.INVESTIGHOST_REAL_EXECUTION_TOKEN
 
 const pilot = RealEditorialPilotRecordSchema.parse({
   id: pilotId,
@@ -66,7 +68,7 @@ const input = {
   runId,
   actorId,
   decision: 'authorize_extension' as const,
-  newMaximumCostEur: 0.26,
+  newMaximumCostEur: 0.27,
   reason: 'Autorización humana sintética para la prueba sin red.',
   confirmed: true as const,
 }
@@ -79,7 +81,7 @@ function setup(guardFree = true) {
     actorId,
     decision: 'authorize_extension' as const,
     previousMaximumCostEur: 0.2,
-    newMaximumCostEur: 0.26,
+    newMaximumCostEur: 0.27,
     reason: input.reason,
     decidedAt: '2026-07-27T10:00:00.000Z',
     nextAction: 'resume_from_checkpoint' as const,
@@ -91,15 +93,15 @@ function setup(guardFree = true) {
       status: 'authorized' as const,
       currency: 'EUR' as const,
       source: 'real_editorial_pilot_budgets' as const,
-      currentMaximumCostEur: 0.26,
+      currentMaximumCostEur: 0.27,
       previousMaximumCostEur: 0.2,
       spentCostEur: 0.099838,
       reservedCostEur: 0,
-      availableCostEur: 0.160162,
+      availableCostEur: 0.170162,
       remainingEstimatedCostEur: 0.157838,
       totalEstimatedCostEur: 0.257676,
       shortfallCostEur: 0,
-      marginCostEur: 0.002324,
+      marginCostEur: 0.012324,
       openedAt: '2026-07-26T01:37:38.152Z',
       resolvedAt: '2026-07-27T10:00:00.000Z',
       tavilyRoundOnePersisted: true,
@@ -121,11 +123,17 @@ function setup(guardFree = true) {
 afterEach(() => {
   if (previousFlag === undefined) delete process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN
   else process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN = previousFlag
+  if (previousConnectivityFlag === undefined) {
+    delete process.env.INVESTIGHOST_REAL_EXECUTION_TOKEN
+  } else {
+    process.env.INVESTIGHOST_REAL_EXECUTION_TOKEN = previousConnectivityFlag
+  }
 })
 
 describe('permiso local para decidir el presupuesto editorial', () => {
-  it('rechaza con feature flag apagada antes de escribir', async () => {
+  it('rechaza con la flag editorial apagada aunque 10D esté autorizado', async () => {
     delete process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN
+    process.env.INVESTIGHOST_REAL_EXECUTION_TOKEN = REAL_EXECUTION_FEATURE_TOKEN
     const target = setup()
     await expect(target.runtime.resolveBudgetDecision(input))
       .rejects.toThrow('feature flag editorial real no autoriza')
@@ -157,11 +165,23 @@ describe('permiso local para decidir el presupuesto editorial', () => {
   it('solo delega la mutación durable y no instancia proveedores', async () => {
     process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN = REAL_EDITORIAL_FEATURE_TOKEN
     const target = setup()
+    const start = vi.spyOn(target.runtime, 'start')
+    const resume = vi.spyOn(target.runtime, 'resume')
     await expect(target.runtime.resolveBudgetDecision(input)).resolves.toMatchObject({
       decision: 'authorize_extension',
       nextAction: 'resume_from_checkpoint',
     })
     expect(target.resolveBudgetReview).toHaveBeenCalledOnce()
     expect(target.resolveBudgetReview).toHaveBeenCalledWith(input)
+    expect(target.resolveBudgetReview.mock.calls[0][0]).toMatchObject({
+      newMaximumCostEur: 0.27,
+    })
+    expect(start).not.toHaveBeenCalled()
+    expect(resume).not.toHaveBeenCalled()
+    expect(pilot).toMatchObject({
+      publicationCount: 0,
+      trawelConnected: false,
+      automaticEnabled: false,
+    })
   })
 })

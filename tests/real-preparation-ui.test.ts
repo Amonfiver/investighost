@@ -40,6 +40,8 @@ describe('superficie de preparación y conectividad real controlada', () => {
   it('main expone IPC editorial validado tras una feature flag independiente', async () => {
     const main = await source('src/main/index.ts')
     const runtime = await source('src/main/real-editorial-pilot-runtime.ts')
+    const authorization = await source('src/main/real-editorial-authorization.ts')
+    const environment = await source('.env.example')
 
     expect(main).toContain("ipcMain.handle('real-preflight:get'")
     expect(main).toContain("ipcMain.handle('real-connectivity:run'")
@@ -48,7 +50,12 @@ describe('superficie de preparación y conectividad real controlada', () => {
     expect(main).toContain("ipcMain.handle('real-editorial:cancel'")
     expect(main).toContain("ipcMain.handle('real-editorial:resume'")
     expect(main).toContain("ipcMain.handle('real-editorial:resolve-budget'")
-    expect(runtime).toContain('process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN')
+    expect(runtime).toContain('readRealEditorialAuthorization()')
+    expect(authorization).toContain(
+      "REAL_EDITORIAL_FEATURE_ENV = 'INVESTIGHOST_REAL_EDITORIAL_TOKEN'",
+    )
+    expect(environment).toContain('INVESTIGHOST_REAL_EXECUTION_TOKEN=')
+    expect(environment).toContain('INVESTIGHOST_REAL_EDITORIAL_TOKEN=')
     expect(runtime).toContain('RealEditorialBudgetResolutionSchema.parse')
     expect(runtime).not.toMatch(/KIMI_API_KEY|BRAVE_SEARCH_API_KEY|OPENAI_API_KEY|TAVILY_API_KEY/)
     expect(runtime).toContain('withLiveProviderClients')

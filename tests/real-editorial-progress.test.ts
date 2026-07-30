@@ -160,6 +160,7 @@ function runtimeFor(currentMaximumCostEur: 0.2 | 0.27) {
     getHumanRequiredCall: vi.fn(async () => call),
     getBudgetReview: vi.fn(async () =>
       currentMaximumCostEur === 0.27 ? authorizedReview() : undefined),
+    getSourceLimitRecovery: vi.fn(async () => undefined),
     latestArtifact: vi.fn(async () => checkpoint),
     canResumeFromCheckpoint: vi.fn(async () => false),
   } as unknown as SupabaseRealEditorialPilotRepository
@@ -191,7 +192,7 @@ function runtimeFor(currentMaximumCostEur: 0.2 | 0.27) {
 
 function query(result: unknown) {
   const builder: Record<string, (...args: unknown[]) => unknown> = {}
-  for (const method of ['select', 'eq', 'order']) {
+  for (const method of ['select', 'eq', 'is', 'order']) {
     builder[method] = () => builder
   }
   builder.limit = () => Promise.resolve(result)
@@ -393,16 +394,22 @@ describe('lectura de progreso tras una ampliación humana', () => {
   })
 
   it('main, preload y renderer usan el contrato compartido de progreso', async () => {
-    const [main, preload, renderer, globalTypes] = await Promise.all([
+    const [runtime, main, preload, renderer, globalTypes] = await Promise.all([
       readFile(new URL('../src/main/real-editorial-pilot-runtime.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../src/main/index.ts', import.meta.url), 'utf8'),
       readFile(new URL('../src/main/preload.ts', import.meta.url), 'utf8'),
       readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
       readFile(new URL('../src/vite-env.d.ts', import.meta.url), 'utf8'),
     ])
 
-    expect(main).toContain('RealEditorialPilotProgressSchema.parse')
+    expect(runtime).toContain('RealEditorialPilotProgressSchema.parse')
+    expect(runtime).toContain('RealEditorialSourceLimitRecoverySchema.parse')
+    expect(main).toContain("'real-editorial:recover-source-limit'")
     expect(preload).toContain('Promise<RealEditorialPilotProgress>')
+    expect(preload).toContain('RealEditorialSourceLimitRecovery')
     expect(renderer).toContain('useState<RealEditorialPilotProgress | null>')
+    expect(renderer).toContain('RealEditorialSourceLimitRecoveryPanel')
     expect(globalTypes).toContain('Promise<RealEditorialPilotProgress>')
+    expect(globalTypes).toContain('Promise<RealEditorialSourceLimitRecoveryResult>')
   })
 })

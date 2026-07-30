@@ -810,6 +810,17 @@ function safeIncidentMessage(error: unknown): string {
     error
     && typeof error === 'object'
     && 'code' in error
+    && error.code === 'LIMIT_EXCEEDED'
+    && 'message' in error
+    && typeof error.message === 'string'
+    && /(?:expediente|fuente)/i.test(error.message)
+  ) {
+    return 'El expediente supera el máximo global de fuentes y necesita una selección durable antes de continuar.'
+  }
+  if (
+    error
+    && typeof error === 'object'
+    && 'code' in error
     && error.code === 'BUDGET_EXCEEDED'
     && 'message' in error
     && typeof error.message === 'string'

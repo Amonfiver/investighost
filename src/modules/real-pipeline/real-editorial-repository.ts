@@ -12,6 +12,9 @@ import {
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotRecordSchema,
   RealEditorialPilotSnapshotSchema,
+  RealEditorialSourceLimitRecoveryPlanSchema,
+  RealEditorialSourceLimitRecoveryResultSchema,
+  RealEditorialSourceLimitRecoverySchema,
   type RealEditorialAmbiguousCall,
   type RealEditorialAmbiguousCallResolution,
   type RealEditorialAmbiguousCallResolutionResult,
@@ -23,15 +26,20 @@ import {
   type RealEditorialPilotRecord,
   type RealEditorialPilotSnapshot,
   type RealEditorialPilotState,
+  type RealEditorialSourceLimitRecovery,
+  type RealEditorialSourceLimitRecoveryPlan,
+  type RealEditorialSourceLimitRecoveryResult,
 } from '@shared/real-editorial-pilot-contracts'
 import {
   RealResearchDossierSchema,
   RealContinueDecisionSchema,
   RealFocusedQuerySchema,
+  RealResearchSourceSchema,
   type RealFocusedQuery,
   type RealResearchDossier,
   type RealRoundNumber,
   type RealResearchMission,
+  type RealResearchSource,
 } from '@shared/real-pipeline-contracts'
 import type {
   RealWorkflowCheckpoint,
@@ -43,6 +51,11 @@ import type {
   IntelligenceRoundAnalysis,
   ResearchToolResult,
 } from './ports'
+import {
+  GlobalSourceLimitError,
+  selectSourcesWithinGlobalLimit,
+  type GlobalSourceLimitSelection,
+} from './source-limit-recovery'
 
 export type RealEditorialArtifactKind =
   | 'mission'
@@ -82,6 +95,9 @@ export type RealEditorialRepositoryErrorCode =
   | 'BUDGET_DECISION_CONFLICT'
   | 'BUDGET_EXTENSION_INVALID'
   | 'BUDGET_DECISION_NOT_ALLOWED'
+  | 'SOURCE_LIMIT_RECOVERY_REQUIRED'
+  | 'SOURCE_LIMIT_RECOVERY_CONFLICT'
+  | 'SOURCE_LIMIT_RECOVERY_NOT_ALLOWED'
   | 'PERSISTENCE_ERROR'
 
 export class RealEditorialRepositoryError extends Error {
@@ -155,6 +171,7 @@ export interface RealEditorialPilotRepository {
     state: RealEditorialPilotState,
     currentRound: number,
     accumulatedCost?: number,
+    checkpointVersion?: number,
   ): Promise<void>
   saveResult(snapshot: RealEditorialPilotSnapshot): Promise<void>
   saveResearchResult(
@@ -581,6 +598,131 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     })
   }
 
+  async getSourceLimitRecovery(
+    pilotId: string,
+  ): Promise<RealEditorialSourceLimitRecoveryPlan | undefined> {
+    const pilot = await this.getPilot(pilotId)
+    if (!pilot?.budget) return undefined
+    const stored = await this.client.from('real_editorial_source_limit_recoveries')
+      .select('*').eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+      .order('recovered_at', { ascending: false }).limit(1).maybeSingle()
+    assertNoError(stored.error, 'No se pudo leer la recuperación del límite de fuentes')
+    if (stored.data) return sourceLimitRecoveryPlanFromRow(stored.data)
+
+    const [checkpoint, roundTwo] = await Promise.all([
+      this.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
+      this.latestArtifact(pilot.currentRunId, 'tavily_result', 'round-2'),
+    ])
+    if (!checkpoint || !roundTwo) return undefined
+    const incidentResult = await this.client.from('real_editorial_incidents')
+      .select('id').eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+      .eq('code', 'LIMIT_EXCEEDED').eq('classification', 'human_required')
+      .is('resolved_at', null).gte('created_at', roundTwo.createdAt)
+      .order('created_at', { ascending: true }).limit(1).maybeSingle()
+    assertNoError(incidentResult.error, 'No se pudo leer el incidente de límite de fuentes')
+    if (!incidentResult.data) return undefined
+    return sourceLimitRecoveryPlanFromArtifacts({
+      pilot,
+      incidentId: String(incidentResult.data.id),
+      checkpoint,
+      roundTwo,
+    })
+  }
+
+  async recoverSourceLimit(
+    candidate: RealEditorialSourceLimitRecovery,
+  ): Promise<RealEditorialSourceLimitRecoveryResult> {
+    const input = RealEditorialSourceLimitRecoverySchema.parse(candidate)
+    const plan = await this.getSourceLimitRecovery(input.pilotId)
+    if (!plan || plan.runId !== input.runId || plan.incidentId !== input.incidentId) {
+      throw new RealEditorialRepositoryError(
+        'SOURCE_LIMIT_RECOVERY_REQUIRED',
+        'No existe un exceso global de fuentes recuperable para este piloto y run',
+      )
+    }
+    if (plan.status === 'applied') {
+      if (plan.actorId !== input.actorId || plan.reason !== input.reason) {
+        throw new RealEditorialRepositoryError(
+          'SOURCE_LIMIT_RECOVERY_CONFLICT',
+          'El incidente ya tiene una recuperación durable incompatible',
+        )
+      }
+      return RealEditorialSourceLimitRecoveryResultSchema.parse({
+        ...plan,
+        nextAction: 'resume_from_checkpoint',
+      })
+    }
+
+    const [checkpoint, roundTwo] = await Promise.all([
+      this.latestArtifact(input.runId, 'checkpoint', 'workflow'),
+      this.latestArtifact(input.runId, 'tavily_result', 'round-2'),
+    ])
+    if (
+      !checkpoint
+      || !roundTwo
+      || checkpoint.version !== plan.previousCheckpointVersion
+      || roundTwo.payloadHash.length !== 64
+      || !isRecord(checkpoint.payload)
+      || !checkpoint.payload.dossier
+    ) {
+      throw new RealEditorialRepositoryError(
+        'SOURCE_LIMIT_RECOVERY_CONFLICT',
+        'La evidencia durable cambió antes de aplicar la recuperación',
+      )
+    }
+    const selection = sourceLimitSelectionFromArtifacts(checkpoint, roundTwo)
+    const dossier = RealResearchDossierSchema.parse({
+      ...checkpoint.payload.dossier as Record<string, unknown>,
+      rounds: [1, 2],
+      sources: selection.combinedSources,
+      generatedAt: roundTwo.createdAt,
+    })
+    const recoveredCheckpoint = {
+      ...checkpoint.payload,
+      state: 'analyzing_round_2',
+      dossier,
+      providerCalls: plan.providerCallsAfter,
+      simulatedCost: plan.spentCostEur,
+      updatedAt: this.now().toISOString(),
+    }
+    const recoveredCheckpointHash = realEditorialPayloadHash(recoveredCheckpoint)
+    const recoveryKey = realEditorialPayloadHash({
+      pilotId: input.pilotId,
+      runId: input.runId,
+      incidentId: input.incidentId,
+      actorId: input.actorId,
+      reason: input.reason,
+      previousCheckpointVersion: checkpoint.version,
+      previousCheckpointHash: checkpoint.payloadHash,
+      roundTwoResultHash: roundTwo.payloadHash,
+      selectedSourceIds: selection.selectedSources.map(source => source.id),
+      excludedSourceIds: selection.excludedSources.map(item => item.source.id),
+    })
+    const { data, error } = await this.client.rpc('recover_real_editorial_source_limit', {
+      p_recovery_key: recoveryKey,
+      p_pilot_id: input.pilotId,
+      p_run_id: input.runId,
+      p_incident_id: input.incidentId,
+      p_actor_id: input.actorId,
+      p_reason: input.reason,
+      p_previous_checkpoint_version: checkpoint.version,
+      p_previous_checkpoint_hash: checkpoint.payloadHash,
+      p_round_two_result_hash: roundTwo.payloadHash,
+      p_recovered_checkpoint_version: checkpoint.version + 1,
+      p_recovered_checkpoint: recoveredCheckpoint,
+      p_recovered_checkpoint_hash: recoveredCheckpointHash,
+    })
+    if (error) throw sourceLimitRecoveryPersistenceError(error)
+    const stored = await this.client.from('real_editorial_source_limit_recoveries')
+      .select('*').eq('id', String(data)).eq('pilot_id', input.pilotId)
+      .eq('run_id', input.runId).eq('incident_id', input.incidentId).single()
+    assertNoError(stored.error, 'No se pudo verificar la recuperación durable de fuentes')
+    return RealEditorialSourceLimitRecoveryResultSchema.parse({
+      ...sourceLimitRecoveryPlanFromRow(stored.data),
+      nextAction: 'resume_from_checkpoint',
+    })
+  }
+
   async getHumanRequiredCall(pilotId: string): Promise<RealEditorialAmbiguousCall | undefined> {
     const pilot = await this.getPilot(pilotId)
     if (!pilot) throw new RealEditorialRepositoryError('PILOT_NOT_FOUND', 'El piloto no existe')
@@ -842,7 +984,14 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
   async canResumeFromCheckpoint(pilotId: string): Promise<boolean> {
     const pilot = await this.getPilot(pilotId)
     if (!pilot || !resumableStates.includes(pilot.state)) return false
-    const [checkpoint, unresolved, permanentCancellation, budgetReview, guard] = await Promise.all([
+    const [
+      checkpoint,
+      unresolved,
+      permanentCancellation,
+      budgetReview,
+      guard,
+      sourceLimitRecovery,
+    ] = await Promise.all([
       this.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
       this.client.from('real_editorial_ambiguous_calls').select('call_id', {
         head: true,
@@ -858,6 +1007,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         .order('opened_at', { ascending: false }).limit(1).maybeSingle(),
       this.client.from('real_editorial_execution_guard').select('owner_execution_id,expires_at')
         .eq('guard_name', 'morella-real-editorial').maybeSingle(),
+      this.getSourceLimitRecovery(pilotId),
     ])
     assertNoError(unresolved.error, 'No se pudo comprobar la ambigüedad pendiente')
     assertNoError(permanentCancellation.error, 'No se pudo comprobar la cancelación definitiva')
@@ -871,7 +1021,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     const guardAllowsResume = !guard.data?.owner_execution_id || guardExpired
     return Boolean(checkpoint) && (unresolved.count ?? 0) === 0
       && (permanentCancellation.count ?? 0) === 0 && budgetAllowsResume
-      && guardAllowsResume
+      && guardAllowsResume && sourceLimitRecovery?.status !== 'required'
   }
 
   async appendArtifact(
@@ -949,6 +1099,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     state: RealEditorialPilotState,
     currentRound: number,
     accumulatedCost?: number,
+    checkpointVersion?: number,
   ): Promise<void> {
     const runUpdate: Record<string, unknown> = {
       state,
@@ -961,6 +1112,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       if (data && !data.started_at) runUpdate.started_at = this.now().toISOString()
     }
     if (accumulatedCost !== undefined) runUpdate.accumulated_cost = accumulatedCost
+    if (checkpointVersion !== undefined) runUpdate.checkpoint_version = checkpointVersion
     if (terminalStates.includes(state)) runUpdate.completed_at = this.now().toISOString()
     const [runResult, pilotResult] = await Promise.all([
       this.client.from('real_editorial_runs').update(runUpdate).eq('id', runId).eq('pilot_id', pilotId),
@@ -1248,12 +1400,13 @@ export class SupabaseRealWorkflowCheckpointStore implements RealWorkflowCheckpoi
 
   async save(checkpoint: RealWorkflowCheckpoint): Promise<void> {
     const latest = await this.repository.latestArtifact(this.runId, 'checkpoint', 'workflow')
+    const checkpointVersion = (latest?.version ?? 0) + 1
     await this.repository.appendArtifact(
       this.pilotId,
       this.runId,
       'checkpoint',
       'workflow',
-      (latest?.version ?? 0) + 1,
+      checkpointVersion,
       checkpoint as unknown as Record<string, unknown>,
     )
     const state = mapWorkflowState(checkpoint.state)
@@ -1263,6 +1416,7 @@ export class SupabaseRealWorkflowCheckpointStore implements RealWorkflowCheckpoi
       state,
       checkpoint.completedRound,
       checkpoint.simulatedCost,
+      checkpointVersion,
     )
     for (const query of checkpoint.nextRoundQueries) {
       await this.repository.appendArtifact(
@@ -1338,40 +1492,56 @@ export function restoreRealWorkflowCheckpointRounds(
     return checkpoint
   }
 
-  const sources = new Map<string, unknown>()
-  for (const item of durableResearch) {
-    for (const source of item.result.sources) {
-      if (!isRecord(source) || typeof source.normalizedUrl !== 'string') {
-        throw invalidRoundCheckpoint('Una fuente durable no supera el contrato editorial')
-      }
-      if (!sources.has(source.normalizedUrl)) sources.set(source.normalizedUrl, source)
+  const mission = checkpoint.initialMission
+  const roundOne = durableResearch.find(item => item.round === 1)
+  const parsedRoundOne = RealResearchSourceSchema.array().safeParse(roundOne?.result.sources ?? [])
+  if (!parsedRoundOne.success || parsedRoundOne.data.some(source => source.round !== 1)) {
+    throw invalidRoundCheckpoint('Una fuente durable de ronda 1 no supera el contrato editorial')
+  }
+  let sources = parsedRoundOne.data
+  if (storedDossier?.rounds.includes(1)) {
+    const storedRoundOne = storedDossier.sources.filter(source => source.round === 1)
+    const durableByUrl = [...parsedRoundOne.data]
+      .sort((left, right) => left.normalizedUrl.localeCompare(right.normalizedUrl))
+    const storedByUrl = [...storedRoundOne]
+      .sort((left, right) => left.normalizedUrl.localeCompare(right.normalizedUrl))
+    if (realEditorialPayloadHash(durableByUrl) !== realEditorialPayloadHash(storedByUrl)) {
+      throw invalidRoundCheckpoint(
+        'Las fuentes del expediente no coinciden con el resultado Tavily durable de ronda 1',
+      )
+    }
+    sources = storedRoundOne
+  }
+  const roundTwo = durableResearch.find(item => item.round === 2)
+  if (roundTwo) {
+    const parsedRoundTwo = RealResearchSourceSchema.array().safeParse(roundTwo.result.sources)
+    if (!parsedRoundTwo.success || parsedRoundTwo.data.some(source => source.round !== 2)) {
+      throw invalidRoundCheckpoint('Una fuente durable de ronda 2 no supera el contrato editorial')
+    }
+    try {
+      sources = selectSourcesWithinGlobalLimit(
+        sources,
+        parsedRoundTwo.data,
+        mission.limits.maxSources,
+      ).combinedSources
+    } catch (error) {
+      throw invalidRoundCheckpoint(
+        error instanceof Error ? error.message : 'No se pudo aplicar el máximo global de fuentes',
+      )
     }
   }
-  if (storedDossier) {
-    const storedSourceCount = durableResearch
-      .filter(item => storedDossier?.rounds.includes(item.round))
-      .flatMap(item => item.result.sources)
-      .reduce((unique, source) => {
-        if (!isRecord(source) || typeof source.normalizedUrl !== 'string') {
-          throw invalidRoundCheckpoint('Una fuente durable no supera el contrato editorial')
-        }
-        if (!unique.has(source.normalizedUrl)) unique.set(source.normalizedUrl, source)
-        return unique
-      }, new Map<string, unknown>())
-    if (realEditorialPayloadHash([...storedSourceCount.values()])
-      !== realEditorialPayloadHash(storedDossier.sources)) {
-      throw invalidRoundCheckpoint('Las fuentes del expediente no coinciden con los artefactos durables')
-    }
+  if (storedDossier?.rounds.includes(2)
+    && realEditorialPayloadHash(sources) !== realEditorialPayloadHash(storedDossier.sources)) {
+    throw invalidRoundCheckpoint('Las fuentes del expediente no coinciden con la selección durable')
   }
 
-  const mission = checkpoint.initialMission
   const dossier = RealResearchDossierSchema.safeParse({
     requestId: mission.requestId,
     runId: mission.runId,
     taskId: mission.taskId,
     destinationId: mission.destination.canonicalId,
     rounds: durableResearchRounds,
-    sources: [...sources.values()],
+    sources,
     evidence: storedDossier?.evidence ?? [],
     generatedAt: storedDossier?.generatedAt ?? durableResearch.at(-1)?.artifact.createdAt,
   })
@@ -1405,6 +1575,201 @@ export function realEditorialIdentityKey(variantKey = 'initial'): string {
     taskOrigin: 'human_authorized',
     variantKey,
   })).digest('hex')
+}
+
+const SOURCE_LIMIT_DIAGNOSTIC =
+  'El expediente supera el máximo global de fuentes y necesita una selección durable antes de continuar.'
+
+function sourceLimitRecoveryPlanFromArtifacts(input: {
+  pilot: RealEditorialPilotRecord
+  incidentId: string
+  checkpoint: RealEditorialArtifact
+  roundTwo: RealEditorialArtifact
+}): RealEditorialSourceLimitRecoveryPlan {
+  const { pilot, incidentId, checkpoint, roundTwo } = input
+  if (
+    !pilot.budget
+    || !isRecord(checkpoint.payload)
+    || checkpoint.payload.version !== 'real-workflow-v1'
+    || checkpoint.payload.state !== 'researching_round_2'
+    || checkpoint.payload.completedRound !== 1
+    || !isRecord(checkpoint.payload.initialMission)
+    || !isRecord(checkpoint.payload.initialMission.limits)
+    || checkpoint.payload.initialMission.limits.maxSources
+      !== REAL_EDITORIAL_PILOT_POLICY.maxAcceptedSources
+  ) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'El exceso de fuentes no conserva un checkpoint de investigación de ronda 2',
+    )
+  }
+  const selection = sourceLimitSelectionFromArtifacts(checkpoint, roundTwo)
+  if (selection.excludedSources.length === 0) {
+    throw new RealEditorialRepositoryError(
+      'SOURCE_LIMIT_RECOVERY_NOT_ALLOWED',
+      'La evidencia durable no supera el máximo global de fuentes',
+    )
+  }
+  const providerCallsBefore = finiteNonnegativeInteger(
+    checkpoint.payload.providerCalls,
+    'Las llamadas previas del checkpoint no son válidas',
+  )
+  const roundResult = researchResultFromArtifact(roundTwo)
+  const researchProviderCalls = roundResult.providerRequestIds.length
+  if (researchProviderCalls === 0) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'El resultado Tavily de ronda 2 no conserva sus peticiones remotas',
+    )
+  }
+  return RealEditorialSourceLimitRecoveryPlanSchema.parse({
+    status: 'required',
+    pilotId: pilot.id,
+    runId: pilot.currentRunId,
+    incidentId,
+    diagnosticMessage: SOURCE_LIMIT_DIAGNOSTIC,
+    previousCheckpointVersion: checkpoint.version,
+    recoveredCheckpointVersion: checkpoint.version + 1,
+    workflowVersion: 'real-workflow-v1',
+    maximumSources: selection.maximumSources,
+    availableSlots: selection.availableSlots,
+    existingSources: selection.existingSources.map(sourceLimitTrace),
+    candidateSources: selection.candidateSources.map(sourceLimitTrace),
+    selectedSources: selection.selectedSources.map(sourceLimitTrace),
+    excludedSources: selection.excludedSources.map(item => ({
+      ...sourceLimitTrace(item.source),
+      rank: item.rank,
+      reason: item.reason,
+    })),
+    providerCallsBefore,
+    researchProviderCalls,
+    providerCallsAfter: providerCallsBefore + researchProviderCalls,
+    spentCostEur: pilot.budget.spentCost,
+    reservedCostEur: pilot.budget.reservedCost,
+    currentMaximumCostEur: pilot.budget.taskLimitCost,
+    openAIAnalysisRoundTwoPending: true,
+  })
+}
+
+function sourceLimitRecoveryPlanFromRow(
+  row: Record<string, unknown>,
+): RealEditorialSourceLimitRecoveryPlan {
+  return RealEditorialSourceLimitRecoveryPlanSchema.parse({
+    status: 'applied',
+    recoveryId: row.id,
+    recoveryKey: row.recovery_key,
+    pilotId: row.pilot_id,
+    runId: row.run_id,
+    incidentId: row.incident_id,
+    actorId: row.actor_id,
+    reason: row.reason,
+    recoveredAt: row.recovered_at,
+    diagnosticMessage: SOURCE_LIMIT_DIAGNOSTIC,
+    previousCheckpointVersion: Number(row.previous_checkpoint_version),
+    recoveredCheckpointVersion: Number(row.recovered_checkpoint_version),
+    workflowVersion: 'real-workflow-v1',
+    maximumSources: Number(row.maximum_sources),
+    availableSlots: Number(row.available_slots),
+    existingSources: row.existing_sources,
+    candidateSources: row.candidate_sources,
+    selectedSources: row.selected_sources,
+    excludedSources: row.excluded_sources,
+    providerCallsBefore: Number(row.provider_calls_before),
+    researchProviderCalls: Number(row.research_provider_calls),
+    providerCallsAfter: Number(row.provider_calls_after),
+    spentCostEur: Number(row.spent_cost),
+    reservedCostEur: Number(row.reserved_cost),
+    currentMaximumCostEur: Number(row.current_maximum_cost),
+    openAIAnalysisRoundTwoPending: true,
+  })
+}
+
+function sourceLimitSelectionFromArtifacts(
+  checkpoint: RealEditorialArtifact,
+  roundTwo: RealEditorialArtifact,
+): GlobalSourceLimitSelection {
+  if (!isRecord(checkpoint.payload)) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'El checkpoint del límite de fuentes no es un objeto',
+    )
+  }
+  const dossier = RealResearchDossierSchema.safeParse(checkpoint.payload.dossier)
+  if (!dossier.success || dossier.data.rounds.join(',') !== '1') {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'El checkpoint no conserva únicamente el expediente analizado de ronda 1',
+    )
+  }
+  const roundResult = researchResultFromArtifact(roundTwo)
+  try {
+    return selectSourcesWithinGlobalLimit(
+      dossier.data.sources,
+      roundResult.sources,
+      REAL_EDITORIAL_PILOT_POLICY.maxAcceptedSources,
+    )
+  } catch (error) {
+    if (error instanceof GlobalSourceLimitError) {
+      throw new RealEditorialRepositoryError(
+        'SOURCE_LIMIT_RECOVERY_NOT_ALLOWED',
+        error.message,
+      )
+    }
+    throw error
+  }
+}
+
+function researchResultFromArtifact(
+  artifact: RealEditorialArtifact,
+): { sources: RealResearchSource[]; providerRequestIds: string[] } {
+  if (
+    artifact.kind !== 'tavily_result'
+    || artifact.key !== 'round-2'
+    || !isRecord(artifact.payload)
+    || artifact.payload.round !== 2
+    || !Array.isArray(artifact.payload.sources)
+    || !Array.isArray(artifact.payload.providerRequestIds)
+  ) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'El resultado Tavily durable no corresponde a la ronda 2',
+    )
+  }
+  const sources = RealResearchSourceSchema.array().safeParse(artifact.payload.sources)
+  const providerRequestIds = artifact.payload.providerRequestIds
+  if (
+    !sources.success
+    || sources.data.some(source => source.round !== 2)
+    || providerRequestIds.some(value => typeof value !== 'string' || value.length === 0)
+  ) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'El resultado Tavily de ronda 2 no supera el contrato durable',
+    )
+  }
+  return {
+    sources: sources.data,
+    providerRequestIds: providerRequestIds as string[],
+  }
+}
+
+function sourceLimitTrace(source: RealResearchSource) {
+  return {
+    id: source.id,
+    round: source.round,
+    normalizedUrl: source.normalizedUrl,
+    title: source.title,
+    score: source.score,
+    contentHash: source.contentHash,
+  }
+}
+
+function finiteNonnegativeInteger(candidate: unknown, message: string): number {
+  const value = Number(candidate)
+  if (!Number.isInteger(value) || value < 0) {
+    throw new RealEditorialRepositoryError('CHECKPOINT_INVALID', message)
+  }
+  return value
 }
 
 function pilotFromRows(
@@ -1737,6 +2102,38 @@ function budgetDecisionPersistenceError(
   return new RealEditorialRepositoryError(
     'BUDGET_DECISION_NOT_ALLOWED',
     'La decisión presupuestaria durable fue rechazada',
+  )
+}
+
+function sourceLimitRecoveryPersistenceError(
+  error: { message: string; code?: string },
+): RealEditorialRepositoryError {
+  if (
+    error.message.includes('SOURCE_LIMIT_RECOVERY_IDEMPOTENCY_CONFLICT')
+    || error.message.includes('SOURCE_LIMIT_RECOVERY_ALREADY_APPLIED')
+    || error.message.includes('SOURCE_LIMIT_RECOVERY_CHECKPOINT_CHANGED')
+    || error.message.includes('SOURCE_LIMIT_RECOVERY_STATE_CHANGED')
+    || error.message.includes('SOURCE_LIMIT_RECOVERY_ROUND_TWO_INVALID')
+    || error.message.includes('SOURCE_LIMIT_RECOVERY_ANALYSIS_ALREADY_STARTED')
+  ) {
+    return new RealEditorialRepositoryError(
+      'SOURCE_LIMIT_RECOVERY_CONFLICT',
+      'La evidencia durable cambió o el incidente ya tiene otra recuperación',
+    )
+  }
+  if (
+    error.message.includes('SOURCE_LIMIT_RECOVERY_INCIDENT_INVALID')
+    || error.message.includes('SOURCE_LIMIT_RECOVERY_OVERFLOW_NOT_PRESENT')
+    || error.message.includes('SOURCE_LIMIT_RECOVERY_NO_AVAILABLE_SLOTS')
+  ) {
+    return new RealEditorialRepositoryError(
+      'SOURCE_LIMIT_RECOVERY_REQUIRED',
+      'No existe un exceso global de fuentes pendiente y compatible',
+    )
+  }
+  return new RealEditorialRepositoryError(
+    'SOURCE_LIMIT_RECOVERY_NOT_ALLOWED',
+    'La recuperación durable del límite de fuentes fue rechazada',
   )
 }
 

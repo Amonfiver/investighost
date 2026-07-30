@@ -405,6 +405,177 @@ export const RealEditorialAmbiguousCallResolutionResultSchema = z.object({
   }
 })
 
+const SourceLimitRecoveryReasonSchema = z.string().trim().min(1).max(500).refine(
+  value => !/(?:sk-|tvly-|api[_ -]?key|authorization|bearer\s)/i.test(value),
+  'El motivo no puede contener credenciales ni cabeceras de autorización',
+)
+
+const RealEditorialSourceTraceSchema = z.object({
+  id: IdentifierSchema,
+  round: z.literal(2),
+  normalizedUrl: z.string().url().refine(value => value.startsWith('https://'), {
+    message: 'La fuente debe usar HTTPS',
+  }),
+  title: z.string().trim().min(1).max(500),
+  score: z.number().finite().min(0).max(1),
+  contentHash: Sha256Schema,
+})
+
+const RealEditorialExistingSourceTraceSchema = RealEditorialSourceTraceSchema.extend({
+  round: z.literal(1),
+})
+
+const RealEditorialExcludedSourceTraceSchema = RealEditorialSourceTraceSchema.extend({
+  rank: z.number().int().positive(),
+  reason: z.literal('global_source_limit_exhausted'),
+})
+
+const RealEditorialSourceLimitRecoveryPlanShapeSchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  incidentId: z.string().uuid(),
+  diagnosticMessage: z.literal(
+    'El expediente supera el máximo global de fuentes y necesita una selección durable antes de continuar.',
+  ),
+  previousCheckpointVersion: z.number().int().positive(),
+  recoveredCheckpointVersion: z.number().int().positive(),
+  workflowVersion: z.literal('real-workflow-v1'),
+  maximumSources: z.literal(REAL_EDITORIAL_PILOT_POLICY.maxAcceptedSources),
+  availableSlots: z.number().int().nonnegative(),
+  existingSources: z.array(RealEditorialExistingSourceTraceSchema),
+  candidateSources: z.array(RealEditorialSourceTraceSchema).min(1),
+  selectedSources: z.array(RealEditorialSourceTraceSchema),
+  excludedSources: z.array(RealEditorialExcludedSourceTraceSchema).min(1),
+  providerCallsBefore: z.number().int().nonnegative(),
+  researchProviderCalls: z.number().int().positive(),
+  providerCallsAfter: z.number().int().positive(),
+  spentCostEur: EuroAmountSchema,
+  reservedCostEur: z.literal(0),
+  currentMaximumCostEur: CurrentMaximumCostSchema,
+  openAIAnalysisRoundTwoPending: z.literal(true),
+})
+
+const validateSourceLimitRecoveryPlan = (
+  value: z.infer<typeof RealEditorialSourceLimitRecoveryPlanShapeSchema>,
+  context: z.RefinementCtx,
+) => {
+  if (value.recoveredCheckpointVersion !== value.previousCheckpointVersion + 1) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['recoveredCheckpointVersion'],
+      message: 'La recuperación debe crear la siguiente versión del checkpoint',
+    })
+  }
+  if (value.availableSlots !== value.maximumSources - value.existingSources.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['availableSlots'],
+      message: 'Las plazas disponibles no coinciden con el límite global',
+    })
+  }
+  if (
+    value.selectedSources.length !== value.availableSlots
+    || value.existingSources.length + value.selectedSources.length !== value.maximumSources
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['selectedSources'],
+      message: 'La selección no completa exactamente el máximo global',
+    })
+  }
+  if (
+    value.candidateSources.length
+      !== value.selectedSources.length + value.excludedSources.length
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['candidateSources'],
+      message: 'Las fuentes candidatas no están completamente trazadas',
+    })
+  }
+  const existingUrls = new Set(value.existingSources.map(source => source.normalizedUrl))
+  const candidateUrls = value.candidateSources.map(source => source.normalizedUrl)
+  if (
+    existingUrls.size !== value.existingSources.length
+    || new Set(candidateUrls).size !== candidateUrls.length
+    || candidateUrls.some(url => existingUrls.has(url))
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['candidateSources'],
+      message: 'Las fuentes candidatas deben ser únicas y nuevas para el expediente',
+    })
+  }
+  const selectedMatch = value.selectedSources.every((source, index) =>
+    source.id === value.candidateSources[index]?.id
+    && source.contentHash === value.candidateSources[index]?.contentHash)
+  const excludedMatch = value.excludedSources.every((source, index) => {
+    const candidate = value.candidateSources[value.availableSlots + index]
+    return source.id === candidate?.id
+      && source.contentHash === candidate?.contentHash
+      && source.rank === value.availableSlots + index + 1
+  })
+  if (!selectedMatch || !excludedMatch) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['selectedSources'],
+      message: 'La partición seleccionada y excluida no coincide con el ranking durable',
+    })
+  }
+  if (
+    value.providerCallsAfter
+      !== value.providerCallsBefore + value.researchProviderCalls
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['providerCallsAfter'],
+      message: 'Las llamadas del checkpoint no coinciden con la evidencia durable',
+    })
+  }
+  if (value.spentCostEur + value.reservedCostEur > value.currentMaximumCostEur) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['spentCostEur'],
+      message: 'El ledger recuperado supera el máximo vigente',
+    })
+  }
+}
+
+export const RealEditorialSourceLimitRecoveryPlanSchema = z.discriminatedUnion('status', [
+  RealEditorialSourceLimitRecoveryPlanShapeSchema.extend({
+    status: z.literal('required'),
+  }),
+  RealEditorialSourceLimitRecoveryPlanShapeSchema.extend({
+    status: z.literal('applied'),
+    recoveryId: z.string().uuid(),
+    recoveryKey: Sha256Schema,
+    actorId: z.string().uuid(),
+    reason: SourceLimitRecoveryReasonSchema,
+    recoveredAt: TimestampSchema,
+  }),
+]).superRefine(validateSourceLimitRecoveryPlan)
+
+export const RealEditorialSourceLimitRecoverySchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  incidentId: z.string().uuid(),
+  actorId: z.string().uuid(),
+  reason: SourceLimitRecoveryReasonSchema,
+  confirmed: z.literal(true),
+}).strict()
+
+export const RealEditorialSourceLimitRecoveryResultSchema =
+  RealEditorialSourceLimitRecoveryPlanShapeSchema.extend({
+      status: z.literal('applied'),
+      recoveryId: z.string().uuid(),
+      recoveryKey: Sha256Schema,
+      actorId: z.string().uuid(),
+      reason: SourceLimitRecoveryReasonSchema,
+      recoveredAt: TimestampSchema,
+      nextAction: z.literal('resume_from_checkpoint'),
+    })
+    .superRefine(validateSourceLimitRecoveryPlan)
+
 export const RealEditorialBudgetDecisionSchema = z.enum([
   'keep_limit',
   'authorize_extension',
@@ -619,6 +790,7 @@ export const RealEditorialPilotProgressSchema = z.object({
   pendingReservations: z.number().int().nonnegative(),
   humanRequiredCall: RealEditorialAmbiguousCallSchema.optional(),
   budgetReview: RealEditorialBudgetReviewSchema.optional(),
+  sourceLimitRecovery: RealEditorialSourceLimitRecoveryPlanSchema.optional(),
   checkpointAvailable: z.boolean(),
   resumeAvailable: z.boolean(),
   guardFree: z.boolean(),
@@ -684,6 +856,15 @@ export type RealEditorialBudgetResolution = z.infer<
 export type RealEditorialBudgetReview = z.infer<typeof RealEditorialBudgetReviewSchema>
 export type RealEditorialBudgetResolutionResult = z.infer<
   typeof RealEditorialBudgetResolutionResultSchema
+>
+export type RealEditorialSourceLimitRecoveryPlan = z.infer<
+  typeof RealEditorialSourceLimitRecoveryPlanSchema
+>
+export type RealEditorialSourceLimitRecovery = z.infer<
+  typeof RealEditorialSourceLimitRecoverySchema
+>
+export type RealEditorialSourceLimitRecoveryResult = z.infer<
+  typeof RealEditorialSourceLimitRecoveryResultSchema
 >
 export type RealEditorialPilotBudget = z.infer<typeof RealEditorialPilotBudgetSchema>
 export type RealEditorialPilotRecord = z.infer<typeof RealEditorialPilotRecordSchema>

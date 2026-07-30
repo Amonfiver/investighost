@@ -27,6 +27,7 @@ import type {
   RealEditorialPilotCancel,
   RealEditorialPilotPrepare,
   RealEditorialPilotProgress,
+  RealEditorialSourceLimitRecovery,
 } from '@shared/real-editorial-pilot-contracts'
 
 // API expuesta al renderer
@@ -89,6 +90,8 @@ const electronAPI = {
     ipcRenderer.invoke('real-editorial:resolve-ambiguous-call', input),
   resolveRealEditorialBudget: (input: RealEditorialBudgetResolution) =>
     ipcRenderer.invoke('real-editorial:resolve-budget', input),
+  recoverRealEditorialSourceLimit: (input: RealEditorialSourceLimitRecovery) =>
+    ipcRenderer.invoke('real-editorial:recover-source-limit', input),
 }
 
 // Exponer como window.electronAPI

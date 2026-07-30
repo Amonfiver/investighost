@@ -97,6 +97,39 @@ class FakeResearchTool implements ResearchTool {
   }
 }
 
+class GlobalLimitResearchTool implements ResearchTool {
+  readonly id = 'tavily-global-limit-fake'
+  readonly model = 'fixture'
+  readonly simulation = true
+  readonly receivedLimits: number[] = []
+
+  async research(input: RealResearchMission): Promise<ResearchToolResult> {
+    this.receivedLimits.push(input.limits.maxSources)
+    const sources = input.round === 1
+      ? [
+          { ...source(1, 'round-one-a'), score: 0.7 },
+          { ...source(1, 'round-one-b'), score: 0.6 },
+          { ...source(1, 'round-one-c'), score: 0.5 },
+        ]
+      : [
+          { ...source(2, 'round-two-sixth'), score: 0.4 },
+          { ...source(2, 'round-two-third'), score: 0.7 },
+          { ...source(2, 'round-two-first'), score: 0.95 },
+          { ...source(2, 'round-two-fifth'), score: 0.5 },
+          { ...source(2, 'round-two-second'), score: 0.8 },
+          { ...source(2, 'round-two-fourth'), score: 0.6 },
+        ]
+    return {
+      round: input.round,
+      sources,
+      providerRequestIds: [`request-${input.round}`],
+      failures: [],
+      usageUnits: 1,
+      credits: 1,
+    }
+  }
+}
+
 class FakeIntelligenceEngine implements IntelligenceEngine {
   readonly id = 'openai-fake'
   readonly model = 'fixture'
@@ -387,6 +420,42 @@ describe('orquestador real de dos rondas focalizadas', () => {
       'https://example.test/shared',
       'https://example.test/focused',
     ])
+  })
+
+  it('aplica las plazas globales a la ronda focalizada y limita el dossier', async () => {
+    const research = new GlobalLimitResearchTool()
+    const intelligence = new FakeIntelligenceEngine([
+      analysis({ importance: 'high' }),
+      analysis({ sufficient: true }),
+    ])
+    const workflow = new ControlledRealWorkflow(
+      { researchTool: research, intelligenceEngine: intelligence },
+      new MemoryRealWorkflowCheckpointStore(),
+      new MemoryWorkflowCallExecutor(1),
+      {
+        researchCostPerRound: 0.01,
+        analysisCostPerRound: 0.01,
+        now: () => new Date(timestamp),
+      },
+    )
+    const initialMission = mission({
+      limits: { ...mission().limits, maxSources: 8 },
+    })
+
+    const result = await workflow.execute(initialMission, new AbortController().signal)
+
+    expect(research.receivedLimits).toEqual([8, 5])
+    expect(result.dossier.sources).toHaveLength(8)
+    expect(result.dossier.sources.filter(item => item.round === 2).map(item => item.id))
+      .toEqual([
+        'source-round-two-first',
+        'source-round-two-second',
+        'source-round-two-third',
+        'source-round-two-fourth',
+        'source-round-two-fifth',
+      ])
+    expect(result.dossier.sources.map(item => item.id))
+      .not.toContain('source-round-two-sixth')
   })
 
   it('releer un resultado terminal no duplica llamadas ni coste', async () => {

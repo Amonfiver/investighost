@@ -46,6 +46,8 @@ import {
   type RealEditorialBudgetReview,
   type RealEditorialPilotProgress,
   type RealEditorialPreflight,
+  type RealEditorialSourceLimitRecovery,
+  type RealEditorialSourceLimitRecoveryPlan,
 } from '@shared/real-editorial-pilot-contracts'
 import {
   LIBRARY_PAGE_SUMMARY_LABEL,
@@ -1171,6 +1173,18 @@ function RealEditorialPilotPanel(): JSX.Element {
           )}
         />
       )}
+      {progress?.sourceLimitRecovery && (
+        <RealEditorialSourceLimitRecoveryPanel
+          plan={progress.sourceLimitRecovery}
+          actorId={actorId}
+          busy={operation !== null}
+          onRecover={input => run(
+            'source-limit-recovery',
+            () => window.electronAPI.recoverRealEditorialSourceLimit(input),
+            input.pilotId,
+          )}
+        />
+      )}
       <div className="preflight-checks">
         {preflight.checks.map(check => (
           <article className={`preflight-${check.status}`} key={check.code}>
@@ -1212,7 +1226,8 @@ function RealEditorialPilotPanel(): JSX.Element {
             {operation === 'start' ? 'Ejecutando…' : 'Iniciar piloto real'}
           </button>
         )}
-        {pilot && (active || operation === 'start') && !progress?.humanRequiredCall && (
+        {pilot && (active || operation === 'start') && !progress?.humanRequiredCall
+          && !progress?.sourceLimitRecovery && (
           <button
             className="button danger"
             disabled={operation === 'cancel'}
@@ -1241,6 +1256,106 @@ function RealEditorialPilotPanel(): JSX.Element {
           </button>
         )}
       </div>
+    </section>
+  )
+}
+
+interface RealEditorialSourceLimitRecoveryPanelProps {
+  plan: RealEditorialSourceLimitRecoveryPlan
+  actorId: string | null
+  busy: boolean
+  onRecover: (input: RealEditorialSourceLimitRecovery) => void
+}
+
+export function RealEditorialSourceLimitRecoveryPanel({
+  plan,
+  actorId,
+  busy,
+  onRecover,
+}: RealEditorialSourceLimitRecoveryPanelProps): JSX.Element {
+  const [reason, setReason] = useState('')
+  const submit = () => {
+    if (!actorId || !reason.trim() || plan.status !== 'required') return
+    if (!window.confirm(
+      `Confirmar la selección durable de ${plan.selectedSources.length} fuentes y excluir ${
+        plan.excludedSources.length
+      } por el máximo global. No se llamará a Tavily ni OpenAI y el pipeline no se reanudará.`,
+    )) return
+    onRecover({
+      pilotId: plan.pilotId,
+      runId: plan.runId,
+      incidentId: plan.incidentId,
+      actorId,
+      reason: reason.trim(),
+      confirmed: true,
+    })
+  }
+  return (
+    <section className="source-limit-recovery" aria-label="Recuperación humana del límite de fuentes">
+      <header>
+        <div>
+          <span className="card-kicker">RECUPERACIÓN HUMANA DE FUENTES</span>
+          <h4>Selección durable dentro del máximo global</h4>
+        </div>
+        <span className={`state-badge ${
+          plan.status === 'applied' ? 'state-approved' : 'state-blocked'
+        }`}>
+          {plan.status}
+        </span>
+      </header>
+      <p>{plan.diagnosticMessage}</p>
+      <dl className="definition-grid compact">
+        <div><dt>Fuentes ya analizadas</dt><dd>{plan.existingSources.length}</dd></div>
+        <div><dt>Candidatas de ronda 2</dt><dd>{plan.candidateSources.length}</dd></div>
+        <div><dt>Plazas disponibles</dt><dd>{plan.availableSlots}</dd></div>
+        <div><dt>Máximo global</dt><dd>{plan.maximumSources}</dd></div>
+        <div><dt>Seleccionadas</dt><dd>{plan.selectedSources.length}</dd></div>
+        <div><dt>Excluidas con auditoría</dt><dd>{plan.excludedSources.length}</dd></div>
+        <div><dt>Gasto conservado</dt><dd>{formatPreciseMoney(plan.spentCostEur)}</dd></div>
+        <div><dt>Reserva conservada</dt><dd>{formatPreciseMoney(plan.reservedCostEur)}</dd></div>
+      </dl>
+      <div className="source-limit-exclusions">
+        <strong>Fuentes excluidas por agotamiento del límite</strong>
+        {plan.excludedSources.map(source => (
+          <article key={source.id}>
+            <span>{source.title}</span>
+            <small>{source.normalizedUrl} · rango {source.rank}</small>
+          </article>
+        ))}
+      </div>
+      {plan.status === 'applied' ? (
+        <div className="alert success">
+          <strong>Selección durable aplicada.</strong>
+          <span>
+            Checkpoint {plan.recoveredCheckpointVersion} preparado para analizar la ronda 2.
+            OpenAI continúa pendiente y no se ha reanudado automáticamente.
+          </span>
+        </div>
+      ) : (
+        <>
+          <label className="field">
+            <span>Motivo de la recuperación</span>
+            <input
+              maxLength={500}
+              value={reason}
+              onChange={event => setReason(event.target.value)}
+              placeholder="Motivo operativo obligatorio"
+            />
+          </label>
+          <div className="form-actions">
+            <span className="muted">
+              Actor: {actorId ?? 'No disponible'} · no crea coste ni llama a proveedores.
+            </span>
+            <button
+              className="button primary"
+              disabled={busy || !actorId || !reason.trim()}
+              onClick={submit}
+            >
+              Aplicar selección durable
+            </button>
+          </div>
+        </>
+      )}
     </section>
   )
 }

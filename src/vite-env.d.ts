@@ -57,6 +57,8 @@ import type {
   RealEditorialPilotRecord,
   RealEditorialPilotSnapshot,
   RealEditorialPreflight,
+  RealEditorialSourceLimitRecovery,
+  RealEditorialSourceLimitRecoveryResult,
 } from './shared/real-editorial-pilot-contracts'
 
 declare global {
@@ -113,6 +115,9 @@ declare global {
       resolveRealEditorialBudget: (
         input: RealEditorialBudgetResolution
       ) => Promise<RealEditorialBudgetResolutionResult>
+      recoverRealEditorialSourceLimit: (
+        input: RealEditorialSourceLimitRecovery
+      ) => Promise<RealEditorialSourceLimitRecoveryResult>
     }
   }
 }

@@ -268,6 +268,10 @@ ipcMain.handle('real-editorial:resolve-budget', async (_event, input: unknown) =
   return getRealEditorialPilotRuntime().resolveBudgetDecision(input)
 })
 
+ipcMain.handle('real-editorial:recover-source-limit', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().recoverSourceLimit(input)
+})
+
 async function providerCenterAction<T>(
   action: (service: Awaited<ReturnType<typeof getProviderCenterRuntime>>) => Promise<T>,
 ): Promise<T> {

@@ -20,6 +20,11 @@ import type {
   RealPipelineProviderSelection,
   ResearchToolResult,
 } from './ports'
+import {
+  GlobalSourceLimitError,
+  availableGlobalSourceSlots,
+  selectSourcesWithinGlobalLimit,
+} from './source-limit-recovery'
 
 export type RealWorkflowState =
   | 'queued'
@@ -390,6 +395,31 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
     let simulatedCost = checkpoint.simulatedCost
     let dossier = checkpoint.dossier
     if (!researchAlreadyCheckpointed) {
+      let availableSourceSlots: number
+      try {
+        availableSourceSlots = availableGlobalSourceSlots(
+          checkpoint.dossier?.sources ?? [],
+          mission.limits.maxSources,
+        )
+      } catch (error) {
+        if (error instanceof GlobalSourceLimitError) {
+          throw new RealWorkflowError('LIMIT_EXCEEDED', error.message)
+        }
+        throw error
+      }
+      if (availableSourceSlots === 0) {
+        throw new RealWorkflowError(
+          'LIMIT_EXCEEDED',
+          'El expediente agotó el máximo global de fuentes antes de investigar',
+        )
+      }
+      const providerMission = RealResearchMissionSchema.parse({
+        ...mission,
+        limits: {
+          ...mission.limits,
+          maxSources: availableSourceSlots,
+        },
+      })
       await this.checkpoints.save({
         ...checkpoint,
         state: mission.round === 1 ? 'researching_round_1' : 'researching_round_2',
@@ -398,7 +428,7 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
       const research = await this.callExecutor.execute(
         researchOperationId,
         this.configuration.researchCostPerRound,
-        context => this.providers.researchTool.research(mission, signal, context),
+        context => this.providers.researchTool.research(providerMission, signal, context),
       )
       providerCalls += research.providerRequestIds.length
       if (providerCalls + 1 > mission.limits.maxProviderCalls) {
@@ -493,14 +523,20 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
     current: RealResearchDossier | undefined,
     research: ResearchToolResult,
   ): RealResearchDossier {
-    const sources = new Map<string, RealResearchDossier['sources'][number]>()
-    for (const source of [...(current?.sources ?? []), ...research.sources]) {
-      if (!sources.has(source.normalizedUrl)) sources.set(source.normalizedUrl, source)
+    let sources: RealResearchDossier['sources']
+    try {
+      sources = selectSourcesWithinGlobalLimit(
+        current?.sources ?? [],
+        research.sources,
+        mission.limits.maxSources,
+      ).combinedSources
+    } catch (error) {
+      if (error instanceof GlobalSourceLimitError) {
+        throw new RealWorkflowError('LIMIT_EXCEEDED', error.message)
+      }
+      throw error
     }
-    if (sources.size > mission.limits.maxSources) {
-      throw new RealWorkflowError('LIMIT_EXCEEDED', 'El expediente supera el máximo de fuentes')
-    }
-    const totalCharacters = [...sources.values()].reduce((total, source) => total + source.content.length, 0)
+    const totalCharacters = sources.reduce((total, source) => total + source.content.length, 0)
     if (totalCharacters > mission.limits.maxSources * mission.limits.maxCharactersPerSource) {
       throw new RealWorkflowError('LIMIT_EXCEEDED', 'El expediente supera el máximo de contenido')
     }
@@ -510,7 +546,7 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
       taskId: mission.taskId,
       destinationId: mission.destination.canonicalId,
       rounds: [...(current?.rounds ?? []), mission.round],
-      sources: [...sources.values()],
+      sources,
       evidence: current?.evidence ?? [],
       generatedAt: this.now().toISOString(),
     })

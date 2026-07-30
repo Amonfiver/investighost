@@ -10,6 +10,7 @@ const migrations = [
   '20260726013000_real_editorial_ambiguous_call_resolution.sql',
   '20260727090000_real_editorial_budget_decision.sql',
   '20260728213000_real_editorial_prudential_reconciliation.sql',
+  '20260730210000_real_editorial_source_limit_recovery.sql',
 ]
 
 async function migration(name: string): Promise<string> {
@@ -135,6 +136,27 @@ describe('esquema durable del piloto editorial real', () => {
     expect(sql).toContain("'possibleDuplicateChargeAccepted',true")
     expect(sql).toContain("'HUMAN_PRUDENTIAL_COST_ASSUMED'")
     expect(sql).not.toMatch(/insert into public\.real_editorial_(?:pilots|runs)\b/i)
+    expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
+    expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
+  })
+
+  it('recupera un exceso global de fuentes sin repetir proveedores ni ledger', async () => {
+    const sql = await migration(migrations[8])
+
+    expect(sql).toContain('create table public.real_editorial_source_limit_recoveries')
+    expect(sql).toContain('recover_real_editorial_source_limit')
+    expect(sql).toContain('real_editorial_source_limit_recoveries_append_only')
+    expect(sql).toContain("'global_source_limit_exhausted'")
+    expect(sql).toContain("'analyzing_round_2'")
+    expect(sql).toContain("'evaluating_round_2'")
+    expect(sql).toContain('checkpoint_version = p_recovered_checkpoint_version')
+    expect(sql).toContain('accumulated_cost = budget.spent_cost')
+    expect(sql).toContain("'real.editorial.source_limit.human_recovered'")
+    expect(sql).toContain('SOURCE_LIMIT_RECOVERY_IDEMPOTENCY_CONFLICT')
+    expect(sql).toContain('SOURCE_LIMIT_RECOVERY_ANALYSIS_ALREADY_STARTED')
+    expect(sql).not.toMatch(/insert into public\.real_editorial_call_reservations/i)
+    expect(sql).not.toMatch(/insert into public\.real_editorial_provider_calls/i)
+    expect(sql).not.toMatch(/update public\.real_editorial_pilot_budgets/i)
     expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
     expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
   })

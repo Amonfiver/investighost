@@ -19,6 +19,7 @@ import {
   RealEditorialPilotCancelSchema,
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotProgressSchema,
+  RealEditorialSourceLimitRecoverySchema,
   type RealEditorialPilotProgress,
   type RealEditorialPilotState,
   type RealEditorialPreflight,
@@ -113,12 +114,14 @@ export class RealEditorialPilotRuntime {
       budgetReview,
       workflowCheckpoint,
       resumeAvailable,
+      sourceLimitRecovery,
     ] =
       await Promise.all([
       this.repository.getResult(pilotId),
       this.client.from('real_editorial_incidents')
         .select('code,classification,message,created_at', { count: 'exact' })
-        .eq('pilot_id', pilotId).order('created_at', { ascending: false }).limit(1),
+        .eq('pilot_id', pilotId).is('resolved_at', null)
+        .order('created_at', { ascending: false }).limit(1),
       this.client.from('real_editorial_runs').select('current_round')
         .eq('id', pilot.currentRunId).eq('pilot_id', pilotId).single(),
       this.repository.inspect(pilot.identityKey, pilotId),
@@ -126,6 +129,7 @@ export class RealEditorialPilotRuntime {
       this.repository.getBudgetReview(pilotId),
       this.repository.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
       this.repository.canResumeFromCheckpoint(pilotId),
+      this.repository.getSourceLimitRecovery(pilotId),
     ])
     if (incidents.error || run.error) throw new Error('No se pudo leer el progreso durable')
     return RealEditorialPilotProgressSchema.parse({
@@ -138,13 +142,17 @@ export class RealEditorialPilotRuntime {
         ? {
             code: incidents.data[0].code,
             classification: incidents.data[0].classification,
-            message: incidents.data[0].message,
+            message: incidents.data[0].code === 'LIMIT_EXCEEDED'
+              && sourceLimitRecovery?.status === 'required'
+              ? sourceLimitRecovery.diagnosticMessage
+              : incidents.data[0].message,
             createdAt: incidents.data[0].created_at,
           }
         : undefined,
       pendingReservations: inspection.pendingReservations,
       humanRequiredCall,
       budgetReview,
+      sourceLimitRecovery,
       checkpointAvailable: Boolean(workflowCheckpoint),
       resumeAvailable,
       guardFree: inspection.guardFree,
@@ -222,6 +230,28 @@ export class RealEditorialPilotRuntime {
       throw new Error('La guarda editorial debe estar libre para decidir el presupuesto')
     }
     return this.repository.resolveBudgetReview(input)
+  }
+
+  async recoverSourceLimit(candidate: unknown) {
+    const input = RealEditorialSourceLimitRecoverySchema.parse(candidate)
+    if (!readRealEditorialAuthorization().enabled) {
+      throw new Error('La feature flag editorial real no autoriza la recuperación de fuentes')
+    }
+    if (input.actorId !== MANUAL_LOCAL_ACTOR_ID) {
+      throw new Error('El actor humano no coincide con el operador local autorizado')
+    }
+    if (this.controllers.has(input.pilotId)) {
+      throw new Error('No se puede recuperar el límite mientras el piloto se ejecuta')
+    }
+    const pilot = await this.repository.getPilot(input.pilotId)
+    if (!pilot || pilot.currentRunId !== input.runId) {
+      throw new Error('La recuperación no corresponde al piloto y run activos')
+    }
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    if (!inspection.guardFree) {
+      throw new Error('La guarda editorial debe estar libre para recuperar el límite')
+    }
+    return this.repository.recoverSourceLimit(input)
   }
 
   async start(candidate: unknown) {

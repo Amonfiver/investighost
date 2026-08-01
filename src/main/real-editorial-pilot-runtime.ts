@@ -16,6 +16,7 @@ import {
   RealEditorialPilotActionSchema,
   RealEditorialAmbiguousCallResolutionSchema,
   RealEditorialBudgetResolutionSchema,
+  RealEditorialCoverageResolutionSchema,
   RealEditorialHistoricalIncidentResolutionSchema,
   RealEditorialPilotCancelSchema,
   RealEditorialPilotPrepareSchema,
@@ -119,6 +120,7 @@ export class RealEditorialPilotRuntime {
       sourceLimitRecovery,
       partialAnalysisRecovery,
       historicalIncidentReview,
+      coverageReview,
     ] =
       await Promise.all([
       this.repository.getResult(pilotId),
@@ -136,6 +138,7 @@ export class RealEditorialPilotRuntime {
       this.repository.getSourceLimitRecovery(pilotId),
       this.repository.getPartialAnalysisRecovery?.(pilotId) ?? Promise.resolve(undefined),
       this.repository.getHistoricalIncidentReview?.(pilotId) ?? Promise.resolve(undefined),
+      this.repository.getCoverageReview?.(pilotId) ?? Promise.resolve(undefined),
     ])
     if (incidents.error || run.error) throw new Error('No se pudo leer el progreso durable')
     return RealEditorialPilotProgressSchema.parse({
@@ -160,7 +163,11 @@ export class RealEditorialPilotRuntime {
         : undefined,
       pendingReservations: inspection.pendingReservations,
       humanRequiredCall,
-      budgetReview,
+      budgetReview: coverageReview
+        && budgetReview?.context !== 'coverage_acceptance'
+        ? undefined
+        : budgetReview,
+      coverageReview,
       sourceLimitRecovery,
       partialAnalysisRecovery,
       historicalIncidentReview,
@@ -241,6 +248,28 @@ export class RealEditorialPilotRuntime {
       throw new Error('La guarda editorial debe estar libre para decidir el presupuesto')
     }
     return this.repository.resolveBudgetReview(input)
+  }
+
+  async resolveCoverageDecision(candidate: unknown) {
+    const input = RealEditorialCoverageResolutionSchema.parse(candidate)
+    if (!readRealEditorialAuthorization().enabled) {
+      throw new Error('La feature flag editorial real no autoriza la decisión de cobertura')
+    }
+    if (input.actorId !== MANUAL_LOCAL_ACTOR_ID) {
+      throw new Error('El actor humano no coincide con el operador local autorizado')
+    }
+    if (this.controllers.has(input.pilotId)) {
+      throw new Error('No se puede decidir la cobertura mientras el piloto se ejecuta')
+    }
+    const pilot = await this.repository.getPilot(input.pilotId)
+    if (!pilot || pilot.currentRunId !== input.runId) {
+      throw new Error('La decisión de cobertura no corresponde al piloto y run activos')
+    }
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    if (!inspection.guardFree || inspection.pendingReservations > 0) {
+      throw new Error('La guarda y las reservas deben estar libres para decidir la cobertura')
+    }
+    return this.repository.resolveCoverageDecision(input)
   }
 
   async recoverSourceLimit(candidate: unknown) {

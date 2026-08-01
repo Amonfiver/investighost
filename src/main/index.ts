@@ -268,6 +268,10 @@ ipcMain.handle('real-editorial:resolve-budget', async (_event, input: unknown) =
   return getRealEditorialPilotRuntime().resolveBudgetDecision(input)
 })
 
+ipcMain.handle('real-editorial:resolve-coverage', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().resolveCoverageDecision(input)
+})
+
 ipcMain.handle('real-editorial:recover-source-limit', async (_event, input: unknown) => {
   return getRealEditorialPilotRuntime().recoverSourceLimit(input)
 })

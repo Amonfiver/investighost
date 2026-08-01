@@ -10,6 +10,7 @@ import type {
   RealRoundNumber,
   RealRoundResult,
 } from '@shared/real-pipeline-contracts'
+import type { RealEditorialCoverageConstraints } from '@shared/real-editorial-pilot-contracts'
 
 export type ProviderResultDiscardReason =
   | 'empty'
@@ -131,22 +132,26 @@ export interface IntelligenceEngine {
   validateDraft?(
     mission: RealResearchMission,
     knowledge: RealMasterKnowledge,
+    constraints?: RealEditorialCoverageConstraints,
   ): void
   draft(
     mission: RealResearchMission,
     knowledge: RealMasterKnowledge,
     signal: AbortSignal,
+    constraints?: RealEditorialCoverageConstraints,
   ): Promise<IntelligenceDraft[]>
   validateReview?(
     mission: RealResearchMission,
     knowledge: RealMasterKnowledge,
     drafts: IntelligenceDraft[],
+    constraints?: RealEditorialCoverageConstraints,
   ): void
   review(
     mission: RealResearchMission,
     knowledge: RealMasterKnowledge,
     drafts: IntelligenceDraft[],
     signal: AbortSignal,
+    constraints?: RealEditorialCoverageConstraints,
   ): Promise<IntelligenceReview>
 }
 

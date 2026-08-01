@@ -4,6 +4,7 @@ import {
   RealEditorialPilotSnapshotSchema,
   type RealEditorialPilotRecord,
   type RealEditorialPilotSnapshot,
+  type RealEditorialCoverageConstraints,
 } from '@shared/real-editorial-pilot-contracts'
 import {
   RealResearchMissionSchema,
@@ -604,14 +605,16 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
   validateDraft(
     mission: RealResearchMission,
     knowledge: Parameters<IntelligenceEngine['draft']>[1],
+    constraints?: RealEditorialCoverageConstraints,
   ): void {
-    this.delegate.validateDraft?.(mission, knowledge)
+    this.delegate.validateDraft?.(mission, knowledge, constraints)
   }
 
   async draft(
     mission: RealResearchMission,
     knowledge: Parameters<IntelligenceEngine['draft']>[1],
     signal: AbortSignal,
+    constraints?: RealEditorialCoverageConstraints,
   ): Promise<IntelligenceDraft[]> {
     const stored = await Promise.all(['adventure', 'student'].map(profile =>
       this.repository.latestArtifact(
@@ -629,7 +632,7 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
       'generating_adventure',
       completedRound,
     )
-    const drafts = await this.delegate.draft(mission, knowledge, signal)
+    const drafts = await this.delegate.draft(mission, knowledge, signal, constraints)
     await this.repository.saveDrafts(this.pilotId, this.runId, drafts)
     await this.repository.updateState(
       this.pilotId,
@@ -644,8 +647,9 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
     mission: RealResearchMission,
     knowledge: Parameters<IntelligenceEngine['review']>[1],
     drafts: IntelligenceDraft[],
+    constraints?: RealEditorialCoverageConstraints,
   ): void {
-    this.delegate.validateReview?.(mission, knowledge, drafts)
+    this.delegate.validateReview?.(mission, knowledge, drafts, constraints)
   }
 
   async review(
@@ -653,6 +657,7 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
     knowledge: Parameters<IntelligenceEngine['review']>[1],
     drafts: IntelligenceDraft[],
     signal: AbortSignal,
+    constraints?: RealEditorialCoverageConstraints,
   ): Promise<IntelligenceReview> {
     const existing = await this.repository.latestArtifact(this.runId, 'final_review', 'final')
     if (existing) return structuredClone(existing.payload) as IntelligenceReview
@@ -662,7 +667,7 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
       'final_review',
       await this.completedRound(),
     )
-    const review = await this.delegate.review(mission, knowledge, drafts, signal)
+    const review = await this.delegate.review(mission, knowledge, drafts, signal, constraints)
     await this.repository.saveReview(this.pilotId, this.runId, review)
     return review
   }

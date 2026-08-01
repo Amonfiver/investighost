@@ -23,6 +23,7 @@ import type {
 import type {
   RealEditorialAmbiguousCallResolution,
   RealEditorialBudgetResolution,
+  RealEditorialCoverageResolution,
   RealEditorialHistoricalIncidentResolution,
   RealEditorialPilotAction,
   RealEditorialPilotCancel,
@@ -92,6 +93,8 @@ const electronAPI = {
     ipcRenderer.invoke('real-editorial:resolve-ambiguous-call', input),
   resolveRealEditorialBudget: (input: RealEditorialBudgetResolution) =>
     ipcRenderer.invoke('real-editorial:resolve-budget', input),
+  resolveRealEditorialCoverage: (input: RealEditorialCoverageResolution) =>
+    ipcRenderer.invoke('real-editorial:resolve-coverage', input),
   recoverRealEditorialSourceLimit: (input: RealEditorialSourceLimitRecovery) =>
     ipcRenderer.invoke('real-editorial:recover-source-limit', input),
   recoverRealEditorialPartialAnalysis: (input: RealEditorialPartialAnalysisRecovery) =>

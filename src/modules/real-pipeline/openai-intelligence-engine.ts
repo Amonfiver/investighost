@@ -13,6 +13,10 @@ import {
   type RealResearchDossier,
   type RealResearchMission,
 } from '@shared/real-pipeline-contracts'
+import {
+  RealEditorialCoverageConstraintsSchema,
+  type RealEditorialCoverageConstraints,
+} from '@shared/real-editorial-pilot-contracts'
 import type {
   IntelligenceDraft,
   IntelligenceEngine,
@@ -176,14 +180,18 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     missionCandidate: RealResearchMission,
     knowledgeCandidate: RealMasterKnowledge,
     signal: AbortSignal,
+    constraintsCandidate?: RealEditorialCoverageConstraints,
   ): Promise<IntelligenceDraft[]> {
     const mission = RealResearchMissionSchema.parse(missionCandidate)
     const knowledge = RealMasterKnowledgeSchema.parse(knowledgeCandidate)
+    const constraints = constraintsCandidate
+      ? RealEditorialCoverageConstraintsSchema.parse(constraintsCandidate)
+      : undefined
     const drafts: IntelligenceDraft[] = []
     for (const profile of mission.profiles.filter(item => item.enabled)) {
       const response = await this.call(
         `draft_${profile.profile}`,
-        draftPayload(mission, knowledge, profile),
+        draftPayload(mission, knowledge, profile, constraints),
         OpenAIDraftOutputSchema,
         signal,
       )
@@ -207,13 +215,17 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
   validateDraft(
     missionCandidate: RealResearchMission,
     knowledgeCandidate: RealMasterKnowledge,
+    constraintsCandidate?: RealEditorialCoverageConstraints,
   ): void {
     const mission = RealResearchMissionSchema.parse(missionCandidate)
     const knowledge = RealMasterKnowledgeSchema.parse(knowledgeCandidate)
+    const constraints = constraintsCandidate
+      ? RealEditorialCoverageConstraintsSchema.parse(constraintsCandidate)
+      : undefined
     for (const profile of mission.profiles.filter(item => item.enabled)) {
       this.buildRequest(
         `draft_${profile.profile}`,
-        draftPayload(mission, knowledge, profile),
+        draftPayload(mission, knowledge, profile, constraints),
         OpenAIDraftOutputSchema,
       )
     }
@@ -224,12 +236,16 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     knowledgeCandidate: RealMasterKnowledge,
     drafts: IntelligenceDraft[],
     signal: AbortSignal,
+    constraintsCandidate?: RealEditorialCoverageConstraints,
   ): Promise<IntelligenceReview> {
     const mission = RealResearchMissionSchema.parse(missionCandidate)
     const knowledge = RealMasterKnowledgeSchema.parse(knowledgeCandidate)
+    const constraints = constraintsCandidate
+      ? RealEditorialCoverageConstraintsSchema.parse(constraintsCandidate)
+      : undefined
     const response = await this.call(
       'final_review',
-      reviewPayload(mission, knowledge, drafts),
+      reviewPayload(mission, knowledge, drafts, constraints),
       OpenAIReviewOutputSchema,
       signal,
     )
@@ -247,12 +263,16 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     missionCandidate: RealResearchMission,
     knowledgeCandidate: RealMasterKnowledge,
     drafts: IntelligenceDraft[],
+    constraintsCandidate?: RealEditorialCoverageConstraints,
   ): void {
     const mission = RealResearchMissionSchema.parse(missionCandidate)
     const knowledge = RealMasterKnowledgeSchema.parse(knowledgeCandidate)
+    const constraints = constraintsCandidate
+      ? RealEditorialCoverageConstraintsSchema.parse(constraintsCandidate)
+      : undefined
     this.buildRequest(
       'final_review',
-      reviewPayload(mission, knowledge, drafts),
+      reviewPayload(mission, knowledge, drafts, constraints),
       OpenAIReviewOutputSchema,
     )
   }
@@ -414,6 +434,7 @@ function draftPayload(
   mission: RealResearchMission,
   knowledge: RealMasterKnowledge,
   profile: RealResearchMission['profiles'][number],
+  constraints?: RealEditorialCoverageConstraints,
 ): Record<string, unknown> {
   return {
     profile: profile.profile,
@@ -424,11 +445,12 @@ function draftPayload(
       depth: mission.depth,
     },
     masterKnowledge: knowledge,
+    editorialConstraints: constraints,
     instruction: roleInstruction(
       profile.profile,
       profile.targetWords,
       profile.depth ?? mission.depth,
-    ),
+    ) + coverageSafetyInstruction(constraints),
   }
 }
 
@@ -436,6 +458,7 @@ function reviewPayload(
   mission: RealResearchMission,
   knowledge: RealMasterKnowledge,
   drafts: IntelligenceDraft[],
+  constraints?: RealEditorialCoverageConstraints,
 ): Record<string, unknown> {
   return {
     profiles: mission.profiles.filter(item => item.enabled),
@@ -446,8 +469,24 @@ function reviewPayload(
       content,
       approximateWordCount,
     })),
-    instruction: 'Revisa fidelidad al conocimiento maestro, diferenciación de roles y suficiencia.',
+    editorialConstraints: constraints,
+    instruction: 'Revisa fidelidad al conocimiento maestro, diferenciación de roles y suficiencia.'
+      + coverageSafetyInstruction(constraints),
   }
+}
+
+function coverageSafetyInstruction(
+  constraints?: RealEditorialCoverageConstraints,
+): string {
+  if (!constraints) return ''
+  return [
+    ' Cobertura aceptada humanamente con advertencias obligatorias.',
+    ' No presentes como ciertos los datos contradictorios o pendientes.',
+    ' No inventes rutas, tarifas, horarios, accesibilidad ni servicios.',
+    ' Formula advertencias prudentes adaptadas al perfil y conserva trazabilidad.',
+    ` Gaps no resueltos: ${constraints.unresolvedGapIds.join(', ')}.`,
+    ` Contradicciones conocidas: ${constraints.contradictions.join(' | ')}.`,
+  ].join('')
 }
 
 function parseStructuredOutput<T>(

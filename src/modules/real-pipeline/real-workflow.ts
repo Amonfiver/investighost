@@ -21,6 +21,10 @@ import type {
   ResearchToolResult,
 } from './ports'
 import {
+  RealEditorialCoverageConstraintsSchema,
+  type RealEditorialCoverageConstraints,
+} from '@shared/real-editorial-pilot-contracts'
+import {
   GlobalSourceLimitError,
   availableGlobalSourceSlots,
   selectSourcesWithinGlobalLimit,
@@ -53,6 +57,7 @@ export interface RealWorkflowCheckpoint {
   providerCalls: number
   simulatedCost: number
   lastAnalysisCost?: number
+  editorialConstraints?: RealEditorialCoverageConstraints
   updatedAt: string
 }
 
@@ -190,6 +195,7 @@ export interface RealWorkflowOutcome {
   queryHashes: string[]
   providerCalls: number
   simulatedCost: number
+  editorialConstraints?: RealEditorialCoverageConstraints
 }
 
 export class ControlledRealWorkflow implements InvestighostRealWorkflow {
@@ -632,6 +638,9 @@ function outcome(checkpoint: RealWorkflowCheckpoint): RealWorkflowOutcome {
   if (!isTerminal(checkpoint) || !checkpoint.dossier || !checkpoint.masterKnowledge || !checkpoint.coverage) {
     throw new RealWorkflowError('CHECKPOINT_INVALID', 'El checkpoint terminal está incompleto')
   }
+  const editorialConstraints = checkpoint.editorialConstraints
+    ? RealEditorialCoverageConstraintsSchema.parse(checkpoint.editorialConstraints)
+    : undefined
   return {
     state: checkpoint.state,
     completedRounds: checkpoint.dossier.rounds,
@@ -642,6 +651,7 @@ function outcome(checkpoint: RealWorkflowCheckpoint): RealWorkflowOutcome {
     queryHashes: checkpoint.queryHashes,
     providerCalls: checkpoint.providerCalls,
     simulatedCost: checkpoint.simulatedCost,
+    editorialConstraints,
   }
 }
 

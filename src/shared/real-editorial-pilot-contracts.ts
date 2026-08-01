@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   RealCoverageSchema,
+  RealKnowledgeGapSchema,
   RealMasterKnowledgeSchema,
   RealPipelineLimitsSchema,
   RealProfileConfigurationSchema,
@@ -55,6 +56,12 @@ export const REAL_EDITORIAL_PILOT_POLICY = {
     intelligence: 'openai',
     model: REAL_EDITORIAL_OPENAI_MODEL.apiId,
   },
+} as const
+
+export const REAL_EDITORIAL_COVERAGE_BUDGET = {
+  draftingCostEur: 0.04,
+  finalReviewCostEur: 0.02,
+  remainingCostEur: 0.06,
 } as const
 
 const CurrentMaximumCostSchema = z.number().finite()
@@ -815,6 +822,221 @@ export const RealEditorialBudgetDecisionSchema = z.enum([
   'cancel_permanently',
 ])
 
+export const RealEditorialCoverageDecisionSchema = z.enum([
+  'keep_review_required',
+  'reject_editorial_run',
+  'accept_with_warnings',
+])
+
+export const RealEditorialCoverageSafetyRuleSchema = z.enum([
+  'avoid_categorical_contradictory_claims',
+  'mark_pending_or_variable_data',
+  'do_not_invent_operational_details',
+  'adapt_warnings_to_profile',
+  'preserve_evidence_traceability',
+])
+
+export const REAL_EDITORIAL_COVERAGE_SAFETY_RULES = [
+  'avoid_categorical_contradictory_claims',
+  'mark_pending_or_variable_data',
+  'do_not_invent_operational_details',
+  'adapt_warnings_to_profile',
+  'preserve_evidence_traceability',
+] as const
+
+export const RealEditorialCoverageConstraintsSchema = z.object({
+  decisionId: z.string().uuid(),
+  checkpointVersion: z.number().int().positive(),
+  checkpointHash: Sha256Schema,
+  mode: z.literal('accept_with_warnings'),
+  unresolvedGapIds: z.array(IdentifierSchema).min(1),
+  contradictions: z.array(z.string().trim().min(1).max(2_000)).min(1),
+  affectedProfiles: z.array(z.enum(['adventure', 'student'])).min(1),
+  safetyRules: z.array(RealEditorialCoverageSafetyRuleSchema)
+    .length(REAL_EDITORIAL_COVERAGE_SAFETY_RULES.length),
+}).strict().superRefine((value, context) => {
+  const uniqueGapIds = new Set(value.unresolvedGapIds)
+  const uniqueContradictions = new Set(value.contradictions)
+  const uniqueProfiles = new Set(value.affectedProfiles)
+  const uniqueRules = new Set(value.safetyRules)
+  if (uniqueGapIds.size !== value.unresolvedGapIds.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['unresolvedGapIds'],
+      message: 'Los gaps editoriales deben ser únicos',
+    })
+  }
+  if (uniqueContradictions.size !== value.contradictions.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['contradictions'],
+      message: 'Las contradicciones editoriales deben ser únicas',
+    })
+  }
+  if (uniqueProfiles.size !== value.affectedProfiles.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['affectedProfiles'],
+      message: 'Los perfiles afectados deben ser únicos',
+    })
+  }
+  if (
+    uniqueRules.size !== REAL_EDITORIAL_COVERAGE_SAFETY_RULES.length
+    || REAL_EDITORIAL_COVERAGE_SAFETY_RULES.some(rule => !uniqueRules.has(rule))
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['safetyRules'],
+      message: 'Deben conservarse todas las protecciones editoriales de cobertura',
+    })
+  }
+})
+
+const RealEditorialCoverageDecisionBaseSchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  actorId: z.string().uuid(),
+  reason: HumanResolutionReasonSchema,
+  note: HumanResolutionNoteSchema.optional(),
+  confirmed: z.literal(true),
+})
+
+export const RealEditorialCoverageResolutionSchema = z.discriminatedUnion('decision', [
+  RealEditorialCoverageDecisionBaseSchema.extend({
+    decision: z.literal('keep_review_required'),
+  }).strict(),
+  RealEditorialCoverageDecisionBaseSchema.extend({
+    decision: z.literal('reject_editorial_run'),
+  }).strict(),
+  RealEditorialCoverageDecisionBaseSchema.extend({
+    decision: z.literal('accept_with_warnings'),
+    riskAccepted: z.literal(true),
+  }).strict(),
+])
+
+const RealEditorialCoverageGapDispositionSchema = z.object({
+  gapId: IdentifierSchema,
+  disposition: z.enum(['pending', 'rejected', 'accepted_unresolved']),
+}).strict()
+
+const RealEditorialCoverageDecisionSnapshotSchema = z.object({
+  decisionId: z.string().uuid(),
+  actorId: z.string().uuid(),
+  decision: RealEditorialCoverageDecisionSchema,
+  reason: HumanResolutionReasonSchema,
+  note: HumanResolutionNoteSchema.optional(),
+  riskAccepted: z.boolean(),
+  riskStatement: z.string().trim().min(1).max(2_000),
+  gapDispositions: z.array(RealEditorialCoverageGapDispositionSchema).min(1),
+  decidedAt: TimestampSchema,
+}).strict()
+
+const RealEditorialCoverageEstimateSchema = z.object({
+  remainingEstimatedCostEur: EuroAmountSchema,
+  projectedTotalCostEur: EuroAmountSchema,
+  shortfallCostEur: EuroAmountSchema,
+}).strict()
+
+export const RealEditorialCoverageReviewSchema = z.object({
+  reviewId: z.string().uuid().optional(),
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  status: z.enum(['required', 'kept', 'accepted', 'rejected']),
+  checkpointVersion: z.number().int().positive(),
+  checkpointHash: Sha256Schema,
+  coverageScore: z.number().min(0).max(1),
+  gaps: z.array(RealKnowledgeGapSchema).min(1),
+  contradictions: z.array(z.string().trim().min(1).max(2_000)).min(1),
+  affectedProfiles: z.array(z.enum(['adventure', 'student'])).min(1),
+  spentCostEur: EuroAmountSchema,
+  reservedCostEur: EuroAmountSchema,
+  currentMaximumCostEur: CurrentMaximumCostSchema,
+  availableCostEur: EuroAmountSchema,
+  estimates: z.object({
+    keepReviewRequired: RealEditorialCoverageEstimateSchema,
+    rejectEditorialRun: RealEditorialCoverageEstimateSchema,
+    acceptWithWarnings: RealEditorialCoverageEstimateSchema,
+  }).strict(),
+  latestDecision: RealEditorialCoverageDecisionSnapshotSchema.optional(),
+  editorialConstraints: RealEditorialCoverageConstraintsSchema.optional(),
+}).strict().superRefine((value, context) => {
+  if (value.status === 'accepted' && !value.editorialConstraints) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['editorialConstraints'],
+      message: 'La cobertura aceptada debe conservar restricciones editoriales',
+    })
+  }
+  const expectedAvailable = realEditorialEconomicValue(Math.max(
+    0,
+    value.currentMaximumCostEur - value.spentCostEur - value.reservedCostEur,
+  ))
+  if (!sameRealEditorialEconomicValue(value.availableCostEur, expectedAvailable)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['availableCostEur'],
+      message: 'El disponible debe coincidir con el máximo vigente menos gasto y reserva',
+    })
+  }
+  const expectedRemaining = {
+    keepReviewRequired: 0,
+    rejectEditorialRun: 0,
+    acceptWithWarnings: REAL_EDITORIAL_COVERAGE_BUDGET.remainingCostEur,
+  } as const
+  for (const [key, remaining] of Object.entries(expectedRemaining) as Array<[
+    keyof typeof expectedRemaining,
+    number,
+  ]>) {
+    const estimate = value.estimates[key]
+    const projected = realEditorialEconomicValue(
+      value.spentCostEur + value.reservedCostEur + remaining,
+    )
+    const shortfall = realEditorialEconomicValue(Math.max(
+      0,
+      projected - value.currentMaximumCostEur,
+    ))
+    if (!sameRealEditorialEconomicValue(estimate.remainingEstimatedCostEur, remaining)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['estimates', key, 'remainingEstimatedCostEur'],
+        message: 'La estimación restante no corresponde a la opción humana',
+      })
+    }
+    if (!sameRealEditorialEconomicValue(estimate.projectedTotalCostEur, projected)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['estimates', key, 'projectedTotalCostEur'],
+        message: 'El total proyectado no concilia con el ledger',
+      })
+    }
+    if (!sameRealEditorialEconomicValue(estimate.shortfallCostEur, shortfall)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['estimates', key, 'shortfallCostEur'],
+        message: 'El déficit proyectado no concilia con el máximo vigente',
+      })
+    }
+  }
+})
+
+function realEditorialEconomicValue(value: number): number {
+  return Number(value.toFixed(9))
+}
+
+function sameRealEditorialEconomicValue(left: number, right: number): boolean {
+  return Math.abs(left - right) <= 0.000000001
+}
+
+export const RealEditorialCoverageResolutionResultSchema = z.object({
+  decisionId: z.string().uuid(),
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  decision: RealEditorialCoverageDecisionSchema,
+  nextAction: z.enum(['review_required', 'cancelled', 'budget_review_required']),
+  budgetReviewId: z.string().uuid().optional(),
+  review: RealEditorialCoverageReviewSchema,
+}).strict()
+
 const RealEditorialBudgetDecisionBaseSchema = z.object({
   pilotId: z.string().uuid(),
   runId: z.string().uuid(),
@@ -846,6 +1068,10 @@ export const RealEditorialBudgetReviewSchema = z.object({
   status: z.enum(['pending', 'kept', 'authorized', 'cancelled']),
   currency: z.literal('EUR'),
   source: z.literal('real_editorial_pilot_budgets'),
+  context: z.enum(['workflow_completion', 'coverage_acceptance']).optional(),
+  coverageDecisionId: z.string().uuid().optional(),
+  checkpointVersion: z.number().int().positive().optional(),
+  checkpointHash: Sha256Schema.optional(),
   currentMaximumCostEur: z.number().nonnegative(),
   previousMaximumCostEur: z.number().nonnegative(),
   spentCostEur: z.number().nonnegative(),
@@ -1023,6 +1249,7 @@ export const RealEditorialPilotProgressSchema = z.object({
   pendingReservations: z.number().int().nonnegative(),
   humanRequiredCall: RealEditorialAmbiguousCallSchema.optional(),
   budgetReview: RealEditorialBudgetReviewSchema.optional(),
+  coverageReview: RealEditorialCoverageReviewSchema.optional(),
   sourceLimitRecovery: RealEditorialSourceLimitRecoveryPlanSchema.optional(),
   partialAnalysisRecovery: RealEditorialPartialAnalysisRecoveryPlanSchema.optional(),
   historicalIncidentReview: RealEditorialHistoricalIncidentReviewSchema.optional(),
@@ -1091,6 +1318,21 @@ export type RealEditorialBudgetResolution = z.infer<
 export type RealEditorialBudgetReview = z.infer<typeof RealEditorialBudgetReviewSchema>
 export type RealEditorialBudgetResolutionResult = z.infer<
   typeof RealEditorialBudgetResolutionResultSchema
+>
+export type RealEditorialCoverageDecision = z.infer<
+  typeof RealEditorialCoverageDecisionSchema
+>
+export type RealEditorialCoverageConstraints = z.infer<
+  typeof RealEditorialCoverageConstraintsSchema
+>
+export type RealEditorialCoverageResolution = z.infer<
+  typeof RealEditorialCoverageResolutionSchema
+>
+export type RealEditorialCoverageReview = z.infer<
+  typeof RealEditorialCoverageReviewSchema
+>
+export type RealEditorialCoverageResolutionResult = z.infer<
+  typeof RealEditorialCoverageResolutionResultSchema
 >
 export type RealEditorialSourceLimitRecoveryPlan = z.infer<
   typeof RealEditorialSourceLimitRecoveryPlanSchema

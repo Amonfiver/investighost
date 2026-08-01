@@ -50,6 +50,8 @@ import type {
   RealEditorialAmbiguousCallResolutionResult,
   RealEditorialBudgetResolution,
   RealEditorialBudgetResolutionResult,
+  RealEditorialCoverageResolution,
+  RealEditorialCoverageResolutionResult,
   RealEditorialHistoricalIncidentResolution,
   RealEditorialHistoricalIncidentResolutionResult,
   RealEditorialPilotAction,
@@ -119,6 +121,9 @@ declare global {
       resolveRealEditorialBudget: (
         input: RealEditorialBudgetResolution
       ) => Promise<RealEditorialBudgetResolutionResult>
+      resolveRealEditorialCoverage: (
+        input: RealEditorialCoverageResolution
+      ) => Promise<RealEditorialCoverageResolutionResult>
       recoverRealEditorialSourceLimit: (
         input: RealEditorialSourceLimitRecovery
       ) => Promise<RealEditorialSourceLimitRecoveryResult>

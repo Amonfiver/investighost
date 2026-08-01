@@ -6,6 +6,10 @@ import {
   type OpenAIResponsesClient,
 } from '@modules/real-pipeline/openai-intelligence-engine'
 import { OpenAIProfileCoverageSchema } from '@shared/openai-intelligence-contracts'
+import {
+  REAL_EDITORIAL_COVERAGE_SAFETY_RULES,
+  type RealEditorialCoverageConstraints,
+} from '@shared/real-editorial-pilot-contracts'
 import type {
   RealMasterKnowledge,
   RealResearchDossier,
@@ -152,6 +156,23 @@ function masterKnowledge(): RealMasterKnowledge {
   }
 }
 
+function editorialConstraints(): RealEditorialCoverageConstraints {
+  return {
+    decisionId: 'a8000000-0000-4000-8000-000000000001',
+    checkpointVersion: 15,
+    checkpointHash: 'b'.repeat(64),
+    mode: 'accept_with_warnings',
+    unresolvedGapIds: ['g1', 'g2', 'g3', 'g4', 'g5'],
+    contradictions: [
+      'Horarios y tarifas del castillo.',
+      'Estado y condiciones del área de autocaravanas.',
+      'Duración recomendada del castillo.',
+    ],
+    affectedProfiles: ['adventure', 'student'],
+    safetyRules: [...REAL_EDITORIAL_COVERAGE_SAFETY_RULES],
+  }
+}
+
 function draftOutput(profile: 'adventure' | 'student', words: number) {
   return {
     profile,
@@ -250,6 +271,42 @@ describe('OpenAI IntelligenceEngine estructurado y sin red', () => {
     expect(client.requests[0].input[1].content).toContain('No rellenes')
     expect(client.requests[0].input[1].content).toContain('aventurero experimentado')
     expect(client.requests[1].input[1].content).toContain('profesor cercano')
+  })
+
+  it('inyecta en borrador y revisión las restricciones de cobertura aceptadas', async () => {
+    const constraints = editorialConstraints()
+    const draftClient = new FakeResponsesClient([
+      response(draftOutput('adventure', 1_000)),
+      response(draftOutput('student', 1_800)),
+    ])
+    const drafts = await engine(draftClient).draft(
+      mission(),
+      masterKnowledge(),
+      new AbortController().signal,
+      constraints,
+    )
+    const draftPayload = draftClient.requests[0].input[1].content
+    expect(draftPayload).toContain('"mode":"accept_with_warnings"')
+    expect(draftPayload).toContain('No inventes rutas, tarifas, horarios, accesibilidad ni servicios')
+    expect(draftPayload).toContain('Gaps no resueltos: g1, g2, g3, g4, g5')
+    expect(draftPayload).toContain('Horarios y tarifas del castillo')
+
+    const reviewClient = new FakeResponsesClient([response({
+      outcome: 'passed_with_warnings',
+      issues: ['Se conservan advertencias prudentes.'],
+      profileCoverage: [profileCoverage('adventure'), profileCoverage('student')],
+    })])
+    await engine(reviewClient).review(
+      mission(),
+      masterKnowledge(),
+      drafts,
+      new AbortController().signal,
+      constraints,
+    )
+    expect(reviewClient.requests[0].input[1].content)
+      .toContain('Formula advertencias prudentes adaptadas al perfil')
+    expect(reviewClient.requests[0].input[1].content)
+      .toContain('Estado y condiciones del área de autocaravanas')
   })
 
   it('representa insuficiencia por perfil con requisitos distintos', () => {

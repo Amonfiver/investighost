@@ -50,17 +50,37 @@ export class FullRealEditorialPipeline {
         'La investigación requiere revisión humana antes de redactar',
       )
     }
-    this.intelligence.validateDraft?.(mission, research.masterKnowledge)
+    this.intelligence.validateDraft?.(
+      mission,
+      research.masterKnowledge,
+      research.editorialConstraints,
+    )
     const drafts = await this.calls.execute(
       `${mission.taskId}:drafting`,
       this.configuration.draftingCost,
-      () => this.intelligence.draft(mission, research.masterKnowledge, signal),
+      () => this.intelligence.draft(
+        mission,
+        research.masterKnowledge,
+        signal,
+        research.editorialConstraints,
+      ),
     )
-    this.intelligence.validateReview?.(mission, research.masterKnowledge, drafts)
+    this.intelligence.validateReview?.(
+      mission,
+      research.masterKnowledge,
+      drafts,
+      research.editorialConstraints,
+    )
     const review = await this.calls.execute(
       `${mission.taskId}:final-review`,
       this.configuration.reviewCost,
-      () => this.intelligence.review(mission, research.masterKnowledge, drafts, signal),
+      () => this.intelligence.review(
+        mission,
+        research.masterKnowledge,
+        drafts,
+        signal,
+        research.editorialConstraints,
+      ),
     )
     const availableEvidenceWords = research.dossier.sources
       .reduce((total, source) => total + wordCount(source.content), 0)

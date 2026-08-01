@@ -2,12 +2,17 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   REAL_EDITORIAL_PILOT_POLICY,
+  REAL_EDITORIAL_COVERAGE_BUDGET,
   RealEditorialAmbiguousCallResolutionResultSchema,
   RealEditorialAmbiguousCallResolutionSchema,
   RealEditorialAmbiguousCallSchema,
   RealEditorialBudgetResolutionResultSchema,
   RealEditorialBudgetResolutionSchema,
   RealEditorialBudgetReviewSchema,
+  RealEditorialCoverageConstraintsSchema,
+  RealEditorialCoverageResolutionResultSchema,
+  RealEditorialCoverageResolutionSchema,
+  RealEditorialCoverageReviewSchema,
   RealEditorialHistoricalIncidentAssessmentSchema,
   RealEditorialHistoricalIncidentResolutionResultSchema,
   RealEditorialHistoricalIncidentResolutionSchema,
@@ -28,6 +33,10 @@ import {
   type RealEditorialBudgetResolution,
   type RealEditorialBudgetResolutionResult,
   type RealEditorialBudgetReview,
+  type RealEditorialCoverageConstraints,
+  type RealEditorialCoverageResolution,
+  type RealEditorialCoverageResolutionResult,
+  type RealEditorialCoverageReview,
   type RealEditorialHistoricalIncidentAssessment,
   type RealEditorialHistoricalIncidentClassification,
   type RealEditorialHistoricalIncidentResolution,
@@ -49,6 +58,7 @@ import {
   RealResearchDossierSchema,
   RealContinueDecisionSchema,
   RealFocusedQuerySchema,
+  RealKnowledgeGapSchema,
   RealResearchSourceSchema,
   type RealFocusedQuery,
   type RealResearchDossier,
@@ -111,6 +121,9 @@ export type RealEditorialRepositoryErrorCode =
   | 'BUDGET_DECISION_CONFLICT'
   | 'BUDGET_EXTENSION_INVALID'
   | 'BUDGET_DECISION_NOT_ALLOWED'
+  | 'COVERAGE_REVIEW_REQUIRED'
+  | 'COVERAGE_DECISION_CONFLICT'
+  | 'COVERAGE_DECISION_NOT_ALLOWED'
   | 'SOURCE_LIMIT_RECOVERY_REQUIRED'
   | 'SOURCE_LIMIT_RECOVERY_CONFLICT'
   | 'SOURCE_LIMIT_RECOVERY_NOT_ALLOWED'
@@ -165,6 +178,12 @@ export interface RealEditorialPilotRepository {
   findByIdentity(identityKey: string): Promise<RealEditorialPilotRecord | undefined>
   getResult(pilotId: string): Promise<RealEditorialPilotSnapshot | undefined>
   getBudgetReview(pilotId: string): Promise<RealEditorialBudgetReview | undefined>
+  getCoverageReview?(
+    pilotId: string,
+  ): Promise<RealEditorialCoverageReview | undefined>
+  resolveCoverageDecision?(
+    input: RealEditorialCoverageResolution,
+  ): Promise<RealEditorialCoverageResolutionResult>
   openBudgetReview(
     pilotId: string,
     runId: string,
@@ -440,6 +459,140 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     return RealEditorialPilotSnapshotSchema.parse(artifact.payload)
   }
 
+  async getCoverageReview(
+    pilotId: string,
+  ): Promise<RealEditorialCoverageReview | undefined> {
+    const pilot = await this.getPilot(pilotId)
+    if (!pilot) throw new RealEditorialRepositoryError('PILOT_NOT_FOUND', 'El piloto no existe')
+    if (!pilot.budget) return undefined
+    const stored = await this.client.from('real_editorial_coverage_reviews')
+      .select('*').eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+      .order('opened_at', { ascending: false }).limit(1).maybeSingle()
+    assertNoError(stored.error, 'No se pudo leer la revisión humana de cobertura')
+    if (stored.data) {
+      const decision = stored.data.latest_decision_id
+        ? await this.client.from('real_editorial_coverage_decisions').select('*')
+          .eq('id', stored.data.latest_decision_id).maybeSingle()
+        : { data: null, error: null }
+      assertNoError(decision.error, 'No se pudo leer la última decisión de cobertura')
+      return coverageReviewFromDurableState({
+        pilot,
+        checkpointVersion: Number(stored.data.checkpoint_version),
+        checkpointHash: String(stored.data.checkpoint_hash),
+        status: String(stored.data.status),
+        reviewId: String(stored.data.id),
+        coverageScore: Number(stored.data.coverage_score),
+        gaps: stored.data.gaps,
+        contradictions: stored.data.contradictions,
+        affectedProfiles: stored.data.affected_profiles,
+        decision: decision.data,
+      })
+    }
+
+    const checkpoint = await this.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow')
+    if (!checkpoint || !isRecord(checkpoint.payload)) return undefined
+    const payload = checkpoint.payload
+    const decision = RealContinueDecisionSchema.safeParse(payload.lastDecision)
+    if (
+      payload.state !== 'review_required'
+      || payload.completedRound !== 2
+      || !decision.success
+      || decision.data.action !== 'stop_review_required'
+      || !isRecord(payload.coverage)
+      || payload.coverage.sufficient !== false
+      || !isRecord(payload.masterKnowledge)
+    ) return undefined
+    const gaps = RealKnowledgeGapSchema.array().safeParse(payload.unresolvedGaps)
+    const contradictions = stringArray(payload.masterKnowledge.contradictions)
+    if (!gaps.success || gaps.data.length === 0 || contradictions.length === 0) {
+      throw new RealEditorialRepositoryError(
+        'CHECKPOINT_INVALID',
+        'El checkpoint no conserva gaps y contradicciones revisables',
+      )
+    }
+    return coverageReviewFromDurableState({
+      pilot,
+      checkpointVersion: checkpoint.version,
+      checkpointHash: checkpoint.payloadHash,
+      status: 'required',
+      coverageScore: Number(payload.coverage.score),
+      gaps: gaps.data,
+      contradictions,
+      affectedProfiles: affectedProfilesFromGaps(gaps.data),
+    })
+  }
+
+  async resolveCoverageDecision(
+    candidate: RealEditorialCoverageResolution,
+  ): Promise<RealEditorialCoverageResolutionResult> {
+    const input = RealEditorialCoverageResolutionSchema.parse(candidate)
+    const pilot = await this.getPilot(input.pilotId)
+    if (!pilot?.budget || pilot.currentRunId !== input.runId) {
+      throw new RealEditorialRepositoryError(
+        'COVERAGE_REVIEW_REQUIRED',
+        'La decisión no corresponde al piloto y run activos',
+      )
+    }
+    const review = await this.getCoverageReview(input.pilotId)
+    if (!review || !['required', 'kept'].includes(review.status)) {
+      throw new RealEditorialRepositoryError(
+        'COVERAGE_REVIEW_REQUIRED',
+        'No existe una revisión de cobertura pendiente',
+      )
+    }
+    const riskAccepted = input.decision === 'accept_with_warnings'
+    const decisionKey = realEditorialPayloadHash({
+      pilotId: input.pilotId,
+      runId: input.runId,
+      checkpointVersion: review.checkpointVersion,
+      checkpointHash: review.checkpointHash,
+      actorId: input.actorId,
+      decision: input.decision,
+      reason: input.reason,
+      note: input.note ?? null,
+      riskAccepted,
+    })
+    const { data, error } = await this.client.rpc('resolve_real_editorial_coverage_review', {
+      p_decision_key: decisionKey,
+      p_pilot_id: input.pilotId,
+      p_run_id: input.runId,
+      p_checkpoint_version: review.checkpointVersion,
+      p_checkpoint_hash: review.checkpointHash,
+      p_actor_id: input.actorId,
+      p_decision: input.decision,
+      p_reason: input.reason,
+      p_note: input.note ?? null,
+      p_risk_accepted: riskAccepted,
+    })
+    if (error) throw coverageDecisionPersistenceError(error)
+    const decisionId = String(data)
+    const [updatedReview, budgetReview] = await Promise.all([
+      this.getCoverageReview(input.pilotId),
+      input.decision === 'accept_with_warnings'
+        ? this.client.from('real_editorial_budget_reviews').select('id')
+          .eq('coverage_decision_id', decisionId).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ])
+    assertNoError(budgetReview.error, 'No se pudo verificar la revisión presupuestaria de cobertura')
+    if (!updatedReview) {
+      throw new RealEditorialRepositoryError(
+        'COVERAGE_DECISION_CONFLICT',
+        'La decisión no conserva su revisión durable',
+      )
+    }
+    return RealEditorialCoverageResolutionResultSchema.parse({
+      decisionId,
+      pilotId: input.pilotId,
+      runId: input.runId,
+      decision: input.decision,
+      nextAction: input.decision === 'accept_with_warnings'
+        ? 'budget_review_required'
+        : input.decision === 'reject_editorial_run' ? 'cancelled' : 'review_required',
+      budgetReviewId: budgetReview.data?.id,
+      review: updatedReview,
+    })
+  }
+
   async getBudgetReview(pilotId: string): Promise<RealEditorialBudgetReview | undefined> {
     const pilot = await this.getPilot(pilotId)
     if (!pilot) throw new RealEditorialRepositoryError('PILOT_NOT_FOUND', 'El piloto no existe')
@@ -479,6 +632,13 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       status: review.status,
       currency: 'EUR',
       source: 'real_editorial_pilot_budgets',
+      context: review.review_context ?? 'workflow_completion',
+      coverageDecisionId: review.coverage_decision_id ?? undefined,
+      checkpointVersion: review.checkpoint_version === null
+        || review.checkpoint_version === undefined
+        ? undefined
+        : Number(review.checkpoint_version),
+      checkpointHash: review.checkpoint_hash ?? undefined,
       currentMaximumCostEur: maximum,
       previousMaximumCostEur: decision
         ? Number(decision.previous_maximum_cost)
@@ -561,6 +721,18 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         'No existe una barrera económica pendiente',
       )
     }
+    const coverageReview = review.context === 'coverage_acceptance'
+      ? await this.getCoverageReview(input.pilotId)
+      : undefined
+    if (
+      review.context === 'coverage_acceptance'
+      && (coverageReview?.status !== 'accepted' || !coverageReview.editorialConstraints)
+    ) {
+      throw new RealEditorialRepositoryError(
+        'COVERAGE_REVIEW_REQUIRED',
+        'La ampliación para redactar exige una aceptación de cobertura durable',
+      )
+    }
 
     let checkpointVersion: number | null = null
     let checkpointPreviousHash: string | null = null
@@ -575,7 +747,22 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
           'La barrera económica no conserva su checkpoint',
         )
       }
-      checkpointPayload = reopenBudgetCheckpoint(checkpoint.payload, this.now())
+      if (coverageReview && (
+        checkpoint.version !== coverageReview.checkpointVersion
+        || checkpoint.payloadHash !== coverageReview.checkpointHash
+      )) {
+        throw new RealEditorialRepositoryError(
+          'CHECKPOINT_INVALID',
+          'La aceptación de cobertura no corresponde al checkpoint vigente',
+        )
+      }
+      checkpointPayload = coverageReview?.editorialConstraints
+        ? reopenCoverageBudgetCheckpoint(
+            checkpoint.payload,
+            coverageReview.editorialConstraints,
+            this.now(),
+          )
+        : reopenBudgetCheckpoint(checkpoint.payload, this.now())
       checkpointVersion = checkpoint.version + 1
       checkpointPreviousHash = checkpoint.payloadHash
       checkpointPayloadHash = realEditorialPayloadHash(checkpointPayload)
@@ -583,7 +770,10 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     const newMaximum = input.decision === 'authorize_extension'
       ? input.newMaximumCostEur
       : pilot.budget.taskLimitCost
-    const { data, error } = await this.client.rpc('resolve_real_editorial_budget_review', {
+    const budgetResolutionRpc = review.context === 'coverage_acceptance'
+      ? 'resolve_real_editorial_coverage_budget_review'
+      : 'resolve_real_editorial_budget_review'
+    const { data, error } = await this.client.rpc(budgetResolutionRpc, {
       p_decision_key: decisionKey,
       p_pilot_id: input.pilotId,
       p_run_id: input.runId,
@@ -1581,6 +1771,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       partialAnalysisRecovery,
       openPersistenceIncidents,
       pendingReservations,
+      coverageReview,
     ] = await Promise.all([
       this.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
       this.client.from('real_editorial_ambiguous_calls').select('call_id', {
@@ -1592,7 +1783,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         count: 'exact',
       }).eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
         .eq('terminal_decision', 'cancel_permanently'),
-      this.client.from('real_editorial_budget_reviews').select('status')
+      this.client.from('real_editorial_budget_reviews').select('status,review_context')
         .eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
         .order('opened_at', { ascending: false }).limit(1).maybeSingle(),
       this.client.from('real_editorial_execution_guard').select('owner_execution_id,expires_at')
@@ -1607,6 +1798,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         count: 'exact',
       }).eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
         .in('state', ['reserved', 'started', 'unknown']),
+      this.getCoverageReview(pilotId),
     ])
     assertNoError(unresolved.error, 'No se pudo comprobar la ambigüedad pendiente')
     assertNoError(permanentCancellation.error, 'No se pudo comprobar la cancelación definitiva')
@@ -1625,12 +1817,36 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       : (openPersistenceIncidents.data ?? []).length
     const budgetAllowsResume = !budgetReview.data
       || budgetReview.data.status === 'authorized'
+    const coverageGateRequired = Boolean(
+      checkpoint
+      && isRecord(checkpoint.payload)
+      && checkpoint.payload.completedRound === 2
+      && isRecord(checkpoint.payload.coverage)
+      && checkpoint.payload.coverage.sufficient === false,
+    )
+    const checkpointConstraints = checkpoint && isRecord(checkpoint.payload)
+      ? RealEditorialCoverageConstraintsSchema.safeParse(checkpoint.payload.editorialConstraints)
+      : undefined
+    const coverageAllowsResume = realEditorialCoverageAllowsResume({
+      required: coverageGateRequired,
+      coverageStatus: coverageReview?.status,
+      coverageDecisionId: coverageReview?.editorialConstraints?.decisionId,
+      budgetStatus: budgetReview.data?.status,
+      budgetContext: budgetReview.data?.review_context,
+      checkpointState: checkpoint && isRecord(checkpoint.payload)
+        ? String(checkpoint.payload.state)
+        : undefined,
+      checkpointConstraintDecisionId: checkpointConstraints?.success
+        ? checkpointConstraints.data.decisionId
+        : undefined,
+    })
     const guardExpired = guard.data?.expires_at
       ? new Date(String(guard.data.expires_at)).getTime() <= this.now().getTime()
       : false
     const guardAllowsResume = !guard.data?.owner_execution_id || guardExpired
     return Boolean(checkpoint) && (unresolved.count ?? 0) === 0
       && (permanentCancellation.count ?? 0) === 0 && budgetAllowsResume
+      && coverageAllowsResume
       && guardAllowsResume && sourceLimitRecovery?.status !== 'required'
       && partialAnalysisRecovery?.status !== 'required'
       && blockingPersistenceIncidentCount === 0
@@ -2054,6 +2270,26 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     }
     return { id: String(data[0].id) }
   }
+}
+
+export function realEditorialCoverageAllowsResume(input: {
+  required: boolean
+  coverageStatus?: string
+  coverageDecisionId?: string
+  budgetStatus?: string
+  budgetContext?: string
+  checkpointState?: string
+  checkpointConstraintDecisionId?: string
+}): boolean {
+  if (!input.required) return true
+  return Boolean(
+    input.coverageStatus === 'accepted'
+    && input.coverageDecisionId
+    && input.budgetStatus === 'authorized'
+    && input.budgetContext === 'coverage_acceptance'
+    && input.checkpointState === 'ready_for_drafting'
+    && input.checkpointConstraintDecisionId === input.coverageDecisionId,
+  )
 }
 
 export class SupabaseRealWorkflowCheckpointStore implements RealWorkflowCheckpointStore {
@@ -2642,6 +2878,162 @@ function validBudget(budget: RealEditorialPilotBudget): boolean {
     && budget.reservedCost + budget.spentCost <= budget.taskLimitCost
 }
 
+function coverageReviewFromDurableState(input: {
+  pilot: RealEditorialPilotRecord
+  checkpointVersion: number
+  checkpointHash: string
+  status: string
+  reviewId?: string
+  coverageScore: number
+  gaps: unknown
+  contradictions: unknown
+  affectedProfiles: unknown
+  decision?: Record<string, unknown> | null
+}): RealEditorialCoverageReview {
+  if (!input.pilot.budget) {
+    throw new RealEditorialRepositoryError('BUDGET_INVALID', 'Falta el presupuesto de cobertura')
+  }
+  const gaps = RealKnowledgeGapSchema.array().parse(input.gaps)
+  const contradictions = stringArray(input.contradictions)
+  const affectedProfiles = stringArray(input.affectedProfiles)
+    .filter((profile): profile is 'adventure' | 'student' => (
+      profile === 'adventure' || profile === 'student'
+    ))
+  const spent = input.pilot.budget.spentCost
+  const reserved = input.pilot.budget.reservedCost
+  const maximum = input.pilot.budget.taskLimitCost
+  const estimate = (remaining: number) => {
+    const total = moneyValue(spent + reserved + remaining)
+    return {
+      remainingEstimatedCostEur: remaining,
+      projectedTotalCostEur: total,
+      shortfallCostEur: moneyValue(Math.max(0, total - maximum)),
+    }
+  }
+  const decision = input.decision
+  const latestDecision = decision ? {
+    decisionId: String(decision.id),
+    actorId: String(decision.actor_id),
+    decision: String(decision.decision),
+    reason: String(decision.reason),
+    note: decision.note ? String(decision.note) : undefined,
+    riskAccepted: Boolean(decision.risk_accepted),
+    riskStatement: String(decision.risk_statement),
+    gapDispositions: gapDispositions(decision.gap_dispositions),
+    decidedAt: String(decision.decided_at),
+  } : undefined
+  const editorialConstraints = decision?.decision === 'accept_with_warnings'
+    ? coverageConstraintsFromDecision(decision)
+    : undefined
+  return RealEditorialCoverageReviewSchema.parse({
+    reviewId: input.reviewId,
+    pilotId: input.pilot.id,
+    runId: input.pilot.currentRunId,
+    status: input.status,
+    checkpointVersion: input.checkpointVersion,
+    checkpointHash: input.checkpointHash,
+    coverageScore: input.coverageScore,
+    gaps,
+    contradictions,
+    affectedProfiles,
+    spentCostEur: spent,
+    reservedCostEur: reserved,
+    currentMaximumCostEur: maximum,
+    availableCostEur: moneyValue(Math.max(0, maximum - spent - reserved)),
+    estimates: {
+      keepReviewRequired: estimate(0),
+      rejectEditorialRun: estimate(0),
+      acceptWithWarnings: estimate(REAL_EDITORIAL_COVERAGE_BUDGET.remainingCostEur),
+    },
+    latestDecision,
+    editorialConstraints,
+  })
+}
+
+function coverageConstraintsFromDecision(
+  decision: Record<string, unknown>,
+): RealEditorialCoverageConstraints {
+  return RealEditorialCoverageConstraintsSchema.parse({
+    decisionId: decision.id,
+    checkpointVersion: Number(decision.checkpoint_version),
+    checkpointHash: decision.checkpoint_hash,
+    mode: 'accept_with_warnings',
+    unresolvedGapIds: gapDispositions(decision.gap_dispositions)
+      .filter(item => item.disposition === 'accepted_unresolved')
+      .map(item => item.gapId),
+    contradictions: stringArray(decision.known_contradictions),
+    affectedProfiles: stringArray(decision.affected_profiles),
+    safetyRules: stringArray(decision.safety_constraints),
+  })
+}
+
+function gapDispositions(value: unknown): Array<{
+  gapId: string
+  disposition: 'pending' | 'rejected' | 'accepted_unresolved'
+}> {
+  if (!Array.isArray(value)) return []
+  return value.flatMap(item => {
+    if (!isRecord(item) || typeof item.gapId !== 'string') return []
+    if (!['pending', 'rejected', 'accepted_unresolved'].includes(String(item.disposition))) return []
+    return [{
+      gapId: item.gapId,
+      disposition: item.disposition as 'pending' | 'rejected' | 'accepted_unresolved',
+    }]
+  })
+}
+
+function affectedProfilesFromGaps(
+  gaps: Array<{ requiredForProfiles: string[] }>,
+): Array<'adventure' | 'student'> {
+  const profiles = new Set(gaps.flatMap(gap => gap.requiredForProfiles))
+  return (['adventure', 'student'] as const).filter(profile => profiles.has(profile))
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    : []
+}
+
+function reopenCoverageBudgetCheckpoint(
+  payload: unknown,
+  constraints: RealEditorialCoverageConstraints,
+  now: Date,
+): Record<string, unknown> {
+  if (!isRecord(payload) || !isRecord(payload.masterKnowledge)) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'El checkpoint de cobertura no es un objeto completo',
+    )
+  }
+  const decision = RealContinueDecisionSchema.safeParse(payload.lastDecision)
+  const gaps = RealKnowledgeGapSchema.array().safeParse(payload.unresolvedGaps)
+  const contradictions = stringArray(payload.masterKnowledge.contradictions)
+  if (
+    payload.state !== 'review_required'
+    || payload.completedRound !== 2
+    || !decision.success
+    || decision.data.action !== 'stop_review_required'
+    || !gaps.success
+    || realEditorialPayloadHash([...gaps.data.map(gap => gap.id)].sort())
+      !== realEditorialPayloadHash([...constraints.unresolvedGapIds].sort())
+    || realEditorialPayloadHash(contradictions)
+      !== realEditorialPayloadHash(constraints.contradictions)
+  ) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'El checkpoint no conserva la cobertura aceptada y sus advertencias',
+    )
+  }
+  return {
+    ...payload,
+    state: 'ready_for_drafting',
+    nextRoundQueries: [],
+    editorialConstraints: constraints,
+    updatedAt: now.toISOString(),
+  }
+}
+
 function reopenBudgetCheckpoint(payload: unknown, now: Date): Record<string, unknown> {
   if (!isRecord(payload)) {
     throw new RealEditorialRepositoryError(
@@ -3036,6 +3428,7 @@ function budgetDecisionPersistenceError(
   }
   if (
     error.message.includes('BUDGET_REVIEW_NOT_FOUND')
+    || error.message.includes('COVERAGE_BUDGET_REVIEW_NOT_FOUND')
     || error.message.includes('BUDGET_REVIEW_INCIDENT_INVALID')
   ) {
     return new RealEditorialRepositoryError(
@@ -3046,6 +3439,35 @@ function budgetDecisionPersistenceError(
   return new RealEditorialRepositoryError(
     'BUDGET_DECISION_NOT_ALLOWED',
     'La decisión presupuestaria durable fue rechazada',
+  )
+}
+
+function coverageDecisionPersistenceError(
+  error: { message: string; code?: string },
+): RealEditorialRepositoryError {
+  if (
+    error.message.includes('COVERAGE_DECISION_IDEMPOTENCY_CONFLICT')
+    || error.message.includes('COVERAGE_DECISION_ALREADY_TERMINAL')
+    || error.message.includes('COVERAGE_REVIEW_CONFLICT')
+    || error.message.includes('COVERAGE_DECISION_CHECKPOINT_CHANGED')
+  ) {
+    return new RealEditorialRepositoryError(
+      'COVERAGE_DECISION_CONFLICT',
+      'El checkpoint cambió o ya existe una decisión de cobertura incompatible',
+    )
+  }
+  if (
+    error.message.includes('COVERAGE_DECISION_STATE_CHANGED')
+    || error.message.includes('COVERAGE_DECISION_PROFILES_MISSING')
+  ) {
+    return new RealEditorialRepositoryError(
+      'COVERAGE_REVIEW_REQUIRED',
+      'No existe una revisión de cobertura compatible para este piloto y run',
+    )
+  }
+  return new RealEditorialRepositoryError(
+    'COVERAGE_DECISION_NOT_ALLOWED',
+    'La decisión humana de cobertura fue rechazada por las barreras durables',
   )
 }
 

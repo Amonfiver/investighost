@@ -44,6 +44,9 @@ import {
   type RealEditorialBudgetDecision,
   type RealEditorialBudgetResolution,
   type RealEditorialBudgetReview,
+  type RealEditorialCoverageDecision,
+  type RealEditorialCoverageResolution,
+  type RealEditorialCoverageReview,
   type RealEditorialHistoricalIncidentResolution,
   type RealEditorialHistoricalIncidentReview,
   type RealEditorialPilotProgress,
@@ -1165,6 +1168,18 @@ function RealEditorialPilotPanel(): JSX.Element {
           )}
         />
       )}
+      {progress?.coverageReview && (
+        <RealEditorialCoverageDecisionPanel
+          review={progress.coverageReview}
+          actorId={actorId}
+          busy={operation !== null}
+          onResolve={input => run(
+            'coverage-decision',
+            () => window.electronAPI.resolveRealEditorialCoverage(input),
+            input.pilotId,
+          )}
+        />
+      )}
       {progress?.budgetReview && (
         <RealEditorialBudgetDecisionPanel
           review={progress.budgetReview}
@@ -1610,6 +1625,173 @@ export function RealEditorialSourceLimitRecoveryPanel({
   )
 }
 
+interface RealEditorialCoverageDecisionPanelProps {
+  review: RealEditorialCoverageReview
+  actorId: string | null
+  busy: boolean
+  onResolve: (input: RealEditorialCoverageResolution) => void
+}
+
+export function RealEditorialCoverageDecisionPanel({
+  review,
+  actorId,
+  busy,
+  onResolve,
+}: RealEditorialCoverageDecisionPanelProps): JSX.Element {
+  const [reason, setReason] = useState('')
+  const [note, setNote] = useState('')
+  const [riskAccepted, setRiskAccepted] = useState(false)
+  const terminal = review.status === 'accepted' || review.status === 'rejected'
+  const submit = (decision: RealEditorialCoverageDecision) => {
+    if (!actorId || !reason.trim()) return
+    if (decision === 'accept_with_warnings' && !riskAccepted) return
+    const labels: Record<RealEditorialCoverageDecision, string> = {
+      keep_review_required: 'mantener la revisión requerida',
+      reject_editorial_run: 'rechazar editorialmente el expediente',
+      accept_with_warnings: 'aceptar la cobertura disponible con advertencias',
+    }
+    if (!window.confirm(
+      `Confirmar ${labels[decision]}. La decisión quedará ligada al checkpoint ${review.checkpointVersion}.`,
+    )) return
+    const base = {
+      pilotId: review.pilotId,
+      runId: review.runId,
+      actorId,
+      reason: reason.trim(),
+      note: note.trim() || undefined,
+      confirmed: true as const,
+    }
+    onResolve(decision === 'accept_with_warnings'
+      ? { ...base, decision, riskAccepted: true }
+      : { ...base, decision })
+  }
+  return (
+    <section className="budget-decision-review" aria-label="Decisión humana de cobertura">
+      <header>
+        <div>
+          <span className="card-kicker">DECISIÓN HUMANA DE COBERTURA</span>
+          <h4>La segunda ronda terminó con gaps y contradicciones</h4>
+        </div>
+        <span className={`state-badge ${
+          review.status === 'accepted' ? 'state-approved' : 'state-blocked'
+        }`}>{review.status}</span>
+      </header>
+      <p>
+        La decisión conserva el checkpoint {review.checkpointVersion}, no ejecuta proveedores,
+        no resuelve los gaps y no amplía el presupuesto automáticamente.
+      </p>
+      <dl className="definition-grid compact">
+        <div><dt>Cobertura</dt><dd>{Math.round(review.coverageScore * 100)} %</dd></div>
+        <div><dt>Gaps abiertos</dt><dd>{review.gaps.length}</dd></div>
+        <div><dt>Contradicciones</dt><dd>{review.contradictions.length}</dd></div>
+        <div><dt>Gasto actual</dt><dd>{formatPreciseMoney(review.spentCostEur)}</dd></div>
+        <div><dt>Disponible</dt><dd>{formatPreciseMoney(review.availableCostEur)}</dd></div>
+        <div>
+          <dt>Mantener o rechazar</dt>
+          <dd>{formatPreciseMoney(review.estimates.keepReviewRequired.remainingEstimatedCostEur)}</dd>
+        </div>
+        <div>
+          <dt>Aceptar con advertencias</dt>
+          <dd>{formatPreciseMoney(review.estimates.acceptWithWarnings.remainingEstimatedCostEur)}</dd>
+        </div>
+        <div>
+          <dt>Total si se acepta</dt>
+          <dd>{formatPreciseMoney(review.estimates.acceptWithWarnings.projectedTotalCostEur)}</dd>
+        </div>
+        <div>
+          <dt>Déficit si se acepta</dt>
+          <dd>{formatPreciseMoney(review.estimates.acceptWithWarnings.shortfallCostEur)}</dd>
+        </div>
+      </dl>
+      <div className="source-limit-exclusions">
+        {review.gaps.map(gap => (
+          <article key={gap.id}>
+            <strong>{gap.id} · {gap.importance} · {gap.topic}</strong>
+            <span>{gap.description}</span>
+            <small>Perfiles: {gap.requiredForProfiles.join(', ')}</small>
+          </article>
+        ))}
+        {review.contradictions.map((contradiction, index) => (
+          <article key={contradiction}>
+            <strong>Contradicción {index + 1}</strong>
+            <span>{contradiction}</span>
+          </article>
+        ))}
+      </div>
+      {review.latestDecision && (
+        <div className={review.status === 'accepted' ? 'alert success' : 'alert warning'}>
+          <strong>{coverageDecisionLabel(review.latestDecision.decision)}</strong>
+          <span>{review.latestDecision.riskStatement}</span>
+        </div>
+      )}
+      {!terminal && (
+        <>
+          <div className="form-grid budget-decision-form">
+            <label className="field">
+              <span>Motivo humano obligatorio</span>
+              <input
+                maxLength={500}
+                value={reason}
+                onChange={event => setReason(event.target.value)}
+                placeholder="Justificación editorial"
+              />
+            </label>
+            <label className="field full">
+              <span>Nota opcional, sin credenciales</span>
+              <textarea
+                rows={3}
+                maxLength={1_000}
+                value={note}
+                onChange={event => setNote(event.target.value)}
+              />
+            </label>
+            <label className="field full checkbox-field">
+              <input
+                type="checkbox"
+                checked={riskAccepted}
+                onChange={event => setRiskAccepted(event.target.checked)}
+              />
+              <span>
+                Acepto expresamente que los gaps y contradicciones seguirán abiertos y que la
+                redacción deberá tratarlos con advertencias prudentes y trazables.
+              </span>
+            </label>
+          </div>
+          <div className="form-actions">
+            <button
+              className="button ghost"
+              disabled={busy || !actorId || !reason.trim()}
+              onClick={() => submit('keep_review_required')}
+            >
+              Mantener revisión
+            </button>
+            <button
+              className="button danger"
+              disabled={busy || !actorId || !reason.trim()}
+              onClick={() => submit('reject_editorial_run')}
+            >
+              Rechazar expediente
+            </button>
+            <button
+              className="button primary"
+              disabled={busy || !actorId || !reason.trim() || !riskAccepted}
+              onClick={() => submit('accept_with_warnings')}
+            >
+              Aceptar con advertencias
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+function coverageDecisionLabel(decision: RealEditorialCoverageDecision): string {
+  if (decision === 'accept_with_warnings') return 'Cobertura aceptada con advertencias.'
+  if (decision === 'reject_editorial_run') return 'Expediente rechazado editorialmente.'
+  return 'La revisión humana continúa abierta.'
+}
+
 interface RealEditorialBudgetDecisionPanelProps {
   review: RealEditorialBudgetReview
   actorId: string | null
@@ -1668,7 +1850,9 @@ export function RealEditorialBudgetDecisionPanel({
       <header>
         <div>
           <span className="card-kicker">DECISIÓN HUMANA DE PRESUPUESTO</span>
-          <h4>El máximo vigente no cubre el trabajo restante</h4>
+          <h4>{review.context === 'coverage_acceptance'
+            ? 'Presupuesto para redactar con advertencias'
+            : 'El máximo vigente no cubre el trabajo restante'}</h4>
         </div>
         <span className={`state-badge ${
           review.status === 'authorized' ? 'state-approved' : 'state-blocked'
@@ -1712,8 +1896,9 @@ export function RealEditorialBudgetDecisionPanel({
         <div className="alert success">
           <strong>Checkpoint listo para reanudarse.</strong>
           <span>
-            Tavily ronda 1 y el análisis OpenAI ronda 1 ya están guardados.
-            Solo se ejecutará el trabajo restante.
+            {review.context === 'coverage_acceptance'
+              ? 'El checkpoint de ronda 2 está conservado. La acción posterior continuará directamente a redacción sin repetir Tavily ni análisis.'
+              : 'Tavily ronda 1 y el análisis OpenAI ronda 1 ya están guardados. Solo se ejecutará el trabajo restante.'}
           </span>
         </div>
       )}
@@ -2083,7 +2268,7 @@ function formatPreciseMoney(value: number): string {
   return new Intl.NumberFormat('es-ES', {
     style: 'currency',
     currency: 'EUR',
-    minimumFractionDigits: 2,
+    minimumFractionDigits: 6,
     maximumFractionDigits: 6,
   }).format(value)
 }

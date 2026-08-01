@@ -248,6 +248,10 @@ ipcMain.handle('real-editorial:result', async (_event, input: unknown) => {
   return getRealEditorialPilotRuntime().result(input)
 })
 
+ipcMain.handle('real-editorial:resolve-terminal-review', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().resolveTerminalDecision(input)
+})
+
 ipcMain.handle('real-editorial:start', async (_event, input: unknown) => {
   return getRealEditorialPilotRuntime().start(input)
 })

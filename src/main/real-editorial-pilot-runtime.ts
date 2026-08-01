@@ -23,6 +23,7 @@ import {
   RealEditorialPilotProgressSchema,
   RealEditorialPartialAnalysisRecoverySchema,
   RealEditorialSourceLimitRecoverySchema,
+  RealEditorialTerminalResolutionSchema,
   type RealEditorialPilotProgress,
   type RealEditorialPilotState,
   type RealEditorialPreflight,
@@ -141,13 +142,14 @@ export class RealEditorialPilotRuntime {
       this.repository.getCoverageReview?.(pilotId) ?? Promise.resolve(undefined),
     ])
     if (incidents.error || run.error) throw new Error('No se pudo leer el progreso durable')
+    const terminalPresentation = isRealEditorialTerminalReviewState(pilot.state)
     return RealEditorialPilotProgressSchema.parse({
       pilot,
       snapshot,
       currentRound: Number(run.data.current_round),
       accumulatedCost: realEditorialAuthoritativeSpentCost(pilot),
       incidentCount: incidents.count ?? 0,
-      latestIncident: incidents.data?.[0]
+      latestIncident: !terminalPresentation && incidents.data?.[0]
         ? {
             code: incidents.data[0].code,
             classification: incidents.data[0].classification,
@@ -162,15 +164,15 @@ export class RealEditorialPilotRuntime {
           }
         : undefined,
       pendingReservations: inspection.pendingReservations,
-      humanRequiredCall,
-      budgetReview: coverageReview
+      humanRequiredCall: terminalPresentation ? undefined : humanRequiredCall,
+      budgetReview: terminalPresentation ? undefined : coverageReview
         && budgetReview?.context !== 'coverage_acceptance'
         ? undefined
         : budgetReview,
-      coverageReview,
-      sourceLimitRecovery,
-      partialAnalysisRecovery,
-      historicalIncidentReview,
+      coverageReview: terminalPresentation ? undefined : coverageReview,
+      sourceLimitRecovery: terminalPresentation ? undefined : sourceLimitRecovery,
+      partialAnalysisRecovery: terminalPresentation ? undefined : partialAnalysisRecovery,
+      historicalIncidentReview: terminalPresentation ? undefined : historicalIncidentReview,
       checkpointAvailable: Boolean(workflowCheckpoint),
       resumeAvailable,
       guardFree: inspection.guardFree,
@@ -179,7 +181,32 @@ export class RealEditorialPilotRuntime {
 
   async result(candidate: unknown) {
     const { pilotId } = RealEditorialPilotActionSchema.parse(candidate)
-    return this.repository.getResult(pilotId)
+    return this.repository.getTerminalResult(pilotId)
+  }
+
+  async resolveTerminalDecision(candidate: unknown) {
+    const input = RealEditorialTerminalResolutionSchema.parse(candidate)
+    if (!readRealEditorialAuthorization().enabled) {
+      throw new Error('La feature flag editorial real no autoriza la decisión terminal')
+    }
+    if (input.actorId !== MANUAL_LOCAL_ACTOR_ID) {
+      throw new Error('El actor humano no coincide con el operador local autorizado')
+    }
+    if (this.controllers.has(input.pilotId)) {
+      throw new Error('No se puede decidir el resultado mientras el piloto se ejecuta')
+    }
+    const pilot = await this.repository.getPilot(input.pilotId)
+    if (!pilot || pilot.currentRunId !== input.runId) {
+      throw new Error('La decisión terminal no corresponde al piloto y run activos')
+    }
+    if (!isRealEditorialTerminalReviewState(pilot.state)) {
+      throw new Error('El piloto no conserva un resultado terminal revisable')
+    }
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    if (!inspection.guardFree || inspection.pendingReservations > 0) {
+      throw new Error('La guarda y las reservas deben estar libres para decidir el resultado')
+    }
+    return this.repository.resolveTerminalDecision(input)
   }
 
   async cancel(candidate: unknown): Promise<void> {
@@ -436,6 +463,15 @@ export function realEditorialResumeStateAllowsExecution(
     'generating_adventure',
     'generating_student',
     'final_review',
+  ].includes(state)
+}
+
+export function isRealEditorialTerminalReviewState(state: RealEditorialPilotState): boolean {
+  return [
+    'pending_human_review',
+    'human_approved',
+    'changes_requested',
+    'human_rejected',
   ].includes(state)
 }
 

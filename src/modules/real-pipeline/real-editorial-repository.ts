@@ -27,6 +27,10 @@ import {
   RealEditorialSourceLimitRecoveryPlanSchema,
   RealEditorialSourceLimitRecoveryResultSchema,
   RealEditorialSourceLimitRecoverySchema,
+  RealEditorialTerminalDecisionRecordSchema,
+  RealEditorialTerminalResolutionResultSchema,
+  RealEditorialTerminalResolutionSchema,
+  RealEditorialTerminalResultSchema,
   type RealEditorialAmbiguousCall,
   type RealEditorialAmbiguousCallResolution,
   type RealEditorialAmbiguousCallResolutionResult,
@@ -53,6 +57,10 @@ import {
   type RealEditorialSourceLimitRecovery,
   type RealEditorialSourceLimitRecoveryPlan,
   type RealEditorialSourceLimitRecoveryResult,
+  type RealEditorialTerminalDecisionRecord,
+  type RealEditorialTerminalResolution,
+  type RealEditorialTerminalResolutionResult,
+  type RealEditorialTerminalResult,
 } from '@shared/real-editorial-pilot-contracts'
 import {
   RealResearchDossierSchema,
@@ -133,6 +141,9 @@ export type RealEditorialRepositoryErrorCode =
   | 'HISTORICAL_INCIDENT_RESOLUTION_REQUIRED'
   | 'HISTORICAL_INCIDENT_RESOLUTION_CONFLICT'
   | 'HISTORICAL_INCIDENT_RESOLUTION_NOT_ALLOWED'
+  | 'TERMINAL_REVIEW_REQUIRED'
+  | 'TERMINAL_DECISION_CONFLICT'
+  | 'TERMINAL_DECISION_NOT_ALLOWED'
   | 'PERSISTENCE_ERROR'
 
 export class RealEditorialRepositoryError extends Error {
@@ -177,6 +188,10 @@ export interface RealEditorialPilotRepository {
   getPilot(pilotId: string): Promise<RealEditorialPilotRecord | undefined>
   findByIdentity(identityKey: string): Promise<RealEditorialPilotRecord | undefined>
   getResult(pilotId: string): Promise<RealEditorialPilotSnapshot | undefined>
+  getTerminalResult?(pilotId: string): Promise<RealEditorialTerminalResult | undefined>
+  resolveTerminalDecision?(
+    input: RealEditorialTerminalResolution,
+  ): Promise<RealEditorialTerminalResolutionResult>
   getBudgetReview(pilotId: string): Promise<RealEditorialBudgetReview | undefined>
   getCoverageReview?(
     pilotId: string,
@@ -457,6 +472,174 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     const artifact = await this.latestArtifact(pilot.currentRunId, 'checkpoint', 'pipeline')
     if (!artifact) return undefined
     return RealEditorialPilotSnapshotSchema.parse(artifact.payload)
+  }
+
+  async getTerminalResult(pilotId: string): Promise<RealEditorialTerminalResult | undefined> {
+    const pilot = await this.getPilot(pilotId)
+    if (!pilot?.budget || !terminalReviewStates.includes(pilot.state)) return undefined
+    const artifactsResult = await this.client.from('real_editorial_artifacts').select(
+      'id,artifact_kind,artifact_key,version,payload,payload_hash,created_at',
+    )
+      .eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+      .in('artifact_kind', ['checkpoint', 'draft_adventure', 'draft_student', 'final_review'])
+    assertNoError(artifactsResult.error, 'No se pudo leer el resultado editorial terminal')
+    const rows = (artifactsResult.data ?? []) as Array<Record<string, unknown>>
+    const snapshotRow = latestTerminalArtifact(rows, 'checkpoint', 'pipeline')
+    const adventureRow = latestTerminalArtifact(rows, 'draft_adventure', 'adventure')
+    const studentRow = latestTerminalArtifact(rows, 'draft_student', 'student')
+    const reviewRow = latestTerminalArtifact(rows, 'final_review', 'final')
+    if (!snapshotRow || !adventureRow || !studentRow || !reviewRow) {
+      throw new RealEditorialRepositoryError(
+        'TERMINAL_REVIEW_REQUIRED',
+        'El resultado terminal no conserva snapshot, borradores y revisión final',
+      )
+    }
+    const snapshotReference = terminalArtifactReference(snapshotRow)
+    const adventureReference = terminalArtifactReference(adventureRow)
+    const studentReference = terminalArtifactReference(studentRow)
+    const reviewReference = terminalArtifactReference(reviewRow)
+    const snapshotPayload = snapshotRow.payload
+    if (!isRecord(snapshotPayload)) {
+      throw new RealEditorialRepositoryError('CHECKPOINT_INVALID', 'El snapshot terminal no es un objeto')
+    }
+    const snapshot = RealEditorialPilotSnapshotSchema.parse(snapshotPayload)
+    const draftPayloads = Array.isArray(snapshotPayload.drafts) ? snapshotPayload.drafts : []
+    const adventurePayload = draftPayloads.find(
+      draft => isRecord(draft) && draft.profile === 'adventure',
+    )
+    const studentPayload = draftPayloads.find(
+      draft => isRecord(draft) && draft.profile === 'student',
+    )
+    if (
+      snapshot.pilotId !== pilot.id
+      || snapshot.runId !== pilot.currentRunId
+      || snapshot.state !== 'pending_human_review'
+      || snapshot.currentRound !== 2
+      || !adventurePayload
+      || !studentPayload
+      || !snapshotPayload.review
+      || realEditorialPayloadHash(adventurePayload) !== adventureReference.hash
+      || realEditorialPayloadHash(studentPayload) !== studentReference.hash
+      || realEditorialPayloadHash(snapshotPayload.review) !== reviewReference.hash
+    ) {
+      throw new RealEditorialRepositoryError(
+        'CHECKPOINT_INVALID',
+        'El snapshot terminal no coincide con los artefactos editoriales inmutables',
+      )
+    }
+    const latestRound = snapshot.roundResults.at(-1)
+    if (!latestRound || latestRound.round !== 2 || !snapshot.masterKnowledge) {
+      throw new RealEditorialRepositoryError(
+        'CHECKPOINT_INVALID',
+        'El resultado terminal no conserva la cobertura de la segunda ronda',
+      )
+    }
+    const decisionResult = await this.client.from('real_editorial_terminal_decisions')
+      .select('*').eq('pilot_id', pilot.id).eq('run_id', pilot.currentRunId)
+      .order('decided_at', { ascending: false }).limit(1).maybeSingle()
+    assertNoError(decisionResult.error, 'No se pudo leer la decisión editorial terminal')
+    const spent = pilot.budget.spentCost
+    const reserved = pilot.budget.reservedCost
+    const maximum = pilot.budget.taskLimitCost
+    const projected = moneyValue(spent + reserved)
+    return RealEditorialTerminalResultSchema.parse({
+      pilotId: pilot.id,
+      runId: pilot.currentRunId,
+      state: pilot.state,
+      snapshot,
+      artifacts: {
+        snapshot: snapshotReference,
+        adventure: adventureReference,
+        student: studentReference,
+        finalReview: reviewReference,
+      },
+      gaps: latestRound.gaps,
+      contradictions: snapshot.masterKnowledge.contradictions,
+      budget: {
+        spentCostEur: spent,
+        reservedCostEur: reserved,
+        currentMaximumCostEur: maximum,
+        availableCostEur: moneyValue(Math.max(0, maximum - spent - reserved)),
+        automatedWorkRemainingEur: 0,
+        projectedTotalCostEur: projected,
+        shortfallCostEur: moneyValue(Math.max(0, projected - maximum)),
+      },
+      latestDecision: decisionResult.data
+        ? terminalDecisionFromRow(decisionResult.data)
+        : undefined,
+      libraryIntegration: 'not_started',
+    })
+  }
+
+  async resolveTerminalDecision(
+    candidate: RealEditorialTerminalResolution,
+  ): Promise<RealEditorialTerminalResolutionResult> {
+    const input = RealEditorialTerminalResolutionSchema.parse(candidate)
+    const terminal = await this.getTerminalResult(input.pilotId)
+    if (!terminal || terminal.runId !== input.runId) {
+      throw new RealEditorialRepositoryError(
+        'TERMINAL_REVIEW_REQUIRED',
+        'La decisión no corresponde a un resultado terminal del piloto y run activos',
+      )
+    }
+    const affectedProfiles = [...input.affectedProfiles].sort()
+    const profileComments = [...input.profileComments]
+      .sort((left, right) => left.profile.localeCompare(right.profile))
+    const decisionKey = realEditorialPayloadHash({
+      pilotId: input.pilotId,
+      runId: input.runId,
+      snapshotArtifact: terminal.artifacts.snapshot,
+      adventureArtifact: terminal.artifacts.adventure,
+      studentArtifact: terminal.artifacts.student,
+      finalReviewArtifact: terminal.artifacts.finalReview,
+      actorId: input.actorId,
+      decision: input.decision,
+      reason: input.reason,
+      observations: input.observations,
+      affectedProfiles,
+      profileComments,
+      warningsAccepted: input.warningsAccepted,
+    })
+    if (terminal.latestDecision?.decisionKey === decisionKey) {
+      return RealEditorialTerminalResolutionResultSchema.parse({
+        decision: terminal.latestDecision,
+        nextAction: terminalDecisionNextAction(terminal.latestDecision.decision),
+      })
+    }
+    if (terminal.state !== 'pending_human_review') {
+      throw new RealEditorialRepositoryError(
+        'TERMINAL_DECISION_CONFLICT',
+        'El resultado terminal ya conserva otra decisión humana durable',
+      )
+    }
+    const { data, error } = await this.client.rpc('resolve_real_editorial_terminal_review', {
+      p_decision_key: decisionKey,
+      p_pilot_id: input.pilotId,
+      p_run_id: input.runId,
+      p_snapshot_artifact_id: terminal.artifacts.snapshot.artifactId,
+      p_snapshot_hash: terminal.artifacts.snapshot.hash,
+      p_adventure_artifact_id: terminal.artifacts.adventure.artifactId,
+      p_adventure_hash: terminal.artifacts.adventure.hash,
+      p_student_artifact_id: terminal.artifacts.student.artifactId,
+      p_student_hash: terminal.artifacts.student.hash,
+      p_review_artifact_id: terminal.artifacts.finalReview.artifactId,
+      p_review_hash: terminal.artifacts.finalReview.hash,
+      p_actor_id: input.actorId,
+      p_decision: input.decision,
+      p_reason: input.reason,
+      p_observations: input.observations,
+      p_affected_profiles: affectedProfiles,
+      p_profile_comments: profileComments,
+      p_warnings_accepted: input.warningsAccepted,
+    })
+    if (error) throw terminalDecisionPersistenceError(error)
+    const stored = await this.client.from('real_editorial_terminal_decisions')
+      .select('*').eq('id', String(data)).single()
+    assertNoError(stored.error, 'No se pudo verificar la decisión editorial terminal')
+    return RealEditorialTerminalResolutionResultSchema.parse({
+      decision: terminalDecisionFromRow(stored.data),
+      nextAction: terminalDecisionNextAction(input.decision),
+    })
   }
 
   async getCoverageReview(
@@ -3316,6 +3499,67 @@ function artifactFromRow(row: Record<string, unknown>): RealEditorialArtifact {
   }
 }
 
+function latestTerminalArtifact(
+  rows: Array<Record<string, unknown>>,
+  kind: RealEditorialArtifactKind,
+  key: string,
+): Record<string, unknown> | undefined {
+  return rows
+    .filter(row => row.artifact_kind === kind && row.artifact_key === key)
+    .sort((left, right) => Number(right.version) - Number(left.version))[0]
+}
+
+function terminalArtifactReference(row: Record<string, unknown>) {
+  const payloadHash = String(row.payload_hash)
+  if (realEditorialPayloadHash(row.payload) !== payloadHash) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      `El artefacto terminal ${String(row.artifact_kind)}/${String(row.artifact_key)} no supera SHA-256`,
+    )
+  }
+  return {
+    artifactId: String(row.id),
+    kind: String(row.artifact_kind),
+    key: String(row.artifact_key),
+    version: Number(row.version),
+    hash: payloadHash,
+    createdAt: String(row.created_at),
+  }
+}
+
+function terminalDecisionFromRow(
+  row: Record<string, unknown>,
+): RealEditorialTerminalDecisionRecord {
+  return RealEditorialTerminalDecisionRecordSchema.parse({
+    decisionId: row.id,
+    decisionKey: row.decision_key,
+    pilotId: row.pilot_id,
+    runId: row.run_id,
+    actorId: row.actor_id,
+    decision: row.decision,
+    reason: row.reason,
+    observations: row.observations,
+    affectedProfiles: row.affected_profiles,
+    profileComments: row.profile_comments,
+    warningsAccepted: row.warnings_accepted,
+    resultingState: row.resulting_state,
+    decidedAt: row.decided_at,
+    providerCallsPerformed: Number(row.provider_calls_performed),
+    reservationsCreated: Number(row.reservations_created),
+    publicationCount: Number(row.publication_count),
+    trawelConnected: Boolean(row.trawel_connected),
+    automaticEnabled: Boolean(row.automatic_enabled),
+  })
+}
+
+function terminalDecisionNextAction(
+  decision: RealEditorialTerminalResolution['decision'],
+): 'ready_for_library' | 'manual_regeneration_decision_required' | 'closed_without_publication' {
+  if (decision === 'approve_editorial_result') return 'ready_for_library'
+  if (decision === 'request_changes') return 'manual_regeneration_decision_required'
+  return 'closed_without_publication'
+}
+
 function checkpointState(payload: unknown): string {
   if (!isRecord(payload) || typeof payload.state !== 'string' || payload.state.length === 0) {
     throw new RealEditorialRepositoryError(
@@ -3561,6 +3805,35 @@ function historicalIncidentResolutionPersistenceError(
   )
 }
 
+function terminalDecisionPersistenceError(
+  error: { message: string; code?: string },
+): RealEditorialRepositoryError {
+  if (
+    error.message.includes('TERMINAL_DECISION_IDEMPOTENCY_CONFLICT')
+    || error.message.includes('TERMINAL_DECISION_ALREADY_RESOLVED')
+    || error.message.includes('TERMINAL_DECISION_ARTIFACT_CHANGED')
+    || error.message.includes('TERMINAL_DECISION_STATE_CHANGED')
+  ) {
+    return new RealEditorialRepositoryError(
+      'TERMINAL_DECISION_CONFLICT',
+      'El resultado terminal cambió o ya conserva una decisión humana incompatible',
+    )
+  }
+  if (
+    error.message.includes('TERMINAL_DECISION_RESULT_MISSING')
+    || error.message.includes('TERMINAL_DECISION_PENDING_EFFECTS')
+  ) {
+    return new RealEditorialRepositoryError(
+      'TERMINAL_REVIEW_REQUIRED',
+      'No existe un resultado terminal completo y libre de efectos pendientes',
+    )
+  }
+  return new RealEditorialRepositoryError(
+    'TERMINAL_DECISION_NOT_ALLOWED',
+    'La decisión editorial terminal fue rechazada por las barreras durables',
+  )
+}
+
 interface AnalysisArtifactInput {
   kind: RealEditorialArtifactKind
   key: string
@@ -3760,6 +4033,13 @@ const activeStates: RealEditorialPilotState[] = [
   'final_review',
 ]
 
+const terminalReviewStates: RealEditorialPilotState[] = [
+  'pending_human_review',
+  'human_approved',
+  'changes_requested',
+  'human_rejected',
+]
+
 const resumableStates: RealEditorialPilotState[] = [
   'preflight',
   'cancelled',
@@ -3767,7 +4047,7 @@ const resumableStates: RealEditorialPilotState[] = [
 ]
 
 const terminalStates: RealEditorialPilotState[] = [
-  'pending_human_review',
+  ...terminalReviewStates,
   'ready_for_human_review',
   'review_required',
   'failed',

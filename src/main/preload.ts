@@ -31,6 +31,8 @@ import type {
   RealEditorialPilotProgress,
   RealEditorialPartialAnalysisRecovery,
   RealEditorialSourceLimitRecovery,
+  RealEditorialTerminalResolution,
+  RealEditorialTerminalResult,
 } from '@shared/real-editorial-pilot-contracts'
 
 // API expuesta al renderer
@@ -81,8 +83,10 @@ const electronAPI = {
     ipcRenderer.invoke('real-editorial:confirm-budget', input),
   getRealEditorialProgress: (input: RealEditorialPilotAction): Promise<RealEditorialPilotProgress> =>
     ipcRenderer.invoke('real-editorial:progress', input),
-  getRealEditorialResult: (input: RealEditorialPilotAction) =>
+  getRealEditorialResult: (input: RealEditorialPilotAction): Promise<RealEditorialTerminalResult | undefined> =>
     ipcRenderer.invoke('real-editorial:result', input),
+  resolveRealEditorialTerminalReview: (input: RealEditorialTerminalResolution) =>
+    ipcRenderer.invoke('real-editorial:resolve-terminal-review', input),
   startRealEditorialPilot: (input: RealEditorialPilotAction) =>
     ipcRenderer.invoke('real-editorial:start', input),
   cancelRealEditorialPilot: (input: RealEditorialPilotCancel) =>

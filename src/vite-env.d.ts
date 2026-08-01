@@ -65,6 +65,9 @@ import type {
   RealEditorialPreflight,
   RealEditorialSourceLimitRecovery,
   RealEditorialSourceLimitRecoveryResult,
+  RealEditorialTerminalResolution,
+  RealEditorialTerminalResolutionResult,
+  RealEditorialTerminalResult,
 } from './shared/real-editorial-pilot-contracts'
 
 declare global {
@@ -111,7 +114,10 @@ declare global {
       prepareRealEditorialPilot: (input: RealEditorialPilotPrepare) => Promise<RealEditorialPilotRecord>
       confirmRealEditorialBudget: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotRecord>
       getRealEditorialProgress: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotProgress>
-      getRealEditorialResult: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotSnapshot | undefined>
+      getRealEditorialResult: (input: RealEditorialPilotAction) => Promise<RealEditorialTerminalResult | undefined>
+      resolveRealEditorialTerminalReview: (
+        input: RealEditorialTerminalResolution
+      ) => Promise<RealEditorialTerminalResolutionResult>
       startRealEditorialPilot: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotSnapshot>
       cancelRealEditorialPilot: (input: RealEditorialPilotCancel) => Promise<void>
       resumeRealEditorialPilot: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotSnapshot>

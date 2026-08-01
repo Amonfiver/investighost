@@ -55,6 +55,8 @@ import {
   type RealEditorialPreflight,
   type RealEditorialSourceLimitRecovery,
   type RealEditorialSourceLimitRecoveryPlan,
+  type RealEditorialTerminalResolution,
+  type RealEditorialTerminalResult,
 } from '@shared/real-editorial-pilot-contracts'
 import {
   LIBRARY_PAGE_SUMMARY_LABEL,
@@ -82,6 +84,8 @@ const stateLabels: Record<string, string> = {
   validating: 'Validando', completed: 'Completada', retry_pending: 'Reintento pendiente', failed: 'Fallida', cancelled: 'Cancelada',
   ready: 'Lista para revisar', in_review: 'En revisión', changes_requested: 'Cambios solicitados', approved: 'Aprobada',
   rejected: 'Rechazada', archived: 'Archivada', passed: 'Aprobado técnicamente', passed_with_warnings: 'Con advertencias',
+  pending_human_review: 'Pendiente de decisión humana', human_approved: 'Aprobado editorialmente',
+  human_rejected: 'Rechazado editorialmente', review_required: 'Revisión requerida',
   blocked: 'Bloqueado',
 }
 
@@ -1026,6 +1030,7 @@ function RealPilotPreflightPanel({ preflight, checking, result, onRun }: {
 function RealEditorialPilotPanel(): JSX.Element {
   const [preflight, setPreflight] = useState<RealEditorialPreflight | null>(null)
   const [progress, setProgress] = useState<RealEditorialPilotProgress | null>(null)
+  const [terminalResult, setTerminalResult] = useState<RealEditorialTerminalResult | null>(null)
   const [actorId, setActorId] = useState<string | null>(null)
   const [operation, setOperation] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -1035,7 +1040,20 @@ function RealEditorialPilotPanel(): JSX.Element {
     setPreflight(nextPreflight)
     const currentId = pilotId ?? nextPreflight.pilot?.id
     if (currentId) {
-      setProgress(await window.electronAPI.getRealEditorialProgress({ pilotId: currentId }))
+      const nextProgress = await window.electronAPI.getRealEditorialProgress({ pilotId: currentId })
+      setProgress(nextProgress)
+      if ([
+        'pending_human_review',
+        'human_approved',
+        'changes_requested',
+        'human_rejected',
+      ].includes(nextProgress.pilot.state)) {
+        setTerminalResult(
+          await window.electronAPI.getRealEditorialResult({ pilotId: currentId }) ?? null,
+        )
+      } else {
+        setTerminalResult(null)
+      }
     }
   }, [])
 
@@ -1155,6 +1173,25 @@ function RealEditorialPilotPanel(): JSX.Element {
           <strong>Decisión humana requerida.</strong>
           <span>{progress.latestIncident.message}</span>
         </div>
+      )}
+      {pilot?.state === 'pending_human_review' && (
+        <div className="alert terminal-ready" role="status">
+          <strong>
+            Borradores generados y revisión automática completada; pendiente de decisión editorial humana.
+          </strong>
+        </div>
+      )}
+      {terminalResult && (
+        <RealEditorialTerminalReviewPanel
+          result={terminalResult}
+          actorId={actorId}
+          busy={operation !== null}
+          onResolve={input => run(
+            'terminal-review',
+            () => window.electronAPI.resolveRealEditorialTerminalReview(input),
+            input.pilotId,
+          )}
+        />
       )}
       {progress?.humanRequiredCall && (
         <RealEditorialAmbiguousCallPanel
@@ -1303,6 +1340,227 @@ function RealEditorialPilotPanel(): JSX.Element {
       </div>
     </section>
   )
+}
+
+interface RealEditorialTerminalReviewPanelProps {
+  result: RealEditorialTerminalResult
+  actorId: string | null
+  busy: boolean
+  onResolve: (input: RealEditorialTerminalResolution) => void
+}
+
+export function RealEditorialTerminalReviewPanel({
+  result,
+  actorId,
+  busy,
+  onResolve,
+}: RealEditorialTerminalReviewPanelProps): JSX.Element {
+  const [reason, setReason] = useState('')
+  const [observations, setObservations] = useState('')
+  const [adventureComment, setAdventureComment] = useState('')
+  const [studentComment, setStudentComment] = useState('')
+  const [warningsAccepted, setWarningsAccepted] = useState(false)
+  const adventure = result.snapshot.drafts.find(draft => draft.profile === 'adventure')
+  const student = result.snapshot.drafts.find(draft => draft.profile === 'student')
+  const review = result.snapshot.review
+  const canShowDecision = result.state === 'pending_human_review'
+    && !result.latestDecision
+    && Boolean(actorId)
+  const canSubmit = canShowDecision
+    && reason.trim().length > 0
+    && observations.trim().length > 0
+
+  const base = {
+    pilotId: result.pilotId,
+    runId: result.runId,
+    actorId: actorId ?? '',
+    reason,
+    observations,
+    confirmed: true as const,
+  }
+  const requestChanges = () => {
+    const profileComments = [
+      ...(adventureComment.trim()
+        ? [{ profile: 'adventure' as const, comment: adventureComment }]
+        : []),
+      ...(studentComment.trim()
+        ? [{ profile: 'student' as const, comment: studentComment }]
+        : []),
+    ]
+    if (profileComments.length === 0) return
+    if (!window.confirm('Solicitar cambios conservará la versión 1 y no ejecutará ninguna regeneración.')) return
+    onResolve({
+      ...base,
+      decision: 'request_changes',
+      affectedProfiles: profileComments.map(item => item.profile),
+      profileComments,
+      warningsAccepted: false,
+    })
+  }
+
+  return (
+    <section className="real-terminal-review" aria-label="Revisión humana terminal del resultado real">
+      <header>
+        <div>
+          <span className="card-kicker">RESULTADO EDITORIAL REAL · FASE TERMINAL</span>
+          <h3>Borradores y revisión automática</h3>
+          <p>Vista independiente del flujo Manual histórico. No publica ni ejecuta proveedores.</p>
+        </div>
+        <span className={`state-badge ${review?.outcome === 'passed_with_warnings' ? 'state-passed_with_warnings' : ''}`}>
+          {review ? stateLabels[review.outcome] ?? review.outcome : 'Sin revisión'}
+        </span>
+      </header>
+
+      <div className="terminal-budget-grid">
+        <div><span>Gasto final</span><strong>{formatPreciseMoney(result.budget.spentCostEur)}</strong></div>
+        <div><span>Reserva</span><strong>{formatPreciseMoney(result.budget.reservedCostEur)}</strong></div>
+        <div><span>Máximo vigente</span><strong>{formatPreciseMoney(result.budget.currentMaximumCostEur)}</strong></div>
+        <div><span>Disponible</span><strong>{formatPreciseMoney(result.budget.availableCostEur)}</strong></div>
+        <div><span>Trabajo automatizado restante</span><strong>{formatPreciseMoney(result.budget.automatedWorkRemainingEur)}</strong></div>
+        <div><span>Total proyectado</span><strong>{formatPreciseMoney(result.budget.projectedTotalCostEur)}</strong></div>
+        <div><span>Déficit</span><strong>{formatPreciseMoney(result.budget.shortfallCostEur)}</strong></div>
+      </div>
+
+      <div className="terminal-drafts-grid">
+        {[adventure, student].map(draft => draft && (
+          <article className="terminal-draft" key={draft.profile}>
+            <span className="card-kicker">{draft.profile === 'adventure' ? 'AVENTURA' : 'ESTUDIANTE'}</span>
+            <h4>{draft.title}</h4>
+            <small>
+              {draft.approximateWordCount.toLocaleString('es-ES')} palabras aproximadas · versión 1 · referencias [cN] en el texto
+            </small>
+            <p className="terminal-draft-content">{draft.content}</p>
+          </article>
+        ))}
+      </div>
+
+      <div className="terminal-evidence-grid">
+        <article>
+          <h4>Gaps conservados ({result.gaps.length})</h4>
+          <ol>{result.gaps.map(gap => (
+            <li key={gap.id}><strong>{gap.id} · {gap.topic}</strong><span>{gap.description}</span></li>
+          ))}</ol>
+        </article>
+        <article>
+          <h4>Contradicciones conservadas ({result.contradictions.length})</h4>
+          <ol>{result.contradictions.map(contradiction => (
+            <li key={contradiction}>{contradiction}</li>
+          ))}</ol>
+        </article>
+      </div>
+
+      <article className="terminal-traceability">
+        <h4>Trazabilidad de claims y evidencias</h4>
+        <ul>{result.snapshot.masterKnowledge?.claims.map(claim => (
+          <li key={claim.id}>
+            <strong>{claim.id}</strong><span>{claim.statement}</span>
+            <small>Evidencias: {claim.evidenceIds.join(', ')}</small>
+          </li>
+        ))}</ul>
+      </article>
+
+      {review && (
+        <article className="terminal-automatic-review">
+          <h4>Revisión automática: {stateLabels[review.outcome] ?? review.outcome}</h4>
+          <ul>{review.issues.map(issue => <li key={issue}>{issue}</li>)}</ul>
+        </article>
+      )}
+
+      <details className="terminal-artifact-audit">
+        <summary>Identidad durable de los artefactos</summary>
+        {Object.values(result.artifacts).map(artifact => (
+          <p key={artifact.artifactId}>
+            <span>{artifact.kind}/{artifact.key} v{artifact.version}</span>
+            <code>{artifact.artifactId}</code><code>{artifact.hash}</code>
+          </p>
+        ))}
+      </details>
+
+      {result.latestDecision ? (
+        <div className="decision-summary">
+          <strong>{terminalDecisionLabel(result.latestDecision.decision)}</strong>
+          <span>{result.latestDecision.reason}</span>
+          <small>
+            {formatDate(result.latestDecision.decidedAt)} · Biblioteca no integrada · 0 publicaciones
+          </small>
+        </div>
+      ) : canShowDecision ? (
+        <div className="terminal-human-decision">
+          <h4>Decisión editorial humana</h4>
+          <label className="field">
+            <span>Motivo obligatorio</span>
+            <input value={reason} onChange={event => setReason(event.target.value)} />
+          </label>
+          <label className="field">
+            <span>Observaciones humanas</span>
+            <textarea rows={4} value={observations} onChange={event => setObservations(event.target.value)} />
+          </label>
+          <div className="terminal-profile-comments">
+            <label className="field">
+              <span>Cambios concretos para Aventura</span>
+              <textarea rows={3} value={adventureComment} onChange={event => setAdventureComment(event.target.value)} />
+            </label>
+            <label className="field">
+              <span>Cambios concretos para Estudiante</span>
+              <textarea rows={3} value={studentComment} onChange={event => setStudentComment(event.target.value)} />
+            </label>
+          </div>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={warningsAccepted}
+              onChange={event => setWarningsAccepted(event.target.checked)}
+            />
+            Acepto expresamente el resultado passed_with_warnings y sus observaciones.
+          </label>
+          <div className="form-actions">
+            <button
+              className="button danger"
+              disabled={busy || !canSubmit}
+              onClick={() => {
+                if (!window.confirm('Rechazar conservará todos los artefactos y cerrará el resultado sin publicar.')) return
+                onResolve({
+                  ...base,
+                  decision: 'reject_editorial_result',
+                  affectedProfiles: ['adventure', 'student'],
+                  profileComments: [],
+                  warningsAccepted: false,
+                })
+              }}
+            >Rechazar</button>
+            <button
+              className="button secondary"
+              disabled={busy || !canSubmit || (!adventureComment.trim() && !studentComment.trim())}
+              onClick={requestChanges}
+            >Solicitar cambios</button>
+            <button
+              className="button success"
+              disabled={busy || !canSubmit || !warningsAccepted}
+              onClick={() => {
+                if (!window.confirm('Aprobar dejará el resultado preparado para una futura integración con Biblioteca, sin publicarlo.')) return
+                onResolve({
+                  ...base,
+                  decision: 'approve_editorial_result',
+                  affectedProfiles: ['adventure', 'student'],
+                  profileComments: [],
+                  warningsAccepted: true,
+                })
+              }}
+            >Aprobar resultado</button>
+          </div>
+          <small>Solicitar cambios no regenera contenido, no abre presupuesto y no llama a OpenAI.</small>
+        </div>
+      ) : (
+        <div className="alert warning"><span>Falta el actor local autorizado para registrar una decisión.</span></div>
+      )}
+    </section>
+  )
+}
+
+function terminalDecisionLabel(decision: RealEditorialTerminalResolution['decision']): string {
+  if (decision === 'approve_editorial_result') return 'Resultado aprobado editorialmente'
+  if (decision === 'request_changes') return 'Cambios solicitados'
+  return 'Resultado rechazado editorialmente'
 }
 
 interface RealEditorialHistoricalIncidentPanelProps {

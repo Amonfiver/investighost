@@ -126,6 +126,9 @@ export const RealEditorialPilotStateSchema = z.enum([
   'generating_student',
   'final_review',
   'pending_human_review',
+  'human_approved',
+  'changes_requested',
+  'human_rejected',
   'ready_for_human_review',
   'review_required',
   'failed',
@@ -1234,6 +1237,220 @@ export const RealEditorialPilotSnapshotSchema = z.object({
   updatedAt: TimestampSchema,
 })
 
+export const RealEditorialTerminalDecisionSchema = z.enum([
+  'approve_editorial_result',
+  'request_changes',
+  'reject_editorial_result',
+])
+
+const terminalDecisionTextSchema = (maximum: number) => z.string().trim().min(1).max(maximum).refine(
+  value => !/(?:sk-|tvly-|api[_ -]?key|authorization|bearer\s)/i.test(value),
+  'La decisión terminal no puede contener credenciales ni cabeceras de autorización',
+)
+
+const TerminalDecisionTextSchema = terminalDecisionTextSchema(2_000)
+const TerminalDecisionReasonSchema = terminalDecisionTextSchema(500)
+
+export const RealEditorialTerminalProfileCommentSchema = z.object({
+  profile: z.enum(['adventure', 'student']),
+  comment: TerminalDecisionTextSchema,
+}).strict()
+
+const RealEditorialTerminalResolutionBaseSchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  actorId: z.string().uuid(),
+  reason: TerminalDecisionReasonSchema,
+  observations: TerminalDecisionTextSchema,
+  confirmed: z.literal(true),
+})
+
+export const RealEditorialTerminalResolutionSchema = z.discriminatedUnion('decision', [
+  RealEditorialTerminalResolutionBaseSchema.extend({
+    decision: z.literal('approve_editorial_result'),
+    affectedProfiles: z.tuple([z.literal('adventure'), z.literal('student')]),
+    profileComments: z.array(RealEditorialTerminalProfileCommentSchema).max(0),
+    warningsAccepted: z.literal(true),
+  }).strict(),
+  RealEditorialTerminalResolutionBaseSchema.extend({
+    decision: z.literal('request_changes'),
+    affectedProfiles: z.array(z.enum(['adventure', 'student'])).min(1).max(2),
+    profileComments: z.array(RealEditorialTerminalProfileCommentSchema).min(1).max(2),
+    warningsAccepted: z.literal(false),
+  }).strict(),
+  RealEditorialTerminalResolutionBaseSchema.extend({
+    decision: z.literal('reject_editorial_result'),
+    affectedProfiles: z.tuple([z.literal('adventure'), z.literal('student')]),
+    profileComments: z.array(RealEditorialTerminalProfileCommentSchema).max(0),
+    warningsAccepted: z.literal(false),
+  }).strict(),
+]).superRefine((value, context) => {
+  const profiles = new Set(value.affectedProfiles)
+  if (profiles.size !== value.affectedProfiles.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['affectedProfiles'],
+      message: 'Los perfiles afectados deben ser únicos',
+    })
+  }
+  if (value.decision !== 'request_changes') return
+  const comments = new Map(value.profileComments.map(item => [item.profile, item.comment]))
+  if (
+    comments.size !== value.profileComments.length
+    || comments.size !== profiles.size
+    || [...profiles].some(profile => !comments.has(profile))
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['profileComments'],
+      message: 'Solicitar cambios exige un comentario concreto y único por perfil afectado',
+    })
+  }
+})
+
+export const RealEditorialTerminalArtifactReferenceSchema = z.object({
+  artifactId: z.string().uuid(),
+  kind: z.enum(['draft_adventure', 'draft_student', 'final_review', 'checkpoint']),
+  key: IdentifierSchema,
+  version: z.number().int().positive(),
+  hash: Sha256Schema,
+  createdAt: TimestampSchema,
+}).strict()
+
+export const RealEditorialTerminalBudgetSchema = z.object({
+  spentCostEur: z.number().finite().nonnegative(),
+  reservedCostEur: z.number().finite().nonnegative(),
+  currentMaximumCostEur: CurrentMaximumCostSchema,
+  availableCostEur: z.number().finite().nonnegative(),
+  automatedWorkRemainingEur: z.literal(0),
+  projectedTotalCostEur: z.number().finite().nonnegative(),
+  shortfallCostEur: z.number().finite().nonnegative(),
+}).strict().superRefine((value, context) => {
+  const available = realEditorialEconomicValue(Math.max(
+    0,
+    value.currentMaximumCostEur - value.spentCostEur - value.reservedCostEur,
+  ))
+  const projected = realEditorialEconomicValue(value.spentCostEur + value.reservedCostEur)
+  const shortfall = realEditorialEconomicValue(Math.max(
+    0,
+    projected - value.currentMaximumCostEur,
+  ))
+  for (const [path, received, expected] of [
+    ['availableCostEur', value.availableCostEur, available],
+    ['projectedTotalCostEur', value.projectedTotalCostEur, projected],
+    ['shortfallCostEur', value.shortfallCostEur, shortfall],
+  ] as const) {
+    if (!sameRealEditorialEconomicValue(received, expected)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [path],
+        message: 'La proyección terminal debe coincidir con el ledger autoritativo',
+      })
+    }
+  }
+})
+
+export const RealEditorialTerminalDecisionRecordSchema = z.object({
+  decisionId: z.string().uuid(),
+  decisionKey: Sha256Schema,
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  actorId: z.string().uuid(),
+  decision: RealEditorialTerminalDecisionSchema,
+  reason: TerminalDecisionReasonSchema,
+  observations: TerminalDecisionTextSchema,
+  affectedProfiles: z.array(z.enum(['adventure', 'student'])).min(1).max(2),
+  profileComments: z.array(RealEditorialTerminalProfileCommentSchema).max(2),
+  warningsAccepted: z.boolean(),
+  resultingState: z.enum(['human_approved', 'changes_requested', 'human_rejected']),
+  decidedAt: TimestampSchema,
+  providerCallsPerformed: z.literal(0),
+  reservationsCreated: z.literal(0),
+  publicationCount: z.literal(0),
+  trawelConnected: z.literal(false),
+  automaticEnabled: z.literal(false),
+}).strict().superRefine((value, context) => {
+  const expectedState = value.decision === 'approve_editorial_result'
+    ? 'human_approved'
+    : value.decision === 'request_changes'
+      ? 'changes_requested'
+      : 'human_rejected'
+  if (value.resultingState !== expectedState) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['resultingState'],
+      message: 'El estado durable no coincide con la decisión editorial terminal',
+    })
+  }
+  if (value.warningsAccepted !== (value.decision === 'approve_editorial_result')) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['warningsAccepted'],
+      message: 'La aceptación de warnings no coincide con la decisión editorial terminal',
+    })
+  }
+})
+
+export const RealEditorialTerminalResultSchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  state: z.enum([
+    'pending_human_review',
+    'human_approved',
+    'changes_requested',
+    'human_rejected',
+  ]),
+  snapshot: RealEditorialPilotSnapshotSchema,
+  artifacts: z.object({
+    snapshot: RealEditorialTerminalArtifactReferenceSchema.extend({
+      kind: z.literal('checkpoint'),
+      key: z.literal('pipeline'),
+    }),
+    adventure: RealEditorialTerminalArtifactReferenceSchema.extend({
+      kind: z.literal('draft_adventure'),
+      key: z.literal('adventure'),
+    }),
+    student: RealEditorialTerminalArtifactReferenceSchema.extend({
+      kind: z.literal('draft_student'),
+      key: z.literal('student'),
+    }),
+    finalReview: RealEditorialTerminalArtifactReferenceSchema.extend({
+      kind: z.literal('final_review'),
+      key: z.literal('final'),
+    }),
+  }).strict(),
+  gaps: z.array(RealKnowledgeGapSchema).min(1),
+  contradictions: z.array(z.string().trim().min(1).max(2_000)).min(1),
+  budget: RealEditorialTerminalBudgetSchema,
+  latestDecision: RealEditorialTerminalDecisionRecordSchema.optional(),
+  libraryIntegration: z.literal('not_started'),
+}).strict().superRefine((value, context) => {
+  const profiles = new Set(value.snapshot.drafts.map(draft => draft.profile))
+  if (!profiles.has('adventure') || !profiles.has('student') || !value.snapshot.review) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['snapshot'],
+      message: 'El resultado terminal exige ambos borradores y la revisión automática',
+    })
+  }
+  if (value.latestDecision && value.latestDecision.resultingState !== value.state) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['latestDecision', 'resultingState'],
+      message: 'La decisión terminal debe coincidir con el estado durable actual',
+    })
+  }
+})
+
+export const RealEditorialTerminalResolutionResultSchema = z.object({
+  decision: RealEditorialTerminalDecisionRecordSchema,
+  nextAction: z.enum([
+    'ready_for_library',
+    'manual_regeneration_decision_required',
+    'closed_without_publication',
+  ]),
+}).strict()
+
 export const RealEditorialPilotProgressSchema = z.object({
   pilot: RealEditorialPilotRecordSchema,
   snapshot: RealEditorialPilotSnapshotSchema.optional(),
@@ -1374,4 +1591,22 @@ export type RealEditorialPilotBudget = z.infer<typeof RealEditorialPilotBudgetSc
 export type RealEditorialPilotRecord = z.infer<typeof RealEditorialPilotRecordSchema>
 export type RealEditorialPilotSnapshot = z.infer<typeof RealEditorialPilotSnapshotSchema>
 export type RealEditorialPilotProgress = z.infer<typeof RealEditorialPilotProgressSchema>
+export type RealEditorialTerminalDecision = z.infer<typeof RealEditorialTerminalDecisionSchema>
+export type RealEditorialTerminalProfileComment = z.infer<
+  typeof RealEditorialTerminalProfileCommentSchema
+>
+export type RealEditorialTerminalResolution = z.infer<
+  typeof RealEditorialTerminalResolutionSchema
+>
+export type RealEditorialTerminalArtifactReference = z.infer<
+  typeof RealEditorialTerminalArtifactReferenceSchema
+>
+export type RealEditorialTerminalBudget = z.infer<typeof RealEditorialTerminalBudgetSchema>
+export type RealEditorialTerminalDecisionRecord = z.infer<
+  typeof RealEditorialTerminalDecisionRecordSchema
+>
+export type RealEditorialTerminalResult = z.infer<typeof RealEditorialTerminalResultSchema>
+export type RealEditorialTerminalResolutionResult = z.infer<
+  typeof RealEditorialTerminalResolutionResultSchema
+>
 export type RealEditorialPreflight = z.infer<typeof RealEditorialPreflightSchema>

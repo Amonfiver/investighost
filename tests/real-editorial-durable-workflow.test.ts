@@ -382,7 +382,13 @@ class FakeIntelligenceEngine implements IntelligenceEngine {
       issues: [],
       promptVersion: 'fake-v1',
       schemaVersion: 'fake-v1',
-      usage: { inputTokens: 100, outputTokens: 50, estimatedCost: 0.02, currency: 'EUR' },
+      usage: {
+        inputTokens: 100,
+        outputTokens: 50,
+        estimatedCost: 0.02,
+        currency: 'EUR',
+        providerRequestIds: ['resp-fake-review'],
+      },
     }
   }
 }
@@ -507,7 +513,13 @@ function draft(profile: 'adventure' | 'student', words: number): IntelligenceDra
     approximateWordCount: words,
     promptVersion: 'fake-v1',
     schemaVersion: 'fake-v1',
-    usage: { inputTokens: 100, outputTokens: 50, estimatedCost: 0.02, currency: 'EUR' },
+    usage: {
+      inputTokens: 100,
+      outputTokens: 50,
+      estimatedCost: 0.02,
+      currency: 'EUR',
+      providerRequestIds: [`resp-fake-${profile}`],
+    },
   }
 }
 
@@ -558,6 +570,11 @@ describe('workflow editorial durable con clientes falsos', () => {
       ['adventure', 1_000],
       ['student', 1_800],
     ])
+    expect(result.drafts.map(item => item.usage.providerRequestIds)).toEqual([
+      ['resp-fake-adventure'],
+      ['resp-fake-student'],
+    ])
+    expect(result.review?.usage.providerRequestIds).toEqual(['resp-fake-review'])
     expect(result.roundResults).toHaveLength(2)
     expect(research.rounds).toEqual([1, 2])
     expect(intelligence.calls).toEqual(['analysis-1', 'analysis-2', 'draft', 'review'])

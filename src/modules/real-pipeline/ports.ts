@@ -99,6 +99,7 @@ export interface IntelligenceDraft {
     outputTokens: number
     estimatedCost: number
     currency: 'EUR' | 'USD'
+    providerRequestIds?: string[]
   }
 }
 
@@ -112,6 +113,7 @@ export interface IntelligenceReview {
     outputTokens: number
     estimatedCost: number
     currency: 'EUR' | 'USD'
+    providerRequestIds?: string[]
   }
 }
 

@@ -1186,6 +1186,14 @@ export const RealEditorialPilotRecordSchema = z.object({
   budget: RealEditorialPilotBudgetSchema.optional(),
 })
 
+const RealEditorialProviderUsageSchema = z.object({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  estimatedCost: z.number().nonnegative(),
+  currency: z.enum(['EUR', 'USD']),
+  providerRequestIds: z.array(z.string().trim().min(1).max(240)).max(32).optional(),
+})
+
 export const RealEditorialDraftSchema = z.object({
   profile: z.enum(['adventure', 'student']),
   title: z.string().trim().min(1).max(300),
@@ -1193,12 +1201,7 @@ export const RealEditorialDraftSchema = z.object({
   approximateWordCount: z.number().int().positive(),
   promptVersion: IdentifierSchema,
   schemaVersion: IdentifierSchema,
-  usage: z.object({
-    inputTokens: z.number().int().nonnegative(),
-    outputTokens: z.number().int().nonnegative(),
-    estimatedCost: z.number().nonnegative(),
-    currency: z.enum(['EUR', 'USD']),
-  }),
+  usage: RealEditorialProviderUsageSchema,
 })
 
 export const RealEditorialReviewSchema = z.object({
@@ -1206,12 +1209,7 @@ export const RealEditorialReviewSchema = z.object({
   issues: z.array(z.string().trim().min(1).max(1_000)),
   promptVersion: IdentifierSchema,
   schemaVersion: IdentifierSchema,
-  usage: z.object({
-    inputTokens: z.number().int().nonnegative(),
-    outputTokens: z.number().int().nonnegative(),
-    estimatedCost: z.number().nonnegative(),
-    currency: z.enum(['EUR', 'USD']),
-  }),
+  usage: RealEditorialProviderUsageSchema,
 })
 
 export const RealEditorialPilotSnapshotSchema = z.object({
@@ -1401,6 +1399,8 @@ export const RealEditorialTerminalResultSchema = z.object({
     'human_rejected',
   ]),
   snapshot: RealEditorialPilotSnapshotSchema,
+  drafts: z.array(RealEditorialDraftSchema).length(2),
+  review: RealEditorialReviewSchema,
   artifacts: z.object({
     snapshot: RealEditorialTerminalArtifactReferenceSchema.extend({
       kind: z.literal('checkpoint'),
@@ -1425,8 +1425,15 @@ export const RealEditorialTerminalResultSchema = z.object({
   latestDecision: RealEditorialTerminalDecisionRecordSchema.optional(),
   libraryIntegration: z.literal('not_started'),
 }).strict().superRefine((value, context) => {
-  const profiles = new Set(value.snapshot.drafts.map(draft => draft.profile))
-  if (!profiles.has('adventure') || !profiles.has('student') || !value.snapshot.review) {
+  const snapshotProfiles = new Set(value.snapshot.drafts.map(draft => draft.profile))
+  const authoritativeProfiles = new Set(value.drafts.map(draft => draft.profile))
+  if (
+    !snapshotProfiles.has('adventure')
+    || !snapshotProfiles.has('student')
+    || !value.snapshot.review
+    || !authoritativeProfiles.has('adventure')
+    || !authoritativeProfiles.has('student')
+  ) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['snapshot'],

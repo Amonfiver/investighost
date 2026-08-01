@@ -1360,9 +1360,9 @@ export function RealEditorialTerminalReviewPanel({
   const [adventureComment, setAdventureComment] = useState('')
   const [studentComment, setStudentComment] = useState('')
   const [warningsAccepted, setWarningsAccepted] = useState(false)
-  const adventure = result.snapshot.drafts.find(draft => draft.profile === 'adventure')
-  const student = result.snapshot.drafts.find(draft => draft.profile === 'student')
-  const review = result.snapshot.review
+  const adventure = result.drafts.find(draft => draft.profile === 'adventure')
+  const student = result.drafts.find(draft => draft.profile === 'student')
+  const review = result.review
   const canShowDecision = result.state === 'pending_human_review'
     && !result.latestDecision
     && Boolean(actorId)

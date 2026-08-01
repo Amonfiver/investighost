@@ -8,6 +8,8 @@ const dockerExecutable = 'C:\\Program Files\\Docker\\Docker\\resources\\bin\\doc
 const container = 'supabase_db_investighost'
 const migrationPath =
   'supabase/migrations/20260802090000_real_editorial_terminal_review.sql'
+const compatibilityMigrationPath =
+  'supabase/migrations/20260802113000_terminal_snapshot_v1_provider_request_compatibility.sql'
 
 describe('revisión humana terminal en Supabase local', () => {
   integrationTest('resuelve las tres decisiones de forma atómica e idempotente con rollback', () => {
@@ -16,10 +18,58 @@ describe('revisión humana terminal en Supabase local', () => {
       `select to_regclass('public.real_editorial_terminal_decisions') is not null`,
     ], { encoding: 'utf8' }).trim() === 't'
     const migration = schemaPresent ? '' : readFileSync(migrationPath, 'utf8')
+    const compatibilityMigration = readFileSync(compatibilityMigrationPath, 'utf8')
     const sql = String.raw`
 \set ON_ERROR_STOP on
 begin;
 ${migration}
+${compatibilityMigration}
+
+do $$
+declare
+  real_snapshot jsonb;
+  real_adventure jsonb;
+  real_student jsonb;
+  real_review jsonb;
+  embedded_adventure jsonb;
+  embedded_student jsonb;
+begin
+  if not exists (
+    select 1 from public.real_editorial_artifacts
+     where id='ab2f387c-0409-47cd-aab5-215f98d8a259'
+       and pilot_id='480d9c05-3ef7-4c44-a6f1-7762b7179a03'
+       and run_id='467dc951-26f5-45f6-895c-d2f06c496d6e'
+       and artifact_kind='final_review' and artifact_key='final' and version=1
+  ) then raise exception 'REAL_MORELLA_REVIEW_ID_MISMATCH'; end if;
+  select payload into real_snapshot from public.real_editorial_artifacts
+   where id='1ee169d8-af85-49f4-9ce8-7b17537d5011';
+  select payload into real_adventure from public.real_editorial_artifacts
+   where id='519b767a-e72c-4493-99e7-dd867bf67540';
+  select payload into real_student from public.real_editorial_artifacts
+   where id='bc7d3d27-c7a4-40ba-ada9-dd67dff8dba2';
+  select payload into real_review from public.real_editorial_artifacts
+   where id='ab2f387c-0409-47cd-aab5-215f98d8a259';
+  select item into embedded_adventure from jsonb_array_elements(real_snapshot->'drafts') item
+   where item->>'profile'='adventure';
+  select item into embedded_student from jsonb_array_elements(real_snapshot->'drafts') item
+   where item->>'profile'='student';
+  if public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'draft_adventure',embedded_adventure
+     ) is distinct from public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'draft_adventure',real_adventure
+     )
+     or public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'draft_student',embedded_student
+     ) is distinct from public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'draft_student',real_student
+     )
+     or public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'final_review',real_snapshot->'review'
+     ) is distinct from public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'final_review',real_review
+     ) then raise exception 'REAL_MORELLA_V1_COMPATIBILITY_REJECTED'; end if;
+end;
+$$;
 
 create temporary table real_morella_terminal_before as
 select jsonb_build_object(
@@ -49,18 +99,27 @@ declare
     'profile','adventure','title','Aventura sintética','content','Texto Aventura [c1].',
     'approximateWordCount',1000,'promptVersion','real-editorial-v1',
     'schemaVersion','real-intelligence-v1',
-    'usage',jsonb_build_object('inputTokens',0,'outputTokens',0,'estimatedCost',0,'currency','EUR')
+    'usage',jsonb_build_object(
+      'inputTokens',3988,'outputTokens',1840,'estimatedCost',0.015028,
+      'currency','USD','providerRequestIds',jsonb_build_array('resp_synthetic_adventure')
+    )
   );
   student_payload jsonb := jsonb_build_object(
     'profile','student','title','Estudiante sintético','content','Texto Estudiante [c1].',
     'approximateWordCount',1800,'promptVersion','real-editorial-v1',
     'schemaVersion','real-intelligence-v1',
-    'usage',jsonb_build_object('inputTokens',0,'outputTokens',0,'estimatedCost',0,'currency','EUR')
+    'usage',jsonb_build_object(
+      'inputTokens',3946,'outputTokens',2996,'estimatedCost',0.021922,
+      'currency','USD','providerRequestIds',jsonb_build_array('resp_synthetic_student')
+    )
   );
   review_payload jsonb := jsonb_build_object(
     'outcome','passed_with_warnings','issues',jsonb_build_array('Advertencia sintética.'),
     'promptVersion','real-editorial-v1','schemaVersion','real-intelligence-v1',
-    'usage',jsonb_build_object('inputTokens',0,'outputTokens',0,'estimatedCost',0,'currency','EUR')
+    'usage',jsonb_build_object(
+      'inputTokens',8145,'outputTokens',1071,'estimatedCost',0.014571,
+      'currency','USD','providerRequestIds',jsonb_build_array('resp_synthetic_review')
+    )
   );
 begin
   select id into destination_id from public.geographic_entities
@@ -90,9 +149,61 @@ begin
   (p_snapshot,p_pilot,p_run,'checkpoint','pipeline',1,
     jsonb_build_object(
       'state','pending_human_review','currentRound',2,'publicationCount',0,
+      'version','real-editorial-snapshot-v1',
       'trawelConnected',false,'automaticEnabled',false,
-      'drafts',jsonb_build_array(adventure_payload,student_payload),'review',review_payload
+      'drafts',jsonb_build_array(
+        adventure_payload #- '{usage,providerRequestIds}',
+        student_payload #- '{usage,providerRequestIds}'
+      ),
+      'review',review_payload #- '{usage,providerRequestIds}'
     ),repeat('4',64));
+end;
+$$;
+
+do $$
+declare
+  complete_adventure jsonb := jsonb_build_object(
+    'profile','adventure','title','Aventura sintética','content','Texto Aventura [c1].',
+    'approximateWordCount',1000,'promptVersion','real-editorial-v1',
+    'schemaVersion','real-intelligence-v1',
+    'usage',jsonb_build_object(
+      'inputTokens',3988,'outputTokens',1840,'estimatedCost',0.015028,
+      'currency','USD','providerRequestIds',jsonb_build_array('resp_synthetic_adventure')
+    )
+  );
+  embedded_adventure jsonb;
+  complete_review jsonb := jsonb_build_object(
+    'outcome','passed_with_warnings','issues',jsonb_build_array('Advertencia sintética.'),
+    'promptVersion','real-editorial-v1','schemaVersion','real-intelligence-v1',
+    'usage',jsonb_build_object(
+      'inputTokens',8145,'outputTokens',1071,'estimatedCost',0.014571,
+      'currency','USD','providerRequestIds',jsonb_build_array('resp_synthetic_review')
+    )
+  );
+  embedded_review jsonb;
+begin
+  embedded_adventure := complete_adventure #- '{usage,providerRequestIds}';
+  embedded_review := complete_review #- '{usage,providerRequestIds}';
+  if public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'draft_adventure',embedded_adventure
+     ) is distinct from public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'draft_adventure',complete_adventure
+     ) then raise exception 'SQL_V1_COMPATIBILITY_REJECTED_HISTORY'; end if;
+  if public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'draft_adventure',embedded_adventure
+     ) is not distinct from public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'draft_adventure',complete_adventure || '{"title":"Título divergente"}'::jsonb
+     ) then raise exception 'SQL_V1_COMPATIBILITY_ACCEPTED_TITLE'; end if;
+  if public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'draft_adventure',embedded_adventure
+     ) is not distinct from public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'draft_adventure',jsonb_set(complete_adventure,'{usage,estimatedCost}','0.5')
+     ) then raise exception 'SQL_V1_COMPATIBILITY_ACCEPTED_COST'; end if;
+  if public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'final_review',embedded_review
+     ) is not distinct from public.project_terminal_payload_for_snapshot_v1_compatibility(
+       'final_review',jsonb_set(complete_review,'{issues,0}','"Issue divergente"')
+     ) then raise exception 'SQL_V1_COMPATIBILITY_ACCEPTED_ISSUE'; end if;
 end;
 $$;
 

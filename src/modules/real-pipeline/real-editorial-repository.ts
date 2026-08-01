@@ -21,6 +21,8 @@ import {
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotRecordSchema,
   RealEditorialPilotSnapshotSchema,
+  RealEditorialDraftSchema,
+  RealEditorialReviewSchema,
   RealEditorialPartialAnalysisRecoveryPlanSchema,
   RealEditorialPartialAnalysisRecoveryResultSchema,
   RealEditorialPartialAnalysisRecoverySchema,
@@ -478,7 +480,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     const pilot = await this.getPilot(pilotId)
     if (!pilot?.budget || !terminalReviewStates.includes(pilot.state)) return undefined
     const artifactsResult = await this.client.from('real_editorial_artifacts').select(
-      'id,artifact_kind,artifact_key,version,payload,payload_hash,created_at',
+      'id,pilot_id,run_id,artifact_kind,artifact_key,version,payload,payload_hash,created_at',
     )
       .eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
       .in('artifact_kind', ['checkpoint', 'draft_adventure', 'draft_student', 'final_review'])
@@ -494,10 +496,34 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         'El resultado terminal no conserva snapshot, borradores y revisión final',
       )
     }
-    const snapshotReference = terminalArtifactReference(snapshotRow)
-    const adventureReference = terminalArtifactReference(adventureRow)
-    const studentReference = terminalArtifactReference(studentRow)
-    const reviewReference = terminalArtifactReference(reviewRow)
+    const snapshotReference = verifyTerminalArtifactReference(snapshotRow, {
+      pilotId: pilot.id,
+      runId: pilot.currentRunId,
+      kind: 'checkpoint',
+      key: 'pipeline',
+      version: 1,
+    })
+    const adventureReference = verifyTerminalArtifactReference(adventureRow, {
+      pilotId: pilot.id,
+      runId: pilot.currentRunId,
+      kind: 'draft_adventure',
+      key: 'adventure',
+      version: 1,
+    })
+    const studentReference = verifyTerminalArtifactReference(studentRow, {
+      pilotId: pilot.id,
+      runId: pilot.currentRunId,
+      kind: 'draft_student',
+      key: 'student',
+      version: 1,
+    })
+    const reviewReference = verifyTerminalArtifactReference(reviewRow, {
+      pilotId: pilot.id,
+      runId: pilot.currentRunId,
+      kind: 'final_review',
+      key: 'final',
+      version: 1,
+    })
     const snapshotPayload = snapshotRow.payload
     if (!isRecord(snapshotPayload)) {
       throw new RealEditorialRepositoryError('CHECKPOINT_INVALID', 'El snapshot terminal no es un objeto')
@@ -518,13 +544,34 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       || !adventurePayload
       || !studentPayload
       || !snapshotPayload.review
-      || realEditorialPayloadHash(adventurePayload) !== adventureReference.hash
-      || realEditorialPayloadHash(studentPayload) !== studentReference.hash
-      || realEditorialPayloadHash(snapshotPayload.review) !== reviewReference.hash
     ) {
       throw new RealEditorialRepositoryError(
         'CHECKPOINT_INVALID',
         'El snapshot terminal no coincide con los artefactos editoriales inmutables',
+      )
+    }
+    assertTerminalSnapshotV1PayloadCompatible(
+      'draft_adventure',
+      adventurePayload,
+      adventureRow.payload,
+    )
+    assertTerminalSnapshotV1PayloadCompatible(
+      'draft_student',
+      studentPayload,
+      studentRow.payload,
+    )
+    assertTerminalSnapshotV1PayloadCompatible(
+      'final_review',
+      snapshotPayload.review,
+      reviewRow.payload,
+    )
+    const adventure = RealEditorialDraftSchema.parse(adventureRow.payload)
+    const student = RealEditorialDraftSchema.parse(studentRow.payload)
+    const review = RealEditorialReviewSchema.parse(reviewRow.payload)
+    if (adventure.profile !== 'adventure' || student.profile !== 'student') {
+      throw new RealEditorialRepositoryError(
+        'CHECKPOINT_INVALID',
+        'El artefacto terminal diverge de su perfil durable en $.profile',
       )
     }
     const latestRound = snapshot.roundResults.at(-1)
@@ -547,6 +594,8 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       runId: pilot.currentRunId,
       state: pilot.state,
       snapshot,
+      drafts: [adventure, student],
+      review,
       artifacts: {
         snapshot: snapshotReference,
         adventure: adventureReference,
@@ -3357,6 +3406,81 @@ export function realEditorialPayloadDifferencePaths(
   return [path]
 }
 
+export type RealEditorialTerminalSnapshotV1PayloadKind =
+  | 'draft_adventure'
+  | 'draft_student'
+  | 'final_review'
+
+/**
+ * Compatibility specification for real-editorial-snapshot-v1.
+ *
+ * Historical snapshots were parsed through a schema that omitted only
+ * usage.providerRequestIds. Full immutable artifacts retained that field.
+ * This projection is deliberately version-specific and removes no other data.
+ */
+export function projectTerminalPayloadForSnapshotV1Compatibility(
+  kind: RealEditorialTerminalSnapshotV1PayloadKind,
+  candidate: unknown,
+): Record<string, unknown> {
+  if (!['draft_adventure', 'draft_student', 'final_review'].includes(kind)) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'La compatibilidad terminal v1 solo admite borradores y revisión final',
+    )
+  }
+  if (!isRecord(candidate) || !isRecord(candidate.usage)) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      `El payload terminal ${kind} diverge en $.usage`,
+    )
+  }
+  const expectedProfile = kind === 'draft_adventure'
+    ? 'adventure'
+    : kind === 'draft_student'
+      ? 'student'
+      : undefined
+  if (expectedProfile && candidate.profile !== expectedProfile) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      `El payload terminal ${kind} diverge en $.profile`,
+    )
+  }
+  const projected = structuredClone(candidate)
+  if (!isRecord(projected.usage)) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      `El payload terminal ${kind} diverge en $.usage`,
+    )
+  }
+  delete projected.usage.providerRequestIds
+  return projected
+}
+
+export function assertTerminalSnapshotV1PayloadCompatible(
+  kind: RealEditorialTerminalSnapshotV1PayloadKind,
+  snapshotPayload: unknown,
+  immutableArtifactPayload: unknown,
+): void {
+  const snapshotProjection = projectTerminalPayloadForSnapshotV1Compatibility(
+    kind,
+    snapshotPayload,
+  )
+  const artifactProjection = projectTerminalPayloadForSnapshotV1Compatibility(
+    kind,
+    immutableArtifactPayload,
+  )
+  const firstDifference = realEditorialPayloadDifferencePaths(
+    snapshotProjection,
+    artifactProjection,
+  )[0]
+  if (firstDifference) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      `El snapshot terminal v1 diverge del artefacto ${kind} en ${firstDifference}`,
+    )
+  }
+}
+
 function canonicalJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalJson)
   if (value && typeof value === 'object') {
@@ -3509,12 +3633,37 @@ function latestTerminalArtifact(
     .sort((left, right) => Number(right.version) - Number(left.version))[0]
 }
 
-function terminalArtifactReference(row: Record<string, unknown>) {
+export interface TerminalArtifactExpectation {
+  pilotId: string
+  runId: string
+  kind: RealEditorialArtifactKind
+  key: string
+  version: number
+}
+
+export function verifyTerminalArtifactReference(
+  row: Record<string, unknown>,
+  expected: TerminalArtifactExpectation,
+) {
   const payloadHash = String(row.payload_hash)
   if (realEditorialPayloadHash(row.payload) !== payloadHash) {
     throw new RealEditorialRepositoryError(
       'CHECKPOINT_INVALID',
       `El artefacto terminal ${String(row.artifact_kind)}/${String(row.artifact_key)} no supera SHA-256`,
+    )
+  }
+  const identityChecks: Array<[string, unknown, unknown]> = [
+    ['$.pilot_id', row.pilot_id, expected.pilotId],
+    ['$.run_id', row.run_id, expected.runId],
+    ['$.artifact_kind', row.artifact_kind, expected.kind],
+    ['$.artifact_key', row.artifact_key, expected.key],
+    ['$.version', Number(row.version), expected.version],
+  ]
+  const mismatch = identityChecks.find(([, received, wanted]) => received !== wanted)
+  if (mismatch) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      `El artefacto terminal ${expected.kind}/${expected.key} diverge en ${mismatch[0]}`,
     )
   }
   return {

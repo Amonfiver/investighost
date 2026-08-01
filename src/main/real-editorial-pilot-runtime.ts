@@ -16,6 +16,7 @@ import {
   RealEditorialPilotActionSchema,
   RealEditorialAmbiguousCallResolutionSchema,
   RealEditorialBudgetResolutionSchema,
+  RealEditorialHistoricalIncidentResolutionSchema,
   RealEditorialPilotCancelSchema,
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotProgressSchema,
@@ -117,6 +118,7 @@ export class RealEditorialPilotRuntime {
       resumeAvailable,
       sourceLimitRecovery,
       partialAnalysisRecovery,
+      historicalIncidentReview,
     ] =
       await Promise.all([
       this.repository.getResult(pilotId),
@@ -133,6 +135,7 @@ export class RealEditorialPilotRuntime {
       this.repository.canResumeFromCheckpoint(pilotId),
       this.repository.getSourceLimitRecovery(pilotId),
       this.repository.getPartialAnalysisRecovery?.(pilotId) ?? Promise.resolve(undefined),
+      this.repository.getHistoricalIncidentReview?.(pilotId) ?? Promise.resolve(undefined),
     ])
     if (incidents.error || run.error) throw new Error('No se pudo leer el progreso durable')
     return RealEditorialPilotProgressSchema.parse({
@@ -160,6 +163,7 @@ export class RealEditorialPilotRuntime {
       budgetReview,
       sourceLimitRecovery,
       partialAnalysisRecovery,
+      historicalIncidentReview,
       checkpointAvailable: Boolean(workflowCheckpoint),
       resumeAvailable,
       guardFree: inspection.guardFree,
@@ -281,6 +285,28 @@ export class RealEditorialPilotRuntime {
       throw new Error('La guarda editorial debe estar libre para recuperar el análisis')
     }
     return this.repository.recoverPartialAnalysis(input)
+  }
+
+  async resolveHistoricalIncidents(candidate: unknown) {
+    const input = RealEditorialHistoricalIncidentResolutionSchema.parse(candidate)
+    if (!readRealEditorialAuthorization().enabled) {
+      throw new Error('La feature flag editorial real no autoriza la resolución histórica')
+    }
+    if (input.actorId !== MANUAL_LOCAL_ACTOR_ID) {
+      throw new Error('El actor humano no coincide con el operador local autorizado')
+    }
+    if (this.controllers.has(input.pilotId)) {
+      throw new Error('No se pueden resolver incidentes mientras el piloto se ejecuta')
+    }
+    const pilot = await this.repository.getPilot(input.pilotId)
+    if (!pilot || pilot.currentRunId !== input.runId) {
+      throw new Error('La resolución no corresponde al piloto y run activos')
+    }
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    if (!inspection.guardFree || inspection.pendingReservations > 0) {
+      throw new Error('La guarda y las reservas deben estar libres para resolver incidentes')
+    }
+    return this.repository.resolveHistoricalIncidents(input)
   }
 
   async start(candidate: unknown) {

@@ -276,6 +276,10 @@ ipcMain.handle('real-editorial:recover-partial-analysis', async (_event, input: 
   return getRealEditorialPilotRuntime().recoverPartialAnalysis(input)
 })
 
+ipcMain.handle('real-editorial:resolve-historical-incidents', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().resolveHistoricalIncidents(input)
+})
+
 async function providerCenterAction<T>(
   action: (service: Awaited<ReturnType<typeof getProviderCenterRuntime>>) => Promise<T>,
 ): Promise<T> {

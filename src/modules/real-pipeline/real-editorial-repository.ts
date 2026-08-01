@@ -8,6 +8,10 @@ import {
   RealEditorialBudgetResolutionResultSchema,
   RealEditorialBudgetResolutionSchema,
   RealEditorialBudgetReviewSchema,
+  RealEditorialHistoricalIncidentAssessmentSchema,
+  RealEditorialHistoricalIncidentResolutionResultSchema,
+  RealEditorialHistoricalIncidentResolutionSchema,
+  RealEditorialHistoricalIncidentReviewSchema,
   RealEditorialPilotBudgetSchema,
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotRecordSchema,
@@ -24,6 +28,11 @@ import {
   type RealEditorialBudgetResolution,
   type RealEditorialBudgetResolutionResult,
   type RealEditorialBudgetReview,
+  type RealEditorialHistoricalIncidentAssessment,
+  type RealEditorialHistoricalIncidentClassification,
+  type RealEditorialHistoricalIncidentResolution,
+  type RealEditorialHistoricalIncidentResolutionResult,
+  type RealEditorialHistoricalIncidentReview,
   type RealEditorialPilotBudget,
   type RealEditorialPilotPrepare,
   type RealEditorialPilotRecord,
@@ -108,6 +117,9 @@ export type RealEditorialRepositoryErrorCode =
   | 'PARTIAL_ANALYSIS_RECOVERY_REQUIRED'
   | 'PARTIAL_ANALYSIS_RECOVERY_CONFLICT'
   | 'PARTIAL_ANALYSIS_RECOVERY_NOT_ALLOWED'
+  | 'HISTORICAL_INCIDENT_RESOLUTION_REQUIRED'
+  | 'HISTORICAL_INCIDENT_RESOLUTION_CONFLICT'
+  | 'HISTORICAL_INCIDENT_RESOLUTION_NOT_ALLOWED'
   | 'PERSISTENCE_ERROR'
 
 export class RealEditorialRepositoryError extends Error {
@@ -162,6 +174,12 @@ export interface RealEditorialPilotRepository {
   resolveBudgetReview(
     input: RealEditorialBudgetResolution,
   ): Promise<RealEditorialBudgetResolutionResult>
+  getHistoricalIncidentReview?(
+    pilotId: string,
+  ): Promise<RealEditorialHistoricalIncidentReview | undefined>
+  resolveHistoricalIncidents?(
+    input: RealEditorialHistoricalIncidentResolution,
+  ): Promise<RealEditorialHistoricalIncidentResolutionResult>
   appendArtifact(
     pilotId: string,
     runId: string,
@@ -916,6 +934,382 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     })
   }
 
+  async getHistoricalIncidentReview(
+    pilotId: string,
+  ): Promise<RealEditorialHistoricalIncidentReview | undefined> {
+    const pilot = await this.getPilot(pilotId)
+    if (!pilot?.budget) return undefined
+    const currentCheckpoint = await this.latestArtifact(
+      pilot.currentRunId,
+      'checkpoint',
+      'workflow',
+    )
+    if (!currentCheckpoint || !isRecord(currentCheckpoint.payload)) return undefined
+
+    const storedBatch = await this.client
+      .from('real_editorial_historical_incident_resolution_batches')
+      .select('*')
+      .eq('pilot_id', pilotId)
+      .eq('run_id', pilot.currentRunId)
+      .order('resolved_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    assertNoError(storedBatch.error, 'No se pudo leer la resolución histórica')
+    if (storedBatch.data) {
+      const entries = await this.client
+        .from('real_editorial_historical_incident_resolutions')
+        .select('evidence')
+        .eq('batch_id', storedBatch.data.id)
+        .order('incident_id', { ascending: true })
+      assertNoError(entries.error, 'No se pudo leer la evidencia histórica')
+      const assessments = (entries.data ?? []).map(row =>
+        RealEditorialHistoricalIncidentAssessmentSchema.parse(row.evidence))
+      return RealEditorialHistoricalIncidentReviewSchema.parse({
+        status: 'applied',
+        resolutionAllowed: false,
+        resolutionBatchId: storedBatch.data.id,
+        resolutionKey: storedBatch.data.resolution_key,
+        pilotId,
+        runId: pilot.currentRunId,
+        actorId: storedBatch.data.actor_id,
+        reason: storedBatch.data.reason,
+        resolvedAt: storedBatch.data.resolved_at,
+        currentCheckpointVersion: Number(storedBatch.data.current_checkpoint_version),
+        currentCheckpointHash: storedBatch.data.current_checkpoint_hash,
+        spentCostEur: Number(storedBatch.data.spent_cost),
+        reservedCostEur: Number(storedBatch.data.reserved_cost),
+        sourceCount: Number(storedBatch.data.source_count),
+        assessments,
+        providerCallsPerformed: 0,
+        workflowResumed: false,
+      })
+    }
+
+    const incidents = await this.client.from('real_editorial_incidents').select('*')
+      .eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+      .in('id', Object.keys(KNOWN_MORELLA_HISTORICAL_INCIDENTS))
+      .in('code', ['VERSION_CONFLICT', 'PERSISTENCE_ERROR'])
+      .is('resolved_at', null)
+      .order('created_at', { ascending: true })
+    assertNoError(incidents.error, 'No se pudieron leer los incidentes históricos')
+    if (!incidents.data?.length) return undefined
+
+    const [pending, ambiguous] = await Promise.all([
+      this.client.from('real_editorial_call_reservations').select('id', {
+        head: true,
+        count: 'exact',
+      }).eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+        .in('state', ['reserved', 'started', 'unknown']),
+      this.client.from('real_editorial_ambiguous_calls').select('call_id', {
+        head: true,
+        count: 'exact',
+      }).eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+        .is('resolved_at', null),
+    ])
+    assertNoError(pending.error, 'No se pudieron comprobar las reservas históricas')
+    assertNoError(ambiguous.error, 'No se pudieron comprobar las ambigüedades históricas')
+    const noPendingEffects = (pending.count ?? 0) === 0 && (ambiguous.count ?? 0) === 0
+    const assessments = await Promise.all((incidents.data ?? []).map(incident =>
+      this.assessKnownHistoricalIncident(
+        incident,
+        currentCheckpoint,
+        noPendingEffects,
+      )))
+    return RealEditorialHistoricalIncidentReviewSchema.parse({
+      status: 'required',
+      resolutionAllowed: assessments.every(assessment => assessment.safeToResolve),
+      pilotId,
+      runId: pilot.currentRunId,
+      currentCheckpointVersion: currentCheckpoint.version,
+      currentCheckpointHash: currentCheckpoint.payloadHash,
+      spentCostEur: pilot.budget.spentCost,
+      reservedCostEur: pilot.budget.reservedCost,
+      sourceCount: checkpointSourceCount(currentCheckpoint.payload),
+      assessments,
+      providerCallsPerformed: 0,
+      workflowResumed: false,
+    })
+  }
+
+  async resolveHistoricalIncidents(
+    candidate: RealEditorialHistoricalIncidentResolution,
+  ): Promise<RealEditorialHistoricalIncidentResolutionResult> {
+    const input = RealEditorialHistoricalIncidentResolutionSchema.parse(candidate)
+    const review = await this.getHistoricalIncidentReview(input.pilotId)
+    if (!review || review.runId !== input.runId) {
+      throw new RealEditorialRepositoryError(
+        'HISTORICAL_INCIDENT_RESOLUTION_REQUIRED',
+        'No existe una revisión histórica compatible para este run',
+      )
+    }
+    const expectedIds = review.assessments.map(item => item.incidentId).sort()
+    const receivedIds = [...input.incidentIds].sort()
+    if (expectedIds.join(',') !== receivedIds.join(',')) {
+      throw new RealEditorialRepositoryError(
+        'HISTORICAL_INCIDENT_RESOLUTION_CONFLICT',
+        'La resolución no contiene exactamente los incidentes evaluados',
+      )
+    }
+    if (review.status === 'applied') {
+      if (review.actorId !== input.actorId || review.reason !== input.reason) {
+        throw new RealEditorialRepositoryError(
+          'HISTORICAL_INCIDENT_RESOLUTION_CONFLICT',
+          'Los incidentes ya tienen una resolución durable incompatible',
+        )
+      }
+      return RealEditorialHistoricalIncidentResolutionResultSchema.parse({
+        ...review,
+        nextAction: 'resume_from_checkpoint',
+      })
+    }
+    if (!review.resolutionAllowed) {
+      throw new RealEditorialRepositoryError(
+        'HISTORICAL_INCIDENT_RESOLUTION_NOT_ALLOWED',
+        'La evidencia no permite clasificar todos los incidentes como históricos',
+      )
+    }
+    const resolutionKey = realEditorialPayloadHash({
+      pilotId: input.pilotId,
+      runId: input.runId,
+      incidentIds: receivedIds,
+      actorId: input.actorId,
+      reason: input.reason,
+      currentCheckpointVersion: review.currentCheckpointVersion,
+      currentCheckpointHash: review.currentCheckpointHash,
+      assessments: review.assessments,
+    })
+    const { error } = await this.client.rpc('resolve_real_editorial_historical_incidents', {
+      p_resolution_key: resolutionKey,
+      p_pilot_id: input.pilotId,
+      p_run_id: input.runId,
+      p_actor_id: input.actorId,
+      p_reason: input.reason,
+      p_incident_ids: receivedIds,
+      p_expected_checkpoint_version: review.currentCheckpointVersion,
+      p_expected_checkpoint_hash: review.currentCheckpointHash,
+    })
+    if (error) throw historicalIncidentResolutionPersistenceError(error)
+    const applied = await this.getHistoricalIncidentReview(input.pilotId)
+    if (!applied || applied.status !== 'applied') {
+      throw new RealEditorialRepositoryError(
+        'PERSISTENCE_ERROR',
+        'La resolución histórica no se pudo verificar',
+      )
+    }
+    return RealEditorialHistoricalIncidentResolutionResultSchema.parse({
+      ...applied,
+      nextAction: 'resume_from_checkpoint',
+    })
+  }
+
+  private async assessKnownHistoricalIncident(
+    incident: Record<string, unknown>,
+    currentCheckpoint: RealEditorialArtifact,
+    noPendingEffects: boolean,
+  ): Promise<RealEditorialHistoricalIncidentAssessment> {
+    const known = KNOWN_MORELLA_HISTORICAL_INCIDENTS[String(incident.id)]
+    const base = {
+      incidentId: String(incident.id),
+      code: String(incident.code) as 'VERSION_CONFLICT' | 'PERSISTENCE_ERROR',
+      message: String(incident.message),
+      createdAt: String(incident.created_at),
+      currentCheckpointVersion: currentCheckpoint.version,
+      currentCheckpointState: checkpointState(currentCheckpoint.payload),
+    }
+    if (!known) return RealEditorialHistoricalIncidentAssessmentSchema.parse({
+      ...base,
+      classification: 'unresolved_requires_human_action',
+      durableEvidence: [],
+      riskEvaluation: 'El incidente no coincide con una causa histórica validada.',
+      safeToResolve: false,
+    })
+    const failureCheckpoint = await this.artifactAtVersion(
+      pilotRunId(currentCheckpoint.payload),
+      currentCheckpoint,
+      known.failureCheckpointVersion,
+    )
+    if (!failureCheckpoint || !isRecord(failureCheckpoint.payload)) {
+      return RealEditorialHistoricalIncidentAssessmentSchema.parse({
+        ...base,
+        classification: 'unresolved_requires_human_action',
+        durableEvidence: [],
+        riskEvaluation: 'No existe el checkpoint exacto asociado al fallo.',
+        safeToResolve: false,
+      })
+    }
+    return known.evidenceKind === 'durable_mission_reused'
+      ? this.assessMissionReuseIncident(
+          base,
+          known,
+          failureCheckpoint,
+          currentCheckpoint,
+          noPendingEffects,
+        )
+      : this.assessEquivalentQueryIncident(
+          base,
+          known,
+          failureCheckpoint,
+          currentCheckpoint,
+          noPendingEffects,
+        )
+  }
+
+  private async artifactAtVersion(
+    runId: string,
+    current: RealEditorialArtifact,
+    version: number,
+  ): Promise<RealEditorialArtifact | undefined> {
+    if (current.version === version) return current
+    const result = await this.client.from('real_editorial_artifacts')
+      .select('artifact_kind,artifact_key,version,payload,payload_hash,created_at')
+      .eq('run_id', runId)
+      .eq('artifact_kind', 'checkpoint').eq('artifact_key', 'workflow')
+      .eq('version', version).maybeSingle()
+    assertNoError(result.error, 'No se pudo leer el checkpoint histórico')
+    return result.data ? artifactFromRow(result.data) : undefined
+  }
+
+  private async assessMissionReuseIncident(
+    base: Omit<RealEditorialHistoricalIncidentAssessment, 'classification' | 'durableEvidence' | 'riskEvaluation' | 'safeToResolve'>,
+    known: KnownHistoricalIncident,
+    failureCheckpoint: RealEditorialArtifact,
+    currentCheckpoint: RealEditorialArtifact,
+    noPendingEffects: boolean,
+  ): Promise<RealEditorialHistoricalIncidentAssessment> {
+    const mission = await this.latestArtifact(
+      (currentCheckpoint.payload as RealWorkflowCheckpoint).initialMission.runId,
+      'mission',
+      'initial',
+    )
+    const laterResearch = await this.latestArtifact(
+      (currentCheckpoint.payload as RealWorkflowCheckpoint).initialMission.runId,
+      'tavily_result',
+      'round-1',
+    )
+    const currentPayload = currentCheckpoint.payload as RealWorkflowCheckpoint
+    const compatible = Boolean(
+      mission
+      && mission.version === 1
+      && isRecord(failureCheckpoint.payload)
+      && failureCheckpoint.payload.state === 'queued'
+      && failureCheckpoint.payload.completedRound === 0
+      && currentCheckpoint.version > failureCheckpoint.version
+      && realEditorialPayloadHash(currentPayload.initialMission) === mission.payloadHash
+      && laterResearch?.version === 1
+      && isRecord(laterResearch.payload)
+      && laterResearch.payload.round === 1,
+    )
+    const classification = classifyRealEditorialHistoricalIncident({
+      resolved: false,
+      durableRecovery: false,
+      explicitlyResolved: false,
+      evidenceKind: known.evidenceKind,
+      checkpointAdvanced: currentCheckpoint.version > failureCheckpoint.version,
+      artifactCompatible: compatible,
+      noPendingEffects,
+    })
+    return RealEditorialHistoricalIncidentAssessmentSchema.parse({
+      ...base,
+      classification,
+      evidenceKind: known.evidenceKind,
+      failureCheckpointVersion: failureCheckpoint.version,
+      failureCheckpointState: checkpointState(failureCheckpoint.payload),
+      artifactKind: 'mission',
+      artifactKey: 'initial',
+      artifactVersion: 1,
+      existingValue: 'createdAt=2026-07-25T21:48:00.908Z',
+      conflictingValue: 'createdAt=2026-07-25T22:25:25.272Z',
+      correctionReference: known.correctionReference,
+      durableEvidence: [
+        `El checkpoint avanzó de ${failureCheckpoint.version} a ${currentCheckpoint.version}.`,
+        'La misión durable original sigue siendo única y compatible con el checkpoint actual.',
+        'La ejecución posterior alcanzó Tavily ronda 1 y el análisis de ronda 2.',
+      ],
+      riskEvaluation: compatible && noPendingEffects
+        ? 'La diferencia era exclusivamente temporal y el código actual reutiliza la misión durable.'
+        : 'La compatibilidad de la misión o el ledger no ha podido demostrarse.',
+      safeToResolve: classification === 'historical_non_blocking',
+    })
+  }
+
+  private async assessEquivalentQueryIncident(
+    base: Omit<RealEditorialHistoricalIncidentAssessment, 'classification' | 'durableEvidence' | 'riskEvaluation' | 'safeToResolve'>,
+    known: KnownHistoricalIncident,
+    failureCheckpoint: RealEditorialArtifact,
+    currentCheckpoint: RealEditorialArtifact,
+    noPendingEffects: boolean,
+  ): Promise<RealEditorialHistoricalIncidentAssessment> {
+    const queryArtifact = await this.latestArtifact(
+      (currentCheckpoint.payload as RealWorkflowCheckpoint).initialMission.runId,
+      'query',
+      'q3',
+    )
+    const laterResearch = await this.latestArtifact(
+      (currentCheckpoint.payload as RealWorkflowCheckpoint).initialMission.runId,
+      'tavily_result',
+      'round-2',
+    )
+    const failurePayload = failureCheckpoint.payload as RealWorkflowCheckpoint
+    const currentPayload = currentCheckpoint.payload as RealWorkflowCheckpoint
+    const candidate = failurePayload.nextRoundQueries?.find(query => query.id === 'q3')
+    const currentQuery = currentPayload.nextRoundQueries?.find(query => query.id === 'q3')
+    const stored = RealFocusedQuerySchema.safeParse(queryArtifact?.payload)
+    const semanticallyEquivalent = Boolean(
+      stored.success
+      && candidate
+      && stored.data.id === candidate.id
+      && stored.data.gapId === candidate.gapId
+      && stored.data.query === candidate.query
+      && stored.data.rationale !== candidate.rationale
+      && currentQuery
+      && currentQuery.id === stored.data.id
+      && currentQuery.gapId === stored.data.gapId
+      && currentQuery.query === stored.data.query
+      && currentQuery.rationale === stored.data.rationale,
+    )
+    const compatible = Boolean(
+      queryArtifact?.version === 1
+      && failurePayload.state === 'researching_round_2'
+      && failurePayload.completedRound === 1
+      && currentCheckpoint.version > failureCheckpoint.version
+      && semanticallyEquivalent
+      && laterResearch?.version === 1
+      && isRecord(laterResearch.payload)
+      && laterResearch.payload.round === 2,
+    )
+    const classification = classifyRealEditorialHistoricalIncident({
+      resolved: false,
+      durableRecovery: false,
+      explicitlyResolved: false,
+      evidenceKind: known.evidenceKind,
+      checkpointAdvanced: currentCheckpoint.version > failureCheckpoint.version,
+      artifactCompatible: compatible,
+      noPendingEffects,
+    })
+    return RealEditorialHistoricalIncidentAssessmentSchema.parse({
+      ...base,
+      classification,
+      evidenceKind: known.evidenceKind,
+      failureCheckpointVersion: failureCheckpoint.version,
+      failureCheckpointState: checkpointState(failureCheckpoint.payload),
+      artifactKind: 'query',
+      artifactKey: 'q3',
+      artifactVersion: 1,
+      existingValue: stored.success ? stored.data.rationale : 'Consulta durable inválida',
+      conflictingValue: candidate?.rationale ?? 'Consulta candidata ausente',
+      correctionReference: known.correctionReference,
+      durableEvidence: [
+        `El checkpoint avanzó de ${failureCheckpoint.version} a ${currentCheckpoint.version}.`,
+        'Los campos semánticos id, gapId y query coinciden; solo divergía rationale.',
+        'El checkpoint actual reutiliza la consulta durable y Tavily ronda 2 quedó persistido.',
+      ],
+      riskEvaluation: compatible && noPendingEffects
+        ? 'La metadata no ejecutable fue canonizada y la identidad actual separa las consultas por ronda.'
+        : 'La equivalencia semántica o el ledger no ha podido demostrarse.',
+      safeToResolve: classification === 'historical_non_blocking',
+    })
+  }
+
   async getHumanRequiredCall(pilotId: string): Promise<RealEditorialAmbiguousCall | undefined> {
     const pilot = await this.getPilot(pilotId)
     if (!pilot) throw new RealEditorialRepositoryError('PILOT_NOT_FOUND', 'El piloto no existe')
@@ -1185,7 +1579,8 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       guard,
       sourceLimitRecovery,
       partialAnalysisRecovery,
-      openVersionConflict,
+      openPersistenceIncidents,
+      pendingReservations,
     ] = await Promise.all([
       this.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
       this.client.from('real_editorial_ambiguous_calls').select('call_id', {
@@ -1204,17 +1599,30 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         .eq('guard_name', 'morella-real-editorial').maybeSingle(),
       this.getSourceLimitRecovery(pilotId),
       this.getPartialAnalysisRecovery(pilotId),
-      this.client.from('real_editorial_incidents').select('id', {
+      this.client.from('real_editorial_incidents').select('id,code,resolved_at')
+        .eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+        .in('code', ['VERSION_CONFLICT', 'PERSISTENCE_ERROR']).is('resolved_at', null),
+      this.client.from('real_editorial_call_reservations').select('id', {
         head: true,
         count: 'exact',
       }).eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
-        .in('code', ['VERSION_CONFLICT', 'PERSISTENCE_ERROR']).is('resolved_at', null),
+        .in('state', ['reserved', 'started', 'unknown']),
     ])
     assertNoError(unresolved.error, 'No se pudo comprobar la ambigüedad pendiente')
     assertNoError(permanentCancellation.error, 'No se pudo comprobar la cancelación definitiva')
     assertNoError(budgetReview.error, 'No se pudo comprobar la decisión presupuestaria')
     assertNoError(guard.error, 'No se pudo comprobar la guarda editorial')
-    assertNoError(openVersionConflict.error, 'No se pudo comprobar el fallo de análisis')
+    assertNoError(openPersistenceIncidents.error, 'No se pudo comprobar el fallo de análisis')
+    assertNoError(pendingReservations.error, 'No se pudieron comprobar las reservas pendientes')
+    const noPendingEffects = (unresolved.count ?? 0) === 0
+      && (pendingReservations.count ?? 0) === 0
+    const blockingPersistenceIncidentCount = checkpoint
+      ? await this.blockingPersistenceIncidentCount(
+          openPersistenceIncidents.data ?? [],
+          checkpoint.version,
+          noPendingEffects,
+        )
+      : (openPersistenceIncidents.data ?? []).length
     const budgetAllowsResume = !budgetReview.data
       || budgetReview.data.status === 'authorized'
     const guardExpired = guard.data?.expires_at
@@ -1225,7 +1633,77 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       && (permanentCancellation.count ?? 0) === 0 && budgetAllowsResume
       && guardAllowsResume && sourceLimitRecovery?.status !== 'required'
       && partialAnalysisRecovery?.status !== 'required'
-      && (openVersionConflict.count ?? 0) === 0
+      && blockingPersistenceIncidentCount === 0
+  }
+
+  private async blockingPersistenceIncidentCount(
+    incidents: Array<Record<string, unknown>>,
+    currentCheckpointVersion: number,
+    noPendingEffects: boolean,
+  ): Promise<number> {
+    if (incidents.length === 0) return 0
+    const incidentIds = incidents.map(incident => String(incident.id))
+    const [historical, sourceRecoveries, partialRecoveries] = await Promise.all([
+      this.client.from('real_editorial_historical_incident_resolutions')
+        .select('incident_id,classification,current_checkpoint_version,evidence,security_evaluation')
+        .in('incident_id', incidentIds),
+      this.client.from('real_editorial_source_limit_recoveries')
+        .select('incident_id,recovered_checkpoint_version').in('incident_id', incidentIds),
+      this.client.from('real_editorial_partial_analysis_recoveries')
+        .select('incident_id,checkpoint_version').in('incident_id', incidentIds),
+    ])
+    assertNoError(historical.error, 'No se pudo comprobar la resolución histórica')
+    assertNoError(sourceRecoveries.error, 'No se pudo comprobar la recuperación de fuentes')
+    assertNoError(partialRecoveries.error, 'No se pudo comprobar la recuperación del análisis')
+    const historicalByIncident = new Map((historical.data ?? []).map(row => [
+      String(row.incident_id),
+      row,
+    ]))
+    const durableRecoveryVersionByIncident = new Map<string, number>()
+    for (const row of sourceRecoveries.data ?? []) {
+      durableRecoveryVersionByIncident.set(
+        String(row.incident_id),
+        Number(row.recovered_checkpoint_version),
+      )
+    }
+    for (const row of partialRecoveries.data ?? []) {
+      durableRecoveryVersionByIncident.set(
+        String(row.incident_id),
+        Number(row.checkpoint_version),
+      )
+    }
+    return incidents.filter((incident) => {
+      const incidentId = String(incident.id)
+      const resolution = historicalByIncident.get(incidentId)
+      const recoveryCheckpointVersion = durableRecoveryVersionByIncident.get(incidentId)
+      let classification: RealEditorialHistoricalIncidentClassification | undefined
+      let historicalResolutionCheckpointVersion: number | undefined
+      let artifactCompatible = false
+      if (resolution?.security_evaluation === 'passed') {
+        const evidence = RealEditorialHistoricalIncidentAssessmentSchema.safeParse(
+          resolution.evidence,
+        )
+        if (evidence.success && evidence.data.incidentId === incidentId) {
+          classification = evidence.data.classification
+          historicalResolutionCheckpointVersion = Number(
+            resolution.current_checkpoint_version,
+          )
+          artifactCompatible = evidence.data.safeToResolve
+        }
+      } else if (recoveryCheckpointVersion !== undefined) {
+        classification = 'superseded_by_durable_recovery'
+        artifactCompatible = true
+      }
+      return realEditorialPersistenceIncidentBlocksResume({
+        resolvedAt: typeof incident.resolved_at === 'string' ? incident.resolved_at : null,
+        classification,
+        durableRecoveryCheckpointVersion: recoveryCheckpointVersion,
+        historicalResolutionCheckpointVersion,
+        currentCheckpointVersion,
+        artifactCompatible,
+        noPendingEffects,
+      })
+    }).length
   }
 
   async appendArtifact(
@@ -2351,6 +2829,133 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
+interface KnownHistoricalIncident {
+  evidenceKind: 'durable_mission_reused' | 'equivalent_query_reused'
+  failureCheckpointVersion: number
+  correctionReference: string
+}
+
+export const KNOWN_MORELLA_HISTORICAL_INCIDENTS: Readonly<
+  Record<string, KnownHistoricalIncident>
+> = Object.freeze({
+  '45bece91-bea5-4167-a38b-9c5d06f18aea': {
+    evidenceKind: 'durable_mission_reused',
+    failureCheckpointVersion: 2,
+    correctionReference: '5799067552ddf2a0e922ba15332f12cb9e5e2fe4',
+  },
+  '997607a6-5a58-4bfd-ab1c-45e8eab9623f': {
+    evidenceKind: 'equivalent_query_reused',
+    failureCheckpointVersion: 11,
+    correctionReference: 'c754dcaf4014a166748eb61fb4a1c8ac3d2e295b',
+  },
+})
+
+interface HistoricalIncidentClassificationEvidence {
+  resolved: boolean
+  durableRecovery: boolean
+  explicitlyResolved: boolean
+  evidenceKind?: KnownHistoricalIncident['evidenceKind'] | 'durable_recovery'
+  checkpointAdvanced: boolean
+  artifactCompatible: boolean
+  noPendingEffects: boolean
+}
+
+export function classifyRealEditorialHistoricalIncident(
+  evidence: HistoricalIncidentClassificationEvidence,
+): RealEditorialHistoricalIncidentClassification {
+  if (evidence.resolved || evidence.explicitlyResolved) return 'historical_non_blocking'
+  if (
+    evidence.durableRecovery
+    && evidence.checkpointAdvanced
+    && evidence.artifactCompatible
+    && evidence.noPendingEffects
+  ) return 'superseded_by_durable_recovery'
+  if (
+    evidence.evidenceKind
+    && evidence.checkpointAdvanced
+    && evidence.artifactCompatible
+    && evidence.noPendingEffects
+  ) return 'historical_non_blocking'
+  if (!evidence.noPendingEffects) return 'active_blocker'
+  if (evidence.evidenceKind) return 'active_blocker'
+  return 'unresolved_requires_human_action'
+}
+
+export interface RealEditorialPersistenceIncidentGateEvidence {
+  resolvedAt?: string | null
+  classification?: RealEditorialHistoricalIncidentClassification
+  durableRecoveryCheckpointVersion?: number
+  historicalResolutionCheckpointVersion?: number
+  currentCheckpointVersion: number
+  artifactCompatible: boolean
+  noPendingEffects: boolean
+}
+
+export function realEditorialPersistenceIncidentBlocksResume(
+  evidence: RealEditorialPersistenceIncidentGateEvidence,
+): boolean {
+  if (evidence.resolvedAt) return false
+  const durableEvidenceCheckpoint = evidence.durableRecoveryCheckpointVersion
+    ?? evidence.historicalResolutionCheckpointVersion
+  const classifiedAsNonBlocking = evidence.classification === 'historical_non_blocking'
+    || evidence.classification === 'superseded_by_durable_recovery'
+  return !(
+    classifiedAsNonBlocking
+    && durableEvidenceCheckpoint !== undefined
+    && evidence.currentCheckpointVersion >= durableEvidenceCheckpoint
+    && evidence.artifactCompatible
+    && evidence.noPendingEffects
+  )
+}
+
+function artifactFromRow(row: Record<string, unknown>): RealEditorialArtifact {
+  const payload = row.payload
+  const payloadHash = String(row.payload_hash)
+  if (realEditorialPayloadHash(payload) !== payloadHash) {
+    throw new RealEditorialRepositoryError('CHECKPOINT_INVALID', 'El artefacto no supera SHA-256')
+  }
+  return {
+    kind: String(row.artifact_kind) as RealEditorialArtifactKind,
+    key: String(row.artifact_key),
+    version: Number(row.version),
+    payload,
+    payloadHash,
+    createdAt: String(row.created_at),
+  }
+}
+
+function checkpointState(payload: unknown): string {
+  if (!isRecord(payload) || typeof payload.state !== 'string' || payload.state.length === 0) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'El checkpoint histórico no conserva un estado válido',
+    )
+  }
+  return payload.state
+}
+
+function pilotRunId(payload: unknown): string {
+  if (
+    !isRecord(payload)
+    || !isRecord(payload.initialMission)
+    || typeof payload.initialMission.runId !== 'string'
+  ) {
+    throw new RealEditorialRepositoryError(
+      'CHECKPOINT_INVALID',
+      'El checkpoint histórico no conserva el run',
+    )
+  }
+  return payload.initialMission.runId
+}
+
+function checkpointSourceCount(payload: unknown): number {
+  return isRecord(payload)
+    && isRecord(payload.dossier)
+    && Array.isArray(payload.dossier.sources)
+    ? payload.dossier.sources.length
+    : 0
+}
+
 function humanResolutionPersistenceError(
   error: { message: string; code?: string },
 ): RealEditorialRepositoryError {
@@ -2502,6 +3107,35 @@ function partialAnalysisRecoveryPersistenceError(
   return new RealEditorialRepositoryError(
     'PARTIAL_ANALYSIS_RECOVERY_NOT_ALLOWED',
     'La recuperación durable del análisis parcial fue rechazada',
+  )
+}
+
+function historicalIncidentResolutionPersistenceError(
+  error: { message: string; code?: string },
+): RealEditorialRepositoryError {
+  if (
+    error.message.includes('HISTORICAL_INCIDENT_IDEMPOTENCY_CONFLICT')
+    || error.message.includes('HISTORICAL_INCIDENT_ALREADY_RESOLVED')
+    || error.message.includes('HISTORICAL_INCIDENT_CHECKPOINT_CHANGED')
+  ) {
+    return new RealEditorialRepositoryError(
+      'HISTORICAL_INCIDENT_RESOLUTION_CONFLICT',
+      'La evidencia cambió o los incidentes ya tienen una resolución durable incompatible',
+    )
+  }
+  if (
+    error.message.includes('HISTORICAL_INCIDENT_NOT_FOUND')
+    || error.message.includes('HISTORICAL_INCIDENT_EVIDENCE_INSUFFICIENT')
+    || error.message.includes('HISTORICAL_INCIDENT_PENDING_EFFECTS')
+  ) {
+    return new RealEditorialRepositoryError(
+      'HISTORICAL_INCIDENT_RESOLUTION_REQUIRED',
+      'La evidencia actual no demuestra que todos los incidentes sean históricos',
+    )
+  }
+  return new RealEditorialRepositoryError(
+    'HISTORICAL_INCIDENT_RESOLUTION_NOT_ALLOWED',
+    'La resolución durable de incidentes históricos fue rechazada',
   )
 }
 

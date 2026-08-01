@@ -50,6 +50,8 @@ import type {
   RealEditorialAmbiguousCallResolutionResult,
   RealEditorialBudgetResolution,
   RealEditorialBudgetResolutionResult,
+  RealEditorialHistoricalIncidentResolution,
+  RealEditorialHistoricalIncidentResolutionResult,
   RealEditorialPilotAction,
   RealEditorialPilotCancel,
   RealEditorialPilotPrepare,
@@ -123,6 +125,9 @@ declare global {
       recoverRealEditorialPartialAnalysis: (
         input: RealEditorialPartialAnalysisRecovery
       ) => Promise<RealEditorialPartialAnalysisRecoveryResult>
+      resolveRealEditorialHistoricalIncidents: (
+        input: RealEditorialHistoricalIncidentResolution
+      ) => Promise<RealEditorialHistoricalIncidentResolutionResult>
     }
   }
 }

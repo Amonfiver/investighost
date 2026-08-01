@@ -12,6 +12,7 @@ const migrations = [
   '20260728213000_real_editorial_prudential_reconciliation.sql',
   '20260730210000_real_editorial_source_limit_recovery.sql',
   '20260801120000_real_editorial_atomic_analysis_recovery.sql',
+  '20260801180000_real_editorial_historical_incident_resolution.sql',
 ]
 
 async function migration(name: string): Promise<string> {
@@ -177,6 +178,26 @@ describe('esquema durable del piloto editorial real', () => {
     expect(sql).toContain("'providerCalled',false")
     expect(sql).toContain("'workflowResumed',false")
     expect(sql).not.toMatch(/insert into public\.real_editorial_call_reservations/i)
+    expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
+    expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
+  })
+
+  it('resuelve incidentes históricos con evidencia sin tocar ledger ni ejecutar trabajo', async () => {
+    const sql = await migration(migrations[10])
+
+    expect(sql).toContain('real_editorial_historical_incident_resolution_batches')
+    expect(sql).toContain('real_editorial_historical_incident_resolutions')
+    expect(sql).toContain('resolve_real_editorial_historical_incidents')
+    expect(sql).toContain('HISTORICAL_INCIDENT_EVIDENCE_INSUFFICIENT')
+    expect(sql).toContain('HISTORICAL_INCIDENT_IDEMPOTENCY_CONFLICT')
+    expect(sql).toContain("'durable_mission_reused'")
+    expect(sql).toContain("'equivalent_query_reused'")
+    expect(sql).toContain("'providerCalled',false")
+    expect(sql).toContain("'workflowResumed',false")
+    expect(sql).not.toMatch(/insert into public\.real_editorial_call_reservations/i)
+    expect(sql).not.toMatch(/insert into public\.real_editorial_provider_calls/i)
+    expect(sql).not.toMatch(/update public\.real_editorial_pilot_budgets/i)
+    expect(sql).not.toMatch(/insert into public\.real_editorial_artifacts/i)
     expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
     expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
   })

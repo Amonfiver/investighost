@@ -44,6 +44,8 @@ import {
   type RealEditorialBudgetDecision,
   type RealEditorialBudgetResolution,
   type RealEditorialBudgetReview,
+  type RealEditorialHistoricalIncidentResolution,
+  type RealEditorialHistoricalIncidentReview,
   type RealEditorialPilotProgress,
   type RealEditorialPartialAnalysisRecovery,
   type RealEditorialPartialAnalysisRecoveryPlan,
@@ -1199,6 +1201,18 @@ function RealEditorialPilotPanel(): JSX.Element {
           )}
         />
       )}
+      {progress?.historicalIncidentReview && (
+        <RealEditorialHistoricalIncidentPanel
+          review={progress.historicalIncidentReview}
+          actorId={actorId}
+          busy={operation !== null}
+          onResolve={input => run(
+            'historical-incident-resolution',
+            () => window.electronAPI.resolveRealEditorialHistoricalIncidents(input),
+            input.pilotId,
+          )}
+        />
+      )}
       <div className="preflight-checks">
         {preflight.checks.map(check => (
           <article className={`preflight-${check.status}`} key={check.code}>
@@ -1229,7 +1243,7 @@ function RealEditorialPilotPanel(): JSX.Element {
         )}
         {pilot && pilot.state === 'preflight' && !progress?.checkpointAvailable
           && !progress?.humanRequiredCall && !progress?.budgetReview
-          && !progress?.partialAnalysisRecovery && (
+          && !progress?.partialAnalysisRecovery && !progress?.historicalIncidentReview && (
           <button
             className="button primary"
             disabled={!preflight.startActionEnabled || operation !== null}
@@ -1242,7 +1256,8 @@ function RealEditorialPilotPanel(): JSX.Element {
           </button>
         )}
         {pilot && (active || operation === 'start') && !progress?.humanRequiredCall
-          && !progress?.sourceLimitRecovery && !progress?.partialAnalysisRecovery && (
+          && !progress?.sourceLimitRecovery && !progress?.partialAnalysisRecovery
+          && !progress?.historicalIncidentReview && (
           <button
             className="button danger"
             disabled={operation === 'cancel'}
@@ -1271,6 +1286,132 @@ function RealEditorialPilotPanel(): JSX.Element {
           </button>
         )}
       </div>
+    </section>
+  )
+}
+
+interface RealEditorialHistoricalIncidentPanelProps {
+  review: RealEditorialHistoricalIncidentReview
+  actorId: string | null
+  busy: boolean
+  onResolve: (input: RealEditorialHistoricalIncidentResolution) => void
+}
+
+export function RealEditorialHistoricalIncidentPanel({
+  review,
+  actorId,
+  busy,
+  onResolve,
+}: RealEditorialHistoricalIncidentPanelProps): JSX.Element {
+  const [reason, setReason] = useState('')
+  const submit = () => {
+    if (
+      review.status !== 'required'
+      || !review.resolutionAllowed
+      || !actorId
+      || !reason.trim()
+    ) return
+    if (!window.confirm(
+      `Resolver únicamente ${review.assessments.length} incidentes históricos con la evidencia mostrada. `
+      + 'No se cambiarán coste, reservas, fuentes ni checkpoint; no se llamará a proveedores '
+      + 'y el workflow no se reanudará.',
+    )) return
+    onResolve({
+      pilotId: review.pilotId,
+      runId: review.runId,
+      incidentIds: review.assessments.map(assessment => assessment.incidentId),
+      actorId,
+      reason: reason.trim(),
+      confirmed: true,
+    })
+  }
+  return (
+    <section
+      className="source-limit-recovery"
+      aria-label="Resolución humana de incidentes históricos"
+    >
+      <header>
+        <div>
+          <span className="card-kicker">INCIDENTES HISTÓRICOS DE PERSISTENCIA</span>
+          <h4>Revisión individual antes de habilitar la reanudación</h4>
+        </div>
+        <span className={`state-badge ${
+          review.status === 'applied' ? 'state-approved' : 'state-blocked'
+        }`}>{review.status}</span>
+      </header>
+      <p>
+        La fecha no decide la clasificación. Cada incidente exige checkpoint posterior,
+        artefacto compatible, corrección identificada y ausencia de efectos pendientes.
+      </p>
+      <dl className="definition-grid compact">
+        <div><dt>Checkpoint actual</dt><dd>{review.currentCheckpointVersion}</dd></div>
+        <div><dt>Gasto conservado</dt><dd>{formatPreciseMoney(review.spentCostEur)}</dd></div>
+        <div><dt>Reserva conservada</dt><dd>{formatPreciseMoney(review.reservedCostEur)}</dd></div>
+        <div><dt>Fuentes conservadas</dt><dd>{review.sourceCount}</dd></div>
+        <div><dt>Llamadas realizadas</dt><dd>{review.providerCallsPerformed}</dd></div>
+        <div><dt>Workflow reanudado</dt><dd>{review.workflowResumed ? 'Sí' : 'No'}</dd></div>
+      </dl>
+      <div className="source-limit-exclusions">
+        {review.assessments.map(assessment => (
+          <article key={assessment.incidentId}>
+            <strong>{assessment.code} · {assessment.classification}</strong>
+            <span className="technical-id">{assessment.incidentId}</span>
+            <small>
+              Checkpoint {assessment.failureCheckpointVersion ?? 'sin identificar'} →{' '}
+              {assessment.currentCheckpointVersion} · {assessment.artifactKind}/
+              {assessment.artifactKey} v{assessment.artifactVersion}
+            </small>
+            {assessment.existingValue && assessment.conflictingValue && (
+              <small>
+                Existente: {assessment.existingValue} · Candidato: {assessment.conflictingValue}
+              </small>
+            )}
+            {assessment.durableEvidence.map(item => <small key={item}>✓ {item}</small>)}
+            <small><strong>Riesgo:</strong> {assessment.riskEvaluation}</small>
+            {assessment.correctionReference && (
+              <small className="technical-id">Corrección: {assessment.correctionReference}</small>
+            )}
+          </article>
+        ))}
+      </div>
+      {review.status === 'applied' ? (
+        <div className="alert success">
+          <strong>Resolución histórica durable aplicada.</strong>
+          <span>
+            Los incidentes conservan su auditoría. El checkpoint no se ejecutó y la próxima
+            reanudación continúa siendo una acción humana separada.
+          </span>
+        </div>
+      ) : review.resolutionAllowed ? (
+        <>
+          <label className="field">
+            <span>Motivo humano de la resolución</span>
+            <input
+              maxLength={500}
+              value={reason}
+              onChange={event => setReason(event.target.value)}
+              placeholder="Motivo operativo obligatorio"
+            />
+          </label>
+          <div className="form-actions">
+            <span className="muted">
+              Solo resuelve los IDs evaluados; no modifica ledger ni ejecuta proveedores.
+            </span>
+            <button
+              className="button primary"
+              disabled={busy || !actorId || !reason.trim()}
+              onClick={submit}
+            >
+              Resolver incidentes históricos
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="alert warning">
+          <strong>Resolución bloqueada.</strong>
+          <span>La evidencia no demuestra que todos los incidentes sean históricos.</span>
+        </div>
+      )}
     </section>
   )
 }

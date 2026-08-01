@@ -702,6 +702,113 @@ export const RealEditorialPartialAnalysisRecoveryResultSchema =
     }
   })
 
+const HistoricalIncidentResolutionReasonSchema = z.string().trim().min(1).max(500).refine(
+  value => !/(?:sk-|tvly-|api[_ -]?key|authorization|bearer\s)/i.test(value),
+  'El motivo no puede contener credenciales ni cabeceras de autorización',
+)
+
+export const RealEditorialHistoricalIncidentClassificationSchema = z.enum([
+  'active_blocker',
+  'superseded_by_durable_recovery',
+  'historical_non_blocking',
+  'unresolved_requires_human_action',
+])
+
+export const RealEditorialHistoricalIncidentEvidenceKindSchema = z.enum([
+  'durable_mission_reused',
+  'equivalent_query_reused',
+  'durable_recovery',
+])
+
+export const RealEditorialHistoricalIncidentAssessmentSchema = z.object({
+  incidentId: z.string().uuid(),
+  code: z.enum(['VERSION_CONFLICT', 'PERSISTENCE_ERROR']),
+  message: z.string().trim().min(1).max(1_000),
+  createdAt: TimestampSchema,
+  classification: RealEditorialHistoricalIncidentClassificationSchema,
+  evidenceKind: RealEditorialHistoricalIncidentEvidenceKindSchema.optional(),
+  failureCheckpointVersion: z.number().int().positive().optional(),
+  currentCheckpointVersion: z.number().int().positive(),
+  failureCheckpointState: IdentifierSchema.optional(),
+  currentCheckpointState: IdentifierSchema,
+  artifactKind: z.enum(['mission', 'query']).optional(),
+  artifactKey: z.string().trim().min(1).max(160).optional(),
+  artifactVersion: z.number().int().positive().optional(),
+  existingValue: z.string().trim().min(1).max(1_000).optional(),
+  conflictingValue: z.string().trim().min(1).max(1_000).optional(),
+  correctionReference: z.string().regex(/^[a-f0-9]{40}$/).optional(),
+  durableEvidence: z.array(z.string().trim().min(1).max(500)).max(12),
+  riskEvaluation: z.string().trim().min(1).max(1_000),
+  safeToResolve: z.boolean(),
+})
+
+const RealEditorialHistoricalIncidentReviewBaseSchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  currentCheckpointVersion: z.number().int().positive(),
+  currentCheckpointHash: Sha256Schema,
+  spentCostEur: EuroAmountSchema,
+  reservedCostEur: EuroAmountSchema,
+  sourceCount: z.number().int().nonnegative(),
+  assessments: z.array(RealEditorialHistoricalIncidentAssessmentSchema).min(1).max(10),
+  providerCallsPerformed: z.literal(0),
+  workflowResumed: z.literal(false),
+})
+
+export const RealEditorialHistoricalIncidentReviewSchema = z.discriminatedUnion('status', [
+  RealEditorialHistoricalIncidentReviewBaseSchema.extend({
+    status: z.literal('required'),
+    resolutionAllowed: z.boolean(),
+  }),
+  RealEditorialHistoricalIncidentReviewBaseSchema.extend({
+    status: z.literal('applied'),
+    resolutionAllowed: z.literal(false),
+    resolutionBatchId: z.string().uuid(),
+    resolutionKey: Sha256Schema,
+    actorId: z.string().uuid(),
+    reason: HistoricalIncidentResolutionReasonSchema,
+    resolvedAt: TimestampSchema,
+  }),
+]).superRefine((value, context) => {
+  const safe = value.assessments.every(assessment => assessment.safeToResolve)
+  if (value.status === 'required' && value.resolutionAllowed !== safe) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['resolutionAllowed'],
+      message: 'La resolución solo puede habilitarse cuando toda la evidencia es segura',
+    })
+  }
+})
+
+export const RealEditorialHistoricalIncidentResolutionSchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  incidentIds: z.array(z.string().uuid()).min(1).max(10),
+  actorId: z.string().uuid(),
+  reason: HistoricalIncidentResolutionReasonSchema,
+  confirmed: z.literal(true),
+}).strict().superRefine((value, context) => {
+  if (new Set(value.incidentIds).size !== value.incidentIds.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['incidentIds'],
+      message: 'Los incidentes de la resolución deben ser únicos',
+    })
+  }
+})
+
+export const RealEditorialHistoricalIncidentResolutionResultSchema =
+  RealEditorialHistoricalIncidentReviewBaseSchema.extend({
+    status: z.literal('applied'),
+    resolutionAllowed: z.literal(false),
+    resolutionBatchId: z.string().uuid(),
+    resolutionKey: Sha256Schema,
+    actorId: z.string().uuid(),
+    reason: HistoricalIncidentResolutionReasonSchema,
+    resolvedAt: TimestampSchema,
+    nextAction: z.literal('resume_from_checkpoint'),
+  })
+
 export const RealEditorialBudgetDecisionSchema = z.enum([
   'keep_limit',
   'authorize_extension',
@@ -918,6 +1025,7 @@ export const RealEditorialPilotProgressSchema = z.object({
   budgetReview: RealEditorialBudgetReviewSchema.optional(),
   sourceLimitRecovery: RealEditorialSourceLimitRecoveryPlanSchema.optional(),
   partialAnalysisRecovery: RealEditorialPartialAnalysisRecoveryPlanSchema.optional(),
+  historicalIncidentReview: RealEditorialHistoricalIncidentReviewSchema.optional(),
   checkpointAvailable: z.boolean(),
   resumeAvailable: z.boolean(),
   guardFree: z.boolean(),
@@ -1001,6 +1109,24 @@ export type RealEditorialPartialAnalysisRecovery = z.infer<
 >
 export type RealEditorialPartialAnalysisRecoveryResult = z.infer<
   typeof RealEditorialPartialAnalysisRecoveryResultSchema
+>
+export type RealEditorialHistoricalIncidentClassification = z.infer<
+  typeof RealEditorialHistoricalIncidentClassificationSchema
+>
+export type RealEditorialHistoricalIncidentEvidenceKind = z.infer<
+  typeof RealEditorialHistoricalIncidentEvidenceKindSchema
+>
+export type RealEditorialHistoricalIncidentAssessment = z.infer<
+  typeof RealEditorialHistoricalIncidentAssessmentSchema
+>
+export type RealEditorialHistoricalIncidentReview = z.infer<
+  typeof RealEditorialHistoricalIncidentReviewSchema
+>
+export type RealEditorialHistoricalIncidentResolution = z.infer<
+  typeof RealEditorialHistoricalIncidentResolutionSchema
+>
+export type RealEditorialHistoricalIncidentResolutionResult = z.infer<
+  typeof RealEditorialHistoricalIncidentResolutionResultSchema
 >
 export type RealEditorialPilotBudget = z.infer<typeof RealEditorialPilotBudgetSchema>
 export type RealEditorialPilotRecord = z.infer<typeof RealEditorialPilotRecordSchema>

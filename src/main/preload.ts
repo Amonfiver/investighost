@@ -23,6 +23,7 @@ import type {
 import type {
   RealEditorialAmbiguousCallResolution,
   RealEditorialBudgetResolution,
+  RealEditorialHistoricalIncidentResolution,
   RealEditorialPilotAction,
   RealEditorialPilotCancel,
   RealEditorialPilotPrepare,
@@ -95,6 +96,8 @@ const electronAPI = {
     ipcRenderer.invoke('real-editorial:recover-source-limit', input),
   recoverRealEditorialPartialAnalysis: (input: RealEditorialPartialAnalysisRecovery) =>
     ipcRenderer.invoke('real-editorial:recover-partial-analysis', input),
+  resolveRealEditorialHistoricalIncidents: (input: RealEditorialHistoricalIncidentResolution) =>
+    ipcRenderer.invoke('real-editorial:resolve-historical-incidents', input),
 }
 
 // Exponer como window.electronAPI

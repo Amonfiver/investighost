@@ -450,7 +450,7 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
     const analysis = await this.callExecutor.execute(
       analysisOperationId,
       this.configuration.analysisCostPerRound,
-      () => this.providers.intelligenceEngine.analyze(mission, dossier, signal),
+      context => this.providers.intelligenceEngine.analyze(mission, dossier, signal, context),
     )
     this.assertAnalysisRound(mission.round, analysis)
     return {

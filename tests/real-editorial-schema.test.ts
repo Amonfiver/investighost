@@ -11,6 +11,7 @@ const migrations = [
   '20260727090000_real_editorial_budget_decision.sql',
   '20260728213000_real_editorial_prudential_reconciliation.sql',
   '20260730210000_real_editorial_source_limit_recovery.sql',
+  '20260801120000_real_editorial_atomic_analysis_recovery.sql',
 ]
 
 async function migration(name: string): Promise<string> {
@@ -157,6 +158,25 @@ describe('esquema durable del piloto editorial real', () => {
     expect(sql).not.toMatch(/insert into public\.real_editorial_call_reservations/i)
     expect(sql).not.toMatch(/insert into public\.real_editorial_provider_calls/i)
     expect(sql).not.toMatch(/update public\.real_editorial_pilot_budgets/i)
+    expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
+    expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
+  })
+
+  it('registra OpenAI antes de persistir atómicamente y recupera el parcial sin proveedores', async () => {
+    const sql = await migration(migrations[9])
+
+    expect(sql).toContain('create table public.real_editorial_analysis_provider_receipts')
+    expect(sql).toContain('record_real_editorial_analysis_response')
+    expect(sql).toContain('persist_real_editorial_analysis')
+    expect(sql).toContain('ANALYSIS_ARTIFACT_CONFLICT')
+    expect(sql).toContain("'^round-' || p_round::text")
+    expect(sql).toContain('create table public.real_editorial_partial_analysis_recoveries')
+    expect(sql).toContain('recover_real_editorial_partial_analysis')
+    expect(sql).toContain('jsonb_array_length(partial_artifacts) = 38')
+    expect(sql).toContain("'HUMAN_PRUDENTIAL_RESPONSE_RECEIVED_PERSISTENCE_FAILED'")
+    expect(sql).toContain("'providerCalled',false")
+    expect(sql).toContain("'workflowResumed',false")
+    expect(sql).not.toMatch(/insert into public\.real_editorial_call_reservations/i)
     expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
     expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
   })

@@ -19,6 +19,7 @@ import {
   RealEditorialPilotCancelSchema,
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotProgressSchema,
+  RealEditorialPartialAnalysisRecoverySchema,
   RealEditorialSourceLimitRecoverySchema,
   type RealEditorialPilotProgress,
   type RealEditorialPilotState,
@@ -115,6 +116,7 @@ export class RealEditorialPilotRuntime {
       workflowCheckpoint,
       resumeAvailable,
       sourceLimitRecovery,
+      partialAnalysisRecovery,
     ] =
       await Promise.all([
       this.repository.getResult(pilotId),
@@ -130,6 +132,7 @@ export class RealEditorialPilotRuntime {
       this.repository.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
       this.repository.canResumeFromCheckpoint(pilotId),
       this.repository.getSourceLimitRecovery(pilotId),
+      this.repository.getPartialAnalysisRecovery?.(pilotId) ?? Promise.resolve(undefined),
     ])
     if (incidents.error || run.error) throw new Error('No se pudo leer el progreso durable')
     return RealEditorialPilotProgressSchema.parse({
@@ -145,6 +148,9 @@ export class RealEditorialPilotRuntime {
             message: incidents.data[0].code === 'LIMIT_EXCEEDED'
               && sourceLimitRecovery?.status === 'required'
               ? sourceLimitRecovery.diagnosticMessage
+              : incidents.data[0].code === 'VERSION_CONFLICT'
+                && partialAnalysisRecovery?.status === 'required'
+                ? partialAnalysisRecovery.diagnosticMessage
               : incidents.data[0].message,
             createdAt: incidents.data[0].created_at,
           }
@@ -153,6 +159,7 @@ export class RealEditorialPilotRuntime {
       humanRequiredCall,
       budgetReview,
       sourceLimitRecovery,
+      partialAnalysisRecovery,
       checkpointAvailable: Boolean(workflowCheckpoint),
       resumeAvailable,
       guardFree: inspection.guardFree,
@@ -252,6 +259,28 @@ export class RealEditorialPilotRuntime {
       throw new Error('La guarda editorial debe estar libre para recuperar el límite')
     }
     return this.repository.recoverSourceLimit(input)
+  }
+
+  async recoverPartialAnalysis(candidate: unknown) {
+    const input = RealEditorialPartialAnalysisRecoverySchema.parse(candidate)
+    if (!readRealEditorialAuthorization().enabled) {
+      throw new Error('La feature flag editorial real no autoriza la recuperación del análisis')
+    }
+    if (input.actorId !== MANUAL_LOCAL_ACTOR_ID) {
+      throw new Error('El actor humano no coincide con el operador local autorizado')
+    }
+    if (this.controllers.has(input.pilotId)) {
+      throw new Error('No se puede recuperar el análisis mientras el piloto se ejecuta')
+    }
+    const pilot = await this.repository.getPilot(input.pilotId)
+    if (!pilot || pilot.currentRunId !== input.runId) {
+      throw new Error('La recuperación no corresponde al piloto y run activos')
+    }
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    if (!inspection.guardFree) {
+      throw new Error('La guarda editorial debe estar libre para recuperar el análisis')
+    }
+    return this.repository.recoverPartialAnalysis(input)
   }
 
   async start(candidate: unknown) {

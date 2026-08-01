@@ -335,7 +335,13 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     const estimatedCost = uncachedInputTokens * this.configuration.inputCostPerMillion / 1_000_000
       + cachedInputTokens * this.configuration.cachedInputCostPerMillion / 1_000_000
       + outputTokens * this.configuration.outputCostPerMillion / 1_000_000
-    return { inputTokens, outputTokens, estimatedCost, currency: this.configuration.currency }
+    return {
+      inputTokens,
+      outputTokens,
+      estimatedCost,
+      currency: this.configuration.currency,
+      providerRequestIds: [response.id],
+    }
   }
 }
 

@@ -3,6 +3,7 @@ import {
   canonicalRealEditorialFocusedQuery,
   realEditorialPayloadDifferencePaths,
   realEditorialPayloadHash,
+  realEditorialQueryArtifactKey,
   RealEditorialRepositoryError,
   type RealEditorialArtifact,
 } from '@modules/real-pipeline'
@@ -42,6 +43,31 @@ function existingArtifact(
 }
 
 describe('idempotencia semántica de artefactos al reanudar', () => {
+  it('separa q1 por ronda y conserva la lectura histórica de ronda 1', () => {
+    expect(realEditorialQueryArtifactKey(1, 'q1')).toBe('round-1/q1')
+    expect(realEditorialQueryArtifactKey(2, 'q1')).toBe('round-2/q1')
+
+    const historic = existingArtifact({ ...existingPayload, id: 'q1' })
+    historic.key = 'q1'
+    expect(canonicalRealEditorialFocusedQuery(
+      historic,
+      { ...existingPayload, id: 'q1' },
+      1,
+    )).toMatchObject({ id: 'q1' })
+
+    const roundTwoPayload = {
+      id: 'q1',
+      gapId: 'g1',
+      query: 'Morella senderismo y paseos con seguridad',
+      rationale: 'Diagnóstico de cobertura final.',
+    }
+    const roundTwo: RealEditorialArtifact = {
+      ...existingArtifact(roundTwoPayload),
+      key: 'round-2/q1',
+    }
+    expect(canonicalRealEditorialFocusedQuery(roundTwo, roundTwoPayload, 2))
+      .toEqual(roundTwoPayload)
+  })
   it('reutiliza la query durable cuando solo cambia metadata no ejecutable', () => {
     const candidate = JSON.parse(JSON.stringify({
       rationale: 'Obtener duración, dificultad, temporada y seguridad.',

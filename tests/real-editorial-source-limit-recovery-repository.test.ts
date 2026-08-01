@@ -261,7 +261,7 @@ describe('repositorio de recuperación del límite global', () => {
     const client = {
       from: vi.fn((table: string) => {
         const builder: Record<string, (...args: unknown[]) => unknown> = {}
-        for (const method of ['select', 'eq', 'is', 'order', 'limit']) {
+        for (const method of ['select', 'eq', 'in', 'is', 'order', 'limit']) {
           builder[method] = () => builder
         }
         builder.maybeSingle = () => Promise.resolve(table === 'real_editorial_budget_reviews'

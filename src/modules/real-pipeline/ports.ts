@@ -36,6 +36,9 @@ export interface ProviderFailureUsage {
   credits: number
   calculatedCost: number
   toolCalls: number
+  inputTokens?: number
+  outputTokens?: number
+  outputHash?: string
 }
 
 export interface ProviderCallExecutionContext {
@@ -79,6 +82,7 @@ export interface IntelligenceRoundAnalysis {
     outputTokens: number
     estimatedCost: number
     currency: 'EUR' | 'USD'
+    providerRequestIds?: string[]
   }
 }
 
@@ -122,6 +126,7 @@ export interface IntelligenceEngine {
     mission: RealResearchMission,
     dossier: RealResearchDossier,
     signal: AbortSignal,
+    context?: ProviderCallExecutionContext,
   ): Promise<IntelligenceRoundAnalysis>
   validateDraft?(
     mission: RealResearchMission,

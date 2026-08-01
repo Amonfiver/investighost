@@ -54,6 +54,8 @@ import type {
   RealEditorialPilotCancel,
   RealEditorialPilotPrepare,
   RealEditorialPilotProgress,
+  RealEditorialPartialAnalysisRecovery,
+  RealEditorialPartialAnalysisRecoveryResult,
   RealEditorialPilotRecord,
   RealEditorialPilotSnapshot,
   RealEditorialPreflight,
@@ -118,6 +120,9 @@ declare global {
       recoverRealEditorialSourceLimit: (
         input: RealEditorialSourceLimitRecovery
       ) => Promise<RealEditorialSourceLimitRecoveryResult>
+      recoverRealEditorialPartialAnalysis: (
+        input: RealEditorialPartialAnalysisRecovery
+      ) => Promise<RealEditorialPartialAnalysisRecoveryResult>
     }
   }
 }

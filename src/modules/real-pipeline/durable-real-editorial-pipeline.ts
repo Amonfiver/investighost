@@ -511,6 +511,30 @@ class DurableResearchTool implements ResearchTool {
   }
 }
 
+export class RealEditorialProviderPersistenceError extends Error {
+  readonly code = 'PERSISTENCE_ERROR'
+  readonly requestState = { providerOutcome: 'response_received' as const }
+  readonly providerUsage
+
+  constructor(
+    message: string,
+    analysis: IntelligenceRoundAnalysis,
+    readonly cause: unknown,
+  ) {
+    super(message)
+    this.name = 'RealEditorialProviderPersistenceError'
+    this.providerUsage = {
+      providerRequestIds: analysis.usage.providerRequestIds ?? [],
+      credits: 0,
+      calculatedCost: analysis.usage.estimatedCost,
+      toolCalls: 1,
+      inputTokens: analysis.usage.inputTokens,
+      outputTokens: analysis.usage.outputTokens,
+      outputHash: realEditorialPayloadHash(analysis),
+    }
+  }
+}
+
 class DurableIntelligenceEngine implements IntelligenceEngine {
   readonly id: string
   readonly model: string
@@ -538,6 +562,7 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
     mission: RealResearchMission,
     dossier: RealResearchDossier,
     signal: AbortSignal,
+    context?: ProviderCallExecutionContext,
   ): Promise<IntelligenceRoundAnalysis> {
     const existing = await this.repository.latestArtifact(
       this.runId,
@@ -548,24 +573,31 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
       return structuredClone(existing.payload.analysis) as unknown as IntelligenceRoundAnalysis
     }
     const analysis = await this.delegate.analyze(mission, dossier, signal)
-    await this.repository.saveAnalysis(this.pilotId, this.runId, mission, analysis, dossier)
-    await this.repository.appendArtifact(
-      this.pilotId,
-      this.runId,
-      'round',
-      `round-${mission.round}`,
-      1,
-      {
-        round: mission.round,
-        dossier,
-        masterKnowledge: analysis.masterKnowledge,
-        coverage: analysis.coverage,
-        gaps: analysis.gaps,
-        proposedQueries: analysis.proposedQueries,
-        completedAt: new Date().toISOString(),
+    try {
+      const providerReceiptId = context && this.repository.recordAnalysisProviderResponse
+        ? await this.repository.recordAnalysisProviderResponse(
+            this.pilotId,
+            this.runId,
+            mission,
+            analysis,
+            context,
+          )
+        : undefined
+      await this.repository.saveAnalysis(
+        this.pilotId,
+        this.runId,
+        mission,
         analysis,
-      },
-    )
+        dossier,
+        providerReceiptId,
+      )
+    } catch (error) {
+      throw new RealEditorialProviderPersistenceError(
+        'OpenAI devolvió una respuesta válida, pero su persistencia durable falló',
+        analysis,
+        error,
+      )
+    }
     return analysis
   }
 
@@ -822,6 +854,16 @@ function safeIncidentMessage(error: unknown): string {
     && typeof error === 'object'
     && 'code' in error
     && error.code === 'BUDGET_EXCEEDED'
+    && 'message' in error
+    && typeof error.message === 'string'
+  ) {
+    return error.message.slice(0, 1_000)
+  }
+  if (
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && error.code === 'PERSISTENCE_ERROR'
     && 'message' in error
     && typeof error.message === 'string'
   ) {

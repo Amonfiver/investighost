@@ -45,6 +45,8 @@ import {
   type RealEditorialBudgetResolution,
   type RealEditorialBudgetReview,
   type RealEditorialPilotProgress,
+  type RealEditorialPartialAnalysisRecovery,
+  type RealEditorialPartialAnalysisRecoveryPlan,
   type RealEditorialPreflight,
   type RealEditorialSourceLimitRecovery,
   type RealEditorialSourceLimitRecoveryPlan,
@@ -1185,6 +1187,18 @@ function RealEditorialPilotPanel(): JSX.Element {
           )}
         />
       )}
+      {progress?.partialAnalysisRecovery && (
+        <RealEditorialPartialAnalysisRecoveryPanel
+          plan={progress.partialAnalysisRecovery}
+          actorId={actorId}
+          busy={operation !== null}
+          onRecover={input => run(
+            'partial-analysis-recovery',
+            () => window.electronAPI.recoverRealEditorialPartialAnalysis(input),
+            input.pilotId,
+          )}
+        />
+      )}
       <div className="preflight-checks">
         {preflight.checks.map(check => (
           <article className={`preflight-${check.status}`} key={check.code}>
@@ -1214,7 +1228,8 @@ function RealEditorialPilotPanel(): JSX.Element {
           </button>
         )}
         {pilot && pilot.state === 'preflight' && !progress?.checkpointAvailable
-          && !progress?.humanRequiredCall && !progress?.budgetReview && (
+          && !progress?.humanRequiredCall && !progress?.budgetReview
+          && !progress?.partialAnalysisRecovery && (
           <button
             className="button primary"
             disabled={!preflight.startActionEnabled || operation !== null}
@@ -1227,7 +1242,7 @@ function RealEditorialPilotPanel(): JSX.Element {
           </button>
         )}
         {pilot && (active || operation === 'start') && !progress?.humanRequiredCall
-          && !progress?.sourceLimitRecovery && (
+          && !progress?.sourceLimitRecovery && !progress?.partialAnalysisRecovery && (
           <button
             className="button danger"
             disabled={operation === 'cancel'}
@@ -1256,6 +1271,100 @@ function RealEditorialPilotPanel(): JSX.Element {
           </button>
         )}
       </div>
+    </section>
+  )
+}
+
+interface RealEditorialPartialAnalysisRecoveryPanelProps {
+  plan: RealEditorialPartialAnalysisRecoveryPlan
+  actorId: string | null
+  busy: boolean
+  onRecover: (input: RealEditorialPartialAnalysisRecovery) => void
+}
+
+export function RealEditorialPartialAnalysisRecoveryPanel({
+  plan,
+  actorId,
+  busy,
+  onRecover,
+}: RealEditorialPartialAnalysisRecoveryPanelProps): JSX.Element {
+  const [reason, setReason] = useState('')
+  const submit = () => {
+    if (!actorId || !reason.trim() || plan.status !== 'required') return
+    if (!window.confirm(
+      `Confirmar la recuperación de 38 artefactos parciales y asumir prudencialmente ${
+        formatPreciseMoney(plan.maximumExposureCostEur)
+      }. No se llamará a OpenAI ni Tavily y el pipeline no se reanudará.`,
+    )) return
+    onRecover({
+      pilotId: plan.pilotId,
+      runId: plan.runId,
+      incidentId: plan.incidentId,
+      callId: plan.callId,
+      reservationId: plan.reservationId,
+      actorId,
+      reason: reason.trim(),
+      assumedCostEur: plan.maximumExposureCostEur,
+      confirmed: true,
+    })
+  }
+  return (
+    <section className="source-limit-recovery" aria-label="Recuperación humana del análisis parcial">
+      <header>
+        <div>
+          <span className="card-kicker">RECUPERACIÓN HUMANA DE OPENAI RONDA 2</span>
+          <h4>Respuesta recibida con persistencia parcial</h4>
+        </div>
+        <span className={`state-badge ${
+          plan.status === 'applied' ? 'state-approved' : 'state-blocked'
+        }`}>{plan.status}</span>
+      </header>
+      <p>{plan.diagnosticMessage}</p>
+      <div className="alert warning">
+        <strong>Riesgo de duplicación.</strong>
+        <span>{plan.duplicateRiskMessage}</span>
+      </div>
+      <dl className="definition-grid compact">
+        <div><dt>Artefactos parciales</dt><dd>{plan.counts.total}</dd></div>
+        <div><dt>Checkpoint conservado</dt><dd>{plan.checkpointVersion}</dd></div>
+        <div><dt>Respuesta completa recuperable</dt><dd>No</dd></div>
+        <div><dt>Coste actual</dt><dd>{formatPreciseMoney(plan.spentCostEur)}</dd></div>
+        <div><dt>Exposición máxima OpenAI</dt><dd>{formatPreciseMoney(plan.maximumExposureCostEur)}</dd></div>
+        <div><dt>Reserva pendiente</dt><dd>{formatPreciseMoney(plan.reservedCostEur)}</dd></div>
+      </dl>
+      {plan.status === 'applied' ? (
+        <div className="alert success">
+          <strong>Respuesta parcial conciliada.</strong>
+          <span>
+            Los 38 artefactos permanecen auditados como parciales. El análisis de ronda 2
+            sigue pendiente y no se ha reanudado automáticamente.
+          </span>
+        </div>
+      ) : (
+        <>
+          <label className="field">
+            <span>Motivo de la decisión prudencial</span>
+            <input
+              maxLength={500}
+              value={reason}
+              onChange={event => setReason(event.target.value)}
+              placeholder="Motivo operativo obligatorio"
+            />
+          </label>
+          <div className="form-actions">
+            <span className="muted">
+              La decisión asumirá la exposición máxima de la llamada; no crea una reserva.
+            </span>
+            <button
+              className="button primary"
+              disabled={busy || !actorId || !reason.trim()}
+              onClick={submit}
+            >
+              Conciliar respuesta parcial
+            </button>
+          </div>
+        </>
+      )}
     </section>
   )
 }

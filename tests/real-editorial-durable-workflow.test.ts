@@ -7,6 +7,7 @@ import {
   missionForPilot,
   OpenAIIntelligenceError,
   realEditorialPayloadHash,
+  realEditorialAnalysisArtifacts,
   TavilyResearchError,
   type IntelligenceDraft,
   type IntelligenceEngine,
@@ -42,6 +43,7 @@ class MemoryDurableRepository implements RealEditorialPilotRepository {
   readonly artifacts = new Map<string, RealEditorialArtifact[]>()
   readonly events: string[] = []
   readonly eventDetails: Array<{ eventType: string; payload: Record<string, unknown> }> = []
+  readonly analysisPersistenceOrder: string[] = []
   readonly incidents: Array<{
     code: string
     classification: string
@@ -138,18 +140,28 @@ class MemoryDurableRepository implements RealEditorialPilotRepository {
     _runId: string,
     mission: RealResearchMission,
     analysis: IntelligenceRoundAnalysis,
+    dossier?: Parameters<RealEditorialPilotRepository['saveAnalysis']>[4],
   ) {
-    await this.appendArtifact(pilotId, runId, 'master_knowledge', 'master', mission.round, analysis.masterKnowledge)
-    await this.appendArtifact(pilotId, runId, 'coverage', 'coverage', mission.round, analysis.coverage)
-    for (const claim of analysis.masterKnowledge.claims) {
-      await this.appendArtifact(pilotId, runId, 'fact', claim.id, mission.round, claim)
+    this.analysisPersistenceOrder.push(`artifacts-${mission.round}`)
+    for (const artifact of realEditorialAnalysisArtifacts(mission, analysis, dossier)) {
+      await this.appendArtifact(
+        pilotId,
+        runId,
+        artifact.kind,
+        artifact.key,
+        artifact.version,
+        artifact.payload,
+      )
     }
-    for (const gap of analysis.gaps) {
-      await this.appendArtifact(pilotId, runId, 'gap', gap.id, mission.round, gap)
-    }
-    for (const query of analysis.proposedQueries) {
-      await this.appendArtifact(pilotId, runId, 'query', query.id, 1, query)
-    }
+  }
+
+  async recordAnalysisProviderResponse(
+    _pilotId: string,
+    _runId: string,
+    mission: RealResearchMission,
+  ) {
+    this.analysisPersistenceOrder.push(`receipt-${mission.round}`)
+    return `81000000-0000-4000-8000-0000000000${mission.round}`
   }
 
   async saveDrafts(_pilotId: string, _runId: string, drafts: IntelligenceDraft[]) {
@@ -549,9 +561,12 @@ describe('workflow editorial durable con clientes falsos', () => {
     expect(result.roundResults).toHaveLength(2)
     expect(research.rounds).toEqual([1, 2])
     expect(intelligence.calls).toEqual(['analysis-1', 'analysis-2', 'draft', 'review'])
+    expect(repository.analysisPersistenceOrder).toEqual([
+      'receipt-1', 'artifacts-1', 'receipt-2', 'artifacts-2',
+    ])
     expect(repository.events).toContain('real.editorial.pending_human_review')
     expect(await repository.latestArtifact(runId, 'mission', 'initial')).toBeDefined()
-    expect(await repository.latestArtifact(runId, 'master_knowledge', 'master')).toBeDefined()
+    expect(await repository.latestArtifact(runId, 'master_knowledge', 'round-2/master')).toBeDefined()
     expect(await repository.latestArtifact(runId, 'draft_adventure', 'adventure')).toBeDefined()
     expect(await repository.latestArtifact(runId, 'draft_student', 'student')).toBeDefined()
     expect(await repository.latestArtifact(runId, 'final_review', 'final')).toBeDefined()
@@ -979,7 +994,7 @@ describe('workflow editorial durable con clientes falsos', () => {
 
     const roundOneResearch = await repository.latestArtifact(runId, 'tavily_result', 'round-1')
     const roundOneAnalysis = await repository.latestArtifact(runId, 'round', 'round-1')
-    const durableQuery = await repository.latestArtifact(runId, 'query', 'q3')
+    const durableQuery = await repository.latestArtifact(runId, 'query', 'round-1/q3')
     const halted = await repository.latestArtifact(runId, 'checkpoint', 'workflow')
     const haltedCheckpoint = halted?.payload as RealWorkflowCheckpoint
     expect(durableQuery?.payload).toMatchObject({
@@ -1050,7 +1065,7 @@ describe('workflow editorial durable con clientes falsos', () => {
       .toEqual(roundOneAnalysis)
     expect(repository.artifacts.get(`${runId}:tavily_result:round-1`)).toHaveLength(1)
     expect(repository.artifacts.get(`${runId}:round:round-1`)).toHaveLength(1)
-    expect(repository.artifacts.get(`${runId}:query:q3`)).toHaveLength(1)
+    expect(repository.artifacts.get(`${runId}:query:round-1/q3`)).toHaveLength(1)
 
     const ledgerEntries = await ledger.entries()
     const artifactCounts = new Map(

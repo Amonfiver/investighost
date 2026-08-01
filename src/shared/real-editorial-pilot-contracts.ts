@@ -576,6 +576,132 @@ export const RealEditorialSourceLimitRecoveryResultSchema =
     })
     .superRefine(validateSourceLimitRecoveryPlan)
 
+const PartialAnalysisRecoveryReasonSchema = z.string().trim().min(1).max(500).refine(
+  value => !/(?:sk-|tvly-|api[_ -]?key|authorization|bearer\s)/i.test(value),
+  'El motivo no puede contener credenciales ni cabeceras de autorización',
+)
+
+const RealEditorialPartialAnalysisArtifactSchema = z.object({
+  id: z.string().uuid(),
+  kind: z.enum([
+    'master_knowledge', 'coverage', 'fact', 'evidence', 'place', 'activity',
+    'gap', 'contradiction',
+  ]),
+  key: IdentifierSchema,
+  version: z.number().int().positive(),
+  payloadHash: Sha256Schema,
+  createdAt: TimestampSchema,
+})
+
+const RealEditorialPartialAnalysisCountsSchema = z.object({
+  masterKnowledge: z.literal(1),
+  coverage: z.literal(1),
+  facts: z.literal(10),
+  evidence: z.literal(10),
+  places: z.literal(5),
+  activities: z.literal(1),
+  gaps: z.literal(6),
+  contradictions: z.literal(4),
+  queries: z.literal(0),
+  total: z.literal(38),
+})
+
+const RealEditorialPartialAnalysisRecoveryBaseSchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  incidentId: z.string().uuid(),
+  callId: z.string().uuid(),
+  reservationId: z.string().uuid(),
+  round: z.literal(2),
+  checkpointVersion: z.number().int().positive(),
+  diagnosticMessage: z.literal(
+    'OpenAI devolvió el análisis de ronda 2, pero su persistencia quedó parcial por un conflicto de versión.',
+  ),
+  duplicateRiskMessage: z.literal(
+    'Repetir la reanudación antes de conciliar esta respuesta podría duplicar consumo de OpenAI.',
+  ),
+  responseReceived: z.literal(true),
+  parsedResponseConfirmed: z.literal(true),
+  completeResponseRecoverable: z.literal(false),
+  partialArtifacts: z.array(RealEditorialPartialAnalysisArtifactSchema).length(38),
+  counts: RealEditorialPartialAnalysisCountsSchema,
+  maximumExposureCostEur: PositiveEuroAmountSchema,
+  spentCostEur: EuroAmountSchema,
+  reservedCostEur: z.literal(0),
+  currentMaximumCostEur: CurrentMaximumCostSchema,
+  openAIAnalysisRoundTwoPending: z.literal(true),
+  noNewCheckpointCreated: z.literal(true),
+})
+
+export const RealEditorialPartialAnalysisRecoveryPlanSchema = z.discriminatedUnion('status', [
+  RealEditorialPartialAnalysisRecoveryBaseSchema.extend({
+    status: z.literal('required'),
+    costStatus: z.literal('indeterminate'),
+    recognizedCostEur: z.literal(0),
+  }),
+  RealEditorialPartialAnalysisRecoveryBaseSchema.extend({
+    status: z.literal('applied'),
+    costStatus: z.literal('prudentially_assumed'),
+    recognizedCostEur: PositiveEuroAmountSchema,
+    recoveryId: z.string().uuid(),
+    recoveryKey: Sha256Schema,
+    actorId: z.string().uuid(),
+    reason: PartialAnalysisRecoveryReasonSchema,
+    recoveredAt: TimestampSchema,
+  }),
+]).superRefine((value, context) => {
+  if (value.spentCostEur + value.reservedCostEur > value.currentMaximumCostEur) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['spentCostEur'],
+      message: 'El ledger supera el máximo vigente',
+    })
+  }
+  if (
+    value.status === 'applied'
+    && value.recognizedCostEur !== value.maximumExposureCostEur
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['recognizedCostEur'],
+      message: 'La decisión prudencial debe asumir la exposición máxima de la llamada',
+    })
+  }
+})
+
+export const RealEditorialPartialAnalysisRecoverySchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  incidentId: z.string().uuid(),
+  callId: z.string().uuid(),
+  reservationId: z.string().uuid(),
+  actorId: z.string().uuid(),
+  reason: PartialAnalysisRecoveryReasonSchema,
+  assumedCostEur: PositiveEuroAmountSchema,
+  confirmed: z.literal(true),
+}).strict()
+
+export const RealEditorialPartialAnalysisRecoveryResultSchema =
+  RealEditorialPartialAnalysisRecoveryBaseSchema.extend({
+    status: z.literal('applied'),
+    costStatus: z.literal('prudentially_assumed'),
+    recognizedCostEur: PositiveEuroAmountSchema,
+    recoveryId: z.string().uuid(),
+    recoveryKey: Sha256Schema,
+    actorId: z.string().uuid(),
+    reason: PartialAnalysisRecoveryReasonSchema,
+    recoveredAt: TimestampSchema,
+    nextAction: z.literal('resume_from_checkpoint'),
+  }).superRefine((value, context) => {
+    if (value.recognizedCostEur !== value.maximumExposureCostEur) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['recognizedCostEur'],
+        message: 'La decisión prudencial debe asumir la exposición máxima de la llamada',
+      })
+    }
+  })
+
 export const RealEditorialBudgetDecisionSchema = z.enum([
   'keep_limit',
   'authorize_extension',
@@ -791,6 +917,7 @@ export const RealEditorialPilotProgressSchema = z.object({
   humanRequiredCall: RealEditorialAmbiguousCallSchema.optional(),
   budgetReview: RealEditorialBudgetReviewSchema.optional(),
   sourceLimitRecovery: RealEditorialSourceLimitRecoveryPlanSchema.optional(),
+  partialAnalysisRecovery: RealEditorialPartialAnalysisRecoveryPlanSchema.optional(),
   checkpointAvailable: z.boolean(),
   resumeAvailable: z.boolean(),
   guardFree: z.boolean(),
@@ -865,6 +992,15 @@ export type RealEditorialSourceLimitRecovery = z.infer<
 >
 export type RealEditorialSourceLimitRecoveryResult = z.infer<
   typeof RealEditorialSourceLimitRecoveryResultSchema
+>
+export type RealEditorialPartialAnalysisRecoveryPlan = z.infer<
+  typeof RealEditorialPartialAnalysisRecoveryPlanSchema
+>
+export type RealEditorialPartialAnalysisRecovery = z.infer<
+  typeof RealEditorialPartialAnalysisRecoverySchema
+>
+export type RealEditorialPartialAnalysisRecoveryResult = z.infer<
+  typeof RealEditorialPartialAnalysisRecoveryResultSchema
 >
 export type RealEditorialPilotBudget = z.infer<typeof RealEditorialPilotBudgetSchema>
 export type RealEditorialPilotRecord = z.infer<typeof RealEditorialPilotRecordSchema>

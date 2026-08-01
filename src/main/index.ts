@@ -272,6 +272,10 @@ ipcMain.handle('real-editorial:recover-source-limit', async (_event, input: unkn
   return getRealEditorialPilotRuntime().recoverSourceLimit(input)
 })
 
+ipcMain.handle('real-editorial:recover-partial-analysis', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().recoverPartialAnalysis(input)
+})
+
 async function providerCenterAction<T>(
   action: (service: Awaited<ReturnType<typeof getProviderCenterRuntime>>) => Promise<T>,
 ): Promise<T> {

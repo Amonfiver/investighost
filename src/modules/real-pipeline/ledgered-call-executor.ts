@@ -135,20 +135,23 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     } catch (error) {
       const code = errorCode(error)
       const outcome = providerOutcome(error)
+      const responseReceived = outcome === 'response_received'
       const cancellationConfirmed = code === 'TIMEOUT_CANCELLED'
         || outcome === 'cancelled_confirmed'
-      const ambiguous = outcome === 'ambiguous' || ([
+      const ambiguous = !responseReceived && (outcome === 'ambiguous' || ([
         'TIMEOUT',
         'NETWORK_AMBIGUOUS',
         'REMOTE_RESPONSE_ERROR',
         'REMOTE_INVALID_RESPONSE',
-      ].includes(code) && !cancellationConfirmed)
+      ].includes(code) && !cancellationConfirmed))
       const cancelled = code === 'CANCELLED' || cancellationConfirmed
       const providerUsage = failureUsage(error)
       try {
         await this.ledger.settle({
           reservationId: reservation.id,
-          outcome: ambiguous ? 'unknown' : cancelled ? 'cancelled' : 'failed',
+          outcome: responseReceived
+            ? 'succeeded'
+            : ambiguous ? 'unknown' : cancelled ? 'cancelled' : 'failed',
           calculatedCost: ambiguous
             ? undefined
             : cancelled
@@ -156,10 +159,11 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
               : providerUsage?.calculatedCost ?? 0,
           usage: {
             remoteId: providerUsage?.providerRequestIds[0],
-            inputTokens: 0,
-            outputTokens: 0,
+            inputTokens: providerUsage?.inputTokens ?? 0,
+            outputTokens: providerUsage?.outputTokens ?? 0,
             toolCalls: providerUsage?.toolCalls ?? 1,
             credits: providerUsage?.credits ?? 0,
+            outputHash: providerUsage?.outputHash,
           },
           sanitizedError: sanitizedProviderError(error, code),
         })
@@ -275,6 +279,16 @@ function failureUsage(error: unknown): ProviderFailureUsage | undefined {
   const toolCalls = 'toolCalls' in usage && typeof usage.toolCalls === 'number'
     ? usage.toolCalls
     : Number.NaN
+  const inputTokens = 'inputTokens' in usage && typeof usage.inputTokens === 'number'
+    ? usage.inputTokens
+    : undefined
+  const outputTokens = 'outputTokens' in usage && typeof usage.outputTokens === 'number'
+    ? usage.outputTokens
+    : undefined
+  const outputHash = 'outputHash' in usage && typeof usage.outputHash === 'string'
+    && /^[a-f0-9]{64}$/.test(usage.outputHash)
+    ? usage.outputHash
+    : undefined
   if (
     !Number.isFinite(credits)
     || credits < 0
@@ -283,17 +297,30 @@ function failureUsage(error: unknown): ProviderFailureUsage | undefined {
     || !Number.isInteger(toolCalls)
     || toolCalls < 0
   ) return undefined
-  return { providerRequestIds, credits, calculatedCost, toolCalls }
+  if (
+    inputTokens !== undefined && (!Number.isInteger(inputTokens) || inputTokens < 0)
+    || outputTokens !== undefined && (!Number.isInteger(outputTokens) || outputTokens < 0)
+  ) return undefined
+  return {
+    providerRequestIds,
+    credits,
+    calculatedCost,
+    toolCalls,
+    inputTokens,
+    outputTokens,
+    outputHash,
+  }
 }
 
 function providerOutcome(
   error: unknown,
-): 'not_sent' | 'cancelled_confirmed' | 'ambiguous' | undefined {
+): 'not_sent' | 'cancelled_confirmed' | 'ambiguous' | 'response_received' | undefined {
   if (!isRecord(error) || !isRecord(error.requestState)) return undefined
   const outcome = error.requestState.providerOutcome
   return outcome === 'not_sent'
     || outcome === 'cancelled_confirmed'
     || outcome === 'ambiguous'
+    || outcome === 'response_received'
     ? outcome
     : undefined
 }
@@ -357,6 +384,12 @@ function settlementFromResult<T>(
       inputTokens += number(record.usage.inputTokens)
       outputTokens += number(record.usage.outputTokens)
       calculatedCost += number(record.usage.estimatedCost)
+      if (Array.isArray(record.usage.providerRequestIds)) {
+        const usageRequestIds = record.usage.providerRequestIds
+          .filter(value => typeof value === 'string')
+        remoteId ??= usageRequestIds[0]
+        toolCalls = Math.max(toolCalls, usageRequestIds.length)
+      }
     }
     const hasBillableCredits = 'billableCredits' in record
       && typeof record.billableCredits === 'number'

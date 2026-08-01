@@ -365,6 +365,7 @@ describe('OpenAI IntelligenceEngine estructurado y sin red', () => {
       outputTokens: 500,
       estimatedCost: 0.002,
       currency: 'EUR',
+      providerRequestIds: ['response-synthetic'],
     })
   })
 

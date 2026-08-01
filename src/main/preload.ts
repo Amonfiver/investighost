@@ -27,6 +27,7 @@ import type {
   RealEditorialPilotCancel,
   RealEditorialPilotPrepare,
   RealEditorialPilotProgress,
+  RealEditorialPartialAnalysisRecovery,
   RealEditorialSourceLimitRecovery,
 } from '@shared/real-editorial-pilot-contracts'
 
@@ -92,6 +93,8 @@ const electronAPI = {
     ipcRenderer.invoke('real-editorial:resolve-budget', input),
   recoverRealEditorialSourceLimit: (input: RealEditorialSourceLimitRecovery) =>
     ipcRenderer.invoke('real-editorial:recover-source-limit', input),
+  recoverRealEditorialPartialAnalysis: (input: RealEditorialPartialAnalysisRecovery) =>
+    ipcRenderer.invoke('real-editorial:recover-partial-analysis', input),
 }
 
 // Exponer como window.electronAPI

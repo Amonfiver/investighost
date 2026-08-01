@@ -4,6 +4,7 @@ import {
   LedgeredWorkflowCallExecutor,
   MemoryCostLedgerRepository,
   OpenAIIntelligenceError,
+  RealEditorialProviderPersistenceError,
   TavilyResearchError,
   type LedgeredCallMetadataFactory,
 } from '@modules/real-pipeline'
@@ -41,6 +42,61 @@ function metadata(): LedgeredCallMetadataFactory {
 }
 
 describe('conciliación de fallos facturables y reanudación idempotente', () => {
+  it('clasifica una respuesta recibida con fallo de persistencia como éxito remoto', async () => {
+    let sequence = 0
+    const repository = new MemoryCostLedgerRepository(
+      { task: 0.2, batch: 0.2, daily: 0.2, currency: 'EUR' },
+      {
+        now: () => new Date(now),
+        id: () => `persistence-ledger-id-${++sequence}`,
+      },
+    )
+    const ledger = new CostLedgerService(repository, { now: () => new Date(now) })
+    await ledger.acquireExecution(
+      'real-editorial:run-morella',
+      'lease-persistence',
+      new Date('2026-07-26T00:00:00.000Z'),
+    )
+    const analysis = {
+      masterKnowledge: { generatedAt: now },
+      coverage: {},
+      proposedQueries: [],
+      gaps: [],
+      decision: {},
+      usage: {
+        inputTokens: 120,
+        outputTokens: 30,
+        estimatedCost: 0.002,
+        currency: 'EUR' as const,
+        providerRequestIds: ['resp-persisted-before-artifacts'],
+      },
+    }
+    const operation = vi.fn(async () => {
+      throw new RealEditorialProviderPersistenceError(
+        'Respuesta recibida; persistencia derivada fallida',
+        analysis as never,
+        new Error('PERSISTENCE_ERROR'),
+      )
+    })
+
+    await expect(new LedgeredWorkflowCallExecutor(
+      ledger,
+      metadata(),
+      0.2,
+    ).execute('task-morella:round:1:analysis', 0.022, operation))
+      .rejects.toMatchObject({ code: 'PERSISTENCE_ERROR' })
+
+    const terminal = (await repository.entries()).at(-1)
+    expect(terminal).toMatchObject({
+      state: 'succeeded',
+      remoteId: 'resp-persisted-before-artifacts',
+      inputTokens: 120,
+      outputTokens: 30,
+      calculatedCost: 0.002,
+      sanitizedError: 'PERSISTENCE_ERROR',
+    })
+    expect(repository.budgetSnapshot().task).toMatchObject({ reserved: 0, spent: 0.002 })
+  })
   it('libera la reserva, concilia créditos conocidos y reintenta una sola vez con attempt 2', async () => {
     let sequence = 0
     const repository = new MemoryCostLedgerRepository(

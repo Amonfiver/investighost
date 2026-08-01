@@ -12,6 +12,9 @@ import {
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotRecordSchema,
   RealEditorialPilotSnapshotSchema,
+  RealEditorialPartialAnalysisRecoveryPlanSchema,
+  RealEditorialPartialAnalysisRecoveryResultSchema,
+  RealEditorialPartialAnalysisRecoverySchema,
   RealEditorialSourceLimitRecoveryPlanSchema,
   RealEditorialSourceLimitRecoveryResultSchema,
   RealEditorialSourceLimitRecoverySchema,
@@ -26,6 +29,9 @@ import {
   type RealEditorialPilotRecord,
   type RealEditorialPilotSnapshot,
   type RealEditorialPilotState,
+  type RealEditorialPartialAnalysisRecovery,
+  type RealEditorialPartialAnalysisRecoveryPlan,
+  type RealEditorialPartialAnalysisRecoveryResult,
   type RealEditorialSourceLimitRecovery,
   type RealEditorialSourceLimitRecoveryPlan,
   type RealEditorialSourceLimitRecoveryResult,
@@ -49,6 +55,7 @@ import type {
   IntelligenceDraft,
   IntelligenceReview,
   IntelligenceRoundAnalysis,
+  ProviderCallExecutionContext,
   ResearchToolResult,
 } from './ports'
 import {
@@ -98,6 +105,9 @@ export type RealEditorialRepositoryErrorCode =
   | 'SOURCE_LIMIT_RECOVERY_REQUIRED'
   | 'SOURCE_LIMIT_RECOVERY_CONFLICT'
   | 'SOURCE_LIMIT_RECOVERY_NOT_ALLOWED'
+  | 'PARTIAL_ANALYSIS_RECOVERY_REQUIRED'
+  | 'PARTIAL_ANALYSIS_RECOVERY_CONFLICT'
+  | 'PARTIAL_ANALYSIS_RECOVERY_NOT_ALLOWED'
   | 'PERSISTENCE_ERROR'
 
 export class RealEditorialRepositoryError extends Error {
@@ -186,7 +196,15 @@ export interface RealEditorialPilotRepository {
     mission: RealResearchMission,
     analysis: IntelligenceRoundAnalysis,
     dossier?: RealResearchDossier,
+    providerReceiptId?: string,
   ): Promise<void>
+  recordAnalysisProviderResponse?(
+    pilotId: string,
+    runId: string,
+    mission: RealResearchMission,
+    analysis: IntelligenceRoundAnalysis,
+    context: ProviderCallExecutionContext,
+  ): Promise<string>
   saveDrafts(pilotId: string, runId: string, drafts: IntelligenceDraft[]): Promise<void>
   saveReview(pilotId: string, runId: string, review: IntelligenceReview): Promise<void>
   appendEvent(
@@ -723,6 +741,181 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     })
   }
 
+  async getPartialAnalysisRecovery(
+    pilotId: string,
+  ): Promise<RealEditorialPartialAnalysisRecoveryPlan | undefined> {
+    const pilot = await this.getPilot(pilotId)
+    if (!pilot?.budget) return undefined
+    const stored = await this.client.from('real_editorial_partial_analysis_recoveries')
+      .select('*').eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+      .order('recovered_at', { ascending: false }).limit(1).maybeSingle()
+    assertNoError(stored.error, 'No se pudo leer la recuperación del análisis parcial')
+    if (stored.data) return partialAnalysisRecoveryPlanFromRow(stored.data)
+
+    const incidentResult = await this.client.from('real_editorial_incidents')
+      .select('*').eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+      .eq('code', 'VERSION_CONFLICT').eq('classification', 'human_required')
+      .is('resolved_at', null).order('created_at', { ascending: false })
+      .limit(1).maybeSingle()
+    assertNoError(incidentResult.error, 'No se pudo leer el incidente VERSION_CONFLICT')
+    const incident = incidentResult.data
+    if (!incident) return undefined
+
+    const reservationResult = await this.client.from('real_editorial_call_reservations')
+      .select('*').eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+      .eq('provider_id', 'openai').eq('stage', '2_analysis').eq('attempt', 1)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    assertNoError(reservationResult.error, 'No se pudo leer la reserva OpenAI de ronda 2')
+    const reservation = reservationResult.data
+    if (!reservation || reservation.state !== 'failed' || Number(reservation.calculated_cost) !== 0) {
+      return undefined
+    }
+    const [startedResult, terminalResult, checkpoint, roundTwo, receiptResult] = await Promise.all([
+      this.client.from('real_editorial_provider_calls').select('*')
+        .eq('call_id', reservation.call_id).eq('state', 'started')
+        .order('sequence', { ascending: false }).limit(1).maybeSingle(),
+      this.client.from('real_editorial_provider_calls').select('*')
+        .eq('call_id', reservation.call_id).order('sequence', { ascending: false })
+        .limit(1).maybeSingle(),
+      this.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
+      this.latestArtifact(pilot.currentRunId, 'round', 'round-2'),
+      this.client.from('real_editorial_analysis_provider_receipts').select('id')
+        .eq('call_id', reservation.call_id).limit(1).maybeSingle(),
+    ])
+    assertNoError(startedResult.error, 'No se pudo leer el inicio de la llamada OpenAI')
+    assertNoError(terminalResult.error, 'No se pudo leer el final de la llamada OpenAI')
+    assertNoError(receiptResult.error, 'No se pudo comprobar la respuesta completa durable')
+    if (
+      !startedResult.data
+      || !terminalResult.data
+      || terminalResult.data.state !== 'failed'
+      || !String(terminalResult.data.sanitized_error ?? '').includes('VERSION_CONFLICT')
+      || !checkpoint
+      || checkpoint.version !== 14
+      || roundTwo
+      || receiptResult.data
+    ) return undefined
+
+    const partialResult = await this.client.from('real_editorial_artifacts')
+      .select('id,artifact_kind,artifact_key,version,payload_hash,created_at')
+      .eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+      .in('artifact_kind', partialAnalysisKinds)
+      .gte('created_at', startedResult.data.created_at)
+      .lte('created_at', incident.created_at)
+      .order('created_at', { ascending: true })
+    assertNoError(partialResult.error, 'No se pudieron verificar los artefactos parciales')
+    const partialArtifacts = (partialResult.data ?? []).map(partialAnalysisArtifactFromRow)
+    const counts = partialAnalysisCounts(partialArtifacts)
+    if (
+      !isExpectedPartialAnalysisCounts(counts)
+      || partialArtifacts.some(artifact => artifact.kind === 'contradiction'
+        ? artifact.version !== 1 || !/^round-2-\d+$/.test(artifact.key)
+        : artifact.version !== 2)
+    ) return undefined
+
+    return RealEditorialPartialAnalysisRecoveryPlanSchema.parse({
+      status: 'required',
+      pilotId,
+      runId: pilot.currentRunId,
+      incidentId: incident.id,
+      callId: reservation.call_id,
+      reservationId: reservation.id,
+      round: 2,
+      checkpointVersion: checkpoint.version,
+      diagnosticMessage: PARTIAL_ANALYSIS_DIAGNOSTIC,
+      duplicateRiskMessage: PARTIAL_ANALYSIS_DUPLICATE_RISK,
+      responseReceived: true,
+      parsedResponseConfirmed: true,
+      completeResponseRecoverable: false,
+      partialArtifacts,
+      counts,
+      maximumExposureCostEur: Number(reservation.reserved_cost),
+      costStatus: 'indeterminate',
+      recognizedCostEur: 0,
+      spentCostEur: pilot.budget.spentCost,
+      reservedCostEur: 0,
+      currentMaximumCostEur: pilot.budget.taskLimitCost,
+      openAIAnalysisRoundTwoPending: true,
+      noNewCheckpointCreated: true,
+    })
+  }
+
+  async recoverPartialAnalysis(
+    candidate: RealEditorialPartialAnalysisRecovery,
+  ): Promise<RealEditorialPartialAnalysisRecoveryResult> {
+    const input = RealEditorialPartialAnalysisRecoverySchema.parse(candidate)
+    const plan = await this.getPartialAnalysisRecovery(input.pilotId)
+    if (
+      !plan
+      || plan.runId !== input.runId
+      || plan.incidentId !== input.incidentId
+      || plan.callId !== input.callId
+      || plan.reservationId !== input.reservationId
+    ) {
+      throw new RealEditorialRepositoryError(
+        'PARTIAL_ANALYSIS_RECOVERY_REQUIRED',
+        'No existe un análisis parcial compatible pendiente de conciliación',
+      )
+    }
+    if (input.assumedCostEur !== plan.maximumExposureCostEur) {
+      throw new RealEditorialRepositoryError(
+        'PARTIAL_ANALYSIS_RECOVERY_NOT_ALLOWED',
+        'La conciliación prudencial debe asumir exactamente la exposición máxima reservada',
+      )
+    }
+    if (plan.status === 'applied') {
+      if (
+        plan.actorId !== input.actorId
+        || plan.reason !== input.reason
+        || plan.recognizedCostEur !== input.assumedCostEur
+      ) {
+        throw new RealEditorialRepositoryError(
+          'PARTIAL_ANALYSIS_RECOVERY_CONFLICT',
+          'El análisis parcial ya tiene una recuperación durable incompatible',
+        )
+      }
+      return RealEditorialPartialAnalysisRecoveryResultSchema.parse({
+        ...plan,
+        nextAction: 'resume_from_checkpoint',
+      })
+    }
+    const artifactSnapshotHash = realEditorialPayloadHash(plan.partialArtifacts)
+    const recoveryKey = realEditorialPayloadHash({
+      pilotId: input.pilotId,
+      runId: input.runId,
+      incidentId: input.incidentId,
+      callId: input.callId,
+      reservationId: input.reservationId,
+      actorId: input.actorId,
+      reason: input.reason,
+      assumedCostEur: input.assumedCostEur,
+      checkpointVersion: plan.checkpointVersion,
+      artifactSnapshotHash,
+    })
+    const { data, error } = await this.client.rpc('recover_real_editorial_partial_analysis', {
+      p_recovery_key: recoveryKey,
+      p_pilot_id: input.pilotId,
+      p_run_id: input.runId,
+      p_incident_id: input.incidentId,
+      p_call_id: input.callId,
+      p_reservation_id: input.reservationId,
+      p_actor_id: input.actorId,
+      p_reason: input.reason,
+      p_assumed_cost: input.assumedCostEur,
+      p_checkpoint_version: plan.checkpointVersion,
+      p_partial_artifacts: plan.partialArtifacts,
+      p_partial_artifacts_hash: artifactSnapshotHash,
+    })
+    if (error) throw partialAnalysisRecoveryPersistenceError(error)
+    const stored = await this.client.from('real_editorial_partial_analysis_recoveries')
+      .select('*').eq('id', String(data)).single()
+    assertNoError(stored.error, 'No se pudo verificar la recuperación durable del análisis')
+    return RealEditorialPartialAnalysisRecoveryResultSchema.parse({
+      ...partialAnalysisRecoveryPlanFromRow(stored.data),
+      nextAction: 'resume_from_checkpoint',
+    })
+  }
+
   async getHumanRequiredCall(pilotId: string): Promise<RealEditorialAmbiguousCall | undefined> {
     const pilot = await this.getPilot(pilotId)
     if (!pilot) throw new RealEditorialRepositoryError('PILOT_NOT_FOUND', 'El piloto no existe')
@@ -991,6 +1184,8 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       budgetReview,
       guard,
       sourceLimitRecovery,
+      partialAnalysisRecovery,
+      openVersionConflict,
     ] = await Promise.all([
       this.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
       this.client.from('real_editorial_ambiguous_calls').select('call_id', {
@@ -1008,11 +1203,18 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       this.client.from('real_editorial_execution_guard').select('owner_execution_id,expires_at')
         .eq('guard_name', 'morella-real-editorial').maybeSingle(),
       this.getSourceLimitRecovery(pilotId),
+      this.getPartialAnalysisRecovery(pilotId),
+      this.client.from('real_editorial_incidents').select('id', {
+        head: true,
+        count: 'exact',
+      }).eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+        .in('code', ['VERSION_CONFLICT', 'PERSISTENCE_ERROR']).is('resolved_at', null),
     ])
     assertNoError(unresolved.error, 'No se pudo comprobar la ambigüedad pendiente')
     assertNoError(permanentCancellation.error, 'No se pudo comprobar la cancelación definitiva')
     assertNoError(budgetReview.error, 'No se pudo comprobar la decisión presupuestaria')
     assertNoError(guard.error, 'No se pudo comprobar la guarda editorial')
+    assertNoError(openVersionConflict.error, 'No se pudo comprobar el fallo de análisis')
     const budgetAllowsResume = !budgetReview.data
       || budgetReview.data.status === 'authorized'
     const guardExpired = guard.data?.expires_at
@@ -1022,6 +1224,8 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     return Boolean(checkpoint) && (unresolved.count ?? 0) === 0
       && (permanentCancellation.count ?? 0) === 0 && budgetAllowsResume
       && guardAllowsResume && sourceLimitRecovery?.status !== 'required'
+      && partialAnalysisRecovery?.status !== 'required'
+      && (openVersionConflict.count ?? 0) === 0
   }
 
   async appendArtifact(
@@ -1047,7 +1251,12 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     if (error.code !== '23505') throw persistenceError(error)
     const existing = await this.latestArtifact(runId, kind, key)
     if (existing && existing.version === version && kind === 'query') {
-      canonicalRealEditorialFocusedQuery(existing, payload)
+      const scopedRound = /^round-([12])\//.exec(existing.key)?.[1]
+      canonicalRealEditorialFocusedQuery(
+        existing,
+        payload,
+        scopedRound === '2' ? 2 : 1,
+      )
       return
     }
     if (!existing || existing.version !== version || existing.payloadHash !== payloadHash) {
@@ -1187,51 +1396,57 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     mission: RealResearchMission,
     analysis: IntelligenceRoundAnalysis,
     dossier?: RealResearchDossier,
+    providerReceiptId?: string,
   ): Promise<void> {
-    await this.appendArtifact(
-      pilotId,
-      runId,
-      'master_knowledge',
-      'master',
-      mission.round,
-      analysis.masterKnowledge,
-    )
-    await this.appendArtifact(pilotId, runId, 'coverage', 'coverage', mission.round, analysis.coverage)
-    for (const claim of analysis.masterKnowledge.claims) {
-      await this.appendArtifact(pilotId, runId, 'fact', claim.id, mission.round, claim)
-      await this.appendArtifact(pilotId, runId, 'evidence', `claim-${claim.id}`, mission.round, {
-        claimId: claim.id,
-        statement: claim.statement,
-        evidenceIds: claim.evidenceIds,
-        confidence: claim.confidence,
-      })
-      const topic = claim.topic.toLowerCase()
-      if (/(place|castle|wall|monument|heritage|lugar|castillo|muralla|patrimonio)/.test(topic)) {
-        await this.appendArtifact(pilotId, runId, 'place', claim.id, mission.round, claim)
-      }
-      if (/(activity|route|hike|actividad|ruta|sender)/.test(topic)) {
-        await this.appendArtifact(pilotId, runId, 'activity', claim.id, mission.round, claim)
-      }
-    }
-    for (const evidence of dossier?.evidence ?? []) {
-      await this.appendArtifact(pilotId, runId, 'evidence', evidence.id, mission.round, evidence)
-    }
-    for (const gap of analysis.gaps) {
-      await this.appendArtifact(pilotId, runId, 'gap', gap.id, mission.round, gap)
-    }
-    for (const [index, contradiction] of analysis.masterKnowledge.contradictions.entries()) {
-      await this.appendArtifact(
-        pilotId,
-        runId,
-        'contradiction',
-        `round-${mission.round}-${index + 1}`,
-        1,
-        { contradiction },
+    if (mission.round === 2 && analysis.decision.action === 'continue_focused') {
+      throw new RealEditorialRepositoryError(
+        'CHECKPOINT_INVALID',
+        'El análisis de ronda 2 no puede habilitar una tercera ronda',
       )
     }
-    for (const query of analysis.proposedQueries) {
-      await this.appendArtifact(pilotId, runId, 'query', query.id, 1, query)
-    }
+    const artifacts = realEditorialAnalysisArtifacts(mission, analysis, dossier)
+    const { error } = await this.client.rpc('persist_real_editorial_analysis', {
+      p_pilot_id: pilotId,
+      p_run_id: runId,
+      p_round: mission.round,
+      p_provider_receipt_id: providerReceiptId ?? null,
+      p_artifacts: artifacts,
+    })
+    if (error) throw analysisPersistenceError(error)
+  }
+
+  async recordAnalysisProviderResponse(
+    pilotId: string,
+    runId: string,
+    mission: RealResearchMission,
+    analysis: IntelligenceRoundAnalysis,
+    context: ProviderCallExecutionContext,
+  ): Promise<string> {
+    const analysisHash = realEditorialPayloadHash(analysis)
+    const receiptKey = realEditorialPayloadHash({
+      pilotId,
+      runId,
+      round: mission.round,
+      callId: context.callId,
+      reservationId: context.reservationId,
+      attempt: context.attempt,
+      analysisHash,
+    })
+    const { data, error } = await this.client.rpc('record_real_editorial_analysis_response', {
+      p_receipt_key: receiptKey,
+      p_pilot_id: pilotId,
+      p_run_id: runId,
+      p_round: mission.round,
+      p_call_id: context.callId,
+      p_reservation_id: context.reservationId,
+      p_attempt: context.attempt,
+      p_remote_id: analysis.usage.providerRequestIds?.[0] ?? null,
+      p_analysis: analysis,
+      p_analysis_hash: analysisHash,
+      p_usage: analysis.usage,
+    })
+    if (error) throw analysisPersistenceError(error)
+    return String(data)
   }
 
   async saveDrafts(pilotId: string, runId: string, drafts: IntelligenceDraft[]): Promise<void> {
@@ -1384,14 +1599,22 @@ export class SupabaseRealWorkflowCheckpointStore implements RealWorkflowCheckpoi
         'Las consultas focalizadas del checkpoint no superan el contrato durable',
       )
     }
+    const generatingRound = Math.max(1, checkpoint.completedRound) as RealRoundNumber
     const [roundOne, roundTwo, ...storedQueries] = await Promise.all([
       this.repository.latestArtifact(this.runId, 'tavily_result', 'round-1'),
       this.repository.latestArtifact(this.runId, 'tavily_result', 'round-2'),
-      ...parsedQueries.data.map(query =>
-        this.repository.latestArtifact(this.runId, 'query', query.id)),
+      ...parsedQueries.data.map(async query => {
+        const scoped = await this.repository.latestArtifact(
+          this.runId,
+          'query',
+          realEditorialQueryArtifactKey(generatingRound, query.id),
+        )
+        if (scoped || generatingRound !== 1) return scoped
+        return this.repository.latestArtifact(this.runId, 'query', query.id)
+      }),
     ])
     const nextRoundQueries = parsedQueries.data.map((query, index) =>
-      canonicalRealEditorialFocusedQuery(storedQueries[index], query))
+      canonicalRealEditorialFocusedQuery(storedQueries[index], query, generatingRound))
     return restoreRealWorkflowCheckpointRounds(
       { ...structuredClone(checkpoint), nextRoundQueries },
       { 1: roundOne, 2: roundTwo },
@@ -1418,14 +1641,27 @@ export class SupabaseRealWorkflowCheckpointStore implements RealWorkflowCheckpoi
       checkpoint.simulatedCost,
       checkpointVersion,
     )
-    for (const query of checkpoint.nextRoundQueries) {
+    for (const [queryIndex, query] of checkpoint.nextRoundQueries.entries()) {
+      const generatingRound = Math.max(1, checkpoint.completedRound) as RealRoundNumber
+      const scopedKey = realEditorialQueryArtifactKey(generatingRound, query.id)
+      const scoped = await this.repository.latestArtifact(this.runId, 'query', scopedKey)
+      const existing = scoped ?? (generatingRound === 1
+        ? await this.repository.latestArtifact(this.runId, 'query', query.id)
+        : undefined)
+      canonicalRealEditorialFocusedQuery(existing, query, generatingRound)
+      if (existing) continue
       await this.repository.appendArtifact(
         this.pilotId,
         this.runId,
         'query',
-        query.id,
+        scopedKey,
         1,
-        query,
+        {
+          ...query,
+          generatingRound,
+          queryOrdinal: queryIndex + 1,
+          actionable: checkpoint.completedRound === 1,
+        },
       )
     }
   }
@@ -1764,6 +2000,95 @@ function sourceLimitTrace(source: RealResearchSource) {
   }
 }
 
+const PARTIAL_ANALYSIS_DIAGNOSTIC =
+  'OpenAI devolvió el análisis de ronda 2, pero su persistencia quedó parcial por un conflicto de versión.'
+const PARTIAL_ANALYSIS_DUPLICATE_RISK =
+  'Repetir la reanudación antes de conciliar esta respuesta podría duplicar consumo de OpenAI.'
+const partialAnalysisKinds = [
+  'master_knowledge', 'coverage', 'fact', 'evidence', 'place', 'activity',
+  'gap', 'contradiction',
+] as const
+
+type PartialAnalysisArtifact = RealEditorialPartialAnalysisRecoveryPlan['partialArtifacts'][number]
+type PartialAnalysisCounts = RealEditorialPartialAnalysisRecoveryPlan['counts']
+
+function partialAnalysisArtifactFromRow(row: Record<string, unknown>): PartialAnalysisArtifact {
+  return {
+    id: String(row.id),
+    kind: String(row.artifact_kind) as PartialAnalysisArtifact['kind'],
+    key: String(row.artifact_key),
+    version: Number(row.version),
+    payloadHash: String(row.payload_hash),
+    createdAt: String(row.created_at),
+  }
+}
+
+function partialAnalysisCounts(artifacts: PartialAnalysisArtifact[]): PartialAnalysisCounts {
+  const count = (kind: PartialAnalysisArtifact['kind']) =>
+    artifacts.filter(artifact => artifact.kind === kind).length
+  return {
+    masterKnowledge: count('master_knowledge') as 1,
+    coverage: count('coverage') as 1,
+    facts: count('fact') as 10,
+    evidence: count('evidence') as 10,
+    places: count('place') as 5,
+    activities: count('activity') as 1,
+    gaps: count('gap') as 6,
+    contradictions: count('contradiction') as 4,
+    queries: 0,
+    total: artifacts.length as 38,
+  }
+}
+
+function isExpectedPartialAnalysisCounts(counts: PartialAnalysisCounts): boolean {
+  return counts.masterKnowledge === 1
+    && counts.coverage === 1
+    && counts.facts === 10
+    && counts.evidence === 10
+    && counts.places === 5
+    && counts.activities === 1
+    && counts.gaps === 6
+    && counts.contradictions === 4
+    && counts.queries === 0
+    && counts.total === 38
+}
+
+function partialAnalysisRecoveryPlanFromRow(
+  row: Record<string, unknown>,
+): RealEditorialPartialAnalysisRecoveryPlan {
+  const recognizedCostEur = Number(row.recognized_cost)
+  return RealEditorialPartialAnalysisRecoveryPlanSchema.parse({
+    status: 'applied',
+    recoveryId: row.id,
+    recoveryKey: row.recovery_key,
+    pilotId: row.pilot_id,
+    runId: row.run_id,
+    incidentId: row.incident_id,
+    callId: row.call_id,
+    reservationId: row.reservation_id,
+    actorId: row.actor_id,
+    reason: row.reason,
+    recoveredAt: row.recovered_at,
+    round: 2,
+    checkpointVersion: Number(row.checkpoint_version),
+    diagnosticMessage: PARTIAL_ANALYSIS_DIAGNOSTIC,
+    duplicateRiskMessage: PARTIAL_ANALYSIS_DUPLICATE_RISK,
+    responseReceived: true,
+    parsedResponseConfirmed: true,
+    completeResponseRecoverable: false,
+    partialArtifacts: row.partial_artifacts,
+    counts: row.artifact_counts,
+    maximumExposureCostEur: Number(row.maximum_exposure_cost),
+    costStatus: 'prudentially_assumed',
+    recognizedCostEur,
+    spentCostEur: moneyValue(Number(row.spent_cost_before) + recognizedCostEur),
+    reservedCostEur: 0,
+    currentMaximumCostEur: Number(row.current_maximum_cost),
+    openAIAnalysisRoundTwoPending: true,
+    noNewCheckpointCreated: true,
+  })
+}
+
 function finiteNonnegativeInteger(candidate: unknown, message: string): number {
   const value = Number(candidate)
   if (!Number.isInteger(value) || value < 0) {
@@ -1893,6 +2218,7 @@ export function realEditorialPayloadHash(payload: unknown): string {
 export function canonicalRealEditorialFocusedQuery(
   existing: RealEditorialArtifact | undefined,
   candidate: unknown,
+  generatingRound: RealRoundNumber = 1,
 ): RealFocusedQuery {
   const parsedCandidate = RealFocusedQuerySchema.safeParse(candidate)
   if (!parsedCandidate.success) {
@@ -1902,17 +2228,23 @@ export function canonicalRealEditorialFocusedQuery(
     )
   }
   if (!existing) return parsedCandidate.data
-  if (existing.kind !== 'query' || existing.key !== parsedCandidate.data.id || existing.version !== 1) {
+  const scopedKey = realEditorialQueryArtifactKey(generatingRound, parsedCandidate.data.id)
+  const historicKey = generatingRound === 1 ? parsedCandidate.data.id : undefined
+  if (
+    existing.kind !== 'query'
+    || ![scopedKey, historicKey].includes(existing.key)
+    || existing.version !== 1
+  ) {
     throw new RealEditorialRepositoryError(
       'VERSION_CONFLICT',
-      `El artefacto durable query/${parsedCandidate.data.id} no pertenece a la misma etapa y versión`,
+      `El artefacto durable query/${existing.key} no pertenece a la ronda ${generatingRound} y versión 1`,
     )
   }
   const parsedExisting = RealFocusedQuerySchema.safeParse(existing.payload)
   if (!parsedExisting.success) {
     throw new RealEditorialRepositoryError(
       'CHECKPOINT_INVALID',
-      `El artefacto durable query/${parsedCandidate.data.id} está incompleto o es inválido`,
+      `El artefacto durable query/${existing.key} está incompleto o es inválido`,
     )
   }
   const semanticDifferences = (['id', 'gapId', 'query'] as const)
@@ -1920,12 +2252,19 @@ export function canonicalRealEditorialFocusedQuery(
   if (semanticDifferences.length > 0) {
     throw new RealEditorialRepositoryError(
       'VERSION_CONFLICT',
-      `El artefacto durable query/${parsedCandidate.data.id} v1 diverge en campos semánticos: ${
+      `El artefacto durable query/${existing.key} v1 diverge en campos semánticos: ${
         semanticDifferences.join(', ')
       }`,
     )
   }
   return parsedExisting.data
+}
+
+export function realEditorialQueryArtifactKey(
+  generatingRound: RealRoundNumber,
+  queryId: string,
+): string {
+  return `round-${generatingRound}/${queryId}`
 }
 
 export function realEditorialPayloadDifferencePaths(
@@ -2134,6 +2473,191 @@ function sourceLimitRecoveryPersistenceError(
   return new RealEditorialRepositoryError(
     'SOURCE_LIMIT_RECOVERY_NOT_ALLOWED',
     'La recuperación durable del límite de fuentes fue rechazada',
+  )
+}
+
+function partialAnalysisRecoveryPersistenceError(
+  error: { message: string; code?: string },
+): RealEditorialRepositoryError {
+  if (
+    error.message.includes('PARTIAL_ANALYSIS_RECOVERY_IDEMPOTENCY_CONFLICT')
+    || error.message.includes('PARTIAL_ANALYSIS_RECOVERY_ALREADY_APPLIED')
+    || error.message.includes('PARTIAL_ANALYSIS_ARTIFACTS_CHANGED')
+    || error.message.includes('PARTIAL_ANALYSIS_STATE_CHANGED')
+  ) {
+    return new RealEditorialRepositoryError(
+      'PARTIAL_ANALYSIS_RECOVERY_CONFLICT',
+      'La evidencia parcial cambió o ya tiene otra recuperación durable',
+    )
+  }
+  if (
+    error.message.includes('PARTIAL_ANALYSIS_INCIDENT_INVALID')
+    || error.message.includes('PARTIAL_ANALYSIS_CALL_INVALID')
+  ) {
+    return new RealEditorialRepositoryError(
+      'PARTIAL_ANALYSIS_RECOVERY_REQUIRED',
+      'No existe una respuesta OpenAI parcial pendiente y compatible',
+    )
+  }
+  return new RealEditorialRepositoryError(
+    'PARTIAL_ANALYSIS_RECOVERY_NOT_ALLOWED',
+    'La recuperación durable del análisis parcial fue rechazada',
+  )
+}
+
+interface AnalysisArtifactInput {
+  kind: RealEditorialArtifactKind
+  key: string
+  version: 1
+  payload: Record<string, unknown>
+  payloadHash: string
+}
+
+export function realEditorialAnalysisArtifacts(
+  mission: RealResearchMission,
+  analysis: IntelligenceRoundAnalysis,
+  dossier?: RealResearchDossier,
+): AnalysisArtifactInput[] {
+  const scope = `round-${mission.round}`
+  const values: Array<Omit<AnalysisArtifactInput, 'payloadHash'>> = [
+    {
+      kind: 'master_knowledge',
+      key: `${scope}/master`,
+      version: 1,
+      payload: analysis.masterKnowledge as unknown as Record<string, unknown>,
+    },
+    {
+      kind: 'coverage',
+      key: `${scope}/coverage`,
+      version: 1,
+      payload: analysis.coverage as unknown as Record<string, unknown>,
+    },
+  ]
+  for (const claim of analysis.masterKnowledge.claims) {
+    values.push(
+      {
+        kind: 'fact',
+        key: `${scope}/${claim.id}`,
+        version: 1,
+        payload: claim as unknown as Record<string, unknown>,
+      },
+      {
+        kind: 'evidence',
+        key: `${scope}/claim-${claim.id}`,
+        version: 1,
+        payload: {
+          claimId: claim.id,
+          statement: claim.statement,
+          evidenceIds: claim.evidenceIds,
+          confidence: claim.confidence,
+        },
+      },
+    )
+    const topic = claim.topic.toLowerCase()
+    if (/(place|castle|wall|monument|heritage|lugar|castillo|muralla|patrimonio)/.test(topic)) {
+      values.push({
+        kind: 'place',
+        key: `${scope}/${claim.id}`,
+        version: 1,
+        payload: claim as unknown as Record<string, unknown>,
+      })
+    }
+    if (/(activity|route|hike|actividad|ruta|sender)/.test(topic)) {
+      values.push({
+        kind: 'activity',
+        key: `${scope}/${claim.id}`,
+        version: 1,
+        payload: claim as unknown as Record<string, unknown>,
+      })
+    }
+  }
+  for (const evidence of dossier?.evidence ?? []) {
+    values.push({
+      kind: 'evidence',
+      key: `${scope}/${evidence.id}`,
+      version: 1,
+      payload: evidence as unknown as Record<string, unknown>,
+    })
+  }
+  for (const gap of analysis.gaps) {
+    values.push({
+      kind: 'gap',
+      key: `${scope}/${gap.id}`,
+      version: 1,
+      payload: gap as unknown as Record<string, unknown>,
+    })
+  }
+  for (const [index, contradiction] of analysis.masterKnowledge.contradictions.entries()) {
+    values.push({
+      kind: 'contradiction',
+      key: `${scope}/contradiction-${index + 1}`,
+      version: 1,
+      payload: { contradiction },
+    })
+  }
+  for (const [queryIndex, query] of analysis.proposedQueries.entries()) {
+    values.push({
+      kind: 'query',
+      key: realEditorialQueryArtifactKey(mission.round, query.id),
+      version: 1,
+      payload: {
+        ...query,
+        generatingRound: mission.round,
+        queryOrdinal: queryIndex + 1,
+        actionable: mission.round === 1,
+      },
+    })
+  }
+  values.push({
+    kind: 'round',
+    key: `round-${mission.round}`,
+    version: 1,
+    payload: {
+      round: mission.round,
+      dossier,
+      masterKnowledge: analysis.masterKnowledge,
+      coverage: analysis.coverage,
+      gaps: analysis.gaps,
+      proposedQueries: analysis.proposedQueries.map((query, queryIndex) => ({
+        ...query,
+        generatingRound: mission.round,
+        queryOrdinal: queryIndex + 1,
+        actionable: mission.round === 1,
+      })),
+      completedAt: analysis.masterKnowledge.generatedAt,
+      analysis,
+    },
+  })
+  const identities = new Set<string>()
+  return values.map(value => {
+    const identity = `${value.kind}/${value.key}/v${value.version}`
+    if (identities.has(identity)) {
+      throw new RealEditorialRepositoryError(
+        'VERSION_CONFLICT',
+        `El análisis contiene una identidad durable duplicada: ${identity}`,
+      )
+    }
+    identities.add(identity)
+    return { ...value, payloadHash: realEditorialPayloadHash(value.payload) }
+  })
+}
+
+function analysisPersistenceError(
+  error: { message: string; code?: string },
+): RealEditorialRepositoryError {
+  if (
+    error.message.includes('ANALYSIS_ARTIFACT_CONFLICT')
+    || error.message.includes('ANALYSIS_RECEIPT_CONFLICT')
+  ) {
+    return new RealEditorialRepositoryError(
+      'VERSION_CONFLICT',
+      'El análisis durable diverge de una persistencia previa de la misma ronda',
+    )
+  }
+  return new RealEditorialRepositoryError(
+    'PERSISTENCE_ERROR',
+    'No se pudo persistir atómicamente el análisis editorial',
+    error,
   )
 }
 

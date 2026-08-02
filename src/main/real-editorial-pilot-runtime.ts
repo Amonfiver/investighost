@@ -18,6 +18,8 @@ import {
   RealEditorialBudgetResolutionSchema,
   RealEditorialCoverageResolutionSchema,
   RealEditorialHistoricalIncidentResolutionSchema,
+  RealEditorialLibraryQuerySchema,
+  RealEditorialLibraryTransferSchema,
   RealEditorialPilotCancelSchema,
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotProgressSchema,
@@ -207,6 +209,36 @@ export class RealEditorialPilotRuntime {
       throw new Error('La guarda y las reservas deben estar libres para decidir el resultado')
     }
     return this.repository.resolveTerminalDecision(input)
+  }
+
+  async moveApprovedResultToLibrary(candidate: unknown) {
+    const input = RealEditorialLibraryTransferSchema.parse(candidate)
+    if (!readRealEditorialAuthorization().enabled) {
+      throw new Error('La feature flag editorial real no autoriza incorporar a Biblioteca')
+    }
+    if (input.actorId !== MANUAL_LOCAL_ACTOR_ID) {
+      throw new Error('El actor humano no coincide con el operador local autorizado')
+    }
+    if (this.controllers.has(input.pilotId)) {
+      throw new Error('No se puede incorporar a Biblioteca mientras el piloto se ejecuta')
+    }
+    const pilot = await this.repository.getPilot(input.pilotId)
+    if (
+      !pilot
+      || pilot.currentRunId !== input.runId
+      || !['human_approved', 'ready_for_library'].includes(pilot.state)
+    ) {
+      throw new Error('Solo un resultado humano aprobado puede incorporarse a Biblioteca')
+    }
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    if (!inspection.guardFree || inspection.pendingReservations > 0) {
+      throw new Error('La guarda y las reservas deben estar libres para incorporar a Biblioteca')
+    }
+    return this.repository.moveApprovedResultToLibrary(input)
+  }
+
+  async listLibraryEntries(candidate: unknown = {}) {
+    return this.repository.listLibraryEntries(RealEditorialLibraryQuerySchema.parse(candidate))
   }
 
   async cancel(candidate: unknown): Promise<void> {
@@ -470,6 +502,7 @@ export function isRealEditorialTerminalReviewState(state: RealEditorialPilotStat
   return [
     'pending_human_review',
     'human_approved',
+    'ready_for_library',
     'changes_requested',
     'human_rejected',
   ].includes(state)

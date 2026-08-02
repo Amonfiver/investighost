@@ -54,6 +54,10 @@ import type {
   RealEditorialCoverageResolutionResult,
   RealEditorialHistoricalIncidentResolution,
   RealEditorialHistoricalIncidentResolutionResult,
+  RealEditorialLibraryEntry,
+  RealEditorialLibraryQuery,
+  RealEditorialLibraryTransfer,
+  RealEditorialLibraryTransferResult,
   RealEditorialPilotAction,
   RealEditorialPilotCancel,
   RealEditorialPilotPrepare,
@@ -118,6 +122,12 @@ declare global {
       resolveRealEditorialTerminalReview: (
         input: RealEditorialTerminalResolution
       ) => Promise<RealEditorialTerminalResolutionResult>
+      moveApprovedRealEditorialResultToLibrary: (
+        input: RealEditorialLibraryTransfer
+      ) => Promise<RealEditorialLibraryTransferResult>
+      listRealEditorialLibrary: (
+        input?: RealEditorialLibraryQuery
+      ) => Promise<RealEditorialLibraryEntry[]>
       startRealEditorialPilot: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotSnapshot>
       cancelRealEditorialPilot: (input: RealEditorialPilotCancel) => Promise<void>
       resumeRealEditorialPilot: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotSnapshot>

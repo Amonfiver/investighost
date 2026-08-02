@@ -17,6 +17,11 @@ import {
   RealEditorialHistoricalIncidentResolutionResultSchema,
   RealEditorialHistoricalIncidentResolutionSchema,
   RealEditorialHistoricalIncidentReviewSchema,
+  RealEditorialLibraryEntrySchema,
+  RealEditorialLibraryIntegrationSchema,
+  RealEditorialLibraryQuerySchema,
+  RealEditorialLibraryTransferResultSchema,
+  RealEditorialLibraryTransferSchema,
   RealEditorialPilotBudgetSchema,
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotRecordSchema,
@@ -48,6 +53,11 @@ import {
   type RealEditorialHistoricalIncidentResolution,
   type RealEditorialHistoricalIncidentResolutionResult,
   type RealEditorialHistoricalIncidentReview,
+  type RealEditorialLibraryEntry,
+  type RealEditorialLibraryIntegration,
+  type RealEditorialLibraryQuery,
+  type RealEditorialLibraryTransfer,
+  type RealEditorialLibraryTransferResult,
   type RealEditorialPilotBudget,
   type RealEditorialPilotPrepare,
   type RealEditorialPilotRecord,
@@ -146,6 +156,9 @@ export type RealEditorialRepositoryErrorCode =
   | 'TERMINAL_REVIEW_REQUIRED'
   | 'TERMINAL_DECISION_CONFLICT'
   | 'TERMINAL_DECISION_NOT_ALLOWED'
+  | 'LIBRARY_TRANSFER_REQUIRED'
+  | 'LIBRARY_TRANSFER_CONFLICT'
+  | 'LIBRARY_TRANSFER_NOT_ALLOWED'
   | 'PERSISTENCE_ERROR'
 
 export class RealEditorialRepositoryError extends Error {
@@ -194,6 +207,10 @@ export interface RealEditorialPilotRepository {
   resolveTerminalDecision?(
     input: RealEditorialTerminalResolution,
   ): Promise<RealEditorialTerminalResolutionResult>
+  moveApprovedResultToLibrary?(
+    input: RealEditorialLibraryTransfer,
+  ): Promise<RealEditorialLibraryTransferResult>
+  listLibraryEntries?(query?: RealEditorialLibraryQuery): Promise<RealEditorialLibraryEntry[]>
   getBudgetReview(pilotId: string): Promise<RealEditorialBudgetReview | undefined>
   getCoverageReview?(
     pilotId: string,
@@ -585,6 +602,9 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       .select('*').eq('pilot_id', pilot.id).eq('run_id', pilot.currentRunId)
       .order('decided_at', { ascending: false }).limit(1).maybeSingle()
     assertNoError(decisionResult.error, 'No se pudo leer la decisión editorial terminal')
+    const libraryIntegration = pilot.state === 'ready_for_library'
+      ? await this.getLibraryIntegration(pilot.id, pilot.currentRunId)
+      : undefined
     const spent = pilot.budget.spentCost
     const reserved = pilot.budget.reservedCost
     const maximum = pilot.budget.taskLimitCost
@@ -616,7 +636,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       latestDecision: decisionResult.data
         ? terminalDecisionFromRow(decisionResult.data)
         : undefined,
-      libraryIntegration: 'not_started',
+      libraryIntegration: libraryIntegration ?? 'not_started',
     })
   }
 
@@ -688,6 +708,126 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     return RealEditorialTerminalResolutionResultSchema.parse({
       decision: terminalDecisionFromRow(stored.data),
       nextAction: terminalDecisionNextAction(input.decision),
+    })
+  }
+
+  async moveApprovedResultToLibrary(
+    candidate: RealEditorialLibraryTransfer,
+  ): Promise<RealEditorialLibraryTransferResult> {
+    const input = RealEditorialLibraryTransferSchema.parse(candidate)
+    const terminal = await this.getTerminalResult(input.pilotId)
+    if (!terminal || terminal.runId !== input.runId || !terminal.latestDecision) {
+      throw new RealEditorialRepositoryError(
+        'LIBRARY_TRANSFER_REQUIRED',
+        'La incorporación no corresponde a un resultado terminal aprobado y durable',
+      )
+    }
+    if (
+      terminal.latestDecision.decision !== 'approve_editorial_result'
+      || terminal.latestDecision.resultingState !== 'human_approved'
+    ) {
+      throw new RealEditorialRepositoryError(
+        'LIBRARY_TRANSFER_NOT_ALLOWED',
+        'Solo un resultado aprobado humanamente puede incorporarse a Biblioteca',
+      )
+    }
+    const transferKey = realEditorialPayloadHash({
+      action: 'move_approved_result_to_library',
+      pilotId: input.pilotId,
+      runId: input.runId,
+      snapshotArtifact: terminal.artifacts.snapshot,
+      adventureArtifact: terminal.artifacts.adventure,
+      studentArtifact: terminal.artifacts.student,
+      finalReviewArtifact: terminal.artifacts.finalReview,
+      terminalDecisionId: terminal.latestDecision.decisionId,
+      actorId: input.actorId,
+    })
+    if (terminal.libraryIntegration !== 'not_started') {
+      if (terminal.libraryIntegration.transferKey !== transferKey) {
+        throw new RealEditorialRepositoryError(
+          'LIBRARY_TRANSFER_CONFLICT',
+          'El resultado ya tiene una incorporación incompatible en Biblioteca',
+        )
+      }
+      return RealEditorialLibraryTransferResultSchema.parse({
+        ...terminal.libraryIntegration,
+        reused: true,
+      })
+    }
+    if (terminal.state !== 'human_approved') {
+      throw new RealEditorialRepositoryError(
+        'LIBRARY_TRANSFER_NOT_ALLOWED',
+        'El estado durable no autoriza incorporar el resultado a Biblioteca',
+      )
+    }
+    const { data, error } = await this.client.rpc('move_approved_result_to_library', {
+      p_transfer_key: transferKey,
+      p_pilot_id: input.pilotId,
+      p_run_id: input.runId,
+      p_snapshot_artifact_id: terminal.artifacts.snapshot.artifactId,
+      p_snapshot_hash: terminal.artifacts.snapshot.hash,
+      p_adventure_artifact_id: terminal.artifacts.adventure.artifactId,
+      p_adventure_hash: terminal.artifacts.adventure.hash,
+      p_student_artifact_id: terminal.artifacts.student.artifactId,
+      p_student_hash: terminal.artifacts.student.hash,
+      p_review_artifact_id: terminal.artifacts.finalReview.artifactId,
+      p_review_hash: terminal.artifacts.finalReview.hash,
+      p_terminal_decision_id: terminal.latestDecision.decisionId,
+      p_actor_id: input.actorId,
+    })
+    if (error) throw libraryTransferPersistenceError(error)
+    const integrated = await this.getLibraryIntegration(input.pilotId, input.runId)
+    if (!integrated || integrated.transferId !== String(data)) {
+      throw new RealEditorialRepositoryError(
+        'PERSISTENCE_ERROR',
+        'La incorporación a Biblioteca no pudo verificarse después de la transacción',
+      )
+    }
+    return RealEditorialLibraryTransferResultSchema.parse({ ...integrated, reused: false })
+  }
+
+  async listLibraryEntries(
+    candidate: RealEditorialLibraryQuery = {},
+  ): Promise<RealEditorialLibraryEntry[]> {
+    const input = RealEditorialLibraryQuerySchema.parse(candidate)
+    let query = this.client.from('real_editorial_library_entries').select('*')
+      .order('created_at', { ascending: false }).order('id', { ascending: false })
+    if (input.destination) query = query.ilike('destination_name', `%${input.destination}%`)
+    if (input.profile) query = query.eq('profile', input.profile)
+    if (input.status) query = query.eq('status', input.status)
+    if (input.origin) query = query.eq('origin', input.origin)
+    const { data, error } = await query
+    assertNoError(error, 'No se pudo leer la Biblioteca editorial real')
+    return (data ?? []).map(row => libraryEntryFromRow(row as Record<string, unknown>))
+  }
+
+  private async getLibraryIntegration(
+    pilotId: string,
+    runId: string,
+  ): Promise<RealEditorialLibraryIntegration | undefined> {
+    const transferResult = await this.client.from('real_editorial_library_transfers')
+      .select('*').eq('pilot_id', pilotId).eq('run_id', runId).maybeSingle()
+    assertNoError(transferResult.error, 'No se pudo leer la incorporación a Biblioteca')
+    if (!transferResult.data) return undefined
+    const entriesResult = await this.client.from('real_editorial_library_entries')
+      .select('*').eq('transfer_id', transferResult.data.id)
+      .order('profile', { ascending: true })
+    assertNoError(entriesResult.error, 'No se pudieron leer las entradas de Biblioteca')
+    return RealEditorialLibraryIntegrationSchema.parse({
+      status: 'integrated',
+      transferId: transferResult.data.id,
+      transferKey: transferResult.data.transfer_key,
+      state: transferResult.data.resulting_state,
+      entries: (entriesResult.data ?? []).map(row =>
+        libraryEntryFromRow(row as Record<string, unknown>)),
+      actorId: transferResult.data.transfer_actor_id,
+      transferredAt: transferResult.data.transferred_at,
+      providerCallsPerformed: Number(transferResult.data.provider_calls_performed),
+      reservationsCreated: Number(transferResult.data.reservations_created),
+      ledgerCostEur: Number(transferResult.data.ledger_cost),
+      publicationCount: Number(transferResult.data.publication_count),
+      trawelConnected: Boolean(transferResult.data.trawel_connected),
+      automaticEnabled: Boolean(transferResult.data.automatic_enabled),
     })
   }
 
@@ -3701,6 +3841,95 @@ function terminalDecisionFromRow(
   })
 }
 
+function libraryEntryFromRow(row: Record<string, unknown>): RealEditorialLibraryEntry {
+  return RealEditorialLibraryEntrySchema.parse({
+    entryId: row.id,
+    transferId: row.transfer_id,
+    pilotId: row.pilot_id,
+    runId: row.run_id,
+    destination: {
+      canonicalId: row.canonical_destination_id,
+      name: row.destination_name,
+      countryCode: row.country_code,
+      type: row.destination_type,
+    },
+    profile: row.profile,
+    title: row.title,
+    content: row.content,
+    editorialVersion: Number(row.editorial_version),
+    language: row.language,
+    status: row.status,
+    editorialState: row.editorial_state,
+    libraryState: row.library_state,
+    publicationState: row.publication_state,
+    origin: row.origin,
+    sourceArtifact: {
+      artifactId: row.source_artifact_id,
+      kind: row.source_artifact_kind,
+      key: row.source_artifact_key,
+      version: Number(row.source_artifact_version),
+      hash: row.source_artifact_hash,
+      createdAt: row.source_artifact_created_at,
+    },
+    finalReviewArtifact: {
+      artifactId: row.final_review_artifact_id,
+      kind: 'final_review',
+      key: 'final',
+      version: Number(row.final_review_version),
+      hash: row.final_review_hash,
+      createdAt: row.final_review_created_at,
+    },
+    terminalDecisionId: row.terminal_decision_id,
+    reviewOutcome: row.review_outcome,
+    warnings: row.warnings,
+    gaps: row.gaps,
+    contradictions: row.contradictions,
+    claims: row.claims,
+    evidence: row.evidence,
+    sources: row.sources,
+    approvalActorId: row.approval_actor_id,
+    transferActorId: row.transfer_actor_id,
+    finalRunCostEur: Number(row.final_run_cost),
+    currency: row.currency,
+    approvedAt: row.approved_at,
+    createdAt: row.created_at,
+  })
+}
+
+function libraryTransferPersistenceError(
+  error: { message: string; code?: string },
+): RealEditorialRepositoryError {
+  if (
+    error.message.includes('LIBRARY_TRANSFER_IDEMPOTENCY_CONFLICT')
+    || error.message.includes('LIBRARY_ORIGIN_CONFLICT')
+    || error.message.includes('LIBRARY_TRANSFER_ARTIFACT_CHANGED')
+  ) {
+    return new RealEditorialRepositoryError(
+      'LIBRARY_TRANSFER_CONFLICT',
+      `La incorporación a Biblioteca colisiona con otra procedencia durable: ${error.message}`,
+      error,
+    )
+  }
+  if (
+    error.message.includes('LIBRARY_TRANSFER_STATE_INVALID')
+    || error.message.includes('LIBRARY_TRANSFER_APPROVAL_INVALID')
+    || error.message.includes('LIBRARY_TRANSFER_PENDING_EFFECTS')
+    || error.message.includes('LIBRARY_TRANSFER_BUDGET_INVALID')
+    || error.message.includes('LIBRARY_TRANSFER_TRACEABILITY_INVALID')
+  ) {
+    return new RealEditorialRepositoryError(
+      'LIBRARY_TRANSFER_NOT_ALLOWED',
+      `El resultado aprobado no supera la compuerta de Biblioteca: ${error.message}`,
+      error,
+    )
+  }
+  return new RealEditorialRepositoryError(
+    'PERSISTENCE_ERROR',
+    'No se pudo incorporar atómicamente el resultado aprobado a Biblioteca',
+    error,
+  )
+}
+
 function terminalDecisionNextAction(
   decision: RealEditorialTerminalResolution['decision'],
 ): 'ready_for_library' | 'manual_regeneration_decision_required' | 'closed_without_publication' {
@@ -4185,6 +4414,7 @@ const activeStates: RealEditorialPilotState[] = [
 const terminalReviewStates: RealEditorialPilotState[] = [
   'pending_human_review',
   'human_approved',
+  'ready_for_library',
   'changes_requested',
   'human_rejected',
 ]

@@ -25,6 +25,8 @@ import type {
   RealEditorialBudgetResolution,
   RealEditorialCoverageResolution,
   RealEditorialHistoricalIncidentResolution,
+  RealEditorialLibraryQuery,
+  RealEditorialLibraryTransfer,
   RealEditorialPilotAction,
   RealEditorialPilotCancel,
   RealEditorialPilotPrepare,
@@ -87,6 +89,10 @@ const electronAPI = {
     ipcRenderer.invoke('real-editorial:result', input),
   resolveRealEditorialTerminalReview: (input: RealEditorialTerminalResolution) =>
     ipcRenderer.invoke('real-editorial:resolve-terminal-review', input),
+  moveApprovedRealEditorialResultToLibrary: (input: RealEditorialLibraryTransfer) =>
+    ipcRenderer.invoke('real-editorial:move-to-library', input),
+  listRealEditorialLibrary: (input: RealEditorialLibraryQuery = {}) =>
+    ipcRenderer.invoke('real-editorial:list-library', input),
   startRealEditorialPilot: (input: RealEditorialPilotAction) =>
     ipcRenderer.invoke('real-editorial:start', input),
   cancelRealEditorialPilot: (input: RealEditorialPilotCancel) =>

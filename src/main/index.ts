@@ -252,6 +252,14 @@ ipcMain.handle('real-editorial:resolve-terminal-review', async (_event, input: u
   return getRealEditorialPilotRuntime().resolveTerminalDecision(input)
 })
 
+ipcMain.handle('real-editorial:move-to-library', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().moveApprovedResultToLibrary(input)
+})
+
+ipcMain.handle('real-editorial:list-library', async (_event, input: unknown) => {
+  return getRealEditorialPilotRuntime().listLibraryEntries(input)
+})
+
 ipcMain.handle('real-editorial:start', async (_event, input: unknown) => {
   return getRealEditorialPilotRuntime().start(input)
 })

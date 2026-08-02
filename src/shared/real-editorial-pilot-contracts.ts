@@ -2,11 +2,13 @@ import { z } from 'zod'
 import {
   RealCoverageSchema,
   RealKnowledgeGapSchema,
+  RealKnowledgeClaimSchema,
   RealMasterKnowledgeSchema,
   RealPipelineLimitsSchema,
   RealProfileConfigurationSchema,
   RealResearchDossierSchema,
   RealResearchMissionSchema,
+  RealResearchSourceSchema,
   RealRoundResultSchema,
 } from './real-pipeline-contracts'
 
@@ -127,6 +129,7 @@ export const RealEditorialPilotStateSchema = z.enum([
   'final_review',
   'pending_human_review',
   'human_approved',
+  'ready_for_library',
   'changes_requested',
   'human_rejected',
   'ready_for_human_review',
@@ -1389,12 +1392,128 @@ export const RealEditorialTerminalDecisionRecordSchema = z.object({
   }
 })
 
+export const RealEditorialLibraryTransferSchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  actorId: z.string().uuid(),
+  confirmed: z.literal(true),
+}).strict()
+
+export const RealEditorialLibraryQuerySchema = z.object({
+  destination: z.string().trim().min(1).max(200).optional(),
+  profile: z.enum(['adventure', 'student']).optional(),
+  status: z.literal('approved_unpublished').optional(),
+  origin: z.literal('real_editorial_pilot').optional(),
+}).strict()
+
+export const RealEditorialLibraryEvidenceTraceSchema = z.object({
+  claimId: IdentifierSchema,
+  statement: z.string().trim().min(1).max(5_000),
+  confidence: z.number().finite().min(0).max(1),
+  evidenceIds: z.array(IdentifierSchema).min(1).max(30),
+}).strict()
+
+export const RealEditorialLibraryEntrySchema = z.object({
+  entryId: z.string().uuid(),
+  transferId: z.string().uuid(),
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  destination: z.object({
+    canonicalId: z.string().uuid(),
+    name: z.string().trim().min(1).max(200),
+    countryCode: z.string().length(2),
+    type: z.enum(['country', 'region', 'locality', 'zone']),
+  }).strict(),
+  profile: z.enum(['adventure', 'student']),
+  title: z.string().trim().min(1).max(500),
+  content: z.string().min(1),
+  editorialVersion: z.number().int().positive(),
+  language: z.literal('es-ES'),
+  status: z.literal('approved_unpublished'),
+  editorialState: z.literal('approved'),
+  libraryState: z.literal('ready_for_library'),
+  publicationState: z.literal('unpublished'),
+  origin: z.literal('real_editorial_pilot'),
+  sourceArtifact: RealEditorialTerminalArtifactReferenceSchema,
+  finalReviewArtifact: RealEditorialTerminalArtifactReferenceSchema.extend({
+    kind: z.literal('final_review'),
+    key: z.literal('final'),
+  }),
+  terminalDecisionId: z.string().uuid(),
+  reviewOutcome: z.literal('passed_with_warnings'),
+  warnings: z.array(z.string().trim().min(1).max(2_000)).min(1),
+  gaps: z.array(RealKnowledgeGapSchema).min(1),
+  contradictions: z.array(z.string().trim().min(1).max(2_000)).min(1),
+  claims: z.array(RealKnowledgeClaimSchema).min(1),
+  evidence: z.array(RealEditorialLibraryEvidenceTraceSchema).min(1),
+  sources: z.array(RealResearchSourceSchema).min(1),
+  approvalActorId: z.string().uuid(),
+  transferActorId: z.string().uuid(),
+  finalRunCostEur: z.number().finite().nonnegative(),
+  currency: z.literal('EUR'),
+  approvedAt: TimestampSchema,
+  createdAt: TimestampSchema,
+}).strict().superRefine((value, context) => {
+  const expectedKind = value.profile === 'adventure' ? 'draft_adventure' : 'draft_student'
+  if (value.sourceArtifact.kind !== expectedKind || value.sourceArtifact.key !== value.profile) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['sourceArtifact'],
+      message: 'El perfil de Biblioteca no coincide con el artefacto editorial de origen',
+    })
+  }
+  const sourceIds = new Set(value.sources.map(item => item.id))
+  const claimIds = new Set(value.claims.map(item => item.id))
+  if (
+    value.claims.some(claim => claim.evidenceIds.some(id => !sourceIds.has(id)))
+    || value.evidence.some(trace => !claimIds.has(trace.claimId))
+    || value.claims.some(claim => !value.evidence.some(trace => trace.claimId === claim.id))
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['evidence'],
+      message: 'La Biblioteca debe conservar fuentes y trazas para todos los claims',
+    })
+  }
+})
+
+export const RealEditorialLibraryIntegrationSchema = z.object({
+  status: z.literal('integrated'),
+  transferId: z.string().uuid(),
+  transferKey: Sha256Schema,
+  state: z.literal('ready_for_library'),
+  entries: z.array(RealEditorialLibraryEntrySchema).length(2),
+  actorId: z.string().uuid(),
+  transferredAt: TimestampSchema,
+  providerCallsPerformed: z.literal(0),
+  reservationsCreated: z.literal(0),
+  ledgerCostEur: z.literal(0),
+  publicationCount: z.literal(0),
+  trawelConnected: z.literal(false),
+  automaticEnabled: z.literal(false),
+}).strict().superRefine((value, context) => {
+  const profiles = new Set(value.entries.map(entry => entry.profile))
+  if (!profiles.has('adventure') || !profiles.has('student')) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['entries'],
+      message: 'La incorporación debe contener Aventura y Estudiante exactamente una vez',
+    })
+  }
+})
+
+export const RealEditorialLibraryTransferResultSchema = z.intersection(
+  RealEditorialLibraryIntegrationSchema,
+  z.object({ reused: z.boolean() }).strict(),
+)
+
 export const RealEditorialTerminalResultSchema = z.object({
   pilotId: z.string().uuid(),
   runId: z.string().uuid(),
   state: z.enum([
     'pending_human_review',
     'human_approved',
+    'ready_for_library',
     'changes_requested',
     'human_rejected',
   ]),
@@ -1423,7 +1542,10 @@ export const RealEditorialTerminalResultSchema = z.object({
   contradictions: z.array(z.string().trim().min(1).max(2_000)).min(1),
   budget: RealEditorialTerminalBudgetSchema,
   latestDecision: RealEditorialTerminalDecisionRecordSchema.optional(),
-  libraryIntegration: z.literal('not_started'),
+  libraryIntegration: z.union([
+    z.literal('not_started'),
+    RealEditorialLibraryIntegrationSchema,
+  ]),
 }).strict().superRefine((value, context) => {
   const snapshotProfiles = new Set(value.snapshot.drafts.map(draft => draft.profile))
   const authoritativeProfiles = new Set(value.drafts.map(draft => draft.profile))
@@ -1440,7 +1562,8 @@ export const RealEditorialTerminalResultSchema = z.object({
       message: 'El resultado terminal exige ambos borradores y la revisión automática',
     })
   }
-  if (value.latestDecision && value.latestDecision.resultingState !== value.state) {
+  const decisionState = value.state === 'ready_for_library' ? 'human_approved' : value.state
+  if (value.latestDecision && value.latestDecision.resultingState !== decisionState) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['latestDecision', 'resultingState'],
@@ -1611,6 +1734,24 @@ export type RealEditorialTerminalArtifactReference = z.infer<
 export type RealEditorialTerminalBudget = z.infer<typeof RealEditorialTerminalBudgetSchema>
 export type RealEditorialTerminalDecisionRecord = z.infer<
   typeof RealEditorialTerminalDecisionRecordSchema
+>
+export type RealEditorialLibraryTransfer = z.infer<
+  typeof RealEditorialLibraryTransferSchema
+>
+export type RealEditorialLibraryQuery = z.infer<
+  typeof RealEditorialLibraryQuerySchema
+>
+export type RealEditorialLibraryEntry = z.infer<
+  typeof RealEditorialLibraryEntrySchema
+>
+export type RealEditorialLibraryEvidenceTrace = z.infer<
+  typeof RealEditorialLibraryEvidenceTraceSchema
+>
+export type RealEditorialLibraryIntegration = z.infer<
+  typeof RealEditorialLibraryIntegrationSchema
+>
+export type RealEditorialLibraryTransferResult = z.infer<
+  typeof RealEditorialLibraryTransferResultSchema
 >
 export type RealEditorialTerminalResult = z.infer<typeof RealEditorialTerminalResultSchema>
 export type RealEditorialTerminalResolutionResult = z.infer<

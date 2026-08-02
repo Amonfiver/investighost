@@ -49,6 +49,8 @@ import {
   type RealEditorialCoverageReview,
   type RealEditorialHistoricalIncidentResolution,
   type RealEditorialHistoricalIncidentReview,
+  type RealEditorialLibraryEntry,
+  type RealEditorialLibraryTransfer,
   type RealEditorialPilotProgress,
   type RealEditorialPartialAnalysisRecovery,
   type RealEditorialPartialAnalysisRecoveryPlan,
@@ -85,6 +87,7 @@ const stateLabels: Record<string, string> = {
   ready: 'Lista para revisar', in_review: 'En revisión', changes_requested: 'Cambios solicitados', approved: 'Aprobada',
   rejected: 'Rechazada', archived: 'Archivada', passed: 'Aprobado técnicamente', passed_with_warnings: 'Con advertencias',
   pending_human_review: 'Pendiente de decisión humana', human_approved: 'Aprobado editorialmente',
+  ready_for_library: 'Disponible en Biblioteca',
   human_rejected: 'Rechazado editorialmente', review_required: 'Revisión requerida',
   blocked: 'Bloqueado',
 }
@@ -108,6 +111,22 @@ export function App(): JSX.Element {
   const [versions, setVersions] = useState<EditorialDraftVersionSummary[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [realLibraryEntries, setRealLibraryEntries] = useState<RealEditorialLibraryEntry[]>([])
+  const [realLibraryLoading, setRealLibraryLoading] = useState(false)
+  const [realLibraryError, setRealLibraryError] = useState<string | null>(null)
+  const [realLibraryFocusId, setRealLibraryFocusId] = useState<string | null>(null)
+
+  const loadRealLibrary = useCallback(async () => {
+    setRealLibraryLoading(true)
+    setRealLibraryError(null)
+    try {
+      setRealLibraryEntries(await window.electronAPI.listRealEditorialLibrary({}))
+    } catch (reason) {
+      setRealLibraryError(errorText(reason))
+    } finally {
+      setRealLibraryLoading(false)
+    }
+  }, [])
 
   useEffect(
     () => libraryNavigator.subscribe(setLibraryNavigation),
@@ -121,9 +140,17 @@ export function App(): JSX.Element {
     ]).then(async ([nextStatus, nextActor]) => {
       setStatus(nextStatus)
       setActorId(nextActor)
-      if (nextStatus.connected) await libraryNavigator.first()
+      if (nextStatus.connected) {
+        await Promise.all([libraryNavigator.first(), loadRealLibrary()])
+      }
     }).catch(reason => setError(errorText(reason)))
-  }, [libraryNavigator])
+  }, [libraryNavigator, loadRealLibrary])
+
+  const openRealLibraryEntry = async (entryId: string) => {
+    setRealLibraryFocusId(entryId)
+    setView('library')
+    await loadRealLibrary()
+  }
 
   const openResearch = async (summary: LibraryItem) => {
     setBusy(true)
@@ -286,13 +313,17 @@ export function App(): JSX.Element {
           {view === 'library' && (
             <Library
               navigation={libraryNavigation}
+              realEntries={realLibraryEntries}
+              realLoading={realLibraryLoading}
+              realError={realLibraryError}
+              focusedRealEntryId={realLibraryFocusId}
               connected={Boolean(status?.connected)}
               busy={busy}
               onOpen={openResearch}
               onNew={() => go('new')}
               onFirst={() => { void libraryNavigator.first() }}
               onPrevious={() => { void libraryNavigator.previous() }}
-              onRefresh={() => { void libraryNavigator.refresh() }}
+              onRefresh={() => { void Promise.all([libraryNavigator.refresh(), loadRealLibrary()]) }}
               onNext={() => { void libraryNavigator.next() }}
             />
           )}
@@ -313,15 +344,24 @@ export function App(): JSX.Element {
           )}
           {view === 'contributions' && <ContributionImportPanel />}
           {view === 'providers' && <ProviderCenterPanel />}
-          {view === 'real-config' && <RealProfileSettingsPanel />}
+          {view === 'real-config' && (
+            <RealProfileSettingsPanel
+              onLibraryChanged={loadRealLibrary}
+              onOpenLibraryEntry={entryId => { void openRealLibraryEntry(entryId) }}
+            />
+          )}
         </main>
       </div>
     </div>
   )
 }
 
-function Library({ navigation, connected, busy, onOpen, onNew, onFirst, onPrevious, onRefresh, onNext }: {
+export function Library({ navigation, realEntries, realLoading, realError, focusedRealEntryId, connected, busy, onOpen, onNew, onFirst, onPrevious, onRefresh, onNext }: {
   navigation: LibraryNavigationState
+  realEntries: RealEditorialLibraryEntry[]
+  realLoading: boolean
+  realError: string | null
+  focusedRealEntryId: string | null
   connected: boolean
   busy: boolean
   onOpen: (summary: LibraryItem) => void
@@ -331,7 +371,18 @@ function Library({ navigation, connected, busy, onOpen, onNew, onFirst, onPrevio
   onRefresh: () => void
   onNext: () => void
 }): JSX.Element {
+  const [destinationFilter, setDestinationFilter] = useState('')
+  const [profileFilter, setProfileFilter] = useState<'all' | 'adventure' | 'student'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'approved_unpublished'>('all')
+  const [originFilter, setOriginFilter] = useState<'all' | 'real_editorial_pilot'>('all')
   const summaries = navigation.page.items
+  const visibleRealEntries = realEntries.filter(entry => (
+    (!destinationFilter.trim()
+      || entry.destination.name.toLocaleLowerCase('es').includes(destinationFilter.trim().toLocaleLowerCase('es')))
+    && (profileFilter === 'all' || entry.profile === profileFilter)
+    && (statusFilter === 'all' || entry.status === statusFilter)
+    && (originFilter === 'all' || entry.origin === originFilter)
+  ))
   const pageNumber = libraryPageNumber(navigation)
   const availability = libraryNavigationAvailability(navigation)
   const navigationBlocked = !connected || busy
@@ -341,11 +392,63 @@ function Library({ navigation, connected, busy, onOpen, onNew, onFirst, onPrevio
     <section>
       <p className="page-summary-label">{LIBRARY_PAGE_SUMMARY_LABEL}</p>
       <div className="metric-grid" aria-label={LIBRARY_PAGE_SUMMARY_LABEL}>
-        <Metric label="En esta página" value={summaries.length} detail={`Página ${pageNumber} de Biblioteca`} />
+        <Metric label="Manuales en página" value={summaries.length} detail={`Página ${pageNumber} de Biblioteca`} />
+        <Metric label="Editoriales reales" value={realEntries.length} detail="Aprobadas y sin publicar" />
         <Metric label="Completadas en página" value={completed} detail="Pipeline terminado" />
         <Metric label="Incidencias en página" value={failures} detail="Activas y recuperables" tone={failures ? 'warn' : 'normal'} />
         <Metric label="Publicaciones" value={0} detail="Bloqueadas por diseño" />
       </div>
+      <section className="real-library-section" aria-label="Biblioteca editorial real">
+        <div className="section-heading compact">
+          <div>
+            <span className="eyebrow">ORIGEN · REAL EDITORIAL</span>
+            <h2>Contenido editorial aprobado</h2>
+            <p>Proyecciones internas inmutables de origen; sin publicación, Trawel ni Automatic.</p>
+          </div>
+        </div>
+        <div className="real-library-filters" aria-label="Filtros de Biblioteca editorial real">
+          <label className="field"><span>Destino</span><input value={destinationFilter} onChange={event => setDestinationFilter(event.target.value)} placeholder="Morella" /></label>
+          <label className="field"><span>Perfil</span><select value={profileFilter} onChange={event => setProfileFilter(event.target.value as typeof profileFilter)}><option value="all">Todos</option><option value="adventure">Aventura</option><option value="student">Estudiante</option></select></label>
+          <label className="field"><span>Estado</span><select value={statusFilter} onChange={event => setStatusFilter(event.target.value as typeof statusFilter)}><option value="all">Todos</option><option value="approved_unpublished">Aprobado · Sin publicar</option></select></label>
+          <label className="field"><span>Origen</span><select value={originFilter} onChange={event => setOriginFilter(event.target.value as typeof originFilter)}><option value="all">Todos</option><option value="real_editorial_pilot">Editorial real</option></select></label>
+        </div>
+        {realError && <div className="library-read-error read" role="alert"><div><strong>Error de lectura de Biblioteca editorial.</strong><p>{realError}</p></div></div>}
+        {realLoading ? (
+          <div className="real-library-empty" role="status">Cargando contenido editorial aprobado…</div>
+        ) : visibleRealEntries.length === 0 ? (
+          <div className="real-library-empty">No hay entradas editoriales reales para estos filtros.</div>
+        ) : (
+          <div className="real-library-grid">
+            {visibleRealEntries.map(entry => (
+              <article
+                id={`real-library-entry-${entry.entryId}`}
+                className={`real-library-entry ${focusedRealEntryId === entry.entryId ? 'focused' : ''}`}
+                key={entry.entryId}
+              >
+                <header><div><span className="card-kicker">{entry.profile === 'adventure' ? 'AVENTURA' : 'ESTUDIANTE'} · EDITORIAL REAL</span><h3>{entry.title}</h3></div><span className="state-badge state-approved">Aprobado · Sin publicar</span></header>
+                <p>{entry.destination.name} · {entry.destination.countryCode} · versión {entry.editorialVersion}</p>
+                <details>
+                  <summary>Abrir texto completo y trazabilidad</summary>
+                  <p className="terminal-draft-content">{entry.content}</p>
+                  <dl className="definition-grid compact">
+                    <div><dt>Origen</dt><dd>{entry.origin}</dd></div>
+                    <div><dt>Artifact ID</dt><dd className="technical-id">{entry.sourceArtifact.artifactId}</dd></div>
+                    <div><dt>Artifact hash</dt><dd className="technical-id">{entry.sourceArtifact.hash}</dd></div>
+                    <div><dt>Revisión final</dt><dd className="technical-id">{entry.finalReviewArtifact.artifactId}</dd></div>
+                    <div><dt>Decisión terminal</dt><dd className="technical-id">{entry.terminalDecisionId}</dd></div>
+                    <div><dt>Coste final del run</dt><dd>{formatPreciseMoney(entry.finalRunCostEur)}</dd></div>
+                  </dl>
+                  <h4>Warnings ({entry.warnings.length})</h4><ul>{entry.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>
+                  <h4>Gaps ({entry.gaps.length})</h4><ul>{entry.gaps.map(gap => <li key={gap.id}>{gap.id} · {gap.description}</li>)}</ul>
+                  <h4>Contradicciones ({entry.contradictions.length})</h4><ul>{entry.contradictions.map(item => <li key={item}>{item}</li>)}</ul>
+                  <h4>Claims y evidencias</h4><ul>{entry.claims.map(claim => <li key={claim.id}>{claim.id} · {claim.statement} · evidencias {claim.evidenceIds.join(', ')}</li>)}</ul>
+                  <small>{entry.evidence.length} trazas y {entry.sources.length} fuentes durables conservadas · la lectura no modifica datos.</small>
+                </details>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
       <div className="section-heading">
         <div><span className="eyebrow">BIBLIOTECA LOCAL</span><h2>Investigaciones Manuales</h2></div>
         <button className="button secondary" onClick={onNew} disabled={!connected}>Crear nueva</button>
@@ -846,7 +949,10 @@ function ProviderCenterPanel(): JSX.Element {
   )
 }
 
-function RealProfileSettingsPanel(): JSX.Element {
+function RealProfileSettingsPanel({ onLibraryChanged, onOpenLibraryEntry }: {
+  onLibraryChanged: () => Promise<void>
+  onOpenLibraryEntry: (entryId: string) => void
+}): JSX.Element {
   const [settings, setSettings] = useState<RealProfileSettings | null>(null)
   const [preflight, setPreflight] = useState<RealConnectivityPreflight | null>(null)
   const [saving, setSaving] = useState(false)
@@ -962,7 +1068,10 @@ function RealProfileSettingsPanel(): JSX.Element {
         result={connectivityResult}
         onRun={runConnectivityCheck}
       />
-      <RealEditorialPilotPanel />
+      <RealEditorialPilotPanel
+        onLibraryChanged={onLibraryChanged}
+        onOpenLibraryEntry={onOpenLibraryEntry}
+      />
       {activeCount === 0 && <div className="alert warning" role="alert"><strong>Activa al menos un perfil.</strong></div>}
       <div className="form-actions"><span className="muted">{saved ? 'Configuración guardada localmente.' : 'Sin ejecutar proveedores.'}</span><button className="button primary" disabled={saving || activeCount === 0 || settings.profiles.some(profile => profile.targetWords < 800 || profile.targetWords > 4000 || profile.targetWords % 100 !== 0)} onClick={save}>{saving ? 'Guardando…' : 'Guardar configuración'}</button></div>
     </section>
@@ -1027,7 +1136,10 @@ function RealPilotPreflightPanel({ preflight, checking, result, onRun }: {
   )
 }
 
-function RealEditorialPilotPanel(): JSX.Element {
+function RealEditorialPilotPanel({ onLibraryChanged, onOpenLibraryEntry }: {
+  onLibraryChanged: () => Promise<void>
+  onOpenLibraryEntry: (entryId: string) => void
+}): JSX.Element {
   const [preflight, setPreflight] = useState<RealEditorialPreflight | null>(null)
   const [progress, setProgress] = useState<RealEditorialPilotProgress | null>(null)
   const [terminalResult, setTerminalResult] = useState<RealEditorialTerminalResult | null>(null)
@@ -1045,6 +1157,7 @@ function RealEditorialPilotPanel(): JSX.Element {
       if ([
         'pending_human_review',
         'human_approved',
+        'ready_for_library',
         'changes_requested',
         'human_rejected',
       ].includes(nextProgress.pilot.state)) {
@@ -1191,6 +1304,17 @@ function RealEditorialPilotPanel(): JSX.Element {
             () => window.electronAPI.resolveRealEditorialTerminalReview(input),
             input.pilotId,
           )}
+          onMoveToLibrary={input => {
+            void (async () => {
+              await run(
+                'library-transfer',
+                () => window.electronAPI.moveApprovedRealEditorialResultToLibrary(input),
+                input.pilotId,
+              )
+              await onLibraryChanged()
+            })()
+          }}
+          onOpenLibraryEntry={onOpenLibraryEntry}
         />
       )}
       {progress?.humanRequiredCall && (
@@ -1347,6 +1471,8 @@ interface RealEditorialTerminalReviewPanelProps {
   actorId: string | null
   busy: boolean
   onResolve: (input: RealEditorialTerminalResolution) => void
+  onMoveToLibrary?: (input: RealEditorialLibraryTransfer) => void
+  onOpenLibraryEntry?: (entryId: string) => void
 }
 
 export function RealEditorialTerminalReviewPanel({
@@ -1354,6 +1480,8 @@ export function RealEditorialTerminalReviewPanel({
   actorId,
   busy,
   onResolve,
+  onMoveToLibrary,
+  onOpenLibraryEntry,
 }: RealEditorialTerminalReviewPanelProps): JSX.Element {
   const [reason, setReason] = useState('')
   const [observations, setObservations] = useState('')
@@ -1481,7 +1609,11 @@ export function RealEditorialTerminalReviewPanel({
           <strong>{terminalDecisionLabel(result.latestDecision.decision)}</strong>
           <span>{result.latestDecision.reason}</span>
           <small>
-            {formatDate(result.latestDecision.decidedAt)} · Biblioteca no integrada · 0 publicaciones
+            {formatDate(result.latestDecision.decidedAt)} · {
+              result.libraryIntegration === 'not_started'
+                ? 'Biblioteca no integrada'
+                : 'Disponible en Biblioteca · Sin publicar'
+            } · 0 publicaciones
           </small>
         </div>
       ) : canShowDecision ? (
@@ -1552,6 +1684,49 @@ export function RealEditorialTerminalReviewPanel({
         </div>
       ) : (
         <div className="alert warning"><span>Falta el actor local autorizado para registrar una decisión.</span></div>
+      )}
+      {result.latestDecision?.decision === 'approve_editorial_result'
+        && result.libraryIntegration === 'not_started'
+        && actorId && (
+        <div className="terminal-library-action">
+          <h4>Incorporación a Biblioteca interna</h4>
+          <p>Creará dos entradas separadas, Aventura y Estudiante, conservando texto, IDs, hashes, warnings y trazabilidad.</p>
+          <ul><li>No publicará.</li><li>No conectará Trawel ni Automatic.</li><li>No llamará a OpenAI ni Tavily.</li><li>Los artefactos aprobados permanecerán inmutables.</li></ul>
+          <button
+            className="button primary"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm(
+                'Añadir a Biblioteca creará dos entradas internas separadas.\n\n'
+                + '• No se publicará.\n'
+                + '• No se conectará Trawel ni Automatic.\n'
+                + '• No se llamará a OpenAI ni Tavily.\n'
+                + '• Los artefactos originales permanecerán inmutables.\n\n'
+                + '¿Confirmas la incorporación durable?',
+              )) return
+              onMoveToLibrary?.({
+                pilotId: result.pilotId,
+                runId: result.runId,
+                actorId,
+                confirmed: true,
+              })
+            }}
+          >Añadir a Biblioteca</button>
+        </div>
+      )}
+      {result.libraryIntegration !== 'not_started' && (
+        <div className="terminal-library-integrated" role="status">
+          <strong>Disponible en Biblioteca · Sin publicar</strong>
+          <span>Se reutilizarán estas mismas entradas ante una repetición idéntica.</span>
+          <div className="form-actions">
+            {result.libraryIntegration.entries.map(entry => (
+              <button className="button secondary" key={entry.entryId} onClick={() => onOpenLibraryEntry?.(entry.entryId)}>
+                Abrir {entry.profile === 'adventure' ? 'Aventura' : 'Estudiante'} en Biblioteca
+              </button>
+            ))}
+          </div>
+          <small>Transfer ID: {result.libraryIntegration.transferId} · coste de Biblioteca 0 EUR · 0 publicaciones</small>
+        </div>
       )}
     </section>
   )

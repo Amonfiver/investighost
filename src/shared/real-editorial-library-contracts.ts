@@ -65,9 +65,12 @@ export const LibraryVersionDomainErrorCodeSchema = z.enum([
   'HASH_MISMATCH',
   'UNSUPPORTED_CLAIM_BLOCKS_APPROVAL',
   'FINDINGS_NOT_RECONCILED',
+  'LIBRARY_ENTRY_NOT_FOUND',
+  'ORIGIN_REFERENCE_INVALID',
   'VERSION_NOT_FOUND',
   'REVISION_NOT_FOUND',
   'ACTOR_NOT_AUTHORIZED',
+  'PERSISTENCE_ERROR',
 ])
 
 export const LibraryVersionUuidSchema = z.string().uuid()
@@ -96,6 +99,7 @@ function hasLoneSurrogate(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index)
     if (code >= 0xd800 && code <= 0xdbff) {
+      if (index + 1 >= value.length) return true
       const next = value.charCodeAt(index + 1)
       if (next < 0xdc00 || next > 0xdfff) return true
       index += 1
@@ -151,6 +155,8 @@ const StableReferenceListSchema = z.array(StableReferenceSchema).max(500).refine
   'Las referencias deben ser unicas',
 )
 const ChangeInstructionListSchema = z.array(SafeReasonSchema).max(100)
+const EditableTitleInputSchema = z.string().min(1).max(1_000)
+const EditableContentInputSchema = z.string().min(1).max(200_000)
 
 export const LibraryVersionEvidenceReferenceSchema = z.object({
   kind: z.enum(['evidence', 'source']),
@@ -217,6 +223,7 @@ export const LibraryVersionIdentitySchema = z.object({
   createdByActorId: LibraryVersionUuidSchema,
   createdAt: IsoTimestampSchema,
   operationKey: LibraryVersionOperationKeySchema,
+  requestFingerprint: LibraryVersionSha256Schema,
   publicationState: z.literal('unpublished'),
 }).strict().superRefine((value, context) => {
   const lineage = VersionLineageSchema.safeParse({
@@ -246,6 +253,7 @@ export const LibraryVersionRevisionSchema = z.object({
   createdByActorId: LibraryVersionUuidSchema,
   createdAt: IsoTimestampSchema,
   operationKey: LibraryVersionOperationKeySchema,
+  requestFingerprint: LibraryVersionSha256Schema,
 }).strict().superRefine((value, context) => {
   const firstRevision = value.revisionNumber === 1
   if (firstRevision !== (value.previousRevisionId === null)) {
@@ -264,10 +272,8 @@ export const LibraryVersionRevisionSchema = z.object({
   }
 })
 
-const LibraryVersionFindingCoreSchema = z.object({
+const LibraryVersionFindingSemanticSchema = z.object({
   findingKey: StableReferenceSchema,
-  sequence: z.number().int().positive(),
-  supersedesFindingId: LibraryVersionUuidSchema.nullable(),
   sourceFindingType: LibraryVersionFindingTypeSchema,
   sourceFindingId: StableReferenceSchema,
   origin: LibraryVersionFindingOriginSchema,
@@ -284,7 +290,7 @@ const LibraryVersionFindingCoreSchema = z.object({
 })
 
 function validateFinding(
-  value: z.infer<typeof LibraryVersionFindingCoreSchema>,
+  value: z.infer<typeof LibraryVersionFindingSemanticSchema>,
   context: z.RefinementCtx,
 ): void {
   if (
@@ -363,19 +369,33 @@ function validateFinding(
   }
 }
 
-export const LibraryVersionFindingInputSchema = LibraryVersionFindingCoreSchema
+export const LibraryVersionFindingInputSchema = LibraryVersionFindingSemanticSchema
   .strict()
   .superRefine(validateFinding)
 
-export const LibraryVersionFindingSchema = LibraryVersionFindingCoreSchema.extend({
+export const LibraryVersionFindingSchema = LibraryVersionFindingSemanticSchema.extend({
   id: LibraryVersionUuidSchema,
   versionId: LibraryVersionUuidSchema,
   revisionId: LibraryVersionUuidSchema,
+  sequence: z.number().int().positive(),
+  supersedesFindingId: LibraryVersionUuidSchema.nullable(),
   findingHash: LibraryVersionSha256Schema,
   createdByActorId: LibraryVersionUuidSchema,
   createdAt: IsoTimestampSchema,
   operationKey: LibraryVersionOperationKeySchema,
-}).strict().superRefine(validateFinding)
+  requestFingerprint: LibraryVersionSha256Schema,
+  isBaseline: z.boolean(),
+  resultTraceabilityHash: LibraryVersionSha256Schema.nullable(),
+}).strict().superRefine((value, context) => {
+  validateFinding(value, context)
+  if (value.isBaseline === (value.resultTraceabilityHash !== null)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['resultTraceabilityHash'],
+      message: 'Solo una reconciliacion no baseline conserva su traceability resultante',
+    })
+  }
+})
 
 export const LIBRARY_VERSION_DECISION_TRANSITIONS = {
   submit_for_review: { from: 'draft', to: 'ready_for_review' },
@@ -552,46 +572,23 @@ export const LibraryVersionStateSnapshotSchema = z.object({
 export const CreateLibraryVersionCommandSchema = z.object({
   libraryEntryId: LibraryVersionUuidSchema,
   expectedHeadHash: LibraryVersionSha256Schema,
-  versionNumber: LibraryVersionNumberSchema,
-  parentVersionId: LibraryVersionUuidSchema.nullable(),
-  parentOriginVersionHash: LibraryVersionSha256Schema,
-  parentHash: LibraryVersionSha256Schema,
   canonicalizationContract: LibraryVersionCanonicalizationContractSchema,
   contentSchemaContract: LibraryVersionContentSchemaContractSchema,
-  title: LibraryVersionTitleSchema,
-  content: LibraryVersionContentSchema,
+  title: EditableTitleInputSchema,
+  content: EditableContentInputSchema,
   creationReason: SafeReasonSchema,
   createdByActorId: LibraryVersionUuidSchema,
   operationKey: LibraryVersionOperationKeySchema,
-}).strict().superRefine((value, context) => {
-  const lineage = VersionLineageSchema.safeParse({
-    versionNumber: value.versionNumber,
-    parentVersionId: value.parentVersionId,
-    parentOriginVersionHash: value.parentOriginVersionHash,
-    parentHash: value.parentHash,
-  })
-  if (!lineage.success) {
-    for (const issue of lineage.error.issues) context.addIssue(issue)
-  }
-  if (value.expectedHeadHash !== value.parentHash) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['expectedHeadHash'],
-      message: 'El head esperado debe ser el padre inmediato declarado',
-    })
-  }
-})
+}).strict()
 
 export const SaveLibraryVersionRevisionCommandSchema = z.object({
   versionId: LibraryVersionUuidSchema,
   expectedState: z.literal('draft'),
-  previousRevisionId: LibraryVersionUuidSchema,
   expectedPreviousRevisionHash: LibraryVersionSha256Schema,
-  revisionNumber: LibraryVersionRevisionNumberSchema.min(2),
   canonicalizationContract: LibraryVersionCanonicalizationContractSchema,
   contentSchemaContract: LibraryVersionContentSchemaContractSchema,
-  title: LibraryVersionTitleSchema,
-  content: LibraryVersionContentSchema,
+  title: EditableTitleInputSchema,
+  content: EditableContentInputSchema,
   changeSummary: SafeReasonSchema,
   createdByActorId: LibraryVersionUuidSchema,
   operationKey: LibraryVersionOperationKeySchema,
@@ -612,42 +609,25 @@ export const SubmitLibraryVersionForReviewCommandSchema = z.object({
   versionId: LibraryVersionUuidSchema,
   revisionId: LibraryVersionUuidSchema,
   expectedState: z.literal('draft'),
-  revisionHash: LibraryVersionSha256Schema,
-  traceabilityHash: LibraryVersionSha256Schema,
-  decisionTargetHash: LibraryVersionSha256Schema,
-  aggregateHash: LibraryVersionSha256Schema,
+  expectedRevisionHash: LibraryVersionSha256Schema,
+  expectedTraceabilityHash: LibraryVersionSha256Schema,
   reason: SafeReasonSchema,
   actorId: LibraryVersionUuidSchema,
-  actorRoleSnapshot: ActorRoleSchema,
   operationKey: LibraryVersionOperationKeySchema,
-  requestFingerprint: LibraryVersionSha256Schema,
-}).strict().superRefine((value, context) => {
-  if (value.decisionTargetHash !== value.aggregateHash) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['decisionTargetHash'],
-      message: 'Submit debe congelar el aggregate hash exacto',
-    })
-  }
-})
+}).strict()
 
 const DecideLibraryVersionBaseSchema = z.object({
   versionId: LibraryVersionUuidSchema,
   revisionId: LibraryVersionUuidSchema,
-  revisionHash: LibraryVersionSha256Schema,
-  traceabilityHash: LibraryVersionSha256Schema,
-  decisionTargetHash: LibraryVersionSha256Schema,
-  aggregateHash: LibraryVersionSha256Schema,
+  expectedDecisionTargetHash: LibraryVersionSha256Schema,
   reason: SafeReasonSchema,
   actorId: LibraryVersionUuidSchema,
-  actorRoleSnapshot: ActorRoleSchema,
   affectedFindingKeys: StableReferenceListSchema,
   changeInstructions: ChangeInstructionListSchema,
   acceptedRiskFindingKeys: StableReferenceListSchema,
   separationOfDutiesException: z.boolean(),
   separationOfDutiesReason: SafeReasonSchema.nullable(),
   operationKey: LibraryVersionOperationKeySchema,
-  requestFingerprint: LibraryVersionSha256Schema,
 })
 
 export const DecideLibraryVersionCommandSchema = z.discriminatedUnion('decisionType', [
@@ -668,13 +648,6 @@ export const DecideLibraryVersionCommandSchema = z.discriminatedUnion('decisionT
     expectedPreviousState: z.literal('draft'),
   }).strict(),
 ]).superRefine((value, context) => {
-  if (value.decisionTargetHash !== value.aggregateHash) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['decisionTargetHash'],
-      message: 'La decision debe conservar el target congelado',
-    })
-  }
   if (value.separationOfDutiesException !== (value.separationOfDutiesReason !== null)) {
     context.addIssue({
       code: z.ZodIssueCode.custom,

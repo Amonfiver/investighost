@@ -64,6 +64,7 @@ const identityV2 = {
   createdByActorId: ids.actor,
   createdAt,
   operationKey: hashes.operation,
+  requestFingerprint: hashes.request,
   publicationState: 'unpublished',
 } satisfies LibraryVersionIdentity
 
@@ -83,6 +84,7 @@ const revisionOne = {
   createdByActorId: ids.actor,
   createdAt,
   operationKey: hashes.operation,
+  requestFingerprint: hashes.request,
 } satisfies LibraryVersionRevision
 
 const inheritedWarning = {
@@ -109,6 +111,9 @@ const inheritedWarning = {
   createdByActorId: ids.actor,
   createdAt,
   operationKey: hashes.operation,
+  requestFingerprint: hashes.request,
+  isBaseline: true,
+  resultTraceabilityHash: null,
 } satisfies LibraryVersionFinding
 
 const submittedDecision = {
@@ -335,14 +340,10 @@ describe('contratos BIB-V01 de versionado editorial', () => {
   })
 })
 
-describe('comandos y resultados BIB-V01 aun no conectados', () => {
+describe('comandos semanticos BIB-V02 sin valores derivados por cliente', () => {
   const createCommand = {
     libraryEntryId: ids.entry,
     expectedHeadHash: hashes.origin,
-    versionNumber: 2,
-    parentVersionId: null,
-    parentOriginVersionHash: hashes.origin,
-    parentHash: hashes.origin,
     canonicalizationContract: REAL_EDITORIAL_LIBRARY_CANONICALIZATION_CONTRACT,
     contentSchemaContract: 'investighost-library-content-v1',
     title: revisionOne.title,
@@ -352,11 +353,11 @@ describe('comandos y resultados BIB-V01 aun no conectados', () => {
     operationKey: hashes.operation,
   } satisfies CreateLibraryVersionCommand
 
-  it('acepta create y exige CAS contra el head declarado', () => {
+  it('acepta create con CAS y rechaza linaje calculado por el cliente', () => {
     expect(CreateLibraryVersionCommandSchema.safeParse(createCommand).success).toBe(true)
     expect(CreateLibraryVersionCommandSchema.safeParse({
       ...createCommand,
-      expectedHeadHash: hashes.parent,
+      versionNumber: 2,
     }).success).toBe(false)
   })
 
@@ -364,9 +365,7 @@ describe('comandos y resultados BIB-V01 aun no conectados', () => {
     const save = {
       versionId: ids.version,
       expectedState: 'draft',
-      previousRevisionId: ids.revision,
       expectedPreviousRevisionHash: hashes.revision,
-      revisionNumber: 2,
       canonicalizationContract: REAL_EDITORIAL_LIBRARY_CANONICALIZATION_CONTRACT,
       contentSchemaContract: 'investighost-library-content-v1',
       title: revisionOne.title,
@@ -388,8 +387,6 @@ describe('comandos y resultados BIB-V01 aun no conectados', () => {
       expectedTraceabilityHash: hashes.traceability,
       finding: {
         findingKey: inheritedWarning.findingKey,
-        sequence: 2,
-        supersedesFindingId: ids.finding,
         sourceFindingType: inheritedWarning.sourceFindingType,
         sourceFindingId: inheritedWarning.sourceFindingId,
         origin: inheritedWarning.origin,
@@ -414,20 +411,16 @@ describe('comandos y resultados BIB-V01 aun no conectados', () => {
       versionId: ids.version,
       revisionId: ids.revision,
       expectedState: 'draft',
-      revisionHash: hashes.revision,
-      traceabilityHash: hashes.traceability,
-      decisionTargetHash: hashes.target,
-      aggregateHash: hashes.target,
+      expectedRevisionHash: hashes.revision,
+      expectedTraceabilityHash: hashes.traceability,
       reason: 'Enviar a revision humana.',
       actorId: ids.actor,
-      actorRoleSnapshot: 'local_editor',
       operationKey: hashes.operation,
-      requestFingerprint: hashes.request,
     }
     expect(SubmitLibraryVersionForReviewCommandSchema.safeParse(submit).success).toBe(true)
     expect(SubmitLibraryVersionForReviewCommandSchema.safeParse({
       ...submit,
-      aggregateHash: hashes.parent,
+      revisionHash: hashes.parent,
     }).success).toBe(false)
 
     const decide = {
@@ -435,20 +428,15 @@ describe('comandos y resultados BIB-V01 aun no conectados', () => {
       revisionId: ids.revision,
       decisionType: 'request_changes',
       expectedPreviousState: 'ready_for_review',
-      revisionHash: hashes.revision,
-      traceabilityHash: hashes.traceability,
-      decisionTargetHash: hashes.target,
-      aggregateHash: hashes.target,
+      expectedDecisionTargetHash: hashes.target,
       reason: 'Debe corregirse el warning indicado.',
       actorId: ids.actor,
-      actorRoleSnapshot: 'local_reviewer',
       affectedFindingKeys: [inheritedWarning.findingKey],
       changeInstructions: [],
       acceptedRiskFindingKeys: [],
       separationOfDutiesException: false,
       separationOfDutiesReason: null,
       operationKey: hashes.operation,
-      requestFingerprint: hashes.request,
     }
     expect(DecideLibraryVersionCommandSchema.safeParse(decide).success).toBe(true)
     expect(DecideLibraryVersionCommandSchema.safeParse({

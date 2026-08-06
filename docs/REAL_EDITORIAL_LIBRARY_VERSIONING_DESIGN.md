@@ -837,3 +837,18 @@ SIN IPC, SIN UI, SIN DATOS REALES, SIN PROVEEDORES Y SIN PUBLICACIÓN
 ```
 
 Hasta recibirla, BIB-V01 queda cerrado y la implementación permanece detenida.
+
+## 22. Precisiones de implementación BIB-V02
+
+BIB-V02 materializa el repositorio y las transacciones sin cambiar el modelo durable de cuatro tablas ni la inmutabilidad de v1. Las siguientes precisiones resuelven valores que no pueden quedar bajo control de un futuro cliente:
+
+- los comandos de escritura reciben solo intención semántica, actor y tokens CAS; PostgreSQL determina IDs, `version_number`, `revision_number`, padres, secuencias, enlaces `supersedes` y recalcula todos los hashes;
+- `request_fingerprint` se registra también en versiones, revisiones y findings; `operation_key` se comprueba globalmente contra las cuatro tablas antes de escribir;
+- cada revisión comienza con findings `is_baseline = true` derivados por referencia de warnings, gaps, contradicciones y claims de v1. Una reconciliación añade otra fila, nunca actualiza la base, y la última secuencia por `finding_key` es la efectiva;
+- `submit_for_review` rechaza cualquier finding efectivo todavía marcado como baseline y cualquier claim nuevo o modificado sin respaldo;
+- `result_traceability_hash` conserva el resultado exacto de una reconciliación para que un retry posterior recupere el mismo snapshot aunque existan reconciliaciones posteriores;
+- la lectura interna `current approved` devuelve la versión derivada aprobada de mayor número o, si no existe, v1 canonicalizada; no persiste punteros ni expone publicación.
+
+La autoridad final de canonicalización, numeración, pertenencia, estado y hashes es PostgreSQL. TypeScript canonicaliza antes del repositorio, calcula el fingerprint que la función reconstruye y verifica, y comparte vectores deterministas con SQL. La serialización canónica ordena claves bajo el dominio versionado del contrato: sus claves son ASCII, sus enteros son seguros y no admite números no finitos ni `-0`. No se afirma compatibilidad RFC 8785 genérica para payloads arbitrarios fuera de ese dominio.
+
+La implementación incluye un arnés opt-in sobre una base PostgreSQL aislada con datos exclusivamente sintéticos para paridad, rollback, estados, idempotencia y carreras. Mientras ese arnés no se ejecute completo contra PostgreSQL local, BIB-V02 permanece **implementado pero pendiente de validación**, y el siguiente gate no es BIB-V03 sino completar esta validación.

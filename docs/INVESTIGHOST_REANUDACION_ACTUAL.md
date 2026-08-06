@@ -1,12 +1,12 @@
 # Investighost — cierre y punto de reanudación actual
 
-## Estado vigente — BIB-V01 cerrado tras el gate real de Biblioteca
+## Estado vigente — BIB-V02 implementado y pendiente de validación PostgreSQL
 
 Fecha de actualización: 2026-08-06.
 
 - Repositorio: `D:\Proyectos\investighost` (`/mnt/d/Proyectos/investighost` en WSL).
 - Rama: `feat/investighost-real-pipeline`.
-- HEAD de partida de BIB-V01: `94573f38b5c666c89439315a698df005030a91cc`.
+- HEAD de partida de BIB-V02: `aad3670134a6313799aff8547378eb338a35a54b`.
 - Upstream: `origin/feat/investighost-real-pipeline`, sincronizado 0/0 tras `git fetch --prune origin`.
 - Piloto Morella: `480d9c05-3ef7-4c44-a6f1-7762b7179a03`.
 - Run: `467dc951-26f5-45f6-895c-d2f06c496d6e`.
@@ -20,11 +20,11 @@ Fecha de actualización: 2026-08-06.
 - La incorporación idéntica reutiliza la transferencia existente y no crea duplicados.
 - La prueba humana completa de incorporación a Biblioteca quedó aprobada.
 
-Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA Y BIB-V01 FORMALMENTE CERRADOS**.
+Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA Y BIB-V01 FORMALMENTE CERRADOS; BIB-V02 IMPLEMENTADO PERO NO CERRADO**.
 
-El esquema aditivo y los contratos compartidos de BIB-V01 materializan el primer gate del diseño cerrado en `docs/REAL_EDITORIAL_LIBRARY_VERSIONING_DESIGN.md`. BIB-V02 requiere una autorización nueva. Publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
+El repositorio específico, la canonicalización TypeScript, la migración transaccional autoritativa, los cinco comandos y la lectura interna de versión aprobada vigente están implementados con pruebas unitarias, contractuales y estáticas aprobadas. El daemon de Docker no estaba disponible, por lo que las cinco pruebas PostgreSQL sintéticas de migración, paridad, rollback, idempotencia y concurrencia quedaron preparadas pero no ejecutadas. BIB-V02 no puede cerrarse hasta aprobarlas. Publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
 
-Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–22 fijan el cierre actual y el contrato de reanudación siguiente.
+Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–23 fijan el cierre actual y el contrato de reanudación siguiente.
 
 ## Estado histórico — PROMPT 10D completado y conciliado
 
@@ -820,4 +820,37 @@ Siguiente gate, solo con autorización expresa:
 ```text
 BIB-V02 — REPOSITORIO Y TRANSACCIONES,
 SIN IPC, SIN UI, SIN DATOS REALES, SIN PROVEEDORES Y SIN PUBLICACIÓN
+```
+
+## 23. Estado de BIB-V02 — implementación pendiente de validación dinámica
+
+Se implementó exclusivamente el alcance autorizado:
+
+- `src/modules/library-versioning/` separa canonicalización/hashes, autorización del actor local, orquestación semántica, puerto de repositorio y adaptador Supabase;
+- la migración `20260806230000_real_editorial_library_versioning_transactions.sql` añade fingerprints a todas las escrituras y funciones `security definer` para crear versión, guardar revisión, reconciliar finding, enviar a revisión, decidir y consultar current approved;
+- PostgreSQL adquiere advisory lock por `operation_key` y por entrada o versión, deriva el estado desde decisiones append-only, asigna correlativos y padres, recalcula hashes y aplica CAS;
+- v1 continúa exclusivamente en `real_editorial_library_entries`: se lee para canonicalizar el origen y validar referencias, pero nunca se actualiza, copia ni migra;
+- los findings baseline hacen explícito qué procedencia heredada falta por reconciliar; las filas posteriores sustituyen lógicamente a la secuencia anterior sin mutarla;
+- aprobación revalida findings, claims, lista exacta de riesgos y separación de funciones. El único actor local requiere excepción de autoaprobación expresa y motivada;
+- todas las salidas conservan `unpublished`; no existe ruta IPC, preload, renderer, editor, diff, cola ni adaptador de publicación.
+
+Validación ejecutada sin red ni datos reales:
+
+- contratos BIB-V01/BIB-V02 y pruebas de repositorio/canonicalización: 24 aprobadas;
+- `typecheck`: aprobado;
+- `lint`: aprobado;
+- arnés transaccional PostgreSQL: 5 pruebas preparadas, omitidas porque Docker no estaba disponible;
+- no se aplicó ninguna migración ni se insertó ningún fixture en la base humana.
+
+El arnés opt-in crea una base aislada, clona solo el esquema, inserta diez entradas sintéticas con triggers/FKs temporalmente desactivados en esa base y prueba: paridad TypeScript/PostgreSQL; v2/v3; current approved; procedencia; findings/claims; submit y decisiones; estados terminales; rollback; retries idénticos/divergentes; y carreras create/save/submit/doble approve/approve-vs-reject, incluida una colisión concurrente con la misma key y payload distinto. La base se elimina al terminar.
+
+Gate vigente, que debe completarse antes de autorizar BIB-V03:
+
+```text
+INICIAR SUPABASE LOCAL CON DOCKER Y EJECUTAR:
+RUN_LIBRARY_VERSIONING_INTEGRATION=1 npx vitest run --config vitest.config.ts \
+  tests/real-editorial-library-versioning-supabase.integration.test.ts
+
+SI LAS 5 PRUEBAS PASAN, REEJECUTAR TYPECHECK, LINT, TESTS DEL BLOQUE Y DIFF-CHECK;
+SOLO ENTONCES CERRAR BIB-V02. NO AVANZAR TODAVÍA A BIB-V03.
 ```

@@ -1,6 +1,32 @@
 # Investighost — cierre y punto de reanudación actual
 
-## Estado vigente — PROMPT 10D completado y conciliado
+## Estado vigente — gate real de Biblioteca cerrado
+
+Fecha de actualización: 2026-08-06.
+
+- Repositorio: `D:\Proyectos\investighost` (`/mnt/d/Proyectos/investighost` en WSL).
+- Rama: `feat/investighost-real-pipeline`.
+- HEAD funcional inspeccionado: `8a9189b1c5813d02ac30b0951340e9bf9d38463b`.
+- Upstream: `origin/feat/investighost-real-pipeline`, sincronizado 0/0 tras `git fetch --prune origin`.
+- Piloto Morella: `480d9c05-3ef7-4c44-a6f1-7762b7179a03`.
+- Run: `467dc951-26f5-45f6-895c-d2f06c496d6e`.
+- Transferencia a Biblioteca: `65a3fde4-0327-43f1-846b-655cab804e36`.
+- Resultado editorial aprobado humanamente, con Aventura y Estudiante generados y revisados.
+- Revisión automática: `passed_with_warnings`.
+- Gasto final: `0,310169 EUR`; reserva: `0 EUR`; coste de Biblioteca: `0 EUR`.
+- Publicaciones: `0`; Trawel y Automatic desconectados.
+- Las dos entradas figuran como `Aprobado · Sin publicar`, conservan texto completo, hashes, versión 1, revisión final y decisión terminal.
+- Cada entrada conserva 7 warnings, 5 gaps, 3 contradicciones, 15 claims, 29 trazas y 8 fuentes.
+- La incorporación idéntica reutiliza la transferencia existente y no crea duplicados.
+- La prueba humana completa de incorporación a Biblioteca quedó aprobada.
+
+Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA FORMALMENTE CERRADO**.
+
+El siguiente bloque lógico es el diseño e implementación, bajo una autorización nueva, de la edición y el versionado interno de estas entradas. Debe terminar en una versión derivada aprobada pero sin publicar. Publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
+
+Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–20 fijan el cierre actual y el contrato de reanudación siguiente.
+
+## Estado histórico — PROMPT 10D completado y conciliado
 
 - Rama activa: `feat/investighost-real-pipeline`.
 - HEAD inicial del bloque: `272268e1f16482c323dc79e232ae5e14816054d6`.
@@ -653,3 +679,106 @@ REINTENTAR PROMPT 11 SOLO CON AUTORIZACIÓN HUMANA EXPRESA
 Antes de cualquier red, PROMPT 11 debe obtener `ready_for_real_editorial_pilot`, preparar el piloto separado, confirmar su presupuesto de `0,20 EUR` y habilitar temporalmente la feature flag editorial. Debe detenerse si hay duplicado real, reserva pendiente, guarda ocupada, tarifa no vigente o cualquier frontera negativa.
 
 PROMPT 11 sigue sin ejecutarse. Publicación, Trawel, producción y Automatic continúan bloqueados; la prueba 10D no debe repetirse.
+
+## 18. Cierre formal del gate real de Biblioteca
+
+El bloque queda cerrado porque concurren todas las condiciones técnicas y humanas exigibles:
+
+- existe una decisión terminal humana durable de aprobación y aceptación expresa de warnings;
+- los artefactos fuente, el snapshot y la revisión final están identificados por ID, versión y SHA-256;
+- `move_approved_result_to_library` valida estado, presupuesto conciliado, guarda libre, ausencia de reservas y coincidencia exacta de artefactos;
+- la transferencia crea atómicamente una entrada Aventura y una Estudiante;
+- `real_editorial_library_transfers` y `real_editorial_library_entries` son append-only, tienen claves únicas y bloquean borrado o mutación;
+- la repetición idéntica devuelve la misma transferencia y cualquier divergencia de procedencia se detiene como conflicto;
+- las entradas conservan procedencia editorial, decisión humana, revisión automática, warnings, gaps, contradicciones, claims, trazas y fuentes;
+- constraints de base fijan coste propio `0 EUR`, cero llamadas, cero reservas, cero publicaciones y Trawel/Automatic desconectados;
+- la UI distingue inequívocamente `Aprobado · Sin publicar` y no ofrece acción de publicación;
+- la aceptación humana real de todo el recorrido de incorporación quedó aprobada sin duplicados.
+
+No procede repetir el piloto, regenerar Morella ni repetir pruebas ya aprobadas. El cierre documental no autoriza ninguna transición posterior.
+
+## 19. Siguiente bloque lógico — edición y versionado interno de Biblioteca
+
+La secuencia correcta es:
+
+```text
+entrada v1 aprobada e inmutable
+  → versión derivada interna
+  → comparación y reconciliación de trazabilidad
+  → revisión y aprobación humanas de la versión derivada
+  → aprobado · sin publicar
+  → gate posterior separado de publicación controlada
+```
+
+No debe saltarse directamente a Trawel. La Biblioteca real actual solo persiste y lista proyecciones inmutables del resultado aprobado. No dispone todavía de agregado de versiones derivadas, editor, comparación, reconciliación de hallazgos ni decisión humana específica por versión. La cola de `src/modules/publishing` sigue siendo un store temporal en memoria y `src/services/trawel` es un placeholder desconectado; ninguno constituye una ruta autorizable para estas entradas.
+
+### Modelo mínimo propuesto
+
+1. **Origen inmutable.** `real_editorial_library_entries` continúa siendo la versión 1 y la raíz de procedencia. Nunca se modifica su título, texto, estado, artefactos, hashes, revisión, decisión o evidencia.
+2. **Versiones derivadas append-only.** Una tabla propuesta `real_editorial_library_versions` guarda versiones 2+, cada una con `entry_id`, número correlativo, padre o hash padre, título, texto, hash canónico del contenido, motivo, actor y fechas. La primera derivada referencia el hash calculado de la entrada v1; las siguientes referencian la versión previa. Crear una versión exige compare-and-set/idempotency key y no permite ramas silenciosas.
+3. **Procedencia por referencia y deltas.** La versión derivada hereda por FK la procedencia completa de v1. No copia ni reescribe artefactos, warnings, gaps, contradicciones, claims, trazas o fuentes. Solo registra un snapshot hash de la evaluación y deltas explícitos.
+4. **Hallazgos de versión.** Una tabla propuesta `real_editorial_library_version_findings` registra categoría (`warning`, `gap`, `contradiction` o `claim`), origen (`inherited` o `new`), estado (`pending` o `resolved`), soporte (`supported`, `unsupported` o `not_applicable`), referencia/fingerprint de origen, texto, claims/fuentes vinculados, motivo de resolución, actor y fecha. Así se distinguen warnings heredados pendientes, hallazgos resueltos y afirmaciones nuevas no respaldadas sin alterar el histórico.
+5. **Decisiones append-only.** Una tabla propuesta `real_editorial_library_version_decisions` registra `submit_for_review`, `approve`, `request_changes` o `reject`, siempre contra `version_id`, hash de contenido y hash de evaluación, con actor, comentario, idempotency key y timestamp. El estado vigente se deriva del último evento válido; el contenido de la versión decidida permanece congelado.
+6. **Comparación de solo lectura.** Un read model reúne v1, la versión elegida, diff de título/texto, hashes, procedencia heredada y deltas de trazabilidad. Comparar no escribe, no llama a proveedores y no genera coste.
+7. **Aprobación humana separada.** La transición mínima es `draft → in_review → approved|changes_requested|rejected`. Una corrección posterior crea otra versión; no sobrescribe la rechazada/devuelta. Aprobar exige actor, comentario y aceptación o resolución explícita de los hallazgos permitidos por la política que se cierre antes de implementar.
+8. **Publicación físicamente ausente.** Las nuevas tablas, contratos, servicios e IPC no incluyen `publish`, `queue`, `Trawel` ni handoff. Toda versión, incluso aprobada, conserva `unpublished` por contrato. La futura publicación requerirá otra fase, migración, adaptador, autorización humana y gate propios.
+
+### Operaciones mínimas futuras
+
+- abrir una entrada individual y sus versiones;
+- crear una versión derivada desde un hash padre esperado;
+- listar y comparar versiones;
+- registrar/reconciliar hallazgos y trazabilidad de la versión;
+- enviar una versión congelada a revisión;
+- decidirla humanamente;
+- consultar el historial completo sin editar el origen.
+
+## 20. Invariantes, decisiones previas y superficie futura
+
+### Invariantes no negociables
+
+- El artefacto real, la transferencia y la entrada v1 permanecen append-only e idénticos byte a byte.
+- Una versión derivada nunca cambia coste del run, ledger, reservas, piloto o run de Morella.
+- Cero Tavily, OpenAI, regeneración, Trawel, Automatic y publicaciones durante todo el bloque.
+- Cada versión posee hash canónico reproducible, padre verificable, número único por entrada e idempotencia conflict-aware.
+- No se pierde ni se reemplaza ninguna evidencia heredada; toda resolución es un delta auditable.
+- Ninguna afirmación factual nueva queda silenciosamente clasificada como respaldada.
+- Aprobar contenido interno no equivale a encolar, entregar ni publicar.
+- Todo write cruza contrato estricto, actor autorizado, transacción SQL y verificación posterior; el renderer no accede directamente a Supabase.
+
+### Decisiones que deben cerrarse antes de implementar
+
+- canonicalización exacta de título/texto/idioma antes de calcular hashes;
+- editor mínimo de documento completo o edición estructurada por secciones;
+- política para detectar afirmaciones nuevas sin IA: clasificación humana asistida por diff o reglas locales conservadoras;
+- si un claim nuevo puede enlazarse solo a las 8 fuentes heredadas o exige una fase separada de ampliación de evidencia;
+- severidades que bloquean aprobación y tratamiento explícito de los 7 warnings, 5 gaps y 3 contradicciones heredados;
+- regla de linealidad, borradores simultáneos, concurrencia y recuperación tras cierre del editor;
+- selección de la versión aprobada vigente sin borrar ni mutar aprobaciones anteriores;
+- alcance del actor local actual frente a RBAC futuro;
+- límites de tamaño, normalización de saltos de línea y estrategia de diff para textos largos;
+- si los contratos de Biblioteca se extraen del archivo del piloto a un módulo propio antes de ampliarlos.
+
+### Archivos y áreas probablemente afectados después
+
+Existentes:
+
+- `src/shared/real-editorial-pilot-contracts.ts` o un nuevo `src/shared/real-editorial-library-contracts.ts`;
+- `src/modules/real-pipeline/real-editorial-repository.ts` o un repositorio de Biblioteca separado;
+- `src/main/real-editorial-pilot-runtime.ts` o un runtime de Biblioteca separado;
+- `src/main/index.ts`, `src/main/preload.ts` y `src/vite-env.d.ts` para IPC tipado;
+- `src/renderer/App.tsx` y `src/renderer/App.css`, preferiblemente extrayendo detalle, editor, comparación, trazabilidad y decisión a componentes propios;
+- `supabase/migrations/` mediante una migración aditiva nueva;
+- tests de contratos, repositorio, migración, idempotencia, comparación, UI y fronteras negativas;
+- `docs/STATE_MACHINES.md`, `docs/DATABASE_SCHEMA_PLAN.md`, `docs/ACCEPTANCE_TESTS.md` y este documento al cerrar el bloque.
+
+Tablas actuales que se leen o referencian pero no se mutan: `real_editorial_artifacts`, `real_editorial_terminal_decisions`, `real_editorial_library_transfers`, `real_editorial_library_entries` y `real_editorial_events`. Las tablas propuestas son `real_editorial_library_versions`, `real_editorial_library_version_findings` y `real_editorial_library_version_decisions`.
+
+Las áreas de publicación (`src/modules/publishing`, `src/services/trawel`, `src/shared/contracts.ts` y `docs/TRAWEL_HANDOFF_CONTRACT.md`) deben permanecer sin cambios durante este siguiente bloque. Se revisarán solo en la futura fase de publicación controlada.
+
+### Siguiente paso vigente
+
+```text
+AUTORIZAR Y CERRAR EL DISEÑO DEL MODELO DE VERSIONES DERIVADAS DE BIBLIOTECA,
+SIN IMPLEMENTAR PUBLICACIÓN NI CONECTAR TRAWEL
+```

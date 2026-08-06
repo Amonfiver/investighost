@@ -22,9 +22,9 @@ Fecha de actualización: 2026-08-06.
 
 Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA FORMALMENTE CERRADO**.
 
-El siguiente bloque lógico es el diseño e implementación, bajo una autorización nueva, de la edición y el versionado interno de estas entradas. Debe terminar en una versión derivada aprobada pero sin publicar. Publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
+El diseño técnico del siguiente bloque quedó cerrado en `docs/REAL_EDITORIAL_LIBRARY_VERSIONING_DESIGN.md`. Su implementación requiere una autorización nueva y debe terminar en una versión derivada aprobada pero sin publicar. Publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
 
-Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–20 fijan el cierre actual y el contrato de reanudación siguiente.
+Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–21 fijan el cierre actual y el contrato de reanudación siguiente.
 
 ## Estado histórico — PROMPT 10D completado y conciliado
 
@@ -781,4 +781,19 @@ Las áreas de publicación (`src/modules/publishing`, `src/services/trawel`, `sr
 ```text
 AUTORIZAR Y CERRAR EL DISEÑO DEL MODELO DE VERSIONES DERIVADAS DE BIBLIOTECA,
 SIN IMPLEMENTAR PUBLICACIÓN NI CONECTAR TRAWEL
+```
+
+## 21. Diseño de versionado cerrado — PROMPT 33
+
+La especificación `docs/REAL_EDITORIAL_LIBRARY_VERSIONING_DESIGN.md` cierra identidad, linaje sin ramas, revisiones append-only, canonicalización y hashes, estados, decisiones, findings, claims, aprobación, comparación, modelo de datos, fronteras, concurrencia e idempotencia.
+
+Decisión principal: el modelo futuro usa cuatro tablas, separando versión y revisión para no mutar un draft al guardarlo. `superseded` será una etiqueta derivada y la versión aprobada vigente se calculará con fallback a v1, sin puntero mutable.
+
+No se implementaron contratos, migraciones, repositorio, runtime, IPC o UI. No se ejecutaron pruebas funcionales ni hubo proveedores, coste, regeneración, publicación, Trawel o Automatic.
+
+Siguiente gate, solo con autorización expresa:
+
+```text
+BIB-V01 — ESQUEMA Y CONTRATOS,
+SIN UI, SIN DATOS REALES, SIN PROVEEDORES Y SIN PUBLICACIÓN
 ```

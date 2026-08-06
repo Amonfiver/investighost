@@ -1,12 +1,12 @@
 # Investighost — cierre y punto de reanudación actual
 
-## Estado vigente — gate real de Biblioteca cerrado
+## Estado vigente — BIB-V01 cerrado tras el gate real de Biblioteca
 
 Fecha de actualización: 2026-08-06.
 
 - Repositorio: `D:\Proyectos\investighost` (`/mnt/d/Proyectos/investighost` en WSL).
 - Rama: `feat/investighost-real-pipeline`.
-- HEAD funcional inspeccionado: `8a9189b1c5813d02ac30b0951340e9bf9d38463b`.
+- HEAD de partida de BIB-V01: `94573f38b5c666c89439315a698df005030a91cc`.
 - Upstream: `origin/feat/investighost-real-pipeline`, sincronizado 0/0 tras `git fetch --prune origin`.
 - Piloto Morella: `480d9c05-3ef7-4c44-a6f1-7762b7179a03`.
 - Run: `467dc951-26f5-45f6-895c-d2f06c496d6e`.
@@ -20,11 +20,11 @@ Fecha de actualización: 2026-08-06.
 - La incorporación idéntica reutiliza la transferencia existente y no crea duplicados.
 - La prueba humana completa de incorporación a Biblioteca quedó aprobada.
 
-Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA FORMALMENTE CERRADO**.
+Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA Y BIB-V01 FORMALMENTE CERRADOS**.
 
-El diseño técnico del siguiente bloque quedó cerrado en `docs/REAL_EDITORIAL_LIBRARY_VERSIONING_DESIGN.md`. Su implementación requiere una autorización nueva y debe terminar en una versión derivada aprobada pero sin publicar. Publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
+El esquema aditivo y los contratos compartidos de BIB-V01 materializan el primer gate del diseño cerrado en `docs/REAL_EDITORIAL_LIBRARY_VERSIONING_DESIGN.md`. BIB-V02 requiere una autorización nueva. Publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
 
-Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–21 fijan el cierre actual y el contrato de reanudación siguiente.
+Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–22 fijan el cierre actual y el contrato de reanudación siguiente.
 
 ## Estado histórico — PROMPT 10D completado y conciliado
 
@@ -789,11 +789,35 @@ La especificación `docs/REAL_EDITORIAL_LIBRARY_VERSIONING_DESIGN.md` cierra ide
 
 Decisión principal: el modelo futuro usa cuatro tablas, separando versión y revisión para no mutar un draft al guardarlo. `superseded` será una etiqueta derivada y la versión aprobada vigente se calculará con fallback a v1, sin puntero mutable.
 
-No se implementaron contratos, migraciones, repositorio, runtime, IPC o UI. No se ejecutaron pruebas funcionales ni hubo proveedores, coste, regeneración, publicación, Trawel o Automatic.
+En PROMPT 33 no se implementaron contratos, migraciones, repositorio, runtime, IPC o UI. No se ejecutaron pruebas funcionales ni hubo proveedores, coste, regeneración, publicación, Trawel o Automatic.
 
-Siguiente gate, solo con autorización expresa:
+Gate autorizado entonces, ya cerrado en la sección siguiente:
 
 ```text
 BIB-V01 — ESQUEMA Y CONTRATOS,
 SIN UI, SIN DATOS REALES, SIN PROVEEDORES Y SIN PUBLICACIÓN
+```
+
+## 22. Cierre de BIB-V01 — esquema y contratos
+
+BIB-V01 quedó implementado sin tocar datos reales ni conectar ninguna frontera runtime:
+
+- una única migración aditiva crea `real_editorial_library_versions`, `real_editorial_library_version_revisions`, `real_editorial_library_version_findings` y `real_editorial_library_version_decisions`;
+- v1 permanece solo en `real_editorial_library_entries`, inmutable y referenciada como origen;
+- las cuatro tablas nuevas usan `ON DELETE RESTRICT`, RLS, grants mínimos y el trigger append-only ya existente;
+- el linaje v2+, revisiones completas, findings reconciliados y decisiones humanas conservan hashes SHA-256, claves de operación, actor y auditoría;
+- aprobación sigue significando exclusivamente `approved · unpublished`; las decisiones fijan a cero publicación y mantienen Trawel y Automatic desconectados;
+- `src/shared/real-editorial-library-contracts.ts` concentra enums, identificadores, contenido canonicalizado, read models, comandos todavía desconectados, resultados y errores previstos;
+- `investighost-library-c14n-v1` es el único contrato aceptado, pero BIB-V01 no produce hashes ni afirma paridad entre PostgreSQL y TypeScript;
+- las pruebas nuevas cubren Zod, transiciones deterministas, payloads válidos e inválidos, tipos y estructura estática de la migración.
+
+No se implementaron repositorio, funciones transaccionales de dominio, IPC, preload, UI, editor, diff ni decisiones runtime. Tampoco se aplicó la migración a una base: el daemon de Docker no estaba en ejecución y no se inició forzosamente. La CLI local de Supabase `2.109.1` estaba disponible vía Windows, pero no podía validar PostgreSQL sin ese daemon; la validación SQL dinámica queda pendiente para un entorno local sintético autorizado.
+
+Las invariantes que necesitan concurrencia o consultas cruzadas quedan explícitamente para BIB-V02: una sola versión abierta por entrada, numeración correlativa, coincidencia de hashes CAS, estado efectivo, pertenencia de procedencia, idempotencia conflict-aware, listas exactas de riesgo y separación de funciones.
+
+Siguiente gate, solo con autorización expresa:
+
+```text
+BIB-V02 — REPOSITORIO Y TRANSACCIONES,
+SIN IPC, SIN UI, SIN DATOS REALES, SIN PROVEEDORES Y SIN PUBLICACIÓN
 ```

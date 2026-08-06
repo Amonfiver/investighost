@@ -2,7 +2,7 @@
 
 Fecha: 2026-08-06
 
-Estado: diseño técnico y de dominio cerrado; implementación no iniciada
+Estado: diseño técnico y de dominio cerrado; BIB-V01 implementado; BIB-V02 no iniciado
 
 Rama de referencia: `feat/investighost-real-pipeline`
 
@@ -10,9 +10,9 @@ HEAD de partida: `2eb3c1eddedabb534e99d234ab424ee1064e26bf`
 
 ## 1. Dictamen y alcance
 
-Este documento cierra el diseño necesario para implementar posteriormente edición humana y versiones derivadas de las entradas editoriales reales de Biblioteca. No es una migración, no autoriza implementación y no cambia ningún estado durable.
+Este documento rige la implementación por gates de la edición humana y las versiones derivadas de las entradas editoriales reales de Biblioteca. No cambia por sí mismo ningún estado durable.
 
-Dictamen: **GO DE DISEÑO PARA PREPARAR BIB-V01; NO-GO PARA IMPLEMENTACIÓN SIN OTRA AUTORIZACIÓN**.
+Dictamen vigente: **BIB-V01 CERRADO; BIB-V02 Y GATES POSTERIORES REQUIEREN OTRA AUTORIZACIÓN**.
 
 El resultado objetivo del bloque completo es una versión derivada aprobada internamente y todavía `unpublished`. Quedan fuera:
 
@@ -785,7 +785,7 @@ Cada write lógico es una única transacción. No puede existir versión sin rev
 
 Cada gate requiere autorización expresa, commit propio y fronteras negativas verificadas. Ninguno incluye publicación o Trawel.
 
-1. **BIB-V01 — esquema y contratos:** migración aditiva, funciones hash/canonicalización, tablas/RLS/triggers y Zod; solo datos sintéticos.
+1. **BIB-V01 — esquema y contratos:** migración aditiva, tablas/RLS/triggers, Zod y validaciones deterministas de contenido canonicalizado; solo datos sintéticos. La producción de hashes y la paridad PostgreSQL/TypeScript quedan para BIB-V02.
 2. **BIB-V02 — repositorio y transacciones:** locks, idempotencia, errores y rollback; sin IPC/UI.
 3. **BIB-V03 — lectura e historial:** detalle, linaje, estado efectivo y current approved; sin writes nuevos.
 4. **BIB-V04 — creación y guardado:** v2 y revisiones append-only; sin submit ni aprobación.
@@ -797,6 +797,8 @@ Cada gate requiere autorización expresa, commit propio y fronteras negativas ve
 10. **BIB-V10 — cierre documental:** resultados, invariantes, estado final y gate posterior todavía sin Trawel.
 
 El siguiente gate no comienza automáticamente al cerrar el anterior.
+
+BIB-V01 quedó materializado en una única migración aditiva y en el módulo shared específico. Las restricciones que necesitan observar varias filas o estado efectivo —versión abierta única, correlatividad, CAS de hashes, pertenencia de referencias, idempotencia divergente y separación real de funciones— no se simulan con estado mutable: deben resolverse bajo lock y transacción en BIB-V02.
 
 ## 19. Riesgos pendientes de implementación
 
@@ -827,11 +829,11 @@ Ninguno de estos riesgos reabre el gate de incorporación a Biblioteca. Son cont
 - Ningún contrato de este diseño puede encolar o publicar.
 - Toda futura implementación se divide en gates autorizables.
 
-## 21. Siguiente intervención exacta
+## 21. Siguiente intervención exacta tras BIB-V01
 
 ```text
-SOLICITAR AUTORIZACIÓN PARA BIB-V01 — ESQUEMA Y CONTRATOS,
-SIN UI, SIN DATOS REALES, SIN PROVEEDORES Y SIN PUBLICACIÓN
+SOLICITAR AUTORIZACIÓN PARA BIB-V02 — REPOSITORIO Y TRANSACCIONES,
+SIN IPC, SIN UI, SIN DATOS REALES, SIN PROVEEDORES Y SIN PUBLICACIÓN
 ```
 
-Hasta recibirla, el diseño queda cerrado y la implementación permanece detenida.
+Hasta recibirla, BIB-V01 queda cerrado y la implementación permanece detenida.

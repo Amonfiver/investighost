@@ -1,8 +1,8 @@
 # Diseño del versionado editorial de Biblioteca
 
-Fecha: 2026-08-06
+Fecha: 2026-08-07
 
-Estado: diseño técnico y de dominio cerrado; BIB-V01 y BIB-V02 implementados y cerrados
+Estado: diseño técnico y de dominio cerrado; BIB-V01, BIB-V02 y BIB-V03 implementados y cerrados
 
 Rama de referencia: `feat/investighost-real-pipeline`
 
@@ -12,7 +12,7 @@ HEAD de partida: `2eb3c1eddedabb534e99d234ab424ee1064e26bf`
 
 Este documento rige la implementación por gates de la edición humana y las versiones derivadas de las entradas editoriales reales de Biblioteca. No cambia por sí mismo ningún estado durable.
 
-Dictamen vigente: **BIB-V01 Y BIB-V02 CERRADOS; BIB-V03 Y GATES POSTERIORES REQUIEREN OTRA AUTORIZACIÓN**.
+Dictamen vigente: **BIB-V01, BIB-V02 Y BIB-V03 CERRADOS; BIB-V04 Y GATES POSTERIORES REQUIEREN OTRA AUTORIZACIÓN**.
 
 El resultado objetivo del bloque completo es una versión derivada aprobada internamente y todavía `unpublished`. Quedan fuera:
 
@@ -851,4 +851,27 @@ BIB-V02 materializa el repositorio y las transacciones sin cambiar el modelo dur
 
 La autoridad final de canonicalización, numeración, pertenencia, estado y hashes es PostgreSQL. TypeScript canonicaliza antes del repositorio, calcula el fingerprint que la función reconstruye y verifica, y comparte vectores deterministas con SQL. La serialización canónica ordena claves bajo el dominio versionado del contrato: sus claves son ASCII, sus enteros son seguros y no admite números no finitos ni `-0`. No se afirma compatibilidad RFC 8785 genérica para payloads arbitrarios fuera de ese dominio.
 
-El arnés opt-in se ejecutó completo sobre una base PostgreSQL aislada con diez entradas exclusivamente sintéticas. Las cinco pruebas de instalación/paridad, transacciones, rollback, estados, idempotencia y carreras quedaron aprobadas sin omisiones; la base temporal se eliminó y no hubo datos reales ni efectos externos. BIB-V02 queda **formalmente cerrado**. BIB-V03 —lectura e historial sin writes nuevos— requiere autorización expresa independiente.
+El arnés opt-in se ejecutó completo sobre una base PostgreSQL aislada con diez entradas exclusivamente sintéticas. Las cinco pruebas de instalación/paridad, transacciones, rollback, estados, idempotencia y carreras quedaron aprobadas sin omisiones; la base temporal se eliminó y no hubo datos reales ni efectos externos. BIB-V02 queda **formalmente cerrado**. BIB-V03 —lectura e historial sin writes nuevos— requirió autorización expresa independiente y queda registrado en la sección siguiente.
+
+## 23. Precisiones de implementación BIB-V03
+
+BIB-V03 añade exclusivamente proyecciones internas de lectura:
+
+- `real-editorial-library-read-contracts.ts` define con Zod strict resumen, lista, detalle, revisiones, findings efectivos e históricos, decisiones, snapshot de estado, current approved y timeline;
+- el puerto separa lecturas de escrituras y el adaptador Supabase usa únicamente RPC parametrizados, validando UUID de entrada y read model de salida;
+- la migración `20260807120000_real_editorial_library_version_history_reads.sql` crea funciones `stable security definer`, sin tablas, triggers ni DML;
+- el estado efectivo reutiliza `real_editorial_library_effective_state` de BIB-V02 y además valida secuencias, pertenencia y hashes; no existe una segunda máquina de estados TypeScript;
+- un finding efectivo es la fila de mayor `sequence` para `version_id + revision_id + finding_key`, con `id` únicamente como desempate defensivo; el historial completo conserva todas las filas;
+- `superseded` se calcula solo para una aprobación anterior cuando otra derivada aprobada tiene mayor `version_number`;
+- current approved elige la derivada aprobada de número mayor y mantiene fallback reproducible a v1, sin puntero mutable;
+- el timeline proyecta filas append-only y ordena por timestamp, número de versión, clase de evento, secuencia de origen e ID de fila;
+- los flags de editabilidad y acciones son read models informativos, no autorización definitiva.
+
+La validación PostgreSQL creó una base temporal con diez entradas sintéticas y escenarios solo-v1, draft multirrevisión, aprobaciones v2/v3, v3 abierta, riesgo aceptado, claim no respaldado, request changes, rechazo y abandono. Las seis pruebas se ejecutaron realmente y pasaron sin omisiones, incluida detección de historia y hashes corruptos, permisos y ausencia de escrituras. La base fue eliminada y no se aplicó ninguna migración a la base local principal.
+
+BIB-V03 queda **formalmente cerrado**. Siguiente gate, solo con autorización expresa independiente:
+
+```text
+SOLICITAR AUTORIZACIÓN PARA BIB-V04 — CREACIÓN Y GUARDADO,
+SIN SUBMIT, SIN DECISIONES NUEVAS, SIN UI, SIN DATOS REALES Y SIN PUBLICACIÓN
+```

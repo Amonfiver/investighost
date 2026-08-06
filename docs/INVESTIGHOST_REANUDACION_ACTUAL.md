@@ -1,6 +1,6 @@
 # Investighost — cierre y punto de reanudación actual
 
-## Estado vigente — BIB-V02 cerrado tras validación PostgreSQL
+## Estado vigente — BIB-V03 cerrado tras validación PostgreSQL
 
 Fecha de actualización: 2026-08-07.
 
@@ -8,6 +8,7 @@ Fecha de actualización: 2026-08-07.
 - Rama: `feat/investighost-real-pipeline`.
 - HEAD de partida de BIB-V02: `aad3670134a6313799aff8547378eb338a35a54b`.
 - HEAD de partida de la validación dinámica: `8ed474d74105965c832266be81773d8acda8b6fe`.
+- HEAD de partida de BIB-V03: `5bf8c888b0a533503ea68c73709efad686add208`.
 - Upstream: `origin/feat/investighost-real-pipeline`, sincronizado 0/0 tras `git fetch --prune origin`.
 - Piloto Morella: `480d9c05-3ef7-4c44-a6f1-7762b7179a03`.
 - Run: `467dc951-26f5-45f6-895c-d2f06c496d6e`.
@@ -21,11 +22,11 @@ Fecha de actualización: 2026-08-07.
 - La incorporación idéntica reutiliza la transferencia existente y no crea duplicados.
 - La prueba humana completa de incorporación a Biblioteca quedó aprobada.
 
-Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA, BIB-V01 Y BIB-V02 FORMALMENTE CERRADOS**.
+Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA, BIB-V01, BIB-V02 Y BIB-V03 FORMALMENTE CERRADOS**.
 
-El repositorio específico, la canonicalización TypeScript, la migración transaccional autoritativa, los cinco comandos y la lectura interna de versión aprobada vigente están implementados. Las cinco pruebas PostgreSQL se ejecutaron realmente sobre una base aislada con diez entradas sintéticas y quedaron aprobadas sin omisiones. La base temporal se eliminó al terminar y la base local principal no recibió las tablas ni funciones BIB-V01/BIB-V02. Publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
+El versionado dispone ahora de contratos, transacciones autoritativas y lecturas internas para resumen, historial, detalle, revisiones, findings, decisiones, estado efectivo, current approved y timeline. Las seis pruebas PostgreSQL BIB-V03 se ejecutaron realmente sobre una base aislada con diez entradas sintéticas y quedaron aprobadas sin omisiones; las cinco transaccionales BIB-V02 también pasaron de nuevo. Las bases temporales se eliminaron y la base local principal no recibió el esquema de versionado. No existen IPC, preload, renderer o UI de versionado. Publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
 
-Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–23 fijan el cierre actual y el contrato de reanudación siguiente.
+Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–24 fijan el cierre actual y el contrato de reanudación siguiente.
 
 ## Estado histórico — PROMPT 10D completado y conciliado
 
@@ -847,9 +848,31 @@ Las cinco pruebas acreditan: instalación y paridad TypeScript/PostgreSQL de can
 
 La ejecución reveló dos defectos reales de la función SQL: asignaciones compuestas incompatibles con variables `%ROWTYPE` impedían compilar y después materializar correctamente la entrada y la transferencia. La corrección mínima separa las lecturas escalares de las filas completas y valida explícitamente la transferencia ausente. El arnés se corrigió sin rebajar cobertura para transportar los fixtures por `stdin` bajo Windows, representar los caracteres Unicode/control sin doble escape y usar claves de operación distintas para operaciones distintas.
 
-BIB-V02 queda formalmente cerrado. Siguiente gate recomendado, únicamente con autorización expresa independiente:
+BIB-V02 queda formalmente cerrado. El gate recomendado entonces fue autorizado y queda cerrado en la sección siguiente:
 
 ```text
 SOLICITAR AUTORIZACIÓN PARA BIB-V03 — LECTURA E HISTORIAL,
 SIN WRITES NUEVOS, SIN UI, SIN DATOS REALES, SIN PROVEEDORES Y SIN PUBLICACIÓN
+```
+
+## 24. Cierre de BIB-V03 — lecturas internas e historial
+
+BIB-V03 quedó implementado sin ampliar ninguna frontera runtime:
+
+- contratos Zod strict separados para resumen por entrada, lista y detalle de versiones, revisiones, findings efectivos e históricos, decisiones, estado, current approved y timeline;
+- puerto interno de lectura, servicio de dominio y adaptador Supabase con RPC parametrizados y validación de entrada/salida;
+- una migración exclusivamente de funciones `stable security definer`, sin tablas, triggers, DML o nuevas operaciones de escritura;
+- estado efectivo derivado por la autoridad BIB-V02, con rechazo explícito de secuencias, pertenencia o hashes corruptos;
+- findings efectivos por última secuencia válida, conservando todo el historial append-only;
+- current approved derivado, fallback v1, `superseded` calculado y timeline determinista sin eventos persistidos nuevos;
+- procedencia v1 disponible por referencia, incluidos artefactos, transferencia, decisión terminal, revisión, warnings, gaps, contradicciones, claims, evidencia y fuentes;
+- toda salida conserva `unpublished`, cero publicaciones y Trawel/Automatic desconectados.
+
+La validación opt-in creó `investighost_library_versioning_bib_v03_test` desde una copia de solo esquema, aplicó BIB-V01/BIB-V02/BIB-V03 e insertó diez entradas exclusivamente sintéticas. Se cubrieron solo v1; draft con varias revisiones; v2/v3 aprobadas; v2 terminal con v3 abierta; baseline y reconciliación; riesgo aceptado; claim no respaldado; request changes; rechazo; abandono; errores de entrada, versión y pertenencia; permisos; ausencia de writes; y detección de historia/hash corruptos. Resultado: 6/6 pruebas PostgreSQL aprobadas, ninguna omitida. La regresión PostgreSQL BIB-V02 quedó 5/5 y las bases temporales se eliminaron. La base local principal permaneció sin tablas o funciones del versionado.
+
+BIB-V03 queda formalmente cerrado. Siguiente gate recomendado, únicamente con autorización expresa independiente:
+
+```text
+SOLICITAR AUTORIZACIÓN PARA BIB-V04 — CREACIÓN Y GUARDADO,
+SIN SUBMIT, SIN DECISIONES NUEVAS, SIN UI, SIN DATOS REALES Y SIN PUBLICACIÓN
 ```

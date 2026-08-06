@@ -2,41 +2,49 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import {
   LibraryVersionDomainErrorCodeSchema,
-  LibraryVersionSha256Schema,
   LibraryVersionUuidSchema,
   type LibraryVersionCommandResult,
   type LibraryVersionDomainErrorCode,
 } from '@shared/real-editorial-library-contracts'
 import {
+  CurrentApprovedLibraryContentSchema,
+  EffectiveLibraryVersionFindingsSchema,
+  LibraryEntryVersioningSummarySchema,
+  LibraryVersionDecisionDetailSchema,
+  LibraryVersionDetailSchema,
+  LibraryVersionFindingHistoryItemSchema,
+  LibraryVersionListItemSchema,
+  LibraryVersionRevisionDetailSchema,
+  LibraryVersionStateReadSnapshotSchema,
+  LibraryVersionTimelineSchema,
+  type CurrentApprovedLibraryContent,
+  type EffectiveLibraryVersionFindings,
+  type LibraryEntryVersioningSummary,
+  type LibraryVersionDecisionDetail,
+  type LibraryVersionDetail,
+  type LibraryVersionFindingHistoryItem,
+  type LibraryVersionListItem,
+  type LibraryVersionRevisionDetail,
+  type LibraryVersionStateReadSnapshot,
+  type LibraryVersionTimeline,
+} from '@shared/real-editorial-library-read-contracts'
+import {
   LibraryVersioningRepositoryError,
   parseLibraryVersionCommandResult,
-  type CurrentApprovedLibraryContent,
   type PreparedCreateLibraryVersionCommand,
   type PreparedDecideLibraryVersionCommand,
   type PreparedReconcileLibraryVersionFindingsCommand,
   type PreparedSaveLibraryVersionRevisionCommand,
   type PreparedSubmitLibraryVersionForReviewCommand,
+  type RealEditorialLibraryVersioningReadRepository,
   type RealEditorialLibraryVersioningRepository,
 } from './repository'
 
 type RpcError = { message: string; details?: string; hint?: string; code?: string } | null
 
-const CurrentApprovedLibraryContentSchema = z.object({
-  source: z.enum(['origin_v1', 'derived']),
-  libraryEntryId: LibraryVersionUuidSchema,
-  versionId: LibraryVersionUuidSchema.nullable(),
-  versionNumber: z.number().int().positive(),
-  revisionId: LibraryVersionUuidSchema.nullable(),
-  title: z.string().min(1),
-  content: z.string().min(1),
-  contentHash: LibraryVersionSha256Schema,
-  versionHash: LibraryVersionSha256Schema,
-  revisionHash: LibraryVersionSha256Schema.nullable(),
-  publicationState: z.literal('unpublished'),
-}).strict()
-
 export class SupabaseRealEditorialLibraryVersioningRepository
-implements RealEditorialLibraryVersioningRepository {
+implements RealEditorialLibraryVersioningRepository,
+RealEditorialLibraryVersioningReadRepository {
   constructor(private readonly client: SupabaseClient) {}
 
   createVersion(
@@ -72,12 +80,104 @@ implements RealEditorialLibraryVersioningRepository {
   async getCurrentApproved(
     libraryEntryId: string,
   ): Promise<CurrentApprovedLibraryContent | null> {
-    const { data, error } = await this.client.rpc(
-      'real_editorial_library_current_approved',
-      { p_library_entry_id: libraryEntryId },
+    return this.getCurrentApprovedVersion(libraryEntryId)
+  }
+
+  getVersioningSummary(libraryEntryId: string): Promise<LibraryEntryVersioningSummary> {
+    return this.readRpc(
+      'real_editorial_library_versioning_summary',
+      { p_library_entry_id: parseUuid(libraryEntryId) },
+      LibraryEntryVersioningSummarySchema,
     )
-    if (error) throw repositoryError(error)
-    return data === null ? null : CurrentApprovedLibraryContentSchema.parse(data)
+  }
+
+  listVersions(libraryEntryId: string): Promise<LibraryVersionListItem[]> {
+    return this.readRpc(
+      'real_editorial_library_list_versions',
+      { p_library_entry_id: parseUuid(libraryEntryId) },
+      LibraryVersionListItemSchema.array(),
+    )
+  }
+
+  getVersionDetail(versionId: string): Promise<LibraryVersionDetail> {
+    return this.readRpc(
+      'real_editorial_library_version_detail',
+      { p_version_id: parseUuid(versionId) },
+      LibraryVersionDetailSchema,
+    )
+  }
+
+  listVersionRevisions(versionId: string): Promise<LibraryVersionRevisionDetail[]> {
+    return this.readRpc(
+      'real_editorial_library_list_revisions',
+      { p_version_id: parseUuid(versionId) },
+      LibraryVersionRevisionDetailSchema.array(),
+    )
+  }
+
+  getVersionRevision(
+    versionId: string,
+    revisionId: string,
+  ): Promise<LibraryVersionRevisionDetail> {
+    return this.readRpc(
+      'real_editorial_library_version_revision',
+      { p_version_id: parseUuid(versionId), p_revision_id: parseUuid(revisionId) },
+      LibraryVersionRevisionDetailSchema,
+    )
+  }
+
+  listVersionFindingHistory(versionId: string): Promise<LibraryVersionFindingHistoryItem[]> {
+    return this.readRpc(
+      'real_editorial_library_list_finding_history',
+      { p_version_id: parseUuid(versionId) },
+      LibraryVersionFindingHistoryItemSchema.array(),
+    )
+  }
+
+  getEffectiveVersionFindings(
+    versionId: string,
+    revisionId?: string,
+  ): Promise<EffectiveLibraryVersionFindings> {
+    return this.readRpc(
+      'real_editorial_library_effective_findings',
+      {
+        p_version_id: parseUuid(versionId),
+        p_revision_id: revisionId === undefined ? null : parseUuid(revisionId),
+      },
+      EffectiveLibraryVersionFindingsSchema,
+    )
+  }
+
+  listVersionDecisions(versionId: string): Promise<LibraryVersionDecisionDetail[]> {
+    return this.readRpc(
+      'real_editorial_library_list_decisions',
+      { p_version_id: parseUuid(versionId) },
+      LibraryVersionDecisionDetailSchema.array(),
+    )
+  }
+
+  getVersionStateSnapshot(versionId: string): Promise<LibraryVersionStateReadSnapshot> {
+    return this.readRpc(
+      'real_editorial_library_state_snapshot',
+      { p_version_id: parseUuid(versionId) },
+      LibraryVersionStateReadSnapshotSchema,
+    )
+  }
+
+  getCurrentApprovedVersion(libraryEntryId: string): Promise<CurrentApprovedLibraryContent> {
+    return this.readRpc(
+      'real_editorial_library_current_approved_detail',
+      { p_library_entry_id: parseUuid(libraryEntryId) },
+      CurrentApprovedLibraryContentSchema,
+    )
+  }
+
+  getVersionTimeline(libraryEntryId: string): Promise<LibraryVersionTimeline> {
+    return this.readRpc(
+      'real_editorial_library_timeline',
+      { p_library_entry_id: parseUuid(libraryEntryId) },
+      LibraryVersionTimelineSchema,
+    )
   }
 
   private async command(
@@ -108,6 +208,20 @@ implements RealEditorialLibraryVersioningRepository {
       operationKey: command.operationKey,
     }
   }
+
+  private async readRpc<T>(
+    functionName: string,
+    parameters: Record<string, string | null>,
+    schema: z.ZodType<T>,
+  ): Promise<T> {
+    const { data, error } = await this.client.rpc(functionName, parameters)
+    if (error) throw repositoryError(error)
+    return schema.parse(data)
+  }
+}
+
+function parseUuid(value: string): string {
+  return LibraryVersionUuidSchema.parse(value)
 }
 
 function repositoryError(error: Exclude<RpcError, null>): LibraryVersioningRepositoryError {

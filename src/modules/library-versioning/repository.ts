@@ -3,6 +3,7 @@ import {
   CreateLibraryVersionCommandSchema,
   DecideLibraryVersionCommandSchema,
   LibraryVersionCommandResultSchema,
+  LibraryVersionUuidSchema,
   ReconcileLibraryVersionFindingsCommandSchema,
   SaveLibraryVersionRevisionCommandSchema,
   SubmitLibraryVersionForReviewCommandSchema,
@@ -16,6 +17,18 @@ import {
   type SaveLibraryVersionRevisionCommand,
   type SubmitLibraryVersionForReviewCommand,
 } from '@shared/real-editorial-library-contracts'
+import {
+  type CurrentApprovedLibraryContent,
+  type EffectiveLibraryVersionFindings,
+  type LibraryEntryVersioningSummary,
+  type LibraryVersionDecisionDetail,
+  type LibraryVersionDetail,
+  type LibraryVersionFindingHistoryItem,
+  type LibraryVersionListItem,
+  type LibraryVersionRevisionDetail,
+  type LibraryVersionStateReadSnapshot,
+  type LibraryVersionTimeline,
+} from '@shared/real-editorial-library-read-contracts'
 import { MANUAL_LOCAL_ACTOR_ID } from '@modules/editorial-pipeline/manual-runtime'
 import {
   canonicalizeLibraryAuditText,
@@ -117,20 +130,6 @@ export interface PreparedDecideLibraryVersionCommand extends PreparedCommandBase
   actor: LibraryActorAuthorization
 }
 
-export interface CurrentApprovedLibraryContent {
-  source: 'origin_v1' | 'derived'
-  libraryEntryId: string
-  versionId: string | null
-  versionNumber: number
-  revisionId: string | null
-  title: string
-  content: string
-  contentHash: string
-  versionHash: string
-  revisionHash: string | null
-  publicationState: 'unpublished'
-}
-
 export interface RealEditorialLibraryVersioningRepository {
   createVersion(command: PreparedCreateLibraryVersionCommand): Promise<LibraryVersionCommandResult>
   saveRevision(command: PreparedSaveLibraryVersionRevisionCommand): Promise<LibraryVersionCommandResult>
@@ -142,6 +141,23 @@ export interface RealEditorialLibraryVersioningRepository {
   ): Promise<LibraryVersionCommandResult>
   decideVersion(command: PreparedDecideLibraryVersionCommand): Promise<LibraryVersionCommandResult>
   getCurrentApproved(libraryEntryId: string): Promise<CurrentApprovedLibraryContent | null>
+}
+
+export interface RealEditorialLibraryVersioningReadRepository {
+  getVersioningSummary(libraryEntryId: string): Promise<LibraryEntryVersioningSummary>
+  listVersions(libraryEntryId: string): Promise<LibraryVersionListItem[]>
+  getVersionDetail(versionId: string): Promise<LibraryVersionDetail>
+  listVersionRevisions(versionId: string): Promise<LibraryVersionRevisionDetail[]>
+  getVersionRevision(versionId: string, revisionId: string): Promise<LibraryVersionRevisionDetail>
+  listVersionFindingHistory(versionId: string): Promise<LibraryVersionFindingHistoryItem[]>
+  getEffectiveVersionFindings(
+    versionId: string,
+    revisionId?: string,
+  ): Promise<EffectiveLibraryVersionFindings>
+  listVersionDecisions(versionId: string): Promise<LibraryVersionDecisionDetail[]>
+  getVersionStateSnapshot(versionId: string): Promise<LibraryVersionStateReadSnapshot>
+  getCurrentApprovedVersion(libraryEntryId: string): Promise<CurrentApprovedLibraryContent>
+  getVersionTimeline(libraryEntryId: string): Promise<LibraryVersionTimeline>
 }
 
 export class LibraryVersioningRepositoryError extends Error {
@@ -264,6 +280,65 @@ export class RealEditorialLibraryVersioningService {
 
   async getCurrentApproved(libraryEntryId: string): Promise<CurrentApprovedLibraryContent | null> {
     return this.repository.getCurrentApproved(libraryEntryId)
+  }
+}
+
+export class RealEditorialLibraryVersioningReadService {
+  constructor(private readonly repository: RealEditorialLibraryVersioningReadRepository) {}
+
+  getVersioningSummary(libraryEntryId: string): Promise<LibraryEntryVersioningSummary> {
+    return this.repository.getVersioningSummary(LibraryVersionUuidSchema.parse(libraryEntryId))
+  }
+
+  listVersions(libraryEntryId: string): Promise<LibraryVersionListItem[]> {
+    return this.repository.listVersions(LibraryVersionUuidSchema.parse(libraryEntryId))
+  }
+
+  getVersionDetail(versionId: string): Promise<LibraryVersionDetail> {
+    return this.repository.getVersionDetail(LibraryVersionUuidSchema.parse(versionId))
+  }
+
+  listVersionRevisions(versionId: string): Promise<LibraryVersionRevisionDetail[]> {
+    return this.repository.listVersionRevisions(LibraryVersionUuidSchema.parse(versionId))
+  }
+
+  getVersionRevision(versionId: string, revisionId: string): Promise<LibraryVersionRevisionDetail> {
+    return this.repository.getVersionRevision(
+      LibraryVersionUuidSchema.parse(versionId),
+      LibraryVersionUuidSchema.parse(revisionId),
+    )
+  }
+
+  listVersionFindingHistory(versionId: string): Promise<LibraryVersionFindingHistoryItem[]> {
+    return this.repository.listVersionFindingHistory(LibraryVersionUuidSchema.parse(versionId))
+  }
+
+  getEffectiveVersionFindings(
+    versionId: string,
+    revisionId?: string,
+  ): Promise<EffectiveLibraryVersionFindings> {
+    return this.repository.getEffectiveVersionFindings(
+      LibraryVersionUuidSchema.parse(versionId),
+      revisionId === undefined ? undefined : LibraryVersionUuidSchema.parse(revisionId),
+    )
+  }
+
+  listVersionDecisions(versionId: string): Promise<LibraryVersionDecisionDetail[]> {
+    return this.repository.listVersionDecisions(LibraryVersionUuidSchema.parse(versionId))
+  }
+
+  getVersionStateSnapshot(versionId: string): Promise<LibraryVersionStateReadSnapshot> {
+    return this.repository.getVersionStateSnapshot(LibraryVersionUuidSchema.parse(versionId))
+  }
+
+  getCurrentApprovedVersion(libraryEntryId: string): Promise<CurrentApprovedLibraryContent> {
+    return this.repository.getCurrentApprovedVersion(
+      LibraryVersionUuidSchema.parse(libraryEntryId),
+    )
+  }
+
+  getVersionTimeline(libraryEntryId: string): Promise<LibraryVersionTimeline> {
+    return this.repository.getVersionTimeline(LibraryVersionUuidSchema.parse(libraryEntryId))
   }
 }
 

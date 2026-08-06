@@ -2,7 +2,7 @@
 
 Fecha: 2026-08-06
 
-Estado: diseño técnico y de dominio cerrado; BIB-V01 implementado; BIB-V02 no iniciado
+Estado: diseño técnico y de dominio cerrado; BIB-V01 y BIB-V02 implementados y cerrados
 
 Rama de referencia: `feat/investighost-real-pipeline`
 
@@ -12,7 +12,7 @@ HEAD de partida: `2eb3c1eddedabb534e99d234ab424ee1064e26bf`
 
 Este documento rige la implementación por gates de la edición humana y las versiones derivadas de las entradas editoriales reales de Biblioteca. No cambia por sí mismo ningún estado durable.
 
-Dictamen vigente: **BIB-V01 CERRADO; BIB-V02 Y GATES POSTERIORES REQUIEREN OTRA AUTORIZACIÓN**.
+Dictamen vigente: **BIB-V01 Y BIB-V02 CERRADOS; BIB-V03 Y GATES POSTERIORES REQUIEREN OTRA AUTORIZACIÓN**.
 
 El resultado objetivo del bloque completo es una versión derivada aprobada internamente y todavía `unpublished`. Quedan fuera:
 
@@ -829,14 +829,14 @@ Ninguno de estos riesgos reabre el gate de incorporación a Biblioteca. Son cont
 - Ningún contrato de este diseño puede encolar o publicar.
 - Toda futura implementación se divide en gates autorizables.
 
-## 21. Siguiente intervención exacta tras BIB-V01
+## 21. Gate histórico autorizado tras BIB-V01
 
 ```text
 SOLICITAR AUTORIZACIÓN PARA BIB-V02 — REPOSITORIO Y TRANSACCIONES,
 SIN IPC, SIN UI, SIN DATOS REALES, SIN PROVEEDORES Y SIN PUBLICACIÓN
 ```
 
-Hasta recibirla, BIB-V01 queda cerrado y la implementación permanece detenida.
+Esa autorización se recibió y BIB-V02 quedó implementado y validado como registra la sección siguiente. Este texto no autoriza BIB-V03.
 
 ## 22. Precisiones de implementación BIB-V02
 
@@ -851,4 +851,4 @@ BIB-V02 materializa el repositorio y las transacciones sin cambiar el modelo dur
 
 La autoridad final de canonicalización, numeración, pertenencia, estado y hashes es PostgreSQL. TypeScript canonicaliza antes del repositorio, calcula el fingerprint que la función reconstruye y verifica, y comparte vectores deterministas con SQL. La serialización canónica ordena claves bajo el dominio versionado del contrato: sus claves son ASCII, sus enteros son seguros y no admite números no finitos ni `-0`. No se afirma compatibilidad RFC 8785 genérica para payloads arbitrarios fuera de ese dominio.
 
-La implementación incluye un arnés opt-in sobre una base PostgreSQL aislada con datos exclusivamente sintéticos para paridad, rollback, estados, idempotencia y carreras. Mientras ese arnés no se ejecute completo contra PostgreSQL local, BIB-V02 permanece **implementado pero pendiente de validación**, y el siguiente gate no es BIB-V03 sino completar esta validación.
+El arnés opt-in se ejecutó completo sobre una base PostgreSQL aislada con diez entradas exclusivamente sintéticas. Las cinco pruebas de instalación/paridad, transacciones, rollback, estados, idempotencia y carreras quedaron aprobadas sin omisiones; la base temporal se eliminó y no hubo datos reales ni efectos externos. BIB-V02 queda **formalmente cerrado**. BIB-V03 —lectura e historial sin writes nuevos— requiere autorización expresa independiente.

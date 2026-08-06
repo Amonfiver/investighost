@@ -1,12 +1,13 @@
 # Investighost — cierre y punto de reanudación actual
 
-## Estado vigente — BIB-V02 implementado y pendiente de validación PostgreSQL
+## Estado vigente — BIB-V02 cerrado tras validación PostgreSQL
 
-Fecha de actualización: 2026-08-06.
+Fecha de actualización: 2026-08-07.
 
 - Repositorio: `D:\Proyectos\investighost` (`/mnt/d/Proyectos/investighost` en WSL).
 - Rama: `feat/investighost-real-pipeline`.
 - HEAD de partida de BIB-V02: `aad3670134a6313799aff8547378eb338a35a54b`.
+- HEAD de partida de la validación dinámica: `8ed474d74105965c832266be81773d8acda8b6fe`.
 - Upstream: `origin/feat/investighost-real-pipeline`, sincronizado 0/0 tras `git fetch --prune origin`.
 - Piloto Morella: `480d9c05-3ef7-4c44-a6f1-7762b7179a03`.
 - Run: `467dc951-26f5-45f6-895c-d2f06c496d6e`.
@@ -20,9 +21,9 @@ Fecha de actualización: 2026-08-06.
 - La incorporación idéntica reutiliza la transferencia existente y no crea duplicados.
 - La prueba humana completa de incorporación a Biblioteca quedó aprobada.
 
-Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA Y BIB-V01 FORMALMENTE CERRADOS; BIB-V02 IMPLEMENTADO PERO NO CERRADO**.
+Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA, BIB-V01 Y BIB-V02 FORMALMENTE CERRADOS**.
 
-El repositorio específico, la canonicalización TypeScript, la migración transaccional autoritativa, los cinco comandos y la lectura interna de versión aprobada vigente están implementados con pruebas unitarias, contractuales y estáticas aprobadas. El daemon de Docker no estaba disponible, por lo que las cinco pruebas PostgreSQL sintéticas de migración, paridad, rollback, idempotencia y concurrencia quedaron preparadas pero no ejecutadas. BIB-V02 no puede cerrarse hasta aprobarlas. Publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
+El repositorio específico, la canonicalización TypeScript, la migración transaccional autoritativa, los cinco comandos y la lectura interna de versión aprobada vigente están implementados. Las cinco pruebas PostgreSQL se ejecutaron realmente sobre una base aislada con diez entradas sintéticas y quedaron aprobadas sin omisiones. La base temporal se eliminó al terminar y la base local principal no recibió las tablas ni funciones BIB-V01/BIB-V02. Publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
 
 Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–23 fijan el cierre actual y el contrato de reanudación siguiente.
 
@@ -822,7 +823,7 @@ BIB-V02 — REPOSITORIO Y TRANSACCIONES,
 SIN IPC, SIN UI, SIN DATOS REALES, SIN PROVEEDORES Y SIN PUBLICACIÓN
 ```
 
-## 23. Estado de BIB-V02 — implementación pendiente de validación dinámica
+## 23. Cierre de BIB-V02 — repositorio y transacciones
 
 Se implementó exclusivamente el alcance autorizado:
 
@@ -836,21 +837,19 @@ Se implementó exclusivamente el alcance autorizado:
 
 Validación ejecutada sin red ni datos reales:
 
-- contratos BIB-V01/BIB-V02 y pruebas de repositorio/canonicalización: 24 aprobadas;
-- `typecheck`: aprobado;
-- `lint`: aprobado;
-- arnés transaccional PostgreSQL: 5 pruebas preparadas, omitidas porque Docker no estaba disponible;
-- no se aplicó ninguna migración ni se insertó ningún fixture en la base humana.
+- el arnés transaccional PostgreSQL se ejecutó con la activación opt-in: 5/5 pruebas aprobadas y ninguna omitida;
+- se creó `investighost_library_versioning_bib_v02_test` desde una copia de solo esquema de la base local, se aplicaron en ella las migraciones BIB-V01 y BIB-V02 y se insertaron diez entradas exclusivamente sintéticas;
+- se comprobaron dinámicamente RLS, grants mínimos, cuatro triggers append-only y acceso restringido a las funciones transaccionales;
+- la base sintética se eliminó al terminar; no se aplicaron esas migraciones ni se insertaron fixtures en la base local principal;
+- no hubo red, datos de Morella, proveedores, coste, publicación, cola ni efectos en Trawel o Automatic.
 
-El arnés opt-in crea una base aislada, clona solo el esquema, inserta diez entradas sintéticas con triggers/FKs temporalmente desactivados en esa base y prueba: paridad TypeScript/PostgreSQL; v2/v3; current approved; procedencia; findings/claims; submit y decisiones; estados terminales; rollback; retries idénticos/divergentes; y carreras create/save/submit/doble approve/approve-vs-reject, incluida una colisión concurrente con la misma key y payload distinto. La base se elimina al terminar.
+Las cinco pruebas acreditan: instalación y paridad TypeScript/PostgreSQL de canonicalización y hashes; creación atómica de v2/v3 y revisión inicial sin alterar v1; idempotencia idéntica, conflicto ante payload divergente y rollback completo; CAS y carreras de create/save/submit/decisión sin ramas, versiones abiertas duplicadas ni revisiones parciales; y bloqueo de claims no respaldados con decisiones terminales append-only. Aprobar mantiene `unpublished`, contador de publicaciones cero y Trawel/Automatic desconectados.
 
-Gate vigente, que debe completarse antes de autorizar BIB-V03:
+La ejecución reveló dos defectos reales de la función SQL: asignaciones compuestas incompatibles con variables `%ROWTYPE` impedían compilar y después materializar correctamente la entrada y la transferencia. La corrección mínima separa las lecturas escalares de las filas completas y valida explícitamente la transferencia ausente. El arnés se corrigió sin rebajar cobertura para transportar los fixtures por `stdin` bajo Windows, representar los caracteres Unicode/control sin doble escape y usar claves de operación distintas para operaciones distintas.
+
+BIB-V02 queda formalmente cerrado. Siguiente gate recomendado, únicamente con autorización expresa independiente:
 
 ```text
-INICIAR SUPABASE LOCAL CON DOCKER Y EJECUTAR:
-RUN_LIBRARY_VERSIONING_INTEGRATION=1 npx vitest run --config vitest.config.ts \
-  tests/real-editorial-library-versioning-supabase.integration.test.ts
-
-SI LAS 5 PRUEBAS PASAN, REEJECUTAR TYPECHECK, LINT, TESTS DEL BLOQUE Y DIFF-CHECK;
-SOLO ENTONCES CERRAR BIB-V02. NO AVANZAR TODAVÍA A BIB-V03.
+SOLICITAR AUTORIZACIÓN PARA BIB-V03 — LECTURA E HISTORIAL,
+SIN WRITES NUEVOS, SIN UI, SIN DATOS REALES, SIN PROVEEDORES Y SIN PUBLICACIÓN
 ```

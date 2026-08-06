@@ -41,6 +41,34 @@ integrationDescribe('BIB-V02 transaccional sobre PostgreSQL sintetico aislado', 
   afterAll(() => dropDatabase())
 
   it('mantiene paridad reproducible entre canonicalizacion y hashes TypeScript/PostgreSQL', () => {
+    expect(psql(`
+      select concat_ws('|',
+        (select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
+          where n.nspname='public' and c.relrowsecurity and c.relname in (
+            'real_editorial_library_versions','real_editorial_library_version_revisions',
+            'real_editorial_library_version_findings','real_editorial_library_version_decisions'
+          )),
+        (select count(*) from pg_trigger t join pg_class c on c.oid=t.tgrelid
+          where not t.tgisinternal and t.tgenabled='O' and t.tgname in (
+            'real_editorial_library_versions_append_only',
+            'real_editorial_library_version_revisions_append_only',
+            'real_editorial_library_version_findings_append_only',
+            'real_editorial_library_version_decisions_append_only'
+          )),
+        (select count(*) from information_schema.table_privileges
+          where table_schema='public' and grantee='service_role' and privilege_type='SELECT'
+            and table_name in (
+              'real_editorial_library_versions','real_editorial_library_version_revisions',
+              'real_editorial_library_version_findings','real_editorial_library_version_decisions'
+            )),
+        has_function_privilege('service_role',
+          'public.real_editorial_library_create_version(jsonb)','EXECUTE')
+          and not has_function_privilege('anon',
+            'public.real_editorial_library_create_version(jsonb)','EXECUTE')
+          and not has_function_privilege('authenticated',
+            'public.real_editorial_library_create_version(jsonb)','EXECUTE')
+      );
+    `)).toBe('4|4|4|t')
     const payload = { z: [3, true], a: 'á' }
     expect(psql(`select public.real_editorial_library_jcs(${literalJson(payload)});`)).toBe(
       '{"a":"á","z":[3,true]}',
@@ -48,12 +76,15 @@ integrationDescribe('BIB-V02 transaccional sobre PostgreSQL sintetico aislado', 
     expect(psql(`select public.real_editorial_library_hash(${literalJson(payload)});`)).toBe(
       sha256Hex('{"a":"á","z":[3,true]}'),
     )
-    expect(psql(String.raw`
-      select public.real_editorial_library_canonical_title(E'\\uFEFF  Cafe\\u0301  ')
-        || '|' || replace(public.real_editorial_library_canonical_content(
-          E'Linea uno \\t\\r\\nLinea dos\\t\\r\\n\\r\\n'
-        ),chr(10),'\\n');
-    `)).toBe('Café|Linea uno\\nLinea dos\\n')
+    expect(psql(`
+      select public.real_editorial_library_canonical_title(
+          chr(65279) || '  Cafe' || chr(769) || '  '
+        ) = 'Café'
+        and public.real_editorial_library_canonical_content(
+          'Linea uno ' || chr(9) || chr(13) || chr(10)
+          || 'Linea dos' || chr(9) || chr(13) || chr(10) || chr(13) || chr(10)
+        ) = 'Linea uno' || chr(10) || 'Linea dos' || chr(10);
+    `)).toBe('t')
   })
 
   it('crea v2/v3, reconcilia, aprueba y resuelve current approved sin alterar v1', () => {
@@ -64,12 +95,19 @@ integrationDescribe('BIB-V02 transaccional sobre PostgreSQL sintetico aislado', 
     expect(count('real_editorial_library_versions', `library_entry_id='${entryId}'`)).toBe(1)
 
     const reconciled = reconcileBaseline(v2, 'entry-1-v2')
-    const submit = submitVersion(reconciled, 'entry-1-v2')
-    const approved = decideVersion(submit, 'approve', 'entry-1-v2', {
+    const submit = submitVersion(reconciled, 'entry-1-v2-submit')
+    const approved = decideVersion(submit, 'approve', 'entry-1-v2-approve', {
       separationOfDutiesException: true,
       separationOfDutiesReason: 'Excepcion local sintetica auditada.',
     })
     expect(approved.state).toBe('approved')
+    expect(psql(`select concat_ws('|',v.publication_state,d.publication_count,
+      d.trawel_connected,d.automatic_enabled)
+      from public.real_editorial_library_versions v
+      join public.real_editorial_library_version_decisions d on d.version_id=v.id
+      where v.id='${v2.versionId}' and d.decision_type='approve';`)).toBe(
+      'unpublished|0|f|f',
+    )
     const current = JSON.parse(psql(
       `select public.real_editorial_library_current_approved('${entryId}'::uuid)::text;`,
     )) as { source: string; versionNumber: number; publicationState: string }
@@ -185,6 +223,12 @@ integrationDescribe('BIB-V02 transaccional sobre PostgreSQL sintetico aislado', 
     expect(rejectionText(terminal)).toContain('STALE_VERSION_STATE')
     expect(count('real_editorial_library_version_decisions',
       `version_id='${open.versionId}' and decision_type in ('approve','reject')`)).toBe(1)
+    expect(count('real_editorial_library_versions', `library_entry_id='${entry4}'`)).toBe(1)
+    expect(count('real_editorial_library_version_revisions',
+      `version_id='${open.versionId}'`)).toBe(2)
+    expect(Number(psql(`select count(*) from public.real_editorial_library_versions v
+      left join public.real_editorial_library_version_revisions r on r.version_id=v.id
+      where r.id is null;`))).toBe(0)
 
     const submittedTwice = prepareSubmitted(9, 'entry-9-submit')
     const approvals = await Promise.allSettled([
@@ -316,7 +360,8 @@ function seedSyntheticEntries(total: number): void {
         '${MANUAL_LOCAL_ACTOR_ID}','${MANUAL_LOCAL_ACTOR_ID}',0,'EUR',now()
       );`
   }).join('\n')
-  psql(`set session_replication_role=replica; ${rows} set session_replication_role=origin;`)
+  psqlInput(`set session_replication_role=replica; ${rows}
+    set session_replication_role=origin;`)
 }
 
 function createSemantic(entryId: string, expectedHeadHash: string, title: string) {
@@ -517,6 +562,11 @@ function literalJson(value: unknown): string {
 function psql(sql: string): string {
   return docker(['exec', container, 'psql', '-U', 'postgres', '-d', database,
     '-AtX', '-v', 'ON_ERROR_STOP=1', '-c', sql]).trim()
+}
+
+function psqlInput(sql: string): string {
+  return docker(['exec', '-i', container, 'psql', '-U', 'postgres', '-d', database,
+    '-AtX', '-v', 'ON_ERROR_STOP=1'], sql).trim()
 }
 
 async function psqlAsync(sql: string): Promise<string> {

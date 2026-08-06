@@ -407,14 +407,20 @@ declare
   internal_key text;
   internal_fingerprint text;
 begin
-  select e,v.version_hash,r.revision_hash
-    into entry,version_hash,revision_hash
+  select e.*
+    into entry
     from public.real_editorial_library_versions v
     join public.real_editorial_library_entries e on e.id = v.library_entry_id
     join public.real_editorial_library_version_revisions r
       on r.id = p_revision_id and r.version_id = v.id
    where v.id = p_version_id;
   if not found then raise exception 'REVISION_NOT_FOUND'; end if;
+  select v.version_hash,r.revision_hash
+    into version_hash,revision_hash
+    from public.real_editorial_library_versions v
+    join public.real_editorial_library_version_revisions r
+      on r.id = p_revision_id and r.version_id = v.id
+   where v.id = p_version_id;
 
   foreach kind in array array['warning','gap','contradiction','claim'] loop
     values_json := case kind
@@ -569,11 +575,14 @@ begin
     );
   end if;
 
-  select e,t into entry,transfer
+  select e.* into entry
     from public.real_editorial_library_entries e
-    join public.real_editorial_library_transfers t on t.id = e.transfer_id
    where e.id = entry_id;
   if not found then raise exception 'LIBRARY_ENTRY_NOT_FOUND'; end if;
+  select t.* into transfer
+    from public.real_editorial_library_transfers t
+   where t.id = entry.transfer_id;
+  if not found then raise exception 'ORIGIN_REFERENCE_INVALID: transfer missing'; end if;
   if entry.status <> 'approved_unpublished'
      or entry.editorial_state <> 'approved'
      or entry.library_state <> 'ready_for_library'

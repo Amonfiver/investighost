@@ -1,6 +1,6 @@
 # Investighost — cierre y punto de reanudación actual
 
-## Estado vigente — BIB-V03 cerrado tras validación PostgreSQL
+## Estado vigente — BIB-V04 cerrado tras validación PostgreSQL
 
 Fecha de actualización: 2026-08-07.
 
@@ -9,6 +9,7 @@ Fecha de actualización: 2026-08-07.
 - HEAD de partida de BIB-V02: `aad3670134a6313799aff8547378eb338a35a54b`.
 - HEAD de partida de la validación dinámica: `8ed474d74105965c832266be81773d8acda8b6fe`.
 - HEAD de partida de BIB-V03: `5bf8c888b0a533503ea68c73709efad686add208`.
+- HEAD de partida de BIB-V04: `48dc333031be0e0ad4475bfeec964f2566c776f7`.
 - Upstream: `origin/feat/investighost-real-pipeline`, sincronizado 0/0 tras `git fetch --prune origin`.
 - Piloto Morella: `480d9c05-3ef7-4c44-a6f1-7762b7179a03`.
 - Run: `467dc951-26f5-45f6-895c-d2f06c496d6e`.
@@ -22,11 +23,11 @@ Fecha de actualización: 2026-08-07.
 - La incorporación idéntica reutiliza la transferencia existente y no crea duplicados.
 - La prueba humana completa de incorporación a Biblioteca quedó aprobada.
 
-Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA, BIB-V01, BIB-V02 Y BIB-V03 FORMALMENTE CERRADOS**.
+Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA Y BIB-V01 A BIB-V04 FORMALMENTE CERRADOS**.
 
-El versionado dispone ahora de contratos, transacciones autoritativas y lecturas internas para resumen, historial, detalle, revisiones, findings, decisiones, estado efectivo, current approved y timeline. Las seis pruebas PostgreSQL BIB-V03 se ejecutaron realmente sobre una base aislada con diez entradas sintéticas y quedaron aprobadas sin omisiones; las cinco transaccionales BIB-V02 también pasaron de nuevo. Las bases temporales se eliminaron y la base local principal no recibió el esquema de versionado. No existen IPC, preload, renderer o UI de versionado. Publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
+El versionado dispone ahora de contratos, transacciones, lecturas y casos de uso internos para crear drafts, guardar revisiones y recuperar operaciones confirmadas. Las seis pruebas PostgreSQL BIB-V04 se ejecutaron realmente sobre una base aislada con diez entradas sintéticas y pasaron sin omisiones; las regresiones BIB-V02 y BIB-V03 quedaron 5/5 y 6/6. Las bases temporales se eliminaron y la base local principal no recibió el esquema de versionado. No existen IPC, preload, renderer o UI de versionado. Submit, decisiones nuevas, findings interactivos, diff, publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
 
-Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–24 fijan el cierre actual y el contrato de reanudación siguiente.
+Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–25 fijan el cierre actual y el contrato de reanudación siguiente.
 
 ## Estado histórico — PROMPT 10D completado y conciliado
 
@@ -875,4 +876,27 @@ BIB-V03 queda formalmente cerrado. Siguiente gate recomendado, únicamente con a
 ```text
 SOLICITAR AUTORIZACIÓN PARA BIB-V04 — CREACIÓN Y GUARDADO,
 SIN SUBMIT, SIN DECISIONES NUEVAS, SIN UI, SIN DATOS REALES Y SIN PUBLICACIÓN
+```
+
+## 25. Cierre de BIB-V04 — casos de uso internos create/save/recover
+
+BIB-V04 quedó implementado sin exposición runtime:
+
+- contratos Zod strict para comandos, resultados, errores estructurados, warnings de canonicalización y recibos de operación;
+- servicio interno de aplicación con `createDraft`, `saveDraft` y `recoverOperationResult`;
+- actor local autorizado antes de persistir, canonicalización estable y límites compartidos;
+- idempotencia por `operation_key + request_fingerprint`, recuperación tras timeout y conflictos divergentes explícitos;
+- read-after-write obligatorio mediante BIB-V03, con verificación de versión, revisión vigente, estado, hashes y frontera `unpublished`;
+- logging inyectable sin contenido editorial, secretos ni mensajes SQL;
+- una única función SQL `stable` para leer recibos create/save ya confirmados, sin nuevas tablas, triggers o writes de dominio.
+
+El arnés opt-in creó `investighost_library_versioning_bib_v04_test` desde una copia de solo esquema, aplicó BIB-V01/BIB-V02/BIB-V03/BIB-V04 e insertó diez entradas exclusivamente sintéticas. Cubrió create v2, tres revisiones, carreras create/save, retries idénticos y divergentes, recuperación create/save después de respuesta perdida, versión no draft, rollback inducido, hashes corruptos, v1 inmutable y publicación bloqueada. Resultado: 6/6 pruebas PostgreSQL BIB-V04 aprobadas, ninguna omitida. Las regresiones reales BIB-V02 y BIB-V03 pasaron 5/5 y 6/6. Las bases temporales se eliminaron y la base principal no recibió migraciones ni fixtures.
+
+No se implementaron submit, approve, request changes, reject, abandon, findings interactivos, diff, IPC, preload, renderer, UI, editor o publicación desde la nueva capa. No se usaron Morella, datos reales, Tavily, OpenAI, Trawel o Automatic.
+
+BIB-V04 queda formalmente cerrado. Siguiente gate recomendado, únicamente con autorización expresa independiente:
+
+```text
+SOLICITAR AUTORIZACIÓN PARA BIB-V05 — COMPARACIÓN READ-ONLY,
+SIN WRITES NUEVOS, SIN FINDINGS INTERACTIVOS, SIN UI, SIN DATOS REALES Y SIN PUBLICACIÓN
 ```

@@ -7,6 +7,8 @@ export const REAL_EDITORIAL_LIBRARY_CONTENT_SCHEMA_CONTRACT =
 export const REAL_EDITORIAL_LIBRARY_MAX_TITLE_LENGTH = 500
 export const REAL_EDITORIAL_LIBRARY_MAX_CONTENT_LENGTH = 100_000
 export const REAL_EDITORIAL_LIBRARY_MAX_REASON_LENGTH = 2_000
+export const REAL_EDITORIAL_LIBRARY_MAX_EDITABLE_TITLE_INPUT_LENGTH = 1_000
+export const REAL_EDITORIAL_LIBRARY_MAX_EDITABLE_CONTENT_INPUT_LENGTH = 200_000
 
 export const LibraryVersionStateSchema = z.enum([
   'draft',
@@ -158,8 +160,10 @@ const StableReferenceListSchema = z.array(StableReferenceSchema).max(500).refine
   'Las referencias deben ser unicas',
 )
 const ChangeInstructionListSchema = z.array(SafeReasonSchema).max(100)
-const EditableTitleInputSchema = z.string().min(1).max(1_000)
-const EditableContentInputSchema = z.string().min(1).max(200_000)
+const EditableTitleInputSchema = z.string().min(1)
+  .max(REAL_EDITORIAL_LIBRARY_MAX_EDITABLE_TITLE_INPUT_LENGTH)
+const EditableContentInputSchema = z.string().min(1)
+  .max(REAL_EDITORIAL_LIBRARY_MAX_EDITABLE_CONTENT_INPUT_LENGTH)
 
 export const LibraryVersionEvidenceReferenceSchema = z.object({
   kind: z.enum(['evidence', 'source']),

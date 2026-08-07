@@ -2,7 +2,7 @@
 
 Fecha: 2026-08-07
 
-Estado: diseño técnico y de dominio cerrado; BIB-V01, BIB-V02 y BIB-V03 implementados y cerrados
+Estado: diseño técnico y de dominio cerrado; BIB-V01, BIB-V02, BIB-V03 y BIB-V04 implementados y cerrados
 
 Rama de referencia: `feat/investighost-real-pipeline`
 
@@ -12,7 +12,7 @@ HEAD de partida: `2eb3c1eddedabb534e99d234ab424ee1064e26bf`
 
 Este documento rige la implementación por gates de la edición humana y las versiones derivadas de las entradas editoriales reales de Biblioteca. No cambia por sí mismo ningún estado durable.
 
-Dictamen vigente: **BIB-V01, BIB-V02 Y BIB-V03 CERRADOS; BIB-V04 Y GATES POSTERIORES REQUIEREN OTRA AUTORIZACIÓN**.
+Dictamen vigente: **BIB-V01, BIB-V02, BIB-V03 Y BIB-V04 CERRADOS; BIB-V05 Y GATES POSTERIORES REQUIEREN OTRA AUTORIZACIÓN**.
 
 El resultado objetivo del bloque completo es una versión derivada aprobada internamente y todavía `unpublished`. Quedan fuera:
 
@@ -874,4 +874,25 @@ BIB-V03 queda **formalmente cerrado**. Siguiente gate, solo con autorización ex
 ```text
 SOLICITAR AUTORIZACIÓN PARA BIB-V04 — CREACIÓN Y GUARDADO,
 SIN SUBMIT, SIN DECISIONES NUEVAS, SIN UI, SIN DATOS REALES Y SIN PUBLICACIÓN
+```
+
+## 24. Precisiones de implementación BIB-V04
+
+BIB-V04 incorpora una capa interna de aplicación, todavía desconectada de Electron y del renderer:
+
+- `createDraft`, `saveDraft` y `recoverOperationResult` separan validación estricta, autorización local, preparación canónica, transacción BIB-V02, recibo confirmado y read-after-write BIB-V03;
+- los comandos no aceptan correlativos, padres, estados, timestamps, IDs ni hashes derivados. Los límites canónicos siguen siendo 500 caracteres para título, 100.000 para contenido y 2.000 para motivo; el sobre de entrada reutiliza los máximos conservadores existentes de 1.000 y 200.000 antes de canonicalizar;
+- un retry idéntico reutiliza el recibo confirmado; una operación o fingerprint divergente devuelve `IDEMPOTENCY_CONFLICT`; la recuperación exige `operation_key`, operación esperada, fingerprint esperado y actor autorizado;
+- un save consulta primero el estado efectivo y CAS vigentes, pero PostgreSQL conserva la autoridad final bajo lock. Un estado no editable se presenta como `INVALID_STATE_TRANSITION` y un hash anterior como `STALE_REVISION`;
+- toda respuesta exitosa se reconstruye desde detalle, revisión, estado y resumen BIB-V03. Cualquier discrepancia de identidad o hash se convierte en `HASH_MISMATCH` o `INVALID_VERSION_HISTORY`, sin compensaciones posteriores;
+- la única migración nueva añade `real_editorial_library_draft_operation_receipt`, función `stable security definer` restringida a `service_role`; no crea tablas, triggers, DML ni estado mutable;
+- el logging interno solo contiene operación, prefijo de clave, identidad objetivo, resultado, código seguro y duración; nunca título, contenido, credenciales o mensajes SQL.
+
+La validación PostgreSQL opt-in creó `investighost_library_versioning_bib_v04_test`, aplicó BIB-V01 a BIB-V04 e insertó diez entradas sintéticas. Las seis pruebas reales cubrieron creación v2, múltiples revisiones, carreras create/save, retry y recuperación tras respuesta perdida, rechazo en estado terminal, rollback inducido después del insert de versión, detección de historia corrupta, v1 inmutable y publicación bloqueada. Resultado: 6/6 aprobadas sin omisiones. Las regresiones PostgreSQL BIB-V02 y BIB-V03 pasaron 5/5 y 6/6 respectivamente; todas las bases temporales se eliminaron y la base principal permaneció intacta.
+
+BIB-V04 queda **formalmente cerrado**. Siguiente gate, solo con autorización expresa independiente:
+
+```text
+SOLICITAR AUTORIZACIÓN PARA BIB-V05 — COMPARACIÓN READ-ONLY,
+SIN WRITES NUEVOS, SIN FINDINGS INTERACTIVOS, SIN UI, SIN DATOS REALES Y SIN PUBLICACIÓN
 ```

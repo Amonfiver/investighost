@@ -18,6 +18,9 @@ import {
   type SubmitLibraryVersionForReviewCommand,
 } from '@shared/real-editorial-library-contracts'
 import {
+  type LibraryVersionDraftOperationReceipt,
+} from '@shared/real-editorial-library-draft-application-contracts'
+import {
   type CurrentApprovedLibraryContent,
   type EffectiveLibraryVersionFindings,
   type LibraryEntryVersioningSummary,
@@ -160,6 +163,12 @@ export interface RealEditorialLibraryVersioningReadRepository {
   getVersionTimeline(libraryEntryId: string): Promise<LibraryVersionTimeline>
 }
 
+export interface RealEditorialLibraryDraftOperationReceiptRepository {
+  getDraftOperationReceipt(
+    operationKey: string,
+  ): Promise<LibraryVersionDraftOperationReceipt | null>
+}
+
 export class LibraryVersioningRepositoryError extends Error {
   constructor(
     readonly code: LibraryVersionDomainErrorCode,
@@ -178,36 +187,17 @@ export class RealEditorialLibraryVersioningService {
   ) {}
 
   async createVersion(candidate: CreateLibraryVersionCommand): Promise<LibraryVersionCommandResult> {
-    const command = CreateLibraryVersionCommandSchema.parse(candidate)
-    const document = canonicalizeLibraryDocument(command.title, command.content)
-    const actor = await this.actors.authorize(command.createdByActorId, 'edit')
-    return this.repository.createVersion(prepare('create_version', command.operationKey, {
-      libraryEntryId: command.libraryEntryId,
-      expectedHeadHash: command.expectedHeadHash,
-      canonicalizationContract: command.canonicalizationContract,
-      contentSchemaContract: command.contentSchemaContract,
-      ...document,
-      creationReason: canonicalizeLibraryAuditText(command.creationReason),
-      actor,
-    }))
+    return this.repository.createVersion(
+      await prepareCreateLibraryVersionCommand(candidate, this.actors),
+    )
   }
 
   async saveRevision(
     candidate: SaveLibraryVersionRevisionCommand,
   ): Promise<LibraryVersionCommandResult> {
-    const command = SaveLibraryVersionRevisionCommandSchema.parse(candidate)
-    const document = canonicalizeLibraryDocument(command.title, command.content)
-    const actor = await this.actors.authorize(command.createdByActorId, 'edit')
-    return this.repository.saveRevision(prepare('save_revision', command.operationKey, {
-      versionId: command.versionId,
-      expectedState: command.expectedState,
-      expectedPreviousRevisionHash: command.expectedPreviousRevisionHash,
-      canonicalizationContract: command.canonicalizationContract,
-      contentSchemaContract: command.contentSchemaContract,
-      ...document,
-      changeSummary: canonicalizeLibraryAuditText(command.changeSummary),
-      actor,
-    }))
+    return this.repository.saveRevision(
+      await prepareSaveLibraryVersionRevisionCommand(candidate, this.actors),
+    )
   }
 
   async reconcileFindings(
@@ -281,6 +271,47 @@ export class RealEditorialLibraryVersioningService {
   async getCurrentApproved(libraryEntryId: string): Promise<CurrentApprovedLibraryContent | null> {
     return this.repository.getCurrentApproved(libraryEntryId)
   }
+}
+
+export async function prepareCreateLibraryVersionCommand(
+  candidate: CreateLibraryVersionCommand,
+  actors: LibraryVersionActorAuthorizer = new LocalLibraryVersionActorAuthorizer(),
+): Promise<PreparedCreateLibraryVersionCommand> {
+  const command = CreateLibraryVersionCommandSchema.parse(candidate)
+  const document = canonicalizeLibraryDocument(command.title, command.content)
+  const actor = await actors.authorize(command.createdByActorId, 'edit')
+  return prepare<PreparedCreateLibraryVersionCommand>('create_version', command.operationKey, {
+    libraryEntryId: command.libraryEntryId,
+    expectedHeadHash: command.expectedHeadHash,
+    canonicalizationContract: command.canonicalizationContract,
+    contentSchemaContract: command.contentSchemaContract,
+    ...document,
+    creationReason: canonicalizeLibraryAuditText(command.creationReason),
+    actor,
+  })
+}
+
+export async function prepareSaveLibraryVersionRevisionCommand(
+  candidate: SaveLibraryVersionRevisionCommand,
+  actors: LibraryVersionActorAuthorizer = new LocalLibraryVersionActorAuthorizer(),
+): Promise<PreparedSaveLibraryVersionRevisionCommand> {
+  const command = SaveLibraryVersionRevisionCommandSchema.parse(candidate)
+  const document = canonicalizeLibraryDocument(command.title, command.content)
+  const actor = await actors.authorize(command.createdByActorId, 'edit')
+  return prepare<PreparedSaveLibraryVersionRevisionCommand>(
+    'save_revision',
+    command.operationKey,
+    {
+      versionId: command.versionId,
+      expectedState: command.expectedState,
+      expectedPreviousRevisionHash: command.expectedPreviousRevisionHash,
+      canonicalizationContract: command.canonicalizationContract,
+      contentSchemaContract: command.contentSchemaContract,
+      ...document,
+      changeSummary: canonicalizeLibraryAuditText(command.changeSummary),
+      actor,
+    },
+  )
 }
 
 export class RealEditorialLibraryVersioningReadService {

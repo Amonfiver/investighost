@@ -1,7 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import {
+  LibraryVersionDraftOperationReceiptSchema,
+  type LibraryVersionDraftOperationReceipt,
+} from '@shared/real-editorial-library-draft-application-contracts'
+import {
   LibraryVersionDomainErrorCodeSchema,
+  LibraryVersionOperationKeySchema,
   LibraryVersionUuidSchema,
   type LibraryVersionCommandResult,
   type LibraryVersionDomainErrorCode,
@@ -36,6 +41,7 @@ import {
   type PreparedReconcileLibraryVersionFindingsCommand,
   type PreparedSaveLibraryVersionRevisionCommand,
   type PreparedSubmitLibraryVersionForReviewCommand,
+  type RealEditorialLibraryDraftOperationReceiptRepository,
   type RealEditorialLibraryVersioningReadRepository,
   type RealEditorialLibraryVersioningRepository,
 } from './repository'
@@ -44,7 +50,8 @@ type RpcError = { message: string; details?: string; hint?: string; code?: strin
 
 export class SupabaseRealEditorialLibraryVersioningRepository
 implements RealEditorialLibraryVersioningRepository,
-RealEditorialLibraryVersioningReadRepository {
+RealEditorialLibraryVersioningReadRepository,
+RealEditorialLibraryDraftOperationReceiptRepository {
   constructor(private readonly client: SupabaseClient) {}
 
   createVersion(
@@ -178,6 +185,18 @@ RealEditorialLibraryVersioningReadRepository {
       { p_library_entry_id: parseUuid(libraryEntryId) },
       LibraryVersionTimelineSchema,
     )
+  }
+
+  async getDraftOperationReceipt(
+    operationKey: string,
+  ): Promise<LibraryVersionDraftOperationReceipt | null> {
+    const parsedOperationKey = LibraryVersionOperationKeySchema.parse(operationKey)
+    const { data, error } = await this.client.rpc(
+      'real_editorial_library_draft_operation_receipt',
+      { p_operation_key: parsedOperationKey },
+    )
+    if (error) throw repositoryError(error)
+    return data === null ? null : LibraryVersionDraftOperationReceiptSchema.parse(data)
   }
 
   private async command(

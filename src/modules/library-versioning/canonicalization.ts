@@ -141,15 +141,19 @@ export function canonicalizeLibraryTitle(value: string): string {
 }
 
 export function canonicalizeLibraryContent(value: string): string {
-  const normalized = normalizedUnicode(value)
-  const lines = normalized.split('\n').map(line => line.replace(/[ \t]+$/u, ''))
-  while (lines.length > 0 && lines.at(-1) === '') lines.pop()
-  const canonical = `${lines.join('\n')}\n`
+  const canonical = canonicalizeLibraryComparableContent(value)
   const parsed = LibraryVersionContentSchema.safeParse(canonical)
   if (!parsed.success) {
     throw new LibraryCanonicalizationError('El contenido canonicalizado no cumple el contrato')
   }
   return parsed.data
+}
+
+export function canonicalizeLibraryComparableContent(value: string): string {
+  const normalized = normalizedUnicode(value)
+  const lines = normalized.split('\n').map(line => line.replace(/[ \t]+$/u, ''))
+  while (lines.length > 0 && lines.at(-1) === '') lines.pop()
+  return lines.length === 0 ? '' : `${lines.join('\n')}\n`
 }
 
 export function canonicalizeLibraryDocument(

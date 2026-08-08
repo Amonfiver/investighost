@@ -1,8 +1,8 @@
 # Investighost — cierre y punto de reanudación actual
 
-## Estado vigente — BIB-V04 cerrado tras validación PostgreSQL
+## Estado vigente — BIB-V05 cerrado tras validación PostgreSQL
 
-Fecha de actualización: 2026-08-07.
+Fecha de actualización: 2026-08-08.
 
 - Repositorio: `D:\Proyectos\investighost` (`/mnt/d/Proyectos/investighost` en WSL).
 - Rama: `feat/investighost-real-pipeline`.
@@ -10,6 +10,7 @@ Fecha de actualización: 2026-08-07.
 - HEAD de partida de la validación dinámica: `8ed474d74105965c832266be81773d8acda8b6fe`.
 - HEAD de partida de BIB-V03: `5bf8c888b0a533503ea68c73709efad686add208`.
 - HEAD de partida de BIB-V04: `48dc333031be0e0ad4475bfeec964f2566c776f7`.
+- HEAD de partida de BIB-V05: `0e4c093dbf033584aee93e8088fa48c8472b834c`.
 - Upstream: `origin/feat/investighost-real-pipeline`, sincronizado 0/0 tras `git fetch --prune origin`.
 - Piloto Morella: `480d9c05-3ef7-4c44-a6f1-7762b7179a03`.
 - Run: `467dc951-26f5-45f6-895c-d2f06c496d6e`.
@@ -23,11 +24,11 @@ Fecha de actualización: 2026-08-07.
 - La incorporación idéntica reutiliza la transferencia existente y no crea duplicados.
 - La prueba humana completa de incorporación a Biblioteca quedó aprobada.
 
-Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA Y BIB-V01 A BIB-V04 FORMALMENTE CERRADOS**.
+Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA Y BIB-V01 A BIB-V05 FORMALMENTE CERRADOS**.
 
-El versionado dispone ahora de contratos, transacciones, lecturas y casos de uso internos para crear drafts, guardar revisiones y recuperar operaciones confirmadas. Las seis pruebas PostgreSQL BIB-V04 se ejecutaron realmente sobre una base aislada con diez entradas sintéticas y pasaron sin omisiones; las regresiones BIB-V02 y BIB-V03 quedaron 5/5 y 6/6. Las bases temporales se eliminaron y la base local principal no recibió el esquema de versionado. No existen IPC, preload, renderer o UI de versionado. Submit, decisiones nuevas, findings interactivos, diff, publicación, Trawel, Automatic, regeneración de Morella y nuevas llamadas a proveedores continúan fuera de alcance.
+El versionado dispone ahora de contratos, transacciones, lecturas, creación y guardado de drafts y comparación interna read-only. BIB-V05 compara v1 con revisión, dos revisiones y una revisión con su padre inmediato mediante un diff por líneas determinista, segmentos con rangos, estadísticas y fingerprint SHA-256 no persistido. Las 14 pruebas unitarias y las dos pruebas PostgreSQL BIB-V05 pasaron; un snapshot completo de las filas durables sintéticas permaneció idéntico antes y después de comparaciones repetidas. Las regresiones PostgreSQL BIB-V02, BIB-V03 y BIB-V04 quedaron 5/5, 6/6 y 6/6, y la suite normal quedó 649/649. Las bases temporales se eliminaron y la base local principal no recibió el esquema de versionado. No existen IPC, preload, renderer o UI de versionado. Submit, decisiones nuevas, findings interactivos, publicación e integraciones externas continúan fuera de alcance.
 
-Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–25 fijan el cierre actual y el contrato de reanudación siguiente.
+Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–26 fijan el cierre actual y el contrato de reanudación siguiente.
 
 ## Estado histórico — PROMPT 10D completado y conciliado
 

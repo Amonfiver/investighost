@@ -2,7 +2,7 @@
 
 Fecha: 2026-08-07
 
-Estado: diseño técnico y de dominio cerrado; BIB-V01, BIB-V02, BIB-V03 y BIB-V04 implementados y cerrados
+Estado: diseño técnico y de dominio cerrado; BIB-V01 a BIB-V05 implementados y cerrados
 
 Rama de referencia: `feat/investighost-real-pipeline`
 
@@ -12,7 +12,7 @@ HEAD de partida: `2eb3c1eddedabb534e99d234ab424ee1064e26bf`
 
 Este documento rige la implementación por gates de la edición humana y las versiones derivadas de las entradas editoriales reales de Biblioteca. No cambia por sí mismo ningún estado durable.
 
-Dictamen vigente: **BIB-V01, BIB-V02, BIB-V03 Y BIB-V04 CERRADOS; BIB-V05 Y GATES POSTERIORES REQUIEREN OTRA AUTORIZACIÓN**.
+Dictamen vigente: **BIB-V01 A BIB-V05 CERRADOS; BIB-V06 Y GATES POSTERIORES REQUIEREN OTRA AUTORIZACIÓN**.
 
 El resultado objetivo del bloque completo es una versión derivada aprobada internamente y todavía `unpublished`. Quedan fuera:
 
@@ -895,4 +895,53 @@ BIB-V04 queda **formalmente cerrado**. Siguiente gate, solo con autorización ex
 ```text
 SOLICITAR AUTORIZACIÓN PARA BIB-V05 — COMPARACIÓN READ-ONLY,
 SIN WRITES NUEVOS, SIN FINDINGS INTERACTIVOS, SIN UI, SIN DATOS REALES Y SIN PUBLICACIÓN
+```
+
+## 25. Precisiones de implementación BIB-V05
+
+BIB-V05 añade una comparación interna determinista que depende exclusivamente del puerto de
+lectura BIB-V03:
+
+- los extremos son una unión cerrada entre `origin_v1` y una revisión identificada por
+  `versionId + revisionId`; el servicio resuelve y valida pertenencia e historia antes de comparar;
+- `compare` soporta v1 → revisión y revisión → revisión, incluso entre versiones derivadas del
+  mismo artefacto; `compareToParent` exige el `previousRevisionId` inmediato y comprueba número y
+  hash previo, sin fallback para una revisión 1;
+- el diff usa LCS por líneas bajo `lcs-lines-v1`, con eliminación antes que adición como desempate
+  fijo. Una modificación se representa como segmento `removed` seguido de `added`;
+- cada segmento expone rangos de ambos lados, líneas y encabezado estable; las estadísticas cubren
+  líneas añadidas, eliminadas, sin cambios, segmentos cambiados, segmentos totales y cambio de
+  título;
+- la canonicalización reutiliza NFC, LF, retirada de whitespace final por línea y un único LF
+  final de BIB-V02. Una representación vacía se admite solo dentro del diff y no relaja el contrato
+  durable de contenido;
+- el resultado usa `investighost-library-comparison-v1`, incluye ambos extremos completos y genera
+  un SHA-256 sobre su payload lógico mediante la serialización canónica ya existente, sin timestamp,
+  UUID aleatorio ni persistencia;
+- los límites son 5.000 líneas por lado y 4.000.000 de celdas LCS tras retirar prefijo y sufijo
+  comunes; cualquier exceso devuelve `COMPARISON_LIMIT_EXCEEDED`;
+- incompatibilidad, padre ausente, extremos inexistentes, pertenencia incorrecta e historia
+  incoherente conservan errores tipados y mensajes deterministas;
+- no existe migración BIB-V05: el servicio no posee puerto de escritura y el adaptador usa solo los
+  RPC `stable` ya cerrados en BIB-V03.
+
+Las 14 pruebas unitarias cubren identidad, adiciones, eliminaciones, modificaciones, bloques
+separados, vacío, canonicalización, orden, estadísticas, fingerprints, límites, los tres modos de
+comparación y errores de dominio. Las dos pruebas PostgreSQL se ejecutaron sobre
+`investighost_library_versioning_bib_v05_test`, con una entrada y dos revisiones exclusivamente
+sintéticas. Un snapshot JSONB de todas las columnas de transferencias, entradas, versiones,
+revisiones, findings y decisiones fue idéntico antes y después de comparaciones repetidas; los
+conteos permanecieron `1|2|8|0`, los estados de publicación continuaron bloqueados y no apareció
+ninguna columna de comparación.
+
+La validación cerró BIB-V05 con 14/14 pruebas unitarias, 2/2 PostgreSQL, regresiones PostgreSQL
+BIB-V02 5/5, BIB-V03 6/6 y BIB-V04 6/6, suite normal 649/649, typecheck, lint y
+`git diff --check` aprobados. Todas las bases temporales fueron eliminadas y la base local principal
+no recibió las migraciones BIB-V01–V04.
+
+BIB-V05 queda **formalmente cerrado**. Siguiente gate, solo con autorización expresa independiente:
+
+```text
+SOLICITAR AUTORIZACIÓN PARA BIB-V06 — TRAZABILIDAD,
+SIN DECISIONES TERMINALES, SIN UI, SIN DATOS REALES Y SIN PUBLICACIÓN
 ```

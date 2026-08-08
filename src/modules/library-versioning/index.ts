@@ -1,4 +1,5 @@
 export * from './canonicalization'
+export * from './comparison-service'
 export * from './draft-application-service'
 export * from './repository'
 export * from './supabase-repository'

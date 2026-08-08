@@ -247,11 +247,14 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
         )
         if (completionCost > 0 && !this.callExecutor.canReserve(completionCost)) {
           const spentCost = this.callExecutor.snapshot().spentCost
-          const availableCost = Math.max(0, this.configuration.budgetLimit - spentCost)
-          const shortfallCost = Math.max(
+          const availableCost = moneyValue(Math.max(
+            0,
+            this.configuration.budgetLimit - spentCost,
+          ))
+          const shortfallCost = moneyValue(Math.max(
             0,
             completionCost - availableCost,
-          )
+          ))
           checkpoint = {
             ...checkpoint,
             state: 'review_required',
@@ -498,9 +501,9 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
     const expectedCalls = queries.length + 2
     if (checkpoint.providerCalls + expectedCalls > checkpoint.initialMission.limits.maxProviderCalls
       || (!this.configuration.ledgerBudgetAuthoritative
-        && checkpoint.simulatedCost + secondRoundCost
-          > checkpoint.initialMission.limits.taskBudgetEur)
-      || !this.callExecutor.canReserve(secondRoundCost)) {
+        && (checkpoint.simulatedCost + secondRoundCost
+          > checkpoint.initialMission.limits.taskBudgetEur
+          || !this.callExecutor.canReserve(secondRoundCost)))) {
       return { terminal: true, state: 'review_required' }
     }
     return { terminal: false, queries, queryHashes }

@@ -55,7 +55,7 @@ function resolution(overrides: Record<string, unknown> = {}) {
 }
 
 describe('decisión humana durable de presupuesto', () => {
-  it('valida las tres decisiones y exige confirmación, actor y motivo', () => {
+  it('valida las cuatro decisiones y exige confirmación, actor y motivo', () => {
     expect(RealEditorialBudgetResolutionSchema.parse(resolution()).decision)
       .toBe('authorize_extension')
     const base = {
@@ -69,6 +69,10 @@ describe('decisión humana durable de presupuesto', () => {
       ...base,
       decision: 'keep_limit',
     }).decision).toBe('keep_limit')
+    expect(RealEditorialBudgetResolutionSchema.parse({
+      ...base,
+      decision: 'authorize_within_limit',
+    }).decision).toBe('authorize_within_limit')
     expect(RealEditorialBudgetResolutionSchema.parse({
       ...base,
       decision: 'cancel_permanently',
@@ -126,6 +130,9 @@ describe('decisión humana durable de presupuesto', () => {
     })).success).toBe(false)
     expect(RealEditorialBudgetResolutionSchema.safeParse(resolution({
       decision: 'keep_limit',
+    })).success).toBe(false)
+    expect(RealEditorialBudgetResolutionSchema.safeParse(resolution({
+      decision: 'authorize_within_limit',
     })).success).toBe(false)
     expect(RealEditorialBudgetResolutionSchema.safeParse(resolution({
       decision: 'cancel_permanently',

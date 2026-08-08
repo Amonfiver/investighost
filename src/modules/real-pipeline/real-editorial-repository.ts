@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   REAL_EDITORIAL_PILOT_POLICY,
   REAL_EDITORIAL_COVERAGE_BUDGET,
+  realEditorialPolicyById,
   RealEditorialAmbiguousCallResolutionResultSchema,
   RealEditorialAmbiguousCallResolutionSchema,
   RealEditorialAmbiguousCallSchema,
@@ -31,6 +32,9 @@ import {
   RealEditorialPartialAnalysisRecoveryPlanSchema,
   RealEditorialPartialAnalysisRecoveryResultSchema,
   RealEditorialPartialAnalysisRecoverySchema,
+  RealEditorialRoundOneSourceSelectionPlanSchema,
+  RealEditorialRoundOneSourceSelectionResolutionSchema,
+  RealEditorialRoundOneSourceSelectionResultSchema,
   RealEditorialSourceLimitRecoveryPlanSchema,
   RealEditorialSourceLimitRecoveryResultSchema,
   RealEditorialSourceLimitRecoverySchema,
@@ -60,12 +64,16 @@ import {
   type RealEditorialLibraryTransferResult,
   type RealEditorialPilotBudget,
   type RealEditorialPilotPrepare,
+  type RealEditorialPilotPolicyId,
   type RealEditorialPilotRecord,
   type RealEditorialPilotSnapshot,
   type RealEditorialPilotState,
   type RealEditorialPartialAnalysisRecovery,
   type RealEditorialPartialAnalysisRecoveryPlan,
   type RealEditorialPartialAnalysisRecoveryResult,
+  type RealEditorialRoundOneSourceSelectionPlan,
+  type RealEditorialRoundOneSourceSelectionResolution,
+  type RealEditorialRoundOneSourceSelectionResult,
   type RealEditorialSourceLimitRecovery,
   type RealEditorialSourceLimitRecoveryPlan,
   type RealEditorialSourceLimitRecoveryResult,
@@ -102,6 +110,10 @@ import {
   selectSourcesWithinGlobalLimit,
   type GlobalSourceLimitSelection,
 } from './source-limit-recovery'
+import {
+  checkpointWithSelectedRoundOneSources,
+  planRoundOneActiveSources,
+} from './round-one-source-selection'
 
 export type RealEditorialArtifactKind =
   | 'mission'
@@ -147,6 +159,9 @@ export type RealEditorialRepositoryErrorCode =
   | 'SOURCE_LIMIT_RECOVERY_REQUIRED'
   | 'SOURCE_LIMIT_RECOVERY_CONFLICT'
   | 'SOURCE_LIMIT_RECOVERY_NOT_ALLOWED'
+  | 'ROUND_ONE_SOURCE_SELECTION_REQUIRED'
+  | 'ROUND_ONE_SOURCE_SELECTION_CONFLICT'
+  | 'ROUND_ONE_SOURCE_SELECTION_NOT_ALLOWED'
   | 'PARTIAL_ANALYSIS_RECOVERY_REQUIRED'
   | 'PARTIAL_ANALYSIS_RECOVERY_CONFLICT'
   | 'PARTIAL_ANALYSIS_RECOVERY_NOT_ALLOWED'
@@ -197,7 +212,11 @@ export interface RealEditorialArtifact {
 }
 
 export interface RealEditorialPilotRepository {
-  inspect(identityKey: string, currentPilotId?: string): Promise<RealEditorialRepositoryInspection>
+  inspect(
+    identityKey: string,
+    currentPilotId?: string,
+    policyId?: RealEditorialPilotPolicyId,
+  ): Promise<RealEditorialRepositoryInspection>
   prepare(input: RealEditorialPilotPrepare): Promise<RealEditorialPilotRecord>
   confirmBudget(pilotId: string, budgetDate?: string): Promise<RealEditorialPilotRecord>
   getPilot(pilotId: string): Promise<RealEditorialPilotRecord | undefined>
@@ -215,6 +234,9 @@ export interface RealEditorialPilotRepository {
   getCoverageReview?(
     pilotId: string,
   ): Promise<RealEditorialCoverageReview | undefined>
+  getRoundOneSourceSelection?(
+    pilotId: string,
+  ): Promise<RealEditorialRoundOneSourceSelectionPlan | undefined>
   resolveCoverageDecision?(
     input: RealEditorialCoverageResolution,
   ): Promise<RealEditorialCoverageResolutionResult>
@@ -306,8 +328,10 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
   async inspect(
     identityKey: string,
     currentPilotId?: string,
+    policyId: RealEditorialPilotPolicyId = REAL_EDITORIAL_PILOT_POLICY.id,
   ): Promise<RealEditorialRepositoryInspection> {
     try {
+      const selectedPolicy = realEditorialPolicyById(policyId)
       let activeExecutionsQuery = this.client.from('real_editorial_runs')
         .select('id', { head: true, count: 'exact' })
         .in('state', activeStates)
@@ -320,14 +344,14 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         active,
         pending,
         humanRequired,
-        manualMorella,
+        manualDestination,
         duplicate,
         budget,
         connectivity,
         recoverableReservations,
       ] = await Promise.all([
         this.client.from('real_editorial_pilot_policies').select('id')
-          .eq('id', REAL_EDITORIAL_PILOT_POLICY.id).maybeSingle(),
+          .eq('id', selectedPolicy.id).maybeSingle(),
         this.client.from('real_editorial_execution_guard').select('owner_execution_id,expires_at')
           .eq('guard_name', 'morella-real-editorial').maybeSingle(),
         activeExecutionsQuery,
@@ -341,9 +365,9 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
           'id,geographic_entities!inner(name,country_code,entity_type)',
           { head: true, count: 'exact' },
         )
-          .eq('geographic_entities.normalized_name', 'morella')
-          .eq('geographic_entities.country_code', 'ES')
-          .eq('geographic_entities.entity_type', 'locality'),
+          .eq('geographic_entities.normalized_name', selectedPolicy.normalizedDestination)
+          .eq('geographic_entities.country_code', selectedPolicy.countryCode)
+          .eq('geographic_entities.entity_type', selectedPolicy.destinationType),
         currentPilotId
           ? this.client.from('real_editorial_pilots').select('id', { head: true, count: 'exact' })
             .eq('identity_key', identityKey).neq('id', currentPilotId)
@@ -354,7 +378,6 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
             .eq('pilot_id', currentPilotId).maybeSingle()
           : Promise.resolve({ data: null, error: null }),
         this.client.from('real_editorial_connectivity_evidence').select('provider_id,outcome')
-          .eq('pilot_policy_id', REAL_EDITORIAL_PILOT_POLICY.id)
           .eq('source_kind', 'connectivity_check').eq('outcome', 'succeeded'),
         currentPilotId
           ? this.recoverableStartedReservations(currentPilotId)
@@ -366,7 +389,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         active,
         pending,
         humanRequired,
-        manualMorella,
+        manualDestination,
         duplicate,
         budget,
         connectivity,
@@ -388,7 +411,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         pendingReservations: pending.count ?? 0,
         recoverableReservations,
         humanRequiredCalls: humanRequired.count ?? 0,
-        manualMorellaCount: manualMorella.count ?? 0,
+        manualMorellaCount: manualDestination.count ?? 0,
         identicalPilotCount: duplicate.count ?? 0,
         budgetValid: budget.data ? validBudgetRow(budget.data) : false,
       }
@@ -422,14 +445,15 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
 
   async prepare(candidate: RealEditorialPilotPrepare): Promise<RealEditorialPilotRecord> {
     const input = RealEditorialPilotPrepareSchema.parse(candidate)
-    const destination = await this.findCanonicalMorella()
-    const identityKey = realEditorialIdentityKey(input.variantKey)
+    const policy = realEditorialPolicyById(input.policyId)
+    const destination = await this.findCanonicalDestination(policy)
+    const identityKey = realEditorialIdentityKey(input.variantKey, policy)
     const pilotId = this.id()
     const runId = this.id()
     const { data, error } = await this.client.rpc('prepare_real_editorial_pilot', {
       p_pilot_id: pilotId,
       p_run_id: runId,
-      p_policy_id: REAL_EDITORIAL_PILOT_POLICY.id,
+      p_policy_id: policy.id,
       p_preparation_key: input.preparationKey,
       p_identity_key: identityKey,
       p_variant_key: input.variantKey,
@@ -457,7 +481,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     })
     if (error || data !== true) throw new RealEditorialRepositoryError(
       'BUDGET_INVALID',
-      'No se pudo confirmar el presupuesto durable de Morella',
+      'No se pudo confirmar el presupuesto durable del destino editorial',
       error,
     )
     const pilot = await this.getPilot(pilotId)
@@ -1059,6 +1083,37 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     return data
   }
 
+  async materializeRoundOneBudgetReview(
+    pilotId: string,
+    runId: string,
+  ): Promise<RealEditorialBudgetReview> {
+    const checkpoint = await this.latestArtifact(runId, 'checkpoint', 'workflow')
+    if (!checkpoint) {
+      throw new RealEditorialRepositoryError(
+        'CHECKPOINT_INVALID',
+        'La reparación presupuestaria exige el checkpoint durable de ronda 1',
+      )
+    }
+    const { error } = await this.client.rpc(
+      'materialize_real_editorial_round_one_budget_review',
+      {
+        p_pilot_id: pilotId,
+        p_run_id: runId,
+        p_checkpoint_version: checkpoint.version,
+        p_checkpoint_hash: checkpoint.payloadHash,
+      },
+    )
+    if (error) throw budgetDecisionPersistenceError(error)
+    const review = await this.getBudgetReview(pilotId)
+    if (!review || review.runId !== runId || review.context !== 'workflow_completion') {
+      throw new RealEditorialRepositoryError(
+        'BUDGET_REVIEW_REQUIRED',
+        'La reparación no materializó la revisión presupuestaria esperada',
+      )
+    }
+    return review
+  }
+
   async resolveBudgetReview(
     candidate: RealEditorialBudgetResolution,
   ): Promise<RealEditorialBudgetResolutionResult> {
@@ -1110,7 +1165,9 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     let checkpointPreviousHash: string | null = null
     let checkpointPayload: Record<string, unknown> | null = null
     let checkpointPayloadHash: string | null = null
-    if (input.decision === 'authorize_extension'
+    const authorizesCoverageBudget = input.decision === 'authorize_extension'
+      || input.decision === 'authorize_within_limit'
+    if (authorizesCoverageBudget
       && !['authorized', 'cancelled'].includes(review.status)) {
       const checkpoint = await this.latestArtifact(input.runId, 'checkpoint', 'workflow')
       if (!checkpoint) {
@@ -1143,7 +1200,9 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       ? input.newMaximumCostEur
       : pilot.budget.taskLimitCost
     const budgetResolutionRpc = review.context === 'coverage_acceptance'
-      ? 'resolve_real_editorial_coverage_budget_review'
+      ? input.decision === 'authorize_within_limit'
+        ? 'resolve_real_editorial_coverage_budget_within_limit'
+        : 'resolve_real_editorial_coverage_budget_review'
       : 'resolve_real_editorial_budget_review'
     const { data, error } = await this.client.rpc(budgetResolutionRpc, {
       p_decision_key: decisionKey,
@@ -1193,6 +1252,127 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
           ? 'cancelled'
           : 'resume_from_checkpoint',
       review,
+    })
+  }
+
+  async getRoundOneSourceSelection(
+    pilotId: string,
+  ): Promise<RealEditorialRoundOneSourceSelectionPlan | undefined> {
+    const pilot = await this.getPilot(pilotId)
+    if (!pilot?.budget) return undefined
+    const stored = await this.client.from('real_editorial_round_one_source_selections')
+      .select('*').eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+      .order('selected_at', { ascending: false }).limit(1).maybeSingle()
+    assertNoError(stored.error, 'No se pudo leer la selección activa de fuentes')
+    if (stored.data) {
+      const items = await this.client.from('real_editorial_round_one_source_selection_items')
+        .select('*').eq('selection_id', stored.data.id)
+        .order('selection_rank', { ascending: true })
+      assertNoError(items.error, 'No se pudo leer el detalle de la selección de fuentes')
+      return roundOneSourceSelectionPlanFromRows(stored.data, items.data ?? [])
+    }
+
+    const [checkpoint, roundTwo, incident] = await Promise.all([
+      this.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
+      this.latestArtifact(pilot.currentRunId, 'tavily_result', 'round-2'),
+      this.client.from('real_editorial_incidents').select('id')
+        .eq('pilot_id', pilotId).eq('run_id', pilot.currentRunId)
+        .eq('code', 'LIMIT_EXCEEDED').eq('classification', 'human_required')
+        .is('resolved_at', null).order('created_at', { ascending: false })
+        .limit(1).maybeSingle(),
+    ])
+    assertNoError(incident.error, 'No se pudo leer el incidente previo a ronda 2')
+    if (!checkpoint || roundTwo || !incident.data) return undefined
+    return planRoundOneActiveSources({
+      pilotId,
+      runId: pilot.currentRunId,
+      incidentId: String(incident.data.id),
+      checkpointVersion: checkpoint.version,
+      checkpointHash: checkpoint.payloadHash,
+      checkpoint: checkpoint.payload as RealWorkflowCheckpoint,
+    })
+  }
+
+  async resolveRoundOneSourceSelection(
+    candidate: RealEditorialRoundOneSourceSelectionResolution,
+  ): Promise<RealEditorialRoundOneSourceSelectionResult> {
+    const input = RealEditorialRoundOneSourceSelectionResolutionSchema.parse(candidate)
+    const plan = await this.getRoundOneSourceSelection(input.pilotId)
+    if (
+      !plan
+      || plan.runId !== input.runId
+      || plan.incidentId !== input.incidentId
+      || plan.proposalHash !== input.proposalHash
+    ) {
+      throw new RealEditorialRepositoryError(
+        'ROUND_ONE_SOURCE_SELECTION_REQUIRED',
+        'No existe una propuesta vigente idéntica para liberar fuentes de ronda 1',
+      )
+    }
+    if (plan.status === 'applied') {
+      if (plan.actorId !== input.actorId || plan.reason !== input.reason) {
+        throw new RealEditorialRepositoryError(
+          'ROUND_ONE_SOURCE_SELECTION_CONFLICT',
+          'La selección activa ya fue aplicada con otra decisión humana',
+        )
+      }
+      return RealEditorialRoundOneSourceSelectionResultSchema.parse({
+        ...plan,
+        nextAction: 'resume_from_checkpoint',
+      })
+    }
+    const checkpoint = await this.latestArtifact(input.runId, 'checkpoint', 'workflow')
+    if (
+      !checkpoint
+      || checkpoint.version !== plan.previousCheckpointVersion
+      || checkpoint.payloadHash !== plan.previousCheckpointHash
+    ) {
+      throw new RealEditorialRepositoryError(
+        'ROUND_ONE_SOURCE_SELECTION_CONFLICT',
+        'El checkpoint cambió después de presentar la propuesta de fuentes',
+      )
+    }
+    const selectedCheckpoint = checkpointWithSelectedRoundOneSources(
+      checkpoint.payload as RealWorkflowCheckpoint,
+      plan,
+      this.now().toISOString(),
+    )
+    const selectedCheckpointHash = realEditorialPayloadHash(selectedCheckpoint)
+    const selectionKey = realEditorialPayloadHash({
+      proposalHash: plan.proposalHash,
+      actorId: input.actorId,
+      reason: input.reason,
+    })
+    const { data, error } = await this.client.rpc(
+      'select_real_editorial_round_one_active_sources',
+      {
+        p_selection_key: selectionKey,
+        p_proposal_hash: plan.proposalHash,
+        p_pilot_id: input.pilotId,
+        p_run_id: input.runId,
+        p_incident_id: input.incidentId,
+        p_actor_id: input.actorId,
+        p_reason: input.reason,
+        p_strategy_version: plan.strategyVersion,
+        p_previous_checkpoint_version: plan.previousCheckpointVersion,
+        p_previous_checkpoint_hash: plan.previousCheckpointHash,
+        p_selected_checkpoint_version: plan.selectedCheckpointVersion,
+        p_selected_checkpoint: selectedCheckpoint,
+        p_selected_checkpoint_hash: selectedCheckpointHash,
+        p_items: plan.sources,
+      },
+    )
+    if (error) throw roundOneSourceSelectionPersistenceError(error)
+    const applied = await this.getRoundOneSourceSelection(input.pilotId)
+    if (!applied || applied.status !== 'applied' || applied.selectionId !== String(data)) {
+      throw new RealEditorialRepositoryError(
+        'ROUND_ONE_SOURCE_SELECTION_CONFLICT',
+        'La selección aplicada no conserva su evidencia durable',
+      )
+    }
+    return RealEditorialRoundOneSourceSelectionResultSchema.parse({
+      ...applied,
+      nextAction: 'resume_from_checkpoint',
     })
   }
 
@@ -2139,6 +2319,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       permanentCancellation,
       budgetReview,
       guard,
+      roundOneSourceSelection,
       sourceLimitRecovery,
       partialAnalysisRecovery,
       openPersistenceIncidents,
@@ -2160,6 +2341,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
         .order('opened_at', { ascending: false }).limit(1).maybeSingle(),
       this.client.from('real_editorial_execution_guard').select('owner_execution_id,expires_at')
         .eq('guard_name', 'morella-real-editorial').maybeSingle(),
+      this.getRoundOneSourceSelection(pilotId),
       this.getSourceLimitRecovery(pilotId),
       this.getPartialAnalysisRecovery(pilotId),
       this.client.from('real_editorial_incidents').select('id,code,resolved_at')
@@ -2219,7 +2401,8 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     return Boolean(checkpoint) && (unresolved.count ?? 0) === 0
       && (permanentCancellation.count ?? 0) === 0 && budgetAllowsResume
       && coverageAllowsResume
-      && guardAllowsResume && sourceLimitRecovery?.status !== 'required'
+      && guardAllowsResume && roundOneSourceSelection?.status !== 'required'
+      && sourceLimitRecovery?.status !== 'required'
       && partialAnalysisRecovery?.status !== 'required'
       && blockingPersistenceIncidentCount === 0
   }
@@ -2626,18 +2809,20 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     await this.appendEvent(pilot.id, pilot.currentRunId, 'real.editorial.reopened', state, {})
   }
 
-  private async findCanonicalMorella(): Promise<{ id: string }> {
+  private async findCanonicalDestination(
+    policy: ReturnType<typeof realEditorialPolicyById>,
+  ): Promise<{ id: string }> {
     const { data, error } = await this.client.from('geographic_entities').select('id')
-      .eq('normalized_name', 'morella')
-      .eq('country_code', 'ES')
-      .eq('entity_type', 'locality')
+      .eq('normalized_name', policy.normalizedDestination)
+      .eq('country_code', policy.countryCode)
+      .eq('entity_type', policy.destinationType)
       .eq('status', 'active')
       .limit(2)
-    assertNoError(error, 'No se pudo resolver Morella')
+    assertNoError(error, `No se pudo resolver ${policy.destination}`)
     if (!data || data.length !== 1) {
       throw new RealEditorialRepositoryError(
         'DESTINATION_NOT_FOUND',
-        'Morella no tiene una identidad canónica única y activa',
+        `${policy.destination} no tiene una identidad canónica única y activa`,
       )
     }
     return { id: String(data[0].id) }
@@ -2686,9 +2871,10 @@ export class SupabaseRealWorkflowCheckpointStore implements RealWorkflowCheckpoi
       )
     }
     const generatingRound = Math.max(1, checkpoint.completedRound) as RealRoundNumber
-    const [roundOne, roundTwo, ...storedQueries] = await Promise.all([
+    const [roundOne, roundTwo, roundOneSourceSelection, ...storedQueries] = await Promise.all([
       this.repository.latestArtifact(this.runId, 'tavily_result', 'round-1'),
       this.repository.latestArtifact(this.runId, 'tavily_result', 'round-2'),
+      this.repository.getRoundOneSourceSelection?.(this.pilotId) ?? Promise.resolve(undefined),
       ...parsedQueries.data.map(async query => {
         const scoped = await this.repository.latestArtifact(
           this.runId,
@@ -2704,6 +2890,11 @@ export class SupabaseRealWorkflowCheckpointStore implements RealWorkflowCheckpoi
     return restoreRealWorkflowCheckpointRounds(
       { ...structuredClone(checkpoint), nextRoundQueries },
       { 1: roundOne, 2: roundTwo },
+      roundOneSourceSelection?.status === 'applied'
+        && roundOneSourceSelection.runId === this.runId
+        && roundOneSourceSelection.selectedCheckpointVersion <= artifact.version
+        ? roundOneSourceSelection
+        : undefined,
     )
   }
 
@@ -2756,6 +2947,7 @@ export class SupabaseRealWorkflowCheckpointStore implements RealWorkflowCheckpoi
 export function restoreRealWorkflowCheckpointRounds(
   checkpoint: RealWorkflowCheckpoint,
   artifacts: Partial<Record<RealRoundNumber, RealEditorialArtifact | undefined>>,
+  roundOneSourceSelection?: RealEditorialRoundOneSourceSelectionPlan,
 ): RealWorkflowCheckpoint {
   const completedAnalysisRound = checkpoint.completedRound
   const durableResearch = ([1, 2] as const).flatMap(round => {
@@ -2828,9 +3020,16 @@ export function restoreRealWorkflowCheckpointRounds(
     const storedByUrl = [...storedRoundOne]
       .sort((left, right) => left.normalizedUrl.localeCompare(right.normalizedUrl))
     if (realEditorialPayloadHash(durableByUrl) !== realEditorialPayloadHash(storedByUrl)) {
-      throw invalidRoundCheckpoint(
-        'Las fuentes del expediente no coinciden con el resultado Tavily durable de ronda 1',
-      )
+      if (!roundOneSelectionMatchesDurableSources(
+        roundOneSourceSelection,
+        checkpoint,
+        parsedRoundOne.data,
+        storedRoundOne,
+      )) {
+        throw invalidRoundCheckpoint(
+          'Las fuentes del expediente no coinciden con el resultado Tavily durable de ronda 1',
+        )
+      }
     }
     sources = storedRoundOne
   }
@@ -2883,13 +3082,60 @@ export function restoreRealWorkflowCheckpointRounds(
   }
 }
 
-export function realEditorialIdentityKey(variantKey = 'initial'): string {
+function roundOneSelectionMatchesDurableSources(
+  selection: RealEditorialRoundOneSourceSelectionPlan | undefined,
+  checkpoint: RealWorkflowCheckpoint,
+  durableSources: RealResearchSource[],
+  storedSources: RealResearchSource[],
+): boolean {
+  if (
+    !selection
+    || selection.status !== 'applied'
+    || selection.runId !== checkpoint.initialMission.runId
+    || selection.pilotId !== checkpoint.initialMission.requestId
+    || selection.maximumSources !== checkpoint.initialMission.limits.maxSources
+    || selection.originalActiveCount !== durableSources.length
+    || selection.activeCountAfterSelection !== storedSources.length
+  ) return false
+
+  const durableById = new Map(durableSources.map(source => [source.id, source]))
+  const auditedSourceIds = selection.sources.map(source => source.sourceId).sort()
+  const durableSourceIds = durableSources.map(source => source.id).sort()
+  if (realEditorialPayloadHash(auditedSourceIds) !== realEditorialPayloadHash(durableSourceIds)) {
+    return false
+  }
+  for (const item of selection.sources) {
+    const durable = durableById.get(item.sourceId)
+    if (
+      !durable
+      || durable.title !== item.title
+      || durable.normalizedUrl !== item.normalizedUrl
+      || durable.contentHash !== item.contentHash
+      || durable.score !== item.score
+    ) return false
+  }
+
+  const retainedIds = new Set(selection.sources
+    .filter(source => source.decision === 'keep_active')
+    .map(source => source.sourceId))
+  const expectedStored = durableSources
+    .filter(source => retainedIds.has(source.id))
+    .sort((left, right) => left.normalizedUrl.localeCompare(right.normalizedUrl))
+  const normalizedStored = [...storedSources]
+    .sort((left, right) => left.normalizedUrl.localeCompare(right.normalizedUrl))
+  return realEditorialPayloadHash(expectedStored) === realEditorialPayloadHash(normalizedStored)
+}
+
+export function realEditorialIdentityKey(
+  variantKey = 'initial',
+  policy: ReturnType<typeof realEditorialPolicyById> = REAL_EDITORIAL_PILOT_POLICY,
+): string {
   return createHash('sha256').update(JSON.stringify({
-    normalizedDestination: REAL_EDITORIAL_PILOT_POLICY.normalizedDestination,
-    countryCode: REAL_EDITORIAL_PILOT_POLICY.countryCode,
-    destinationType: REAL_EDITORIAL_PILOT_POLICY.destinationType,
+    normalizedDestination: policy.normalizedDestination,
+    countryCode: policy.countryCode,
+    destinationType: policy.destinationType,
     mode: 'real_editorial_pilot',
-    pipelineVersion: REAL_EDITORIAL_PILOT_POLICY.pipelineVersion,
+    pipelineVersion: policy.pipelineVersion,
     profiles: [
       { profile: 'adventure', targetWords: 1_000 },
       { profile: 'student', targetWords: 1_800 },
@@ -2901,6 +3147,55 @@ export function realEditorialIdentityKey(variantKey = 'initial'): string {
 
 const SOURCE_LIMIT_DIAGNOSTIC =
   'El expediente supera el máximo global de fuentes y necesita una selección durable antes de continuar.'
+
+function roundOneSourceSelectionPlanFromRows(
+  row: Record<string, unknown>,
+  itemRows: Array<Record<string, unknown>>,
+): RealEditorialRoundOneSourceSelectionPlan {
+  return RealEditorialRoundOneSourceSelectionPlanSchema.parse({
+    status: 'applied',
+    selectionId: row.id,
+    selectionKey: row.selection_key,
+    proposalHash: row.proposal_hash,
+    pilotId: row.pilot_id,
+    runId: row.run_id,
+    incidentId: row.incident_id,
+    actorId: row.actor_id,
+    reason: row.reason,
+    selectedAt: row.selected_at,
+    strategyVersion: row.strategy_version,
+    previousCheckpointVersion: Number(row.previous_checkpoint_version),
+    previousCheckpointHash: row.previous_checkpoint_hash,
+    selectedCheckpointVersion: Number(row.selected_checkpoint_version),
+    workflowVersion: 'real-workflow-v1',
+    maximumSources: Number(row.maximum_sources),
+    roundTwoQueryCount: Number(row.round_two_query_count),
+    requiredRoundTwoSlots: Number(row.required_round_two_slots),
+    originalActiveCount: Number(row.original_active_count),
+    retainedCount: Number(row.retained_count),
+    deselectedCount: Number(row.deselected_count),
+    activeCountAfterSelection: Number(row.active_count_after_selection),
+    availableSlotsAfterSelection: Number(row.available_slots_after_selection),
+    sources: itemRows.map(item => ({
+      sourceId: item.source_id,
+      title: item.title,
+      normalizedUrl: item.normalized_url,
+      contentHash: item.content_hash,
+      score: Number(item.source_score),
+      originalOrdinal: Number(item.original_ordinal),
+      rank: Number(item.selection_rank),
+      decision: item.decision,
+      coveredGapIds: item.covered_gap_ids,
+      coverageTopics: item.coverage_topics,
+      undercoveredCoverageTopics: item.undercovered_coverage_topics,
+      claimIds: item.claim_ids,
+      reason: item.reason,
+    })),
+    providerCallsPerformed: Number(row.provider_calls_performed),
+    budgetChanged: row.budget_changed,
+    historicalSourcesMutated: row.historical_sources_mutated,
+  })
+}
 
 function sourceLimitRecoveryPlanFromArtifacts(input: {
   pilot: RealEditorialPilotRecord
@@ -4122,6 +4417,37 @@ function sourceLimitRecoveryPersistenceError(
   return new RealEditorialRepositoryError(
     'SOURCE_LIMIT_RECOVERY_NOT_ALLOWED',
     'La recuperación durable del límite de fuentes fue rechazada',
+  )
+}
+
+function roundOneSourceSelectionPersistenceError(
+  error: { message: string; code?: string },
+): RealEditorialRepositoryError {
+  if (
+    error.message.includes('ROUND_ONE_SOURCE_SELECTION_IDEMPOTENCY_CONFLICT')
+    || error.message.includes('ROUND_ONE_SOURCE_SELECTION_ALREADY_APPLIED')
+    || error.message.includes('ROUND_ONE_SOURCE_SELECTION_STATE_CHANGED')
+    || error.message.includes('ROUND_ONE_SOURCE_SELECTION_CHECKPOINT_CHANGED')
+    || error.message.includes('ROUND_ONE_SOURCE_SELECTION_ROUND_TWO_STARTED')
+  ) {
+    return new RealEditorialRepositoryError(
+      'ROUND_ONE_SOURCE_SELECTION_CONFLICT',
+      'La propuesta dejó de coincidir con el checkpoint o ya fue resuelta',
+    )
+  }
+  if (
+    error.message.includes('ROUND_ONE_SOURCE_SELECTION_INCIDENT_INVALID')
+    || error.message.includes('ROUND_ONE_SOURCE_SELECTION_GUARD_BUSY')
+    || error.message.includes('ROUND_ONE_SOURCE_SELECTION_PENDING_RESERVATIONS')
+  ) {
+    return new RealEditorialRepositoryError(
+      'ROUND_ONE_SOURCE_SELECTION_REQUIRED',
+      'La selección exige el incidente vigente y ausencia de efectos pendientes',
+    )
+  }
+  return new RealEditorialRepositoryError(
+    'ROUND_ONE_SOURCE_SELECTION_NOT_ALLOWED',
+    'La selección durable de fuentes activas fue rechazada',
   )
 }
 

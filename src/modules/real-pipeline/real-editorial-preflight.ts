@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { ProviderCenterSnapshotSchema } from '@shared/provider-center-contracts'
 import {
   REAL_EDITORIAL_PILOT_POLICY,
+  RealEditorialPilotPolicySchema,
   RealEditorialPilotRecordSchema,
   RealEditorialPreflightSchema,
   type RealEditorialPreflight,
@@ -9,6 +10,7 @@ import {
 
 export const RealEditorialPreflightInputSchema = z.object({
   featureEnabled: z.boolean(),
+  policy: RealEditorialPilotPolicySchema.default(REAL_EDITORIAL_PILOT_POLICY),
   providerCenter: ProviderCenterSnapshotSchema,
   repositoryAvailable: z.boolean(),
   budgetValid: z.boolean(),
@@ -118,7 +120,7 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
   add(
     'openai_model',
     'Modelo OpenAI',
-    openAI?.selectedModel === REAL_EDITORIAL_PILOT_POLICY.providers.model,
+    openAI?.selectedModel === input.policy.providers.model,
     'gpt-5.6-luna seleccionado.',
     'El piloto exige exactamente gpt-5.6-luna.',
   )
@@ -147,8 +149,8 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
   add(
     'conversion',
     'Conversión presupuestaria',
-    REAL_EDITORIAL_PILOT_POLICY.usdToEur === 1,
-    `${REAL_EDITORIAL_PILOT_POLICY.fxPolicyVersion}: 1 USD = 1 EUR.`,
+    input.policy.usdToEur === 1,
+    `${input.policy.fxPolicyVersion}: 1 USD = 1 EUR.`,
     'La conversión editorial no coincide con la política autorizada.',
   )
   add(
@@ -160,7 +162,7 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
   )
   add(
     'budget',
-    'Presupuesto propio Morella',
+    `Presupuesto propio ${input.policy.destination}`,
     input.budgetValid,
     input.pilot?.budget
       ? `Máximo humano vigente de tarea, lote y día: ${
@@ -221,19 +223,20 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
   )
   add(
     'destination',
-    'Whitelist Morella',
+    `Destino ${input.policy.destination}`,
     input.pilot
-      ? input.pilot.normalizedDestination === REAL_EDITORIAL_PILOT_POLICY.normalizedDestination
-        && input.pilot.countryCode === REAL_EDITORIAL_PILOT_POLICY.countryCode
-        && input.pilot.destinationType === REAL_EDITORIAL_PILOT_POLICY.destinationType
+      ? input.pilot.policyId === input.policy.id
+        && input.pilot.normalizedDestination === input.policy.normalizedDestination
+        && input.pilot.countryCode === input.policy.countryCode
+        && input.pilot.destinationType === input.policy.destinationType
       : true,
-    'Destino canónico Morella, ES, localidad.',
-    'La identidad territorial no coincide con la whitelist.',
+    `Destino canónico ${input.policy.destination}, ${input.policy.countryCode}, localidad.`,
+    'La identidad territorial no coincide con la policy autorizada.',
   )
   add(
     'rounds',
     'Máximo dos rondas',
-    REAL_EDITORIAL_PILOT_POLICY.maxRounds === 2,
+    input.policy.maxRounds === 2,
     'La política no permite una tercera ronda.',
     'El máximo de rondas no es seguro.',
   )
@@ -278,7 +281,7 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
   return RealEditorialPreflightSchema.parse({
     status,
     checks,
-    policy: REAL_EDITORIAL_PILOT_POLICY,
+    policy: input.policy,
     pilot: input.pilot,
     repositoryAvailable: input.repositoryAvailable,
     duplicateResolution: input.duplicateResolution,

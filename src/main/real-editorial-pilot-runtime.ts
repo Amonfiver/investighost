@@ -24,9 +24,12 @@ import {
   RealEditorialPilotPrepareSchema,
   RealEditorialPilotProgressSchema,
   RealEditorialPartialAnalysisRecoverySchema,
+  RealEditorialRoundOneSourceSelectionResolutionSchema,
   RealEditorialSourceLimitRecoverySchema,
   RealEditorialTerminalResolutionSchema,
+  realEditorialPolicyById,
   type RealEditorialPilotProgress,
+  type RealEditorialPilotPolicyId,
   type RealEditorialPilotState,
   type RealEditorialPreflight,
 } from '@shared/real-editorial-pilot-contracts'
@@ -43,14 +46,21 @@ export class RealEditorialPilotRuntime {
     private readonly client: ReturnType<typeof createLocalSupabaseClientFromEnv>['client'],
   ) {}
 
-  async preflight(pilotId?: string): Promise<RealEditorialPreflight> {
-    const defaultIdentity = realEditorialIdentityKey('initial')
+  async preflight(
+    pilotId?: string,
+    requestedPolicyId: RealEditorialPilotPolicyId = REAL_EDITORIAL_PILOT_POLICY.id,
+  ): Promise<RealEditorialPreflight> {
+    const requestedPolicy = realEditorialPolicyById(requestedPolicyId)
+    const defaultIdentity = realEditorialIdentityKey('initial', requestedPolicy)
     const pilot = pilotId
       ? await this.repository.getPilot(pilotId)
       : await this.repository.findByIdentity(defaultIdentity)
-    const identity = pilot ? realEditorialIdentityKey(pilot.variantKey) : defaultIdentity
+    const policy = pilot ? realEditorialPolicyById(pilot.policyId) : requestedPolicy
+    const identity = pilot
+      ? realEditorialIdentityKey(pilot.variantKey, policy)
+      : defaultIdentity
     const [inspection, budgetReview] = await Promise.all([
-      this.repository.inspect(identity, pilot?.id),
+      this.repository.inspect(identity, pilot?.id, policy.id),
       pilot ? this.repository.getBudgetReview(pilot.id) : Promise.resolve(undefined),
     ])
     const duplicateResolution = pilot
@@ -61,13 +71,15 @@ export class RealEditorialPilotRuntime {
           ? 'manual_only_coexists'
           : 'no_conflict'
     const providerCenter = await getProviderCenterRuntime()
+    const authorization = readRealEditorialAuthorization()
     const openAIRequestContract = inspectOpenAIEditorialResponseContracts(
-      REAL_EDITORIAL_PILOT_POLICY.providers.model,
+      policy.providers.model,
     )
     const firstContractIssue = openAIRequestContract.operations
       .flatMap(operation => operation.issues)[0]
     return evaluateRealEditorialPreflight({
-      featureEnabled: readRealEditorialAuthorization().enabled,
+      featureEnabled: authorization.enabled && authorization.policyId === policy.id,
+      policy,
       providerCenter: providerCenter.snapshot(),
       repositoryAvailable: inspection.repositoryAvailable,
       budgetValid: inspection.budgetValid,
@@ -107,6 +119,18 @@ export class RealEditorialPilotRuntime {
     return this.repository.confirmBudget(input.pilotId)
   }
 
+  async materializeRoundOneBudgetReview(candidate: unknown) {
+    const { pilotId } = RealEditorialPilotActionSchema.parse(candidate)
+    if (this.controllers.has(pilotId)) {
+      throw new Error('No se puede reparar la barrera presupuestaria durante una ejecución')
+    }
+    const pilot = await this.repository.getPilot(pilotId)
+    if (!pilot || pilot.state !== 'review_required') {
+      throw new Error('La reparación exige un piloto detenido en revisión humana')
+    }
+    return this.repository.materializeRoundOneBudgetReview(pilot.id, pilot.currentRunId)
+  }
+
   async progress(candidate: unknown): Promise<RealEditorialPilotProgress> {
     const { pilotId } = RealEditorialPilotActionSchema.parse(candidate)
     const pilot = await this.repository.getPilot(pilotId)
@@ -120,6 +144,7 @@ export class RealEditorialPilotRuntime {
       budgetReview,
       workflowCheckpoint,
       resumeAvailable,
+      roundOneSourceSelection,
       sourceLimitRecovery,
       partialAnalysisRecovery,
       historicalIncidentReview,
@@ -133,11 +158,12 @@ export class RealEditorialPilotRuntime {
         .order('created_at', { ascending: false }).limit(1),
       this.client.from('real_editorial_runs').select('current_round')
         .eq('id', pilot.currentRunId).eq('pilot_id', pilotId).single(),
-      this.repository.inspect(pilot.identityKey, pilotId),
+      this.repository.inspect(pilot.identityKey, pilotId, pilot.policyId),
       this.repository.getHumanRequiredCall(pilotId),
       this.repository.getBudgetReview(pilotId),
       this.repository.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
       this.repository.canResumeFromCheckpoint(pilotId),
+      this.repository.getRoundOneSourceSelection?.(pilotId) ?? Promise.resolve(undefined),
       this.repository.getSourceLimitRecovery(pilotId),
       this.repository.getPartialAnalysisRecovery?.(pilotId) ?? Promise.resolve(undefined),
       this.repository.getHistoricalIncidentReview?.(pilotId) ?? Promise.resolve(undefined),
@@ -172,6 +198,7 @@ export class RealEditorialPilotRuntime {
         ? undefined
         : budgetReview,
       coverageReview: terminalPresentation ? undefined : coverageReview,
+      roundOneSourceSelection: terminalPresentation ? undefined : roundOneSourceSelection,
       sourceLimitRecovery: terminalPresentation ? undefined : sourceLimitRecovery,
       partialAnalysisRecovery: terminalPresentation ? undefined : partialAnalysisRecovery,
       historicalIncidentReview: terminalPresentation ? undefined : historicalIncidentReview,
@@ -204,7 +231,8 @@ export class RealEditorialPilotRuntime {
     if (!isRealEditorialTerminalReviewState(pilot.state)) {
       throw new Error('El piloto no conserva un resultado terminal revisable')
     }
-    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    assertPolicyAuthorization(pilot.policyId)
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id, pilot.policyId)
     if (!inspection.guardFree || inspection.pendingReservations > 0) {
       throw new Error('La guarda y las reservas deben estar libres para decidir el resultado')
     }
@@ -230,7 +258,8 @@ export class RealEditorialPilotRuntime {
     ) {
       throw new Error('Solo un resultado humano aprobado puede incorporarse a Biblioteca')
     }
-    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    assertPolicyAuthorization(pilot.policyId)
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id, pilot.policyId)
     if (!inspection.guardFree || inspection.pendingReservations > 0) {
       throw new Error('La guarda y las reservas deben estar libres para incorporar a Biblioteca')
     }
@@ -251,9 +280,7 @@ export class RealEditorialPilotRuntime {
     const { pilotId } = RealEditorialPilotActionSchema.parse(candidate)
     const pilot = await this.repository.getPilot(pilotId)
     if (pilot?.state === 'pending_human_review') {
-      if (!readRealEditorialAuthorization().enabled) {
-        throw new Error('La feature flag editorial real no autoriza la reanudación')
-      }
+      assertPolicyAuthorization(pilot.policyId)
       const stored = await this.repository.getResult(pilotId)
       if (!stored) throw new Error('El piloto terminado no conserva su resultado durable')
       return stored
@@ -280,7 +307,8 @@ export class RealEditorialPilotRuntime {
     if (!pilot || pilot.currentRunId !== input.runId) {
       throw new Error('La resolución no corresponde al piloto y run activos')
     }
-    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    assertPolicyAuthorization(pilot.policyId)
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id, pilot.policyId)
     if (!inspection.guardFree) {
       throw new Error('La guarda editorial debe estar libre para resolver la llamada')
     }
@@ -302,7 +330,8 @@ export class RealEditorialPilotRuntime {
     if (!pilot || pilot.currentRunId !== input.runId) {
       throw new Error('La decisión no corresponde al piloto y run activos')
     }
-    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    assertPolicyAuthorization(pilot.policyId)
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id, pilot.policyId)
     if (!inspection.guardFree) {
       throw new Error('La guarda editorial debe estar libre para decidir el presupuesto')
     }
@@ -324,7 +353,8 @@ export class RealEditorialPilotRuntime {
     if (!pilot || pilot.currentRunId !== input.runId) {
       throw new Error('La decisión de cobertura no corresponde al piloto y run activos')
     }
-    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    assertPolicyAuthorization(pilot.policyId)
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id, pilot.policyId)
     if (!inspection.guardFree || inspection.pendingReservations > 0) {
       throw new Error('La guarda y las reservas deben estar libres para decidir la cobertura')
     }
@@ -346,11 +376,35 @@ export class RealEditorialPilotRuntime {
     if (!pilot || pilot.currentRunId !== input.runId) {
       throw new Error('La recuperación no corresponde al piloto y run activos')
     }
-    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    assertPolicyAuthorization(pilot.policyId)
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id, pilot.policyId)
     if (!inspection.guardFree) {
       throw new Error('La guarda editorial debe estar libre para recuperar el límite')
     }
     return this.repository.recoverSourceLimit(input)
+  }
+
+  async resolveRoundOneSourceSelection(candidate: unknown) {
+    const input = RealEditorialRoundOneSourceSelectionResolutionSchema.parse(candidate)
+    if (!readRealEditorialAuthorization().enabled) {
+      throw new Error('La feature flag editorial real no autoriza seleccionar fuentes')
+    }
+    if (input.actorId !== MANUAL_LOCAL_ACTOR_ID) {
+      throw new Error('El actor humano no coincide con el operador local autorizado')
+    }
+    if (this.controllers.has(input.pilotId)) {
+      throw new Error('No se pueden seleccionar fuentes mientras el piloto se ejecuta')
+    }
+    const pilot = await this.repository.getPilot(input.pilotId)
+    if (!pilot || pilot.currentRunId !== input.runId) {
+      throw new Error('La selección no corresponde al piloto y run activos')
+    }
+    assertPolicyAuthorization(pilot.policyId)
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id, pilot.policyId)
+    if (!inspection.guardFree || inspection.pendingReservations > 0) {
+      throw new Error('La guarda y las reservas deben estar libres para seleccionar fuentes')
+    }
+    return this.repository.resolveRoundOneSourceSelection(input)
   }
 
   async recoverPartialAnalysis(candidate: unknown) {
@@ -368,7 +422,8 @@ export class RealEditorialPilotRuntime {
     if (!pilot || pilot.currentRunId !== input.runId) {
       throw new Error('La recuperación no corresponde al piloto y run activos')
     }
-    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    assertPolicyAuthorization(pilot.policyId)
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id, pilot.policyId)
     if (!inspection.guardFree) {
       throw new Error('La guarda editorial debe estar libre para recuperar el análisis')
     }
@@ -390,7 +445,8 @@ export class RealEditorialPilotRuntime {
     if (!pilot || pilot.currentRunId !== input.runId) {
       throw new Error('La resolución no corresponde al piloto y run activos')
     }
-    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id)
+    assertPolicyAuthorization(pilot.policyId)
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id, pilot.policyId)
     if (!inspection.guardFree || inspection.pendingReservations > 0) {
       throw new Error('La guarda y las reservas deben estar libres para resolver incidentes')
     }
@@ -406,7 +462,7 @@ export class RealEditorialPilotRuntime {
     if (this.controllers.has(pilotId)) throw new Error('El piloto ya se está ejecutando')
     const preflight = await this.preflight(pilotId)
     if (!preflight.startActionEnabled || preflight.status !== 'ready_for_real_editorial_pilot') {
-      throw new Error('El preflight editorial real no autoriza iniciar Morella')
+      throw new Error('El preflight editorial real no autoriza iniciar el destino')
     }
     const pilot = await this.repository.getPilot(pilotId)
     if (!pilot?.budget) throw new Error('Falta el presupuesto durable del piloto')
@@ -417,7 +473,11 @@ export class RealEditorialPilotRuntime {
       throw new Error('El estado durable no autoriza reanudar desde checkpoint')
     }
     const authorization = readRealEditorialAuthorization()
-    if (!authorization.enabled || !authorization.featureToken) {
+    if (
+      !authorization.enabled
+      || !authorization.featureToken
+      || authorization.policyId !== pilot.policyId
+    ) {
       throw new Error('La feature flag editorial real no está disponible')
     }
     const featureToken = authorization.featureToken
@@ -506,6 +566,13 @@ export function isRealEditorialTerminalReviewState(state: RealEditorialPilotStat
     'changes_requested',
     'human_rejected',
   ].includes(state)
+}
+
+function assertPolicyAuthorization(policyId: RealEditorialPilotPolicyId): void {
+  const authorization = readRealEditorialAuthorization()
+  if (!authorization.enabled || authorization.policyId !== policyId) {
+    throw new Error('La feature flag no autoriza la policy de este piloto')
+  }
 }
 
 let runtime: RealEditorialPilotRuntime | undefined

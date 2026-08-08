@@ -29,12 +29,7 @@ export const REAL_EDITORIAL_OPENAI_MODEL = {
   apiId: 'gpt-5.6-luna',
 } as const
 
-export const REAL_EDITORIAL_PILOT_POLICY = {
-  id: 'morella-real-editorial-pilot-v1',
-  destination: 'Morella',
-  normalizedDestination: 'morella',
-  countryCode: 'ES',
-  destinationType: 'locality',
+const REAL_EDITORIAL_POLICY_LIMITS = {
   language: 'es',
   pipelineVersion: 'real-editorial-v1',
   targetCostEur: 0.125,
@@ -60,6 +55,45 @@ export const REAL_EDITORIAL_PILOT_POLICY = {
   },
 } as const
 
+export const REAL_EDITORIAL_MORELLA_POLICY = {
+  id: 'morella-real-editorial-pilot-v1',
+  destination: 'Morella',
+  normalizedDestination: 'morella',
+  countryCode: 'ES',
+  destinationType: 'locality',
+  ...REAL_EDITORIAL_POLICY_LIMITS,
+} as const
+
+export const REAL_EDITORIAL_E2E04_POLICY = {
+  id: 'albarracin-real-editorial-e2e04-v1',
+  destination: 'Albarracín',
+  normalizedDestination: 'albarracin',
+  countryCode: 'ES',
+  destinationType: 'locality',
+  ...REAL_EDITORIAL_POLICY_LIMITS,
+} as const
+
+export const REAL_EDITORIAL_PILOT_POLICIES = [
+  REAL_EDITORIAL_MORELLA_POLICY,
+  REAL_EDITORIAL_E2E04_POLICY,
+] as const
+
+// Compatibilidad: todas las rutas históricas que no eligen policy siguen siendo Morella.
+export const REAL_EDITORIAL_PILOT_POLICY = REAL_EDITORIAL_MORELLA_POLICY
+
+export const RealEditorialPilotPolicyIdSchema = z.enum([
+  REAL_EDITORIAL_MORELLA_POLICY.id,
+  REAL_EDITORIAL_E2E04_POLICY.id,
+])
+
+export function realEditorialPolicyById(
+  policyId: z.infer<typeof RealEditorialPilotPolicyIdSchema>,
+) {
+  return policyId === REAL_EDITORIAL_E2E04_POLICY.id
+    ? REAL_EDITORIAL_E2E04_POLICY
+    : REAL_EDITORIAL_MORELLA_POLICY
+}
+
 export const REAL_EDITORIAL_COVERAGE_BUDGET = {
   draftingCostEur: 0.04,
   finalReviewCostEur: 0.02,
@@ -75,15 +109,31 @@ const CurrentMaximumCostSchema = z.number().finite()
   )
 
 export const REAL_EDITORIAL_FEATURE_TOKEN = 'morella-real-editorial-pilot-authorized'
+export const REAL_EDITORIAL_E2E04_FEATURE_TOKEN =
+  'albarracin-real-editorial-e2e04-authorized'
 
 export function resolveRealEditorialFeatureFlag(value?: string): boolean {
-  return value === REAL_EDITORIAL_FEATURE_TOKEN
+  return realEditorialPolicyIdForFeatureToken(value) !== null
+}
+
+export function realEditorialPolicyIdForFeatureToken(
+  value?: string,
+): z.infer<typeof RealEditorialPilotPolicyIdSchema> | null {
+  if (value === REAL_EDITORIAL_FEATURE_TOKEN) return REAL_EDITORIAL_MORELLA_POLICY.id
+  if (value === REAL_EDITORIAL_E2E04_FEATURE_TOKEN) return REAL_EDITORIAL_E2E04_POLICY.id
+  return null
 }
 
 export const RealEditorialPilotPolicySchema = z.object({
-  id: z.literal(REAL_EDITORIAL_PILOT_POLICY.id),
-  destination: z.literal(REAL_EDITORIAL_PILOT_POLICY.destination),
-  normalizedDestination: z.literal(REAL_EDITORIAL_PILOT_POLICY.normalizedDestination),
+  id: RealEditorialPilotPolicyIdSchema,
+  destination: z.enum([
+    REAL_EDITORIAL_MORELLA_POLICY.destination,
+    REAL_EDITORIAL_E2E04_POLICY.destination,
+  ]),
+  normalizedDestination: z.enum([
+    REAL_EDITORIAL_MORELLA_POLICY.normalizedDestination,
+    REAL_EDITORIAL_E2E04_POLICY.normalizedDestination,
+  ]),
   countryCode: z.literal(REAL_EDITORIAL_PILOT_POLICY.countryCode),
   destinationType: z.literal(REAL_EDITORIAL_PILOT_POLICY.destinationType),
   language: z.literal(REAL_EDITORIAL_PILOT_POLICY.language),
@@ -109,6 +159,18 @@ export const RealEditorialPilotPolicySchema = z.object({
     intelligence: z.literal(REAL_EDITORIAL_PILOT_POLICY.providers.intelligence),
     model: z.literal(REAL_EDITORIAL_PILOT_POLICY.providers.model),
   }),
+}).superRefine((value, context) => {
+  const expected = realEditorialPolicyById(value.id)
+  if (
+    value.destination !== expected.destination
+    || value.normalizedDestination !== expected.normalizedDestination
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['destination'],
+      message: 'La identidad territorial no coincide con la policy editorial',
+    })
+  }
 })
 
 export const EditorialExecutionModeSchema = z.enum([
@@ -139,7 +201,7 @@ export const RealEditorialPilotStateSchema = z.enum([
 ])
 
 export const RealEditorialPilotIdentitySchema = z.object({
-  normalizedDestination: z.literal('morella'),
+  normalizedDestination: z.enum(['morella', 'albarracin']),
   countryCode: z.literal('ES'),
   destinationType: z.literal('locality'),
   mode: z.literal('real_editorial_pilot'),
@@ -153,6 +215,7 @@ export const RealEditorialPilotIdentitySchema = z.object({
 })
 
 export const RealEditorialPilotPrepareSchema = z.object({
+  policyId: RealEditorialPilotPolicyIdSchema.default(REAL_EDITORIAL_PILOT_POLICY.id),
   variantKey: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(120).default('initial'),
   preparationKey: IdentifierSchema.default('morella-real-editorial-pilot-v1-initial-prepare'),
   taskOrigin: z.literal('human_authorized').default('human_authorized'),
@@ -589,6 +652,149 @@ export const RealEditorialSourceLimitRecoveryResultSchema =
     })
     .superRefine(validateSourceLimitRecoveryPlan)
 
+export const REAL_EDITORIAL_ROUND_ONE_SOURCE_SELECTION_STRATEGY =
+  'round-one-active-source-selection-v1' as const
+
+const RoundOneSourceSelectionReasonSchema = z.enum([
+  'current_gap_evidence_priority',
+  'lower_incremental_gap_coverage',
+])
+
+export const RealEditorialRoundOneSourceSelectionItemSchema = z.object({
+  sourceId: IdentifierSchema,
+  title: z.string().trim().min(1).max(500),
+  normalizedUrl: z.string().url().refine(value => value.startsWith('https://'), {
+    message: 'La fuente debe usar HTTPS',
+  }),
+  contentHash: Sha256Schema,
+  score: z.number().finite().min(0).max(1),
+  originalOrdinal: z.number().int().positive(),
+  rank: z.number().int().positive(),
+  decision: z.enum(['keep_active', 'deselect_active']),
+  coveredGapIds: z.array(IdentifierSchema).max(20),
+  coverageTopics: z.array(z.string().trim().min(1).max(200)).max(20),
+  undercoveredCoverageTopics: z.array(z.string().trim().min(1).max(200)).max(20),
+  claimIds: z.array(IdentifierSchema).max(50),
+  reason: RoundOneSourceSelectionReasonSchema,
+}).strict()
+
+const RealEditorialRoundOneSourceSelectionPlanBaseSchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  incidentId: z.string().uuid(),
+  strategyVersion: z.literal(REAL_EDITORIAL_ROUND_ONE_SOURCE_SELECTION_STRATEGY),
+  proposalHash: Sha256Schema,
+  previousCheckpointVersion: z.number().int().positive(),
+  previousCheckpointHash: Sha256Schema,
+  selectedCheckpointVersion: z.number().int().positive(),
+  workflowVersion: z.literal('real-workflow-v1'),
+  maximumSources: z.literal(REAL_EDITORIAL_PILOT_POLICY.maxAcceptedSources),
+  roundTwoQueryCount: z.number().int().positive(),
+  requiredRoundTwoSlots: z.number().int().positive(),
+  originalActiveCount: z.number().int().positive(),
+  retainedCount: z.number().int().nonnegative(),
+  deselectedCount: z.number().int().positive(),
+  activeCountAfterSelection: z.number().int().nonnegative(),
+  availableSlotsAfterSelection: z.number().int().positive(),
+  sources: z.array(RealEditorialRoundOneSourceSelectionItemSchema).min(1).max(20),
+  providerCallsPerformed: z.literal(0),
+  budgetChanged: z.literal(false),
+  historicalSourcesMutated: z.literal(false),
+})
+
+const validateRoundOneSourceSelectionPlan = (
+  value: z.infer<typeof RealEditorialRoundOneSourceSelectionPlanBaseSchema>,
+  context: z.RefinementCtx,
+) => {
+  if (value.selectedCheckpointVersion !== value.previousCheckpointVersion + 1) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['selectedCheckpointVersion'],
+      message: 'La selección debe crear la siguiente versión del checkpoint',
+    })
+  }
+  if (
+    value.requiredRoundTwoSlots !== value.roundTwoQueryCount
+    || value.originalActiveCount !== value.sources.length
+    || value.retainedCount + value.deselectedCount !== value.originalActiveCount
+    || value.activeCountAfterSelection !== value.retainedCount
+    || value.availableSlotsAfterSelection !== value.maximumSources - value.retainedCount
+    || value.availableSlotsAfterSelection < value.requiredRoundTwoSlots
+    || value.retainedCount + value.requiredRoundTwoSlots > value.maximumSources
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['requiredRoundTwoSlots'],
+      message: 'La selección no libera exactamente la capacidad segura para la ronda 2',
+    })
+  }
+  const sourceIds = value.sources.map(source => source.sourceId)
+  const ranks = value.sources.map(source => source.rank)
+  const ordinals = value.sources.map(source => source.originalOrdinal)
+  if (
+    new Set(sourceIds).size !== sourceIds.length
+    || new Set(ranks).size !== ranks.length
+    || new Set(ordinals).size !== ordinals.length
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['sources'],
+      message: 'Fuentes, rangos y posiciones originales deben ser únicos',
+    })
+  }
+  for (const source of value.sources) {
+    const expectedDecision = source.rank <= value.retainedCount
+      ? 'keep_active'
+      : 'deselect_active'
+    const expectedReason = source.decision === 'keep_active'
+      ? 'current_gap_evidence_priority'
+      : 'lower_incremental_gap_coverage'
+    if (source.decision !== expectedDecision || source.reason !== expectedReason) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sources'],
+        message: 'La partición activa debe coincidir con el ranking determinista',
+      })
+      break
+    }
+  }
+}
+
+export const RealEditorialRoundOneSourceSelectionPlanSchema = z.discriminatedUnion('status', [
+  RealEditorialRoundOneSourceSelectionPlanBaseSchema.extend({
+    status: z.literal('required'),
+  }),
+  RealEditorialRoundOneSourceSelectionPlanBaseSchema.extend({
+    status: z.literal('applied'),
+    selectionId: z.string().uuid(),
+    selectionKey: Sha256Schema,
+    actorId: z.string().uuid(),
+    reason: SourceLimitRecoveryReasonSchema,
+    selectedAt: TimestampSchema,
+  }),
+]).superRefine(validateRoundOneSourceSelectionPlan)
+
+export const RealEditorialRoundOneSourceSelectionResolutionSchema = z.object({
+  pilotId: z.string().uuid(),
+  runId: z.string().uuid(),
+  incidentId: z.string().uuid(),
+  proposalHash: Sha256Schema,
+  actorId: z.string().uuid(),
+  reason: SourceLimitRecoveryReasonSchema,
+  confirmed: z.literal(true),
+}).strict()
+
+export const RealEditorialRoundOneSourceSelectionResultSchema =
+  RealEditorialRoundOneSourceSelectionPlanBaseSchema.extend({
+    status: z.literal('applied'),
+    selectionId: z.string().uuid(),
+    selectionKey: Sha256Schema,
+    actorId: z.string().uuid(),
+    reason: SourceLimitRecoveryReasonSchema,
+    selectedAt: TimestampSchema,
+    nextAction: z.literal('resume_from_checkpoint'),
+  }).superRefine(validateRoundOneSourceSelectionPlan)
+
 const PartialAnalysisRecoveryReasonSchema = z.string().trim().min(1).max(500).refine(
   value => !/(?:sk-|tvly-|api[_ -]?key|authorization|bearer\s)/i.test(value),
   'El motivo no puede contener credenciales ni cabeceras de autorización',
@@ -824,6 +1030,7 @@ export const RealEditorialHistoricalIncidentResolutionResultSchema =
 
 export const RealEditorialBudgetDecisionSchema = z.enum([
   'keep_limit',
+  'authorize_within_limit',
   'authorize_extension',
   'cancel_permanently',
 ])
@@ -1057,6 +1264,9 @@ export const RealEditorialBudgetResolutionSchema = z.discriminatedUnion('decisio
     decision: z.literal('keep_limit'),
   }).strict(),
   RealEditorialBudgetDecisionBaseSchema.extend({
+    decision: z.literal('authorize_within_limit'),
+  }).strict(),
+  RealEditorialBudgetDecisionBaseSchema.extend({
     decision: z.literal('authorize_extension'),
     newMaximumCostEur: z.number().finite().nonnegative()
       .max(REAL_EDITORIAL_PILOT_POLICY.technicalLimitCostEur),
@@ -1163,15 +1373,15 @@ export const RealEditorialPilotBudgetSchema = z.object({
 
 export const RealEditorialPilotRecordSchema = z.object({
   id: z.string().uuid(),
-  policyId: z.literal(REAL_EDITORIAL_PILOT_POLICY.id),
+  policyId: RealEditorialPilotPolicyIdSchema,
   mode: z.literal('real_editorial_pilot'),
   taskOrigin: z.literal('human_authorized'),
   variantKey: z.string().trim().min(1).max(120),
   preparationKey: IdentifierSchema,
   identityKey: Sha256Schema,
   canonicalDestinationId: z.string().uuid(),
-  destinationName: z.literal('Morella'),
-  normalizedDestination: z.literal('morella'),
+  destinationName: z.enum(['Morella', 'Albarracín']),
+  normalizedDestination: z.enum(['morella', 'albarracin']),
   countryCode: z.literal('ES'),
   destinationType: z.literal('locality'),
   language: z.literal('es'),
@@ -1187,6 +1397,20 @@ export const RealEditorialPilotRecordSchema = z.object({
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
   budget: RealEditorialPilotBudgetSchema.optional(),
+}).superRefine((value, context) => {
+  const policy = realEditorialPolicyById(value.policyId)
+  if (
+    value.destinationName !== policy.destination
+    || value.normalizedDestination !== policy.normalizedDestination
+    || value.countryCode !== policy.countryCode
+    || value.destinationType !== policy.destinationType
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['destinationName'],
+      message: 'El piloto no coincide con el destino cerrado de su policy',
+    })
+  }
 })
 
 const RealEditorialProviderUsageSchema = z.object({
@@ -1598,6 +1822,7 @@ export const RealEditorialPilotProgressSchema = z.object({
   budgetReview: RealEditorialBudgetReviewSchema.optional(),
   coverageReview: RealEditorialCoverageReviewSchema.optional(),
   sourceLimitRecovery: RealEditorialSourceLimitRecoveryPlanSchema.optional(),
+  roundOneSourceSelection: RealEditorialRoundOneSourceSelectionPlanSchema.optional(),
   partialAnalysisRecovery: RealEditorialPartialAnalysisRecoveryPlanSchema.optional(),
   historicalIncidentReview: RealEditorialHistoricalIncidentReviewSchema.optional(),
   checkpointAvailable: z.boolean(),
@@ -1644,8 +1869,10 @@ export const RealEditorialPreflightSchema = z.object({
 })
 
 export type EditorialExecutionMode = z.infer<typeof EditorialExecutionModeSchema>
+export type RealEditorialPilotPolicyId = z.infer<typeof RealEditorialPilotPolicyIdSchema>
 export type RealEditorialPilotState = z.infer<typeof RealEditorialPilotStateSchema>
 export type RealEditorialPilotPrepare = z.infer<typeof RealEditorialPilotPrepareSchema>
+export type RealEditorialPilotPrepareInput = z.input<typeof RealEditorialPilotPrepareSchema>
 export type RealEditorialPilotAction = z.infer<typeof RealEditorialPilotActionSchema>
 export type RealEditorialPilotCancel = z.infer<typeof RealEditorialPilotCancelSchema>
 export type RealEditorialAmbiguousCallDecision = z.infer<
@@ -1689,6 +1916,18 @@ export type RealEditorialSourceLimitRecovery = z.infer<
 >
 export type RealEditorialSourceLimitRecoveryResult = z.infer<
   typeof RealEditorialSourceLimitRecoveryResultSchema
+>
+export type RealEditorialRoundOneSourceSelectionItem = z.infer<
+  typeof RealEditorialRoundOneSourceSelectionItemSchema
+>
+export type RealEditorialRoundOneSourceSelectionPlan = z.infer<
+  typeof RealEditorialRoundOneSourceSelectionPlanSchema
+>
+export type RealEditorialRoundOneSourceSelectionResolution = z.infer<
+  typeof RealEditorialRoundOneSourceSelectionResolutionSchema
+>
+export type RealEditorialRoundOneSourceSelectionResult = z.infer<
+  typeof RealEditorialRoundOneSourceSelectionResultSchema
 >
 export type RealEditorialPartialAnalysisRecoveryPlan = z.infer<
   typeof RealEditorialPartialAnalysisRecoveryPlanSchema

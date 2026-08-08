@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import {
-  REAL_EDITORIAL_PILOT_POLICY,
   RealEditorialPilotSnapshotSchema,
+  realEditorialPolicyById,
   type RealEditorialPilotRecord,
   type RealEditorialPilotSnapshot,
   type RealEditorialCoverageConstraints,
@@ -685,15 +685,16 @@ export function missionForPilot(
   now = new Date(),
 ): RealResearchMission {
   const settings = defaultRealProfileSettings(now)
+  const policy = realEditorialPolicyById(pilot.policyId)
   return {
     requestId: pilot.id,
     runId: pilot.currentRunId,
     taskId: pilot.budget?.taskId ?? `real-editorial-task:${pilot.id}`,
     destination: {
       canonicalId: pilot.canonicalDestinationId,
-      name: 'Morella',
-      countryCode: 'ES',
-      type: 'locality',
+      name: policy.destination,
+      countryCode: policy.countryCode,
+      type: policy.destinationType,
     },
     language: 'es',
     profiles: missionProfilesFromSettings(settings),
@@ -766,11 +767,13 @@ function metadataFactory(
   executionId: string,
 ): LedgeredCallMetadataFactory {
   if (!pilot.budget) throw new DurableRealEditorialError('BUDGET_REQUIRED', 'Falta el presupuesto editorial')
+  const policy = realEditorialPolicyById(pilot.policyId)
+  const promptVersion = `${policy.normalizedDestination}-real-editorial-v1`
   return {
     create(operationId, attempt, estimatedCost, retryOfCallId) {
       const research = operationId.endsWith(':research')
       const providerId = research ? 'tavily' : 'openai'
-      const model = research ? 'search-and-extract' : REAL_EDITORIAL_PILOT_POLICY.providers.model
+      const model = research ? 'search-and-extract' : policy.providers.model
       const tariffId = research
         ? 'morella-v1-tavily-search'
         : 'morella-v1-openai-responses'
@@ -798,7 +801,7 @@ function metadataFactory(
         estimatedCost,
         currency: 'EUR',
         tariffId,
-        promptVersion: 'morella-real-editorial-v1',
+        promptVersion,
         schemaVersion: 'real-editorial-snapshot-v1',
         inputHash: createProviderCallPayloadFingerprint({
           executionId,
@@ -817,7 +820,7 @@ function metadataFactory(
           reservedCost: estimatedCost,
           currency: 'EUR',
           tariffId,
-          promptVersion: 'morella-real-editorial-v1',
+          promptVersion,
           schemaVersion: 'real-editorial-snapshot-v1',
           payloadHash,
           maxInputTokens: 200_000,

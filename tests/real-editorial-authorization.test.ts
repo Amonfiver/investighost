@@ -4,7 +4,10 @@ import {
   readRealEditorialAuthorization,
 } from '../src/main/real-editorial-authorization'
 import {
+  REAL_EDITORIAL_E2E04_FEATURE_TOKEN,
+  REAL_EDITORIAL_E2E04_POLICY,
   REAL_EDITORIAL_FEATURE_TOKEN,
+  REAL_EDITORIAL_MORELLA_POLICY,
 } from '@shared/real-editorial-pilot-contracts'
 import {
   REAL_EXECUTION_FEATURE_TOKEN,
@@ -15,12 +18,14 @@ describe('contrato de autorización del piloto editorial real', () => {
     expect(readRealEditorialAuthorization({})).toEqual({
       enabled: false,
       featureToken: undefined,
+      policyId: null,
     })
     expect(readRealEditorialAuthorization({
       INVESTIGHOST_REAL_EXECUTION_TOKEN: REAL_EXECUTION_FEATURE_TOKEN,
     })).toEqual({
       enabled: false,
       featureToken: undefined,
+      policyId: null,
     })
   })
 
@@ -31,6 +36,17 @@ describe('contrato de autorización del piloto editorial real', () => {
     })).toEqual({
       enabled: true,
       featureToken: REAL_EDITORIAL_FEATURE_TOKEN,
+      policyId: REAL_EDITORIAL_MORELLA_POLICY.id,
+    })
+  })
+
+  it('aísla el token E2E-04 en la policy Albarracín', () => {
+    expect(readRealEditorialAuthorization({
+      [REAL_EDITORIAL_FEATURE_ENV]: REAL_EDITORIAL_E2E04_FEATURE_TOKEN,
+    })).toEqual({
+      enabled: true,
+      featureToken: REAL_EDITORIAL_E2E04_FEATURE_TOKEN,
+      policyId: REAL_EDITORIAL_E2E04_POLICY.id,
     })
   })
 

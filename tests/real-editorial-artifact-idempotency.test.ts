@@ -13,6 +13,7 @@ import {
 } from '../src/main/real-editorial-pilot-runtime'
 import {
   REAL_EDITORIAL_FEATURE_TOKEN,
+  REAL_EDITORIAL_PILOT_POLICY,
 } from '@shared/real-editorial-pilot-contracts'
 
 const previousFlag = process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN
@@ -121,7 +122,10 @@ describe('idempotencia semántica de artefactos al reanudar', () => {
     process.env.INVESTIGHOST_REAL_EDITORIAL_TOKEN = REAL_EDITORIAL_FEATURE_TOKEN
     const stored = { state: 'pending_human_review', marker: 'durable-result' }
     const repository = {
-      getPilot: vi.fn(async () => ({ state: 'pending_human_review' })),
+      getPilot: vi.fn(async () => ({
+        state: 'pending_human_review',
+        policyId: REAL_EDITORIAL_PILOT_POLICY.id,
+      })),
       getResult: vi.fn(async () => stored),
       canResumeFromCheckpoint: vi.fn(),
       reopenCancelled: vi.fn(),

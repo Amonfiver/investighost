@@ -29,7 +29,7 @@ import type {
   RealEditorialLibraryTransfer,
   RealEditorialPilotAction,
   RealEditorialPilotCancel,
-  RealEditorialPilotPrepare,
+  RealEditorialPilotPrepareInput,
   RealEditorialPilotProgress,
   RealEditorialPartialAnalysisRecovery,
   RealEditorialSourceLimitRecovery,
@@ -79,7 +79,7 @@ const electronAPI = {
   getRealProfileSettings: () => ipcRenderer.invoke('real-profiles:get'),
   saveRealProfileSettings: (input: RealProfileSettings) => ipcRenderer.invoke('real-profiles:save', input),
   getRealEditorialPreflight: (pilotId?: string) => ipcRenderer.invoke('real-editorial:preflight', pilotId),
-  prepareRealEditorialPilot: (input: RealEditorialPilotPrepare) =>
+  prepareRealEditorialPilot: (input: RealEditorialPilotPrepareInput) =>
     ipcRenderer.invoke('real-editorial:prepare', input),
   confirmRealEditorialBudget: (input: RealEditorialPilotAction) =>
     ipcRenderer.invoke('real-editorial:confirm-budget', input),

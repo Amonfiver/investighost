@@ -4,6 +4,7 @@ import {
   MemoryRealWorkflowCheckpointStore,
   MemoryWorkflowCallExecutor,
   queryHash,
+  type WorkflowCallExecutor,
 } from '@modules/real-pipeline/real-workflow'
 import type {
   IntelligenceDraft,
@@ -182,6 +183,7 @@ function analysis(options: {
   importance?: 'low' | 'medium' | 'high' | 'critical'
   query?: string
   continueAfter?: boolean
+  estimatedCost?: number
 } = {}): IntelligenceRoundAnalysis {
   const sufficient = options.sufficient ?? false
   const currentGap = gap(options.importance ?? 'high')
@@ -224,7 +226,47 @@ function analysis(options: {
           queries: [],
         }
         : { action: 'continue_focused', nextRound: 2, reason: 'Ampliar.', queries },
-    usage: { inputTokens: 100, outputTokens: 50, estimatedCost: 0, currency: 'EUR' },
+    usage: {
+      inputTokens: 100,
+      outputTokens: 50,
+      estimatedCost: options.estimatedCost ?? 0,
+      currency: 'EUR',
+    },
+  }
+}
+
+class WorkflowCallExecutorWithExistingSpend implements WorkflowCallExecutor {
+  private readonly calls: MemoryWorkflowCallExecutor
+
+  constructor(
+    private readonly dailyBudget: number,
+    private readonly existingSpend: number,
+  ) {
+    this.calls = new MemoryWorkflowCallExecutor(dailyBudget - existingSpend)
+  }
+
+  execute<T>(
+    operationId: string,
+    estimatedCost: number,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return this.calls.execute(operationId, estimatedCost, operation)
+  }
+
+  canReserve(estimatedCost: number): boolean {
+    return this.existingSpend + this.calls.snapshot().spentCost + estimatedCost <= this.dailyBudget
+  }
+
+  canExecute(operationId: string, estimatedCost: number): boolean {
+    return this.calls.snapshot().operationIds.includes(operationId) || this.canReserve(estimatedCost)
+  }
+
+  snapshot() {
+    const snapshot = this.calls.snapshot()
+    return {
+      operationIds: snapshot.operationIds,
+      spentCost: Number((this.existingSpend + snapshot.spentCost).toFixed(9)),
+    }
   }
 }
 
@@ -238,12 +280,19 @@ function setup(
     analysisCostPerRound?: number
     completionCostAfterFirstRound?: number
     budgetLimit?: number
+    ledgerBudgetAuthoritative?: boolean
+    existingSpend?: number
   } = {},
 ) {
   const research = new FakeResearchTool(options.duplicate)
   const intelligence = new FakeIntelligenceEngine(analyses)
   const checkpoints = new MemoryRealWorkflowCheckpointStore()
-  const calls = new MemoryWorkflowCallExecutor(options.dailyBudget ?? 1)
+  const calls = options.existingSpend === undefined
+    ? new MemoryWorkflowCallExecutor(options.dailyBudget ?? 1)
+    : new WorkflowCallExecutorWithExistingSpend(
+        options.dailyBudget ?? 1,
+        options.existingSpend,
+      )
   const workflow = new ControlledRealWorkflow(
     { researchTool: research, intelligenceEngine: intelligence },
     checkpoints,
@@ -253,6 +302,7 @@ function setup(
       analysisCostPerRound: options.analysisCostPerRound ?? 0.04,
       completionCostAfterFirstRound: options.completionCostAfterFirstRound ?? 0,
       budgetLimit: options.budgetLimit ?? Number.POSITIVE_INFINITY,
+      ledgerBudgetAuthoritative: options.ledgerBudgetAuthoritative ?? false,
       now: () => new Date(timestamp),
     },
   )
@@ -351,6 +401,46 @@ describe('orquestador real de dos rondas focalizadas', () => {
       simulatedCost: 0.099838,
     })
     expect(context.calls.snapshot().spentCost).toBeCloseTo(0.099838, 9)
+  })
+
+  it('abre la barrera presupuestaria completa aunque la reserva de ronda 2 ya no quepa', async () => {
+    const context = setup([analysis({
+      importance: 'critical',
+      estimatedCost: 0.097406,
+    })], {
+      dailyBudget: 0.2,
+      existingSpend: 0.105406,
+      researchCostPerRound: 0.048,
+      analysisCostPerRound: 0.022,
+      completionCostAfterFirstRound: 0.13,
+      budgetLimit: 0.2,
+      ledgerBudgetAuthoritative: true,
+    })
+
+    await expect(context.workflow.execute(
+      context.initialMission,
+      new AbortController().signal,
+    )).rejects.toMatchObject({
+      code: 'BUDGET_EXCEEDED',
+      budgetRequirement: {
+        remainingEstimatedCostEur: 0.205406,
+        spentCostEur: 0.175406,
+        availableCostEur: 0.024594,
+        shortfallCostEur: 0.180812,
+      },
+    })
+
+    expect(context.research.calls).toEqual([1])
+    expect(context.intelligence.calls).toEqual([1])
+    const checkpoint = await context.checkpoints.load(context.initialMission.taskId)
+    expect(checkpoint).toMatchObject({
+      state: 'review_required',
+      completedRound: 1,
+      nextRoundQueries: [{ id: 'query-focused' }],
+      simulatedCost: 0.175406,
+      lastAnalysisCost: 0.097406,
+    })
+    expect(checkpoint?.queryHashes).toContain(queryHash('Morella autobús frecuencia actual'))
   })
 
   it('amplía una carencia crítica y manda a revisión si sigue abierta', async () => {

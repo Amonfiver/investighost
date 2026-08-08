@@ -10,6 +10,7 @@ import { MANUAL_LOCAL_ACTOR_ID } from '@modules/editorial-pipeline/manual-runtim
 import { RealEditorialPilotRuntime } from '../src/main/real-editorial-pilot-runtime'
 import {
   REAL_EDITORIAL_FEATURE_TOKEN,
+  REAL_EDITORIAL_PILOT_POLICY,
   type RealEditorialHistoricalIncidentAssessment,
   type RealEditorialHistoricalIncidentReview,
 } from '@shared/real-editorial-pilot-contracts'
@@ -301,7 +302,12 @@ describe('resolución durable de los dos incidentes históricos', () => {
   it('mantiene la feature flag, no llama proveedores y no inicia ni reanuda', async () => {
     const resolveHistoricalIncidents = vi.fn(async () => appliedReview)
     const repository = {
-      getPilot: vi.fn(async () => ({ id: pilotId, currentRunId: runId, identityKey: 'c'.repeat(64) })),
+      getPilot: vi.fn(async () => ({
+        id: pilotId,
+        currentRunId: runId,
+        identityKey: 'c'.repeat(64),
+        policyId: REAL_EDITORIAL_PILOT_POLICY.id,
+      })),
       inspect: vi.fn(async () => ({ guardFree: true, pendingReservations: 0 })),
       resolveHistoricalIncidents,
     }

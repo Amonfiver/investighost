@@ -4,6 +4,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
   REAL_EDITORIAL_FEATURE_TOKEN,
+  REAL_EDITORIAL_PILOT_POLICY,
   RealEditorialLibraryEntrySchema,
   RealEditorialLibraryQuerySchema,
   RealEditorialLibraryTransferSchema,
@@ -235,6 +236,7 @@ describe('transición durable de resultado aprobado a Biblioteca', () => {
         id: pilotId,
         currentRunId: runId,
         identityKey: '7'.repeat(64),
+        policyId: REAL_EDITORIAL_PILOT_POLICY.id,
         state: 'human_approved',
       })),
       inspect: vi.fn(async () => ({ guardFree: true, pendingReservations: 0 })),

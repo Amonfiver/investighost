@@ -114,6 +114,10 @@ import { getRealConnectivityPreflightRuntime } from './real-connectivity-preflig
 import { executeRealConnectivityCheck } from './real-connectivity-runtime'
 import { getRealProfileSettingsRuntime } from './real-profile-settings-runtime'
 import { REAL_CONNECTIVITY_CONFIRMATION } from '@shared/real-connectivity-contracts'
+import {
+  REAL_EDITORIAL_E2E04_POLICY,
+  RealEditorialPilotActionSchema,
+} from '@shared/real-editorial-pilot-contracts'
 import { getRealEditorialPilotRuntime } from './real-editorial-pilot-runtime'
 
 ipcMain.handle('contributions:import-pending', async () => {
@@ -311,6 +315,17 @@ async function providerCenterAction<T>(
 
 // Ciclo de vida de la app
 app.whenReady().then(async () => {
+  const e2e04Action = process.argv
+    .find(argument => argument.startsWith('--real-editorial-e2e04='))
+    ?.split('=', 2)[1]
+    ?? process.env.INVESTIGHOST_REAL_EDITORIAL_E2E04_ACTION
+  if (!app.isPackaged && e2e04Action) {
+    await runLocalAuditCommand(
+      'REAL_EDITORIAL_E2E04',
+      async () => runRealEditorialE2E04Command(e2e04Action),
+    )
+    return
+  }
   if (!app.isPackaged && process.argv.includes('--inspect-real-connectivity-preflight')) {
     await runLocalConnectivityCommand(async () => getRealConnectivityPreflightRuntime())
     return
@@ -338,16 +353,239 @@ app.whenReady().then(async () => {
 })
 
 async function runLocalConnectivityCommand(operation: () => Promise<unknown>): Promise<void> {
+  return runLocalAuditCommand('REAL_CONNECTIVITY_AUDIT', operation)
+}
+
+async function runLocalAuditCommand(
+  prefix: string,
+  operation: () => Promise<unknown>,
+): Promise<void> {
   try {
     const result = await operation()
-    process.stdout.write(`REAL_CONNECTIVITY_AUDIT=${JSON.stringify(result)}\n`)
+    process.stdout.write(`${prefix}=${JSON.stringify(result)}\n`)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Operación local rechazada'
-    process.stderr.write(`REAL_CONNECTIVITY_AUDIT_ERROR=${message}\n`)
+    process.stderr.write(`${prefix}_ERROR=${message}\n`)
     process.exitCode = 1
   } finally {
     app.quit()
   }
+}
+
+async function runRealEditorialE2E04Command(action: string): Promise<unknown> {
+  const runtime = getRealEditorialPilotRuntime()
+  if (action === 'preflight') {
+    return runtime.preflight(
+      readOptionalE2E04PilotId(process.argv),
+      REAL_EDITORIAL_E2E04_POLICY.id,
+    )
+  }
+  if (action === 'prepare') {
+    return runtime.prepare({
+      policyId: REAL_EDITORIAL_E2E04_POLICY.id,
+      variantKey: 'e2e04-albarracin-20260808',
+      preparationKey: 'albarracin-real-editorial-e2e04-v1-prepare',
+      taskOrigin: 'human_authorized',
+      profiles: [
+        { profile: 'adventure', enabled: true, targetWords: 1_000, depth: 'standard' },
+        { profile: 'student', enabled: true, targetWords: 1_800, depth: 'deep' },
+      ],
+    })
+  }
+  const pilotId = readE2E04PilotId(process.argv)
+  if (action === 'confirm-budget') return runtime.confirmBudget({ pilotId })
+  if (action === 'materialize-round-one-budget-review') {
+    return runtime.materializeRoundOneBudgetReview({ pilotId })
+  }
+  if (action === 'round-one-source-selection-plan') {
+    const progress = await runtime.progress({ pilotId })
+    if (!progress.roundOneSourceSelection) {
+      throw new Error('No existe una propuesta durable de selección de fuentes de ronda 1')
+    }
+    return progress.roundOneSourceSelection
+  }
+  if (action === 'authorize-round-one-source-selection') {
+    const progress = await runtime.progress({ pilotId })
+    const selection = progress.roundOneSourceSelection
+    const expectedKeptSourceIds = [
+      'tavily-f26972d6bc05f064de1c24bd49fdaae6',
+      'tavily-53b83759ea7633498daa8f6eaecf7c88',
+      'tavily-45fec76677a348754498a19a505a3e30',
+      'tavily-10c7179940a8e62867243b3248077a8e',
+      'tavily-879298c2b7e496fa5c73211afcd90648',
+    ]
+    const expectedDeselectedSourceIds = [
+      'tavily-79d59033a79d518d58308376da5386c7',
+      'tavily-771c87e3abda4a62c4bfee7691eaa95f',
+      'tavily-d7813cc84ec4e98b002a9f32fd288fb4',
+    ]
+    const sourceIds = (decision: 'keep_active' | 'deselect_active') => selection?.sources
+      .filter(source => source.decision === decision)
+      .map(source => source.sourceId)
+    if (
+      progress.pilot.currentRunId !== '71244b74-6a81-440c-ae1f-0c5772ecf772'
+      || !selection
+      || selection.proposalHash !== '5cd32f14249ce9972722147e1db0d4e473db096682fb64299497584b8cce14fd'
+      || selection.maximumSources !== 8
+      || selection.originalActiveCount !== 8
+      || selection.retainedCount !== 5
+      || selection.deselectedCount !== 3
+      || selection.availableSlotsAfterSelection !== 3
+      || JSON.stringify(sourceIds('keep_active')) !== JSON.stringify(expectedKeptSourceIds)
+      || JSON.stringify(sourceIds('deselect_active')) !== JSON.stringify(expectedDeselectedSourceIds)
+    ) {
+      throw new Error('La selección durable no coincide exactamente con la autorización humana')
+    }
+    return runtime.resolveRoundOneSourceSelection({
+      pilotId,
+      runId: selection.runId,
+      incidentId: selection.incidentId,
+      proposalHash: selection.proposalHash,
+      actorId: MANUAL_LOCAL_ACTOR_ID,
+      reason: 'Selección humana conservadora para liberar exactamente tres plazas sin alterar el historial de ronda 1.',
+      confirmed: true,
+    })
+  }
+  if (action === 'accept-coverage-with-warnings') {
+    const progress = await runtime.progress({ pilotId })
+    const review = progress.coverageReview
+    const expectedGapIds = ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7']
+    if (
+      progress.pilot.currentRunId !== '71244b74-6a81-440c-ae1f-0c5772ecf772'
+      || progress.pilot.state !== 'review_required'
+      || !review
+      || review.status !== 'required'
+      || review.checkpointVersion !== 8
+      || review.checkpointHash !== '0599dff91090942ee2ee1c84d336caa7e0d1a724d2822f93c1f48b407596686f'
+      || review.coverageScore !== 0.72
+      || JSON.stringify(review.gaps.map(gap => gap.id)) !== JSON.stringify(expectedGapIds)
+      || review.contradictions.length !== 4
+      || JSON.stringify(review.affectedProfiles) !== JSON.stringify(['adventure', 'student'])
+      || review.spentCostEur !== 0.308318
+      || review.reservedCostEur !== 0
+      || review.currentMaximumCostEur !== 0.42
+      || review.estimates.acceptWithWarnings.remainingEstimatedCostEur !== 0.06
+      || review.estimates.acceptWithWarnings.projectedTotalCostEur !== 0.368318
+      || review.estimates.acceptWithWarnings.shortfallCostEur !== 0
+    ) {
+      throw new Error('La revisión de cobertura no coincide con la autorización humana de Albarracín')
+    }
+    return runtime.resolveCoverageDecision({
+      pilotId,
+      runId: progress.pilot.currentRunId,
+      actorId: MANUAL_LOCAL_ACTOR_ID,
+      decision: 'accept_with_warnings',
+      reason: 'Aceptación humana explícita de siete gaps y cuatro contradicciones para redactar con cautelas estrictas.',
+      note: 'No considerar verificados los datos incompletos o contradictorios. Usar solo evidencia disponible; no inferir datos faltantes ni presentar cifras antiguas como actuales; no equiparar tarifas, rutas, estadísticas o periodos no comparables; omitir o advertir lo insuficientemente verificado; no inventar transporte, aparcamiento, horarios, tarifas, restricciones ni métricas de rutas; distinguir Paseo Fluvial y Camino Natural del Guadalaviar; contextualizar temporalmente la población de 2013; conservar contradicciones en trazabilidad y revisión final.',
+      riskAccepted: true,
+      confirmed: true,
+    })
+  }
+  if (action === 'authorize-coverage-within-420') {
+    const progress = await runtime.progress({ pilotId })
+    const coverage = progress.coverageReview
+    const review = progress.budgetReview
+    if (
+      progress.pilot.currentRunId !== '71244b74-6a81-440c-ae1f-0c5772ecf772'
+      || progress.pilot.state !== 'review_required'
+      || coverage?.status !== 'accepted'
+      || !coverage.editorialConstraints
+      || !review
+      || review.status !== 'pending'
+      || review.context !== 'coverage_acceptance'
+      || review.coverageDecisionId !== coverage.latestDecision?.decisionId
+      || review.currentMaximumCostEur !== 0.42
+      || review.spentCostEur !== 0.308318
+      || review.reservedCostEur !== 0
+      || review.remainingEstimatedCostEur !== 0.06
+      || review.totalEstimatedCostEur !== 0.368318
+      || review.shortfallCostEur !== 0
+      || review.marginCostEur !== 0.051682
+    ) {
+      throw new Error('La revisión presupuestaria de cobertura no cabe exactamente en 0,420000 EUR')
+    }
+    return runtime.resolveBudgetDecision({
+      pilotId,
+      runId: progress.pilot.currentRunId,
+      actorId: MANUAL_LOCAL_ACTOR_ID,
+      decision: 'authorize_within_limit',
+      reason: 'Autorización humana para redactar y revisar usando únicamente el margen ya disponible.',
+      note: 'El máximo total permanece en 0,420000 EUR y no constituye un objetivo de gasto.',
+      confirmed: true,
+    })
+  }
+  if (action === 'authorize-budget-420') {
+    const progress = await runtime.progress({ pilotId })
+    const review = progress.budgetReview
+    if (
+      progress.pilot.currentRunId !== '71244b74-6a81-440c-ae1f-0c5772ecf772'
+      || progress.pilot.state !== 'review_required'
+      || !review
+      || review.status !== 'pending'
+      || review.context !== 'workflow_completion'
+      || review.currentMaximumCostEur !== 0.2
+      || review.spentCostEur !== 0.175406
+      || review.reservedCostEur !== 0
+      || review.remainingEstimatedCostEur !== 0.205406
+      || review.totalEstimatedCostEur !== 0.380812
+    ) {
+      throw new Error('La revisión durable no coincide con la autorización de 0,420000 EUR')
+    }
+    return runtime.resolveBudgetDecision({
+      pilotId,
+      runId: progress.pilot.currentRunId,
+      actorId: MANUAL_LOCAL_ACTOR_ID,
+      decision: 'authorize_extension',
+      newMaximumCostEur: 0.42,
+      reason: 'Autorización humana explícita para completar Albarracín sin superar 0,420000 EUR.',
+      note: 'El importe autorizado es un techo máximo y no un objetivo de gasto.',
+      confirmed: true,
+    })
+  }
+  if (action === 'reconcile-prudential') {
+    const progress = await runtime.progress({ pilotId })
+    const pending = progress.humanRequiredCall
+    if (
+      !pending
+      || pending.providerId !== 'openai'
+      || pending.operation !== 'analysis'
+      || pending.sourceState !== 'unknown'
+      || pending.maximumExposureEur !== 0.022
+    ) {
+      throw new Error('La ambigüedad durable no coincide con la aprobación prudencial E2E-04')
+    }
+    return runtime.resolveAmbiguousCall({
+      pilotId,
+      runId: pending.runId,
+      callId: pending.callId,
+      actorId: MANUAL_LOCAL_ACTOR_ID,
+      decision: 'prudential_cost_assumed',
+      prudentialCostEur: 0.022,
+      currency: 'EUR',
+      reason: 'El proveedor no confirmó el consumo tras el timeout; se asume el máximo reservado.',
+      note: 'Decisión humana E2E-04: conciliación prudencial sin afirmar consumo confirmado.',
+      acceptsPotentialDuplicateCharge: true,
+      confirmed: true,
+    })
+  }
+  if (action === 'start') return runtime.start({ pilotId })
+  if (action === 'resume') return runtime.resume({ pilotId })
+  if (action === 'progress') return runtime.progress({ pilotId })
+  if (action === 'result') return runtime.result({ pilotId })
+  throw new Error('Acción E2E-04 no reconocida')
+}
+
+function readE2E04PilotId(arguments_: string[]): string {
+  const pilotId = readOptionalE2E04PilotId(arguments_)
+  return RealEditorialPilotActionSchema.parse({ pilotId }).pilotId
+}
+
+function readOptionalE2E04PilotId(arguments_: string[]): string | undefined {
+  const candidate = arguments_
+    .find(argument => argument.startsWith('--pilot-id='))
+    ?.split('=', 2)[1]
+  if (!candidate) return undefined
+  return RealEditorialPilotActionSchema.parse({ pilotId: candidate }).pilotId
 }
 
 app.on('window-all-closed', () => {

@@ -13,6 +13,10 @@ const migrations = [
   '20260730210000_real_editorial_source_limit_recovery.sql',
   '20260801120000_real_editorial_atomic_analysis_recovery.sql',
   '20260801180000_real_editorial_historical_incident_resolution.sql',
+  '20260808120000_real_editorial_second_destination.sql',
+  '20260808123000_real_editorial_openai_prudential_reconciliation.sql',
+  '20260808130000_real_editorial_round_one_budget_review_repair.sql',
+  '20260809100000_real_editorial_round_one_active_source_selection.sql',
 ]
 
 async function migration(name: string): Promise<string> {
@@ -142,6 +146,46 @@ describe('esquema durable del piloto editorial real', () => {
     expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
   })
 
+  it('materializa la revisión presupuestaria omitida sin ejecutar ni decidir ronda 2', async () => {
+    const sql = await migration(migrations[13])
+
+    expect(sql).toContain('materialize_real_editorial_round_one_budget_review')
+    expect(sql).toContain('ROUND_ONE_BUDGET_REPAIR_CHECKPOINT_CHANGED')
+    expect(sql).toContain("checkpoint.payload->>'completedRound' <> '1'")
+    expect(sql).toContain("checkpoint.payload#>>'{lastDecision,action}' <> 'continue_focused'")
+    expect(sql).toContain("jsonb_array_length(focused_queries) <> 3")
+    expect(sql).toContain('0.048000000 + greatest(0.022000000,analysis_cost)')
+    expect(sql).toContain("'real.editorial.budget.review_materialized'")
+    expect(sql).toContain("'providerCalled',false")
+    expect(sql).toContain("'workflowResumed',false")
+    expect(sql).toContain("'budgetChanged',false")
+    expect(sql).toContain("'coverageReviewOpened',false")
+    expect(sql).not.toMatch(/update\s+public\.real_editorial_pilot_budgets/i)
+    expect(sql).not.toMatch(/insert into\s+public\.real_editorial_coverage_reviews/i)
+    expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
+  })
+
+  it('añade selección activa append-only sin ampliar fuentes ni borrar historia', async () => {
+    const sql = await migration(migrations[14])
+
+    expect(sql).toContain('create table public.real_editorial_round_one_source_selections')
+    expect(sql).toContain('create table public.real_editorial_round_one_source_selection_items')
+    expect(sql).toContain('select_real_editorial_round_one_active_sources')
+    expect(sql).toContain('round-one-active-source-selection-v1')
+    expect(sql).toContain('maximum_sources = 8')
+    expect(sql).toContain('original_active_count = 8')
+    expect(sql).toContain('retained_count = 5')
+    expect(sql).toContain('deselected_count = 3')
+    expect(sql).toContain('historical_sources_mutated boolean not null default false')
+    expect(sql).toContain("'historicalSourcesMutated',false")
+    expect(sql).toContain("'providerCalled',false")
+    expect(sql).toContain("'workflowResumed',false")
+    expect(sql).not.toMatch(/update\s+public\.real_editorial_(?:source_accepted|extracted_document)/i)
+    expect(sql).not.toMatch(/delete\s+from\s+public\.real_editorial/i)
+    expect(sql).not.toMatch(/update\s+public\.real_editorial_pilot_budgets/i)
+    expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
+  })
+
   it('recupera un exceso global de fuentes sin repetir proveedores ni ledger', async () => {
     const sql = await migration(migrations[8])
 
@@ -200,5 +244,44 @@ describe('esquema durable del piloto editorial real', () => {
     expect(sql).not.toMatch(/insert into public\.real_editorial_artifacts/i)
     expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
     expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
+  })
+
+  it('añade Albarracín como segunda policy cerrada sin ejecutar ni publicar', async () => {
+    const sql = await migration(migrations[11])
+
+    expect(sql).toContain('REAL_EDITORIAL_PREVIOUS_POLICY_UNEXPECTED')
+    expect(sql).toContain("normalized_destination text not null default 'morella'")
+    expect(sql).toContain('alter column normalized_destination drop default')
+    expect(sql).toContain("'albarracin-real-editorial-e2e04-v1','Albarracín','albarracin','ES','locality'")
+    expect(sql).toContain("selected_destination.name <> selected_policy.destination_name")
+    expect(sql).toContain("selected_destination.normalized_name <> selected_policy.normalized_destination")
+    expect(sql).toContain("selected_destination.country_code <> selected_policy.country_code")
+    expect(sql).toContain("selected_destination.entity_type <> selected_policy.destination_type")
+    expect(sql).toContain("'real-editorial-preparation:' || p_preparation_key")
+    expect(sql).toContain("'real-editorial-identity:' || p_identity_key")
+    expect(sql).toContain('PREPARATION_IDEMPOTENCY_CONFLICT')
+    expect(sql).toContain('DUPLICATE_REAL_EDITORIAL_PILOT')
+    expect(sql).toContain('selected_policy.normalized_destination || \'-real-editorial-v1\'')
+    expect(sql).not.toMatch(/insert into public\.real_editorial_(?:provider_calls|call_reservations|artifacts)/i)
+    expect(sql).not.toMatch(/update public\.real_editorial_pilot_policies/i)
+    expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
+    expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(|publication_count\s*=\s*[1-9]/i)
+  })
+
+  it('concilia OpenAI por el máximo reservado sin afirmar consumo remoto', async () => {
+    const sql = await migration(migrations[12])
+
+    expect(sql).toContain('reconcile_real_editorial_openai_ambiguous_call_prudential')
+    expect(sql).toContain("reservation.provider_id <> 'openai'")
+    expect(sql).toContain("reservation.operation <> 'analysis'")
+    expect(sql).toContain('derived_cost := reservation.reserved_cost')
+    expect(sql).toContain('p_prudential_cost <> derived_cost')
+    expect(sql).toContain("'human_prudential_reconciliation',false,true")
+    expect(sql).toContain("'providerConfirmed',false")
+    expect(sql).toContain('real_editorial_analysis_provider_receipts')
+    expect(sql).toContain("state in ('succeeded','reconciled')")
+    expect(sql).not.toMatch(/provider_confirmed\s*,?\s*true/i)
+    expect(sql).not.toMatch(/api\.openai|fetch\(|publication_count\s*=\s*[1-9]/i)
+    expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
   })
 })

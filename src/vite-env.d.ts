@@ -60,7 +60,7 @@ import type {
   RealEditorialLibraryTransferResult,
   RealEditorialPilotAction,
   RealEditorialPilotCancel,
-  RealEditorialPilotPrepare,
+  RealEditorialPilotPrepareInput,
   RealEditorialPilotProgress,
   RealEditorialPartialAnalysisRecovery,
   RealEditorialPartialAnalysisRecoveryResult,
@@ -115,7 +115,7 @@ declare global {
       getRealProfileSettings: () => Promise<RealProfileSettings>
       saveRealProfileSettings: (input: RealProfileSettings) => Promise<RealProfileSettings>
       getRealEditorialPreflight: (pilotId?: string) => Promise<RealEditorialPreflight>
-      prepareRealEditorialPilot: (input: RealEditorialPilotPrepare) => Promise<RealEditorialPilotRecord>
+      prepareRealEditorialPilot: (input: RealEditorialPilotPrepareInput) => Promise<RealEditorialPilotRecord>
       confirmRealEditorialBudget: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotRecord>
       getRealEditorialProgress: (input: RealEditorialPilotAction) => Promise<RealEditorialPilotProgress>
       getRealEditorialResult: (input: RealEditorialPilotAction) => Promise<RealEditorialTerminalResult | undefined>

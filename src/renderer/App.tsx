@@ -2256,6 +2256,7 @@ export function RealEditorialBudgetDecisionPanel({
     if (!actorId || !reason.trim()) return
     const labels: Record<RealEditorialBudgetDecision, string> = {
       keep_limit: 'mantener el límite actual',
+      authorize_within_limit: 'autorizar dentro del límite vigente',
       authorize_extension: 'autorizar la ampliación manual',
       cancel_permanently: 'cancelar definitivamente',
     }

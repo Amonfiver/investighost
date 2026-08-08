@@ -8,6 +8,7 @@ import { MANUAL_LOCAL_ACTOR_ID } from '@modules/editorial-pipeline/manual-runtim
 import { RealEditorialPilotRuntime } from '../src/main/real-editorial-pilot-runtime'
 import {
   REAL_EDITORIAL_FEATURE_TOKEN,
+  REAL_EDITORIAL_PILOT_POLICY,
   type RealEditorialPartialAnalysisRecoveryPlan,
 } from '@shared/real-editorial-pilot-contracts'
 
@@ -187,7 +188,12 @@ describe('recuperación humana de 38 artefactos OpenAI parciales', () => {
   it('mantiene la operación cerrada sin flag y no inicia ni reanuda', async () => {
     const recoverPartialAnalysis = vi.fn(async () => ({ recoveryId }))
     const repository = {
-      getPilot: vi.fn(async () => ({ id: pilotId, currentRunId: runId, identityKey: 'a'.repeat(64) })),
+      getPilot: vi.fn(async () => ({
+        id: pilotId,
+        currentRunId: runId,
+        identityKey: 'a'.repeat(64),
+        policyId: REAL_EDITORIAL_PILOT_POLICY.id,
+      })),
       inspect: vi.fn(async () => ({ guardFree: true })),
       recoverPartialAnalysis,
     }

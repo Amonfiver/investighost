@@ -12,10 +12,14 @@ const migration = readFileSync(
 
 describe('incorporación editorial real a Biblioteca en Supabase local', () => {
   integrationTest('crea dos entradas atómicas, idempotentes y sin efectos externos con rollback', () => {
+    const installed = execFileSync(dockerExecutable, [
+      'exec', container, 'psql', '-U', 'postgres', '-d', 'postgres', '-X', '-Atc',
+      "select to_regclass('public.real_editorial_library_transfers')",
+    ], { encoding: 'utf8' }).trim() === 'real_editorial_library_transfers'
     const sql = String.raw`
 \set ON_ERROR_STOP on
 begin;
-${migration}
+${installed ? '' : migration}
 
 create temporary table real_morella_library_before as
 select jsonb_build_object(

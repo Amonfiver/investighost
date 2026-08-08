@@ -32,7 +32,7 @@ enabled = false
 
 [db]
 # Port to use for the local database URL.
-port = 55432
+port = 55232
 # Port used by db diff command to initialize the shadow database.
 shadow_port = 55320
 # Maximum amount of time to wait for health check when starting the local database.
@@ -412,4 +412,3 @@ enabled = true
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
-

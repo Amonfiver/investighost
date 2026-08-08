@@ -1,6 +1,6 @@
 # Investighost — cierre y punto de reanudación actual
 
-## Estado vigente — BIB-V05 cerrado tras validación PostgreSQL
+## Estado vigente — E2E-01 diagnosticado; implementación aún no iniciada
 
 Fecha de actualización: 2026-08-08.
 
@@ -12,6 +12,7 @@ Fecha de actualización: 2026-08-08.
 - HEAD de partida de BIB-V04: `48dc333031be0e0ad4475bfeec964f2566c776f7`.
 - HEAD de partida de BIB-V05: `0e4c093dbf033584aee93e8088fa48c8472b834c`.
 - Upstream: `origin/feat/investighost-real-pipeline`, sincronizado 0/0 tras `git fetch --prune origin`.
+- HEAD de partida de E2E-01: `d3f664ab7245b551ee7b174c8ddd19a5e3b28077`.
 - Piloto Morella: `480d9c05-3ef7-4c44-a6f1-7762b7179a03`.
 - Run: `467dc951-26f5-45f6-895c-d2f06c496d6e`.
 - Transferencia a Biblioteca: `65a3fde4-0327-43f1-846b-655cab804e36`.
@@ -24,9 +25,11 @@ Fecha de actualización: 2026-08-08.
 - La incorporación idéntica reutiliza la transferencia existente y no crea duplicados.
 - La prueba humana completa de incorporación a Biblioteca quedó aprobada.
 
-Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA Y BIB-V01 A BIB-V05 FORMALMENTE CERRADOS**.
+Dictamen vigente: **GATE DE INCORPORACIÓN REAL A BIBLIOTECA Y BIB-V01 A BIB-V05 FORMALMENTE CERRADOS; E2E-01 CERRADO SOLO COMO DIAGNÓSTICO**.
 
 El versionado dispone ahora de contratos, transacciones, lecturas, creación y guardado de drafts y comparación interna read-only. BIB-V05 compara v1 con revisión, dos revisiones y una revisión con su padre inmediato mediante un diff por líneas determinista, segmentos con rangos, estadísticas y fingerprint SHA-256 no persistido. Las 14 pruebas unitarias y las dos pruebas PostgreSQL BIB-V05 pasaron; un snapshot completo de las filas durables sintéticas permaneció idéntico antes y después de comparaciones repetidas. Las regresiones PostgreSQL BIB-V02, BIB-V03 y BIB-V04 quedaron 5/5, 6/6 y 6/6, y la suite normal quedó 649/649. Las bases temporales se eliminaron y la base local principal no recibió el esquema de versionado. No existen IPC, preload, renderer o UI de versionado. Submit, decisiones nuevas, findings interactivos, publicación e integraciones externas continúan fuera de alcance.
+
+E2E-01 inspeccionó Investighost y el repositorio local de Trawel en solo lectura. El camino mínimo recomendado parte de las dos proyecciones `current approved` y crea dos filas privadas `draft` en `editorial_contents`, una por modo, con IDs/fingerprint deterministas; después las relee por canal privilegiado y exige igualdad exacta de título, contenido, procedencia, target y fronteras de no publicación. No se conectó Trawel, no se escribió en ninguna base remota y no se ejecutaron proveedores. El diagnóstico completo, las piezas faltantes, riesgos y orden 41–44 están en `docs/E2E_LIBRARY_TRAWEL_DIAGNOSIS.md`.
 
 Las secciones históricas que siguen conservan el recorrido previo y no sustituyen este estado vigente. Las secciones 18–26 fijan el cierre actual y el contrato de reanudación siguiente.
 

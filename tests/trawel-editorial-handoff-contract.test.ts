@@ -144,6 +144,26 @@ describe('E2E-02 contrato durable Investighost → Trawel', () => {
     )
   })
 
+  it('admite solo el salto final canónico que el read model añade al origen inmutable', () => {
+    const approved = source('adventure')
+    const entryWithoutFinalNewline = {
+      ...approved,
+      entry: {
+        ...approved.entry,
+        content: approved.entry.content.replace(/\n$/u, ''),
+      },
+    }
+    expect(LibraryTrawelApprovedSourceSchema.safeParse(entryWithoutFinalNewline).success)
+      .toBe(true)
+    expect(LibraryTrawelApprovedSourceSchema.safeParse({
+      ...entryWithoutFinalNewline,
+      entry: {
+        ...entryWithoutFinalNewline.entry,
+        content: entryWithoutFinalNewline.entry.content.replace('Aventura', 'Aventuras'),
+      },
+    }).success).toBe(false)
+  })
+
   it('verifica igualdad exacta tras una lectura Trawel e ignora solo timestamps gestionados', () => {
     const payload = prepareTrawelEditorialHandoff(command())
     const observed = payload.rows.map((row, index) => ({

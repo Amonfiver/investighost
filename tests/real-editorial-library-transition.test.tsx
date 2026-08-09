@@ -8,6 +8,7 @@ import {
   RealEditorialLibraryEntrySchema,
   RealEditorialLibraryQuerySchema,
   RealEditorialLibraryTransferSchema,
+  RealEditorialLibraryTransferResultSchema,
   type RealEditorialLibraryEntry,
   type RealEditorialTerminalResult,
 } from '@shared/real-editorial-pilot-contracts'
@@ -191,6 +192,22 @@ afterEach(() => {
 })
 
 describe('transición durable de resultado aprobado a Biblioteca', () => {
+  it('valida como una sola estructura estricta el resultado de la transferencia', () => {
+    expect(RealEditorialLibraryTransferResultSchema.parse({
+      ...integration,
+      reused: false,
+    })).toMatchObject({
+      transferId,
+      state: 'ready_for_library',
+      reused: false,
+    })
+    expect(RealEditorialLibraryTransferResultSchema.safeParse({
+      ...integration,
+      reused: true,
+      unexpected: true,
+    }).success).toBe(false)
+  })
+
   it('contrata una acción humana explícita y rechaza entradas con perfil de origen divergente', () => {
     expect(RealEditorialLibraryTransferSchema.parse({
       pilotId, runId, actorId: MANUAL_LOCAL_ACTOR_ID, confirmed: true,

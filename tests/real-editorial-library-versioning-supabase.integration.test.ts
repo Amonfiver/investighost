@@ -286,8 +286,8 @@ function createDatabase(): void {
   docker(['exec', container, 'createdb', '-U', 'postgres', '-T', 'template0', database])
   const schema = docker([
     'exec', container, 'pg_dump', '-U', 'postgres', '-d', 'postgres',
-    '--schema-only', '--no-owner', '--no-privileges', '--schema=public',
-  ])
+    '--schema-only', '--no-owner', '--schema=public',
+  ]).replace(/^ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin.*;\r?$/gmu, '')
   psql(`drop schema public cascade;
     create schema if not exists extensions;
     create extension if not exists pgcrypto with schema extensions;`)

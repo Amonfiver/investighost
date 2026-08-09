@@ -369,8 +369,8 @@ function createDatabase(): void {
   docker(['exec', container, 'createdb', '-U', 'postgres', '-T', 'template0', database])
   const schema = docker([
     'exec', container, 'pg_dump', '-U', 'postgres', '-d', 'postgres',
-    '--schema-only', '--no-owner', '--no-privileges', '--schema=public',
-  ])
+    '--schema-only', '--no-owner', '--schema=public',
+  ]).replace(/^ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin.*;\r?$/gmu, '')
   psql(`drop schema public cascade;
     create schema if not exists extensions;
     create extension if not exists pgcrypto with schema extensions;`)
@@ -379,8 +379,20 @@ function createDatabase(): void {
 }
 
 function applyMigration(path: string): void {
+  if (migrationAlreadyInstalled(path)) return
   docker(['exec', '-i', container, 'psql', '-U', 'postgres', '-d', database,
     '-v', 'ON_ERROR_STOP=1'], readFileSync(path, 'utf8'))
+}
+
+function migrationAlreadyInstalled(path: string): boolean {
+  const probe = path.includes('20260806120000')
+    ? "to_regclass('public.real_editorial_library_versions')"
+    : path.includes('20260806230000')
+      ? "to_regprocedure('public.real_editorial_library_create_version(jsonb)')"
+      : path.includes('20260807120000')
+        ? "to_regprocedure('public.real_editorial_library_origin_v1(uuid)')"
+        : null
+  return probe !== null && psql(`select ${probe} is not null;`) === 't'
 }
 
 function seedSyntheticEntries(total: number): void {

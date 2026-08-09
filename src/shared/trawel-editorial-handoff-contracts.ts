@@ -79,7 +79,7 @@ export const LibraryTrawelApprovedSourceSchema = z.object({
   if (
     origin.libraryEntryId !== entry.entryId
     || origin.title !== entry.title
-    || origin.content !== entry.content
+    || !matchesOriginCanonicalContent(entry.content, origin.content)
   ) {
     mismatches.push([['currentApproved', 'originV1'], 'El origen v1 no reproduce la entrada inmutable'])
   }
@@ -121,6 +121,11 @@ export const LibraryTrawelApprovedSourceSchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, path, message })
   }
 })
+
+function matchesOriginCanonicalContent(entryContent: string, originContent: string): boolean {
+  return originContent === entryContent
+    || (!entryContent.endsWith('\n') && originContent === `${entryContent}\n`)
+}
 
 export const LibraryTrawelApprovedPairSchema = z.array(LibraryTrawelApprovedSourceSchema)
   .length(2)

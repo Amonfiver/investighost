@@ -1701,7 +1701,7 @@ export const RealEditorialLibraryEntrySchema = z.object({
   }
 })
 
-export const RealEditorialLibraryIntegrationSchema = z.object({
+const RealEditorialLibraryIntegrationBaseSchema = z.object({
   status: z.literal('integrated'),
   transferId: z.string().uuid(),
   transferKey: Sha256Schema,
@@ -1715,7 +1715,12 @@ export const RealEditorialLibraryIntegrationSchema = z.object({
   publicationCount: z.literal(0),
   trawelConnected: z.literal(false),
   automaticEnabled: z.literal(false),
-}).strict().superRefine((value, context) => {
+}).strict()
+
+function validateRealEditorialLibraryProfiles(
+  value: z.infer<typeof RealEditorialLibraryIntegrationBaseSchema>,
+  context: z.RefinementCtx,
+): void {
   const profiles = new Set(value.entries.map(entry => entry.profile))
   if (!profiles.has('adventure') || !profiles.has('student')) {
     context.addIssue({
@@ -1724,12 +1729,16 @@ export const RealEditorialLibraryIntegrationSchema = z.object({
       message: 'La incorporación debe contener Aventura y Estudiante exactamente una vez',
     })
   }
-})
+}
 
-export const RealEditorialLibraryTransferResultSchema = z.intersection(
-  RealEditorialLibraryIntegrationSchema,
-  z.object({ reused: z.boolean() }).strict(),
-)
+export const RealEditorialLibraryIntegrationSchema =
+  RealEditorialLibraryIntegrationBaseSchema.superRefine(validateRealEditorialLibraryProfiles)
+
+export const RealEditorialLibraryTransferResultSchema =
+  RealEditorialLibraryIntegrationBaseSchema
+    .extend({ reused: z.boolean() })
+    .strict()
+    .superRefine(validateRealEditorialLibraryProfiles)
 
 export const RealEditorialTerminalResultSchema = z.object({
   pilotId: z.string().uuid(),

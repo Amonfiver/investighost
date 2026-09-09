@@ -183,6 +183,22 @@ export const RealKnowledgeGapSchema = z.object({
   importance: z.enum(['low', 'medium', 'high', 'critical']),
   requiredForProfiles: z.array(RealEditorialProfileSchema).min(1).max(2),
   resolvableWithResearch: z.boolean(),
+  editorialContext: z.object({
+    affectedSection: IdentifierSchema.max(160),
+    centrality: z.enum(['low', 'medium', 'high', 'critical']),
+    omittable: z.boolean(),
+    contextualizable: z.boolean(),
+    canBeDeclaredUnverified: z.boolean(),
+    temporalSensitivity: z.enum(['stable', 'variable', 'time_sensitive']),
+    inventionRisk: z.enum(['low', 'medium', 'high', 'critical']),
+    evidenceThreshold: z.enum([
+      'secondary_sufficient',
+      'primary_preferred',
+      'primary_required',
+    ]),
+    estimatedUsefulEvidenceProbability: z.number().min(0).max(1),
+    estimatedMaterialChangeProbability: z.number().min(0).max(1),
+  }).strict().optional(),
 })
 
 export const RealFocusedQuerySchema = z.object({
@@ -190,7 +206,65 @@ export const RealFocusedQuerySchema = z.object({
   gapId: IdentifierSchema,
   query: NonEmptyTextSchema.max(500),
   rationale: NonEmptyTextSchema.max(1_000),
+  expectedEvidence: NonEmptyTextSchema.max(1_000).optional(),
+  stopCondition: NonEmptyTextSchema.max(1_000).optional(),
 })
+
+export const RealEditorialSufficiencyStatusSchema = z.enum([
+  'enough_to_write',
+  'targeted_gap_only',
+  'insufficient',
+  'unsafe_to_write',
+])
+
+export const RealContradictionImpactSchema = z.enum([
+  'tolerable_contextualizable',
+  'relevant_non_blocking',
+  'material_for_section',
+  'critical_unsafe',
+])
+
+export const RealEditorialSufficiencyProfileSchema = z.object({
+  profile: RealEditorialProfileSchema,
+  status: RealEditorialSufficiencyStatusSchema,
+  affectedGapIds: z.array(IdentifierSchema),
+  blockedSections: z.array(IdentifierSchema.max(160)),
+  reason: NonEmptyTextSchema.max(2_000),
+}).strict()
+
+export const RealEditorialTargetedSearchSchema = z.object({
+  gapId: IdentifierSchema,
+  affectedProfiles: z.array(RealEditorialProfileSchema).min(1).max(2),
+  affectedSection: IdentifierSchema.max(160),
+  rationale: NonEmptyTextSchema.max(1_000),
+  expectedEvidence: NonEmptyTextSchema.max(1_000),
+  query: NonEmptyTextSchema.max(500),
+  costLimitEur: z.number().min(0),
+  roundLimit: z.literal(2),
+  stopCondition: NonEmptyTextSchema.max(1_000),
+}).strict()
+
+export const RealEditorialSufficiencyDecisionSchema = z.object({
+  status: RealEditorialSufficiencyStatusSchema,
+  reason: NonEmptyTextSchema.max(2_000),
+  coverageScore: z.number().min(0).max(1),
+  spentCostEur: z.number().min(0),
+  expectedMarginalCostEur: z.number().min(0),
+  sourceAssessment: z.object({
+    sourceCount: z.number().int().nonnegative(),
+    distinctPublishers: z.number().int().nonnegative(),
+    averageSourceScore: z.number().min(0).max(1),
+    evidenceCount: z.number().int().nonnegative(),
+  }).strict(),
+  profiles: z.array(RealEditorialSufficiencyProfileSchema).min(1).max(2),
+  contradictions: z.array(z.object({
+    contradiction: NonEmptyTextSchema.max(2_000),
+    impact: RealContradictionImpactSchema,
+    affectedProfiles: z.array(RealEditorialProfileSchema).min(1).max(2),
+    reason: NonEmptyTextSchema.max(1_000),
+  }).strict()),
+  targetedSearch: RealEditorialTargetedSearchSchema.optional(),
+}).strict()
 
 export const RealRoundResultSchema = z.object({
   round: RealRoundNumberSchema,
@@ -199,6 +273,7 @@ export const RealRoundResultSchema = z.object({
   coverage: RealCoverageSchema,
   gaps: z.array(RealKnowledgeGapSchema),
   proposedQueries: z.array(RealFocusedQuerySchema),
+  editorialSufficiency: RealEditorialSufficiencyDecisionSchema.optional(),
   completedAt: IsoTimestampSchema,
 }).superRefine((value, context) => {
   if (!value.dossier.rounds.includes(value.round)) {
@@ -267,6 +342,8 @@ export type RealMasterKnowledge = z.infer<typeof RealMasterKnowledgeSchema>
 export type RealCoverage = z.infer<typeof RealCoverageSchema>
 export type RealKnowledgeGap = z.infer<typeof RealKnowledgeGapSchema>
 export type RealFocusedQuery = z.infer<typeof RealFocusedQuerySchema>
+export type RealEditorialSufficiencyStatus = z.infer<typeof RealEditorialSufficiencyStatusSchema>
+export type RealEditorialSufficiencyDecision = z.infer<typeof RealEditorialSufficiencyDecisionSchema>
 export type RealRoundNumber = z.infer<typeof RealRoundNumberSchema>
 export type RealRoundResult = z.infer<typeof RealRoundResultSchema>
 export type RealContinueDecision = z.infer<typeof RealContinueDecisionSchema>

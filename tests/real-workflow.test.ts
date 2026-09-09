@@ -332,6 +332,37 @@ describe('orquestador real de dos rondas focalizadas', () => {
     expect(context.research.calls).toEqual([1])
   })
 
+  it('no deja que una cobertura alta salte un bloqueo seguro de Aventura', async () => {
+    const unsafeAnalysis = analysis({ importance: 'critical' })
+    unsafeAnalysis.coverage = {
+      ...unsafeAnalysis.coverage,
+      score: 0.95,
+      sufficient: true,
+    }
+    unsafeAnalysis.decision = { action: 'stop_ready', reason: 'Cobertura alta.', queries: [] }
+    unsafeAnalysis.gaps[0] = {
+      ...unsafeAnalysis.gaps[0]!,
+      editorialContext: {
+        affectedSection: 'ruta',
+        centrality: 'critical',
+        omittable: false,
+        contextualizable: false,
+        canBeDeclaredUnverified: false,
+        temporalSensitivity: 'variable',
+        inventionRisk: 'critical',
+        evidenceThreshold: 'primary_required',
+        estimatedUsefulEvidenceProbability: 0.2,
+        estimatedMaterialChangeProbability: 0.8,
+      },
+    }
+    const context = setup([unsafeAnalysis])
+    const result = await context.workflow.execute(context.initialMission, new AbortController().signal)
+
+    expect(result.state).toBe('review_required')
+    expect(result.editorialSufficiency).toMatchObject({ status: 'unsafe_to_write' })
+    expect(context.research.calls).toEqual([1])
+  })
+
   it('ejecuta una única ronda 2 para una carencia relevante', async () => {
     const context = setup([analysis({ importance: 'high' }), analysis({ sufficient: true })])
     const result = await context.workflow.execute(context.initialMission, new AbortController().signal)

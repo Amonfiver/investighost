@@ -426,7 +426,11 @@ function analysisPayload(
   return {
     mission,
     dossier,
-    instruction: 'Analiza únicamente el expediente recibido. No navegues ni presupongas fuentes externas.',
+    instruction: [
+      'Analiza únicamente el expediente recibido. No navegues ni presupongas fuentes externas.',
+      'No propongas más investigación para elevar solo el porcentaje de cobertura; una query debe',
+      'resolver un gap material concreto y preservar una redacción prudente por perfil.',
+    ].join(' '),
   }
 }
 

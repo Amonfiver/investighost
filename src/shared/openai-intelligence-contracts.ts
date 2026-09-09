@@ -1,15 +1,50 @@
 import { z } from 'zod'
 import {
-  RealContinueDecisionSchema,
   RealCoverageSchema,
   RealEditorialProfileSchema,
-  RealFocusedQuerySchema,
   RealKnowledgeClaimSchema,
-  RealKnowledgeGapSchema,
 } from './real-pipeline-contracts'
 
 const CoverageScoreSchema = z.number().min(0).max(1)
 const CoverageWarningsSchema = z.array(z.string().trim().min(1).max(500))
+const IdentifierSchema = z.string().trim().min(1).max(160)
+const NonEmptyTextSchema = z.string().trim().min(1)
+
+const OpenAIKnowledgeGapSchema = z.object({
+  id: IdentifierSchema,
+  topic: IdentifierSchema.max(160),
+  description: NonEmptyTextSchema.max(1_000),
+  importance: z.enum(['low', 'medium', 'high', 'critical']),
+  requiredForProfiles: z.array(RealEditorialProfileSchema).min(1).max(2),
+  resolvableWithResearch: z.boolean(),
+})
+
+const OpenAIFocusedQuerySchema = z.object({
+  id: IdentifierSchema,
+  gapId: IdentifierSchema,
+  query: NonEmptyTextSchema.max(500),
+  rationale: NonEmptyTextSchema.max(1_000),
+})
+
+const OpenAIContinueDecisionSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('continue_focused'),
+    nextRound: z.literal(2),
+    reason: NonEmptyTextSchema.max(1_000),
+    queries: z.array(OpenAIFocusedQuerySchema).min(1).max(20),
+  }),
+  z.object({
+    action: z.literal('stop_ready'),
+    reason: NonEmptyTextSchema.max(1_000),
+    queries: z.array(OpenAIFocusedQuerySchema).max(0),
+  }),
+  z.object({
+    action: z.literal('stop_review_required'),
+    reason: NonEmptyTextSchema.max(1_000),
+    unresolvedGapIds: z.array(IdentifierSchema).min(1),
+    queries: z.array(OpenAIFocusedQuerySchema).max(0),
+  }),
+])
 
 const AdventureRequirementsSchema = z.object({
   routes: CoverageScoreSchema,
@@ -52,9 +87,9 @@ export const OpenAIRoundAnalysisOutputSchema = z.object({
   contradictions: z.array(z.string().trim().min(1).max(2_000)),
   coverage: RealCoverageSchema,
   profileCoverage: z.array(OpenAIProfileCoverageSchema).min(1).max(2),
-  gaps: z.array(RealKnowledgeGapSchema),
-  proposedQueries: z.array(RealFocusedQuerySchema),
-  decision: RealContinueDecisionSchema,
+  gaps: z.array(OpenAIKnowledgeGapSchema),
+  proposedQueries: z.array(OpenAIFocusedQuerySchema),
+  decision: OpenAIContinueDecisionSchema,
 })
 
 export const OpenAIDraftOutputSchema = z.object({

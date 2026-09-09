@@ -5,6 +5,7 @@ import {
   RealResearchMissionSchema,
   type RealContinueDecision,
   type RealCoverage,
+  type RealEditorialSufficiencyDecision,
   type RealFocusedQuery,
   type RealKnowledgeGap,
   type RealMasterKnowledge,
@@ -29,6 +30,7 @@ import {
   availableGlobalSourceSlots,
   selectSourcesWithinGlobalLimit,
 } from './source-limit-recovery'
+import { assessEditorialSufficiency } from './editorial-sufficiency'
 
 export type RealWorkflowState =
   | 'queued'
@@ -50,6 +52,7 @@ export interface RealWorkflowCheckpoint {
   dossier?: RealResearchDossier
   masterKnowledge?: RealMasterKnowledge
   coverage?: RealCoverage
+  editorialSufficiency?: RealEditorialSufficiencyDecision
   lastDecision?: RealContinueDecision
   unresolvedGaps: RealKnowledgeGap[]
   nextRoundQueries: RealFocusedQuery[]
@@ -191,6 +194,7 @@ export interface RealWorkflowOutcome {
   dossier: RealResearchDossier
   masterKnowledge: RealMasterKnowledge
   coverage: RealCoverage
+  editorialSufficiency?: RealEditorialSufficiencyDecision
   unresolvedGaps: RealKnowledgeGap[]
   queryHashes: string[]
   providerCalls: number
@@ -304,7 +308,9 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
         checkpoint = await this.runRound(secondMission, checkpoint, signal)
         checkpoint = {
           ...checkpoint,
-          state: checkpoint.coverage?.sufficient ? 'ready_for_drafting' : 'review_required',
+          state: checkpoint.editorialSufficiency?.status === 'enough_to_write'
+            ? 'ready_for_drafting'
+            : 'review_required',
           nextRoundQueries: [],
           updatedAt: this.now().toISOString(),
         }
@@ -343,11 +349,35 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
       coverage: result.coverage,
       gaps: result.unresolvedGaps,
       proposedQueries: result.nextRoundQueries,
+      editorialSufficiency: result.editorialSufficiency,
       completedAt: result.updatedAt,
     })
   }
 
   decide(result: RealRoundResult) {
+    const sufficiency = result.editorialSufficiency
+    if (sufficiency?.status === 'enough_to_write') {
+      return { action: 'stop_ready' as const, reason: sufficiency.reason, queries: [] }
+    }
+    if (sufficiency?.status === 'targeted_gap_only' && result.round === 1 && sufficiency.targetedSearch) {
+      const query = result.proposedQueries.find(item => item.gapId === sufficiency.targetedSearch?.gapId)
+      if (query) {
+        return {
+          action: 'continue_focused' as const,
+          nextRound: 2 as const,
+          reason: sufficiency.reason,
+          queries: [query],
+        }
+      }
+    }
+    if (sufficiency && sufficiency.status !== 'targeted_gap_only') {
+      return {
+        action: 'stop_review_required' as const,
+        reason: sufficiency.reason,
+        unresolvedGapIds: result.gaps.map(gap => gap.id),
+        queries: [],
+      }
+    }
     if (result.round === 2) {
       return result.coverage.sufficient
         ? { action: 'stop_ready' as const, reason: 'Cobertura suficiente tras la segunda ronda.', queries: [] }
@@ -462,6 +492,23 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
       context => this.providers.intelligenceEngine.analyze(mission, dossier, signal, context),
     )
     this.assertAnalysisRound(mission.round, analysis)
+    const simulatedCostAfterAnalysis = this.callExecutor.snapshot().spentCost
+    const expectedMarginalCostEur = this.configuration.researchCostPerRound + this.configuration.analysisCostPerRound
+    const remainingBudgetEur = Math.max(0, Math.min(
+      mission.limits.taskBudgetEur,
+      this.configuration.budgetLimit,
+    ) - simulatedCostAfterAnalysis)
+    const editorialSufficiency = assessEditorialSufficiency({
+      mission,
+      dossier,
+      knowledge: analysis.masterKnowledge,
+      coverageScore: analysis.coverage.score,
+      gaps: analysis.gaps,
+      proposedQueries: analysis.proposedQueries,
+      spentCostEur: simulatedCostAfterAnalysis,
+      expectedMarginalCostEur,
+      remainingBudgetEur,
+    })
     return {
       ...checkpoint,
       state: mission.round === 1 ? 'analyzing_round_1' : 'analyzing_round_2',
@@ -469,11 +516,12 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
       dossier,
       masterKnowledge: analysis.masterKnowledge,
       coverage: analysis.coverage,
+      editorialSufficiency,
       lastDecision: analysis.decision,
       unresolvedGaps: analysis.gaps,
       nextRoundQueries: analysis.proposedQueries,
       providerCalls: providerCalls + 1,
-      simulatedCost: this.callExecutor.snapshot().spentCost,
+      simulatedCost: simulatedCostAfterAnalysis,
       lastAnalysisCost: moneyValue(analysis.usage.estimatedCost),
       updatedAt: this.now().toISOString(),
     }
@@ -482,16 +530,22 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
   private afterFirstRound(checkpoint: RealWorkflowCheckpoint):
     | { terminal: true; state: 'ready_for_drafting' | 'review_required' }
     | { terminal: false; queries: RealFocusedQuery[]; queryHashes: string[] } {
-    if (checkpoint.coverage?.sufficient) return { terminal: true, state: 'ready_for_drafting' }
-    if (checkpoint.lastDecision?.action === 'stop_ready') return { terminal: true, state: 'ready_for_drafting' }
-    if (checkpoint.lastDecision?.action === 'stop_review_required') {
+    const sufficiency = checkpoint.editorialSufficiency
+    if (sufficiency?.status === 'enough_to_write') return { terminal: true, state: 'ready_for_drafting' }
+    if (sufficiency && sufficiency.status !== 'targeted_gap_only') {
       return { terminal: true, state: 'review_required' }
     }
-    const relevant = checkpoint.unresolvedGaps.filter(gap =>
-      ['high', 'critical'].includes(gap.importance) && gap.resolvableWithResearch,
-    )
-    if (relevant.length === 0) return { terminal: true, state: 'ready_for_drafting' }
-    const queries = this.validFocusedQueries(relevant, checkpoint.nextRoundQueries, checkpoint.queryHashes)
+    const targetedGapId = sufficiency?.targetedSearch?.gapId
+    const relevant = targetedGapId
+      ? checkpoint.unresolvedGaps.filter(gap => gap.id === targetedGapId)
+      : checkpoint.unresolvedGaps.filter(gap =>
+        ['high', 'critical'].includes(gap.importance) && gap.resolvableWithResearch,
+      )
+    if (relevant.length === 0) return { terminal: true, state: 'review_required' }
+    const proposed = targetedGapId
+      ? checkpoint.nextRoundQueries.filter(query => query.gapId === targetedGapId)
+      : checkpoint.nextRoundQueries
+    const queries = this.validFocusedQueries(relevant, proposed, checkpoint.queryHashes)
     if (queries.length === 0) return { terminal: true, state: 'review_required' }
     if (queries.length > checkpoint.initialMission.limits.maxFocusedQueriesPerRound) {
       return { terminal: true, state: 'review_required' }
@@ -650,6 +704,7 @@ function outcome(checkpoint: RealWorkflowCheckpoint): RealWorkflowOutcome {
     dossier: checkpoint.dossier,
     masterKnowledge: checkpoint.masterKnowledge,
     coverage: checkpoint.coverage,
+    editorialSufficiency: checkpoint.editorialSufficiency,
     unresolvedGaps: checkpoint.unresolvedGaps,
     queryHashes: checkpoint.queryHashes,
     providerCalls: checkpoint.providerCalls,

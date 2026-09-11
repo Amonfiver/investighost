@@ -61,16 +61,33 @@ export const TrawelEditorialDeliveryV2PayloadSchema = z.object({
   canonicalDestinationId: CanonicalDestinationIdSchema,
   handoffKey: LibraryVersionSha256Schema,
   payloadFingerprint: LibraryVersionSha256Schema,
+  libraryEntryId: z.string().trim().min(1).max(200),
+  versionHash: LibraryVersionSha256Schema,
+  contentHash: LibraryVersionSha256Schema,
+  provenance: z.record(JsonValueSchema),
+  approval: z.record(JsonValueSchema),
   profiles: z.object({ adventure: TrawelEditorialProfileSchema, student: TrawelEditorialProfileSchema }).strict(),
 }).strict()
 
-const DeliverySchema = z.object({ id: LibraryVersionUuidSchema, status: z.string().trim().min(1).max(80).optional() }).strict()
+const DeliveryResultSchema = z.object({
+  editorial_content_ids: z.array(LibraryVersionUuidSchema).max(2).optional(),
+  profiles_created: z.array(ProfileSchema).max(2).optional(),
+  publication: z.literal('draft_only').optional(),
+}).passthrough()
+const DeliverySchema = z.object({
+  id: LibraryVersionUuidSchema,
+  handoffKey: z.string().trim().min(1).max(200).optional(),
+  canonicalDestinationId: CanonicalDestinationIdSchema.optional(),
+  mappingId: z.string().trim().min(1).max(200).optional(),
+  status: z.string().trim().min(1).max(80).optional(),
+  result: DeliveryResultSchema.optional(),
+}).passthrough()
 
 /** Trawel's returned mapping UUID is a remote receipt, never the input source mapping ID. */
 export const TrawelEditorialIngressResponseSchema = z.object({
   success: z.boolean(),
   idempotent: z.boolean().optional(),
-  status: z.string().trim().min(1).max(80),
+  status: z.string().trim().min(1).max(80).optional(),
   delivery: DeliverySchema.optional(),
   deliveryId: LibraryVersionUuidSchema.optional(),
   handoffKey: LibraryVersionSha256Schema.optional(),

@@ -30,10 +30,12 @@ export function prepareTrawelEditorialDeliveryV2(candidate: PrepareTrawelEditori
     adventure: requiredProfile(byProfile, 'adventure', target),
     student: requiredProfile(byProfile, 'student', target),
   }
+  const envelope = deliveryEnvelope(byProfile)
   const handoffKey = canonicalPayloadHash({
     schema: TRAWEL_EDITORIAL_DELIVERY_V2_IDENTITY_SCHEMA,
     mappingId: target.sourceMappingId,
     canonicalDestinationId: target.canonicalDestinationId,
+    envelope,
     profiles: identityProfiles(profiles),
   })
   const payloadFingerprint = fingerprint({
@@ -41,6 +43,7 @@ export function prepareTrawelEditorialDeliveryV2(candidate: PrepareTrawelEditori
     mappingId: target.sourceMappingId,
     canonicalDestinationId: target.canonicalDestinationId,
     handoffKey,
+    ...envelope,
     profiles,
   })
   return TrawelEditorialDeliveryV2PayloadSchema.parse({
@@ -49,6 +52,7 @@ export function prepareTrawelEditorialDeliveryV2(candidate: PrepareTrawelEditori
     canonicalDestinationId: target.canonicalDestinationId,
     handoffKey,
     payloadFingerprint,
+    ...envelope,
     profiles,
   })
 }
@@ -59,6 +63,7 @@ export function assertTrawelEditorialDeliveryV2Integrity(payload: TrawelEditoria
     schema: TRAWEL_EDITORIAL_DELIVERY_V2_IDENTITY_SCHEMA,
     mappingId: parsed.mappingId,
     canonicalDestinationId: parsed.canonicalDestinationId,
+    envelope: envelopeFromPayload(parsed),
     profiles: identityProfiles(parsed.profiles),
   })
   if (handoffKey !== parsed.handoffKey) throw new TrawelEditorialDeliveryV2Error('V2 handoffKey inválida')
@@ -67,6 +72,7 @@ export function assertTrawelEditorialDeliveryV2Integrity(payload: TrawelEditoria
     mappingId: parsed.mappingId,
     canonicalDestinationId: parsed.canonicalDestinationId,
     handoffKey,
+    ...envelopeFromPayload(parsed),
     profiles: parsed.profiles,
   })
   if (payloadFingerprint !== parsed.payloadFingerprint) throw new TrawelEditorialDeliveryV2Error('V2 payloadFingerprint inválido')
@@ -87,6 +93,43 @@ function identityProfiles(profiles: Record<'adventure' | 'student', TrawelEditor
     const current = profiles[profile].metadata.investighost as { libraryEntryId: string; currentApproved: Record<string, unknown> }
     return [profile, { libraryEntryId: current.libraryEntryId, currentApproved: current.currentApproved }]
   }))
+}
+
+function deliveryEnvelope(byProfile: Map<'adventure' | 'student', LibraryTrawelApprovedSource>) {
+  const adventure = byProfile.get('adventure')
+  const student = byProfile.get('student')
+  if (!adventure || !student) throw new TrawelEditorialDeliveryV2Error('Faltan perfiles para el sobre de entrega')
+  const current = adventure.currentApproved
+  return {
+    // Trawel V2 has a single root trace. Adventure is the deterministic anchor;
+    // both per-profile identities remain in profile metadata.
+    libraryEntryId: adventure.entry.entryId,
+    versionHash: current.versionHash,
+    contentHash: current.contentHash,
+    provenance: {
+      source: current.source,
+      versionId: current.versionId,
+      revisionId: current.revisionId,
+      originVersionHash: current.originV1.originVersionHash,
+      anchoredProfile: 'adventure',
+      profileLibraryEntries: { adventure: adventure.entry.entryId, student: student.entry.entryId },
+    },
+    approval: {
+      kind: current.source === 'origin_v1' ? 'terminal' : 'library_version',
+      decisionId: current.approvalDecisionId ?? current.originV1.terminalDecisionId,
+      approvedAt: current.approvedAt,
+    },
+  }
+}
+
+function envelopeFromPayload(payload: TrawelEditorialDeliveryV2Payload) {
+  return {
+    libraryEntryId: payload.libraryEntryId,
+    versionHash: payload.versionHash,
+    contentHash: payload.contentHash,
+    provenance: payload.provenance,
+    approval: payload.approval,
+  }
 }
 
 function fingerprint(value: Record<string, unknown>): string {

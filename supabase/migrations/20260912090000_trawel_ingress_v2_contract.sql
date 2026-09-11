@@ -32,6 +32,11 @@ begin
   if p_payload->>'schemaVersion' <> 'v2'
     or p_payload->>'handoffKey' !~ '^[a-f0-9]{64}$'
     or p_payload->>'payloadFingerprint' !~ '^[a-f0-9]{64}$'
+    or coalesce(nullif(trim(p_payload->>'libraryEntryId'), ''), '') = ''
+    or p_payload->>'versionHash' !~ '^[a-f0-9]{64}$'
+    or p_payload->>'contentHash' !~ '^[a-f0-9]{64}$'
+    or jsonb_typeof(p_payload->'provenance') <> 'object'
+    or jsonb_typeof(p_payload->'approval') <> 'object'
     or jsonb_typeof(p_payload->'profiles') <> 'object'
     or not (p_payload->'profiles' ? 'adventure' and p_payload->'profiles' ? 'student') then
     raise exception 'VALIDATION_ERROR: invalid Trawel ingress V2 payload';

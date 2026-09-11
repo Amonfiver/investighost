@@ -1,16 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   DurableTrawelDeliveryService,
+  ExplicitTrawelDeliveryRuntime,
   HttpTrawelIngressClient,
+  HttpTrawelDeliveryReconciler,
   MemoryEditorialDeliveryRepository,
   TrawelEditorialProjectionError,
   TrawelIngressError,
   prepareTrawelEditorialDeliveryV2,
+  parseTrawelIngressConfig,
   projectLibraryEntryToTrawelEditorialProfile,
   type TrawelDeliveryReconciler,
   type TrawelIngressClient,
 } from '@modules/trawel-handoff'
-import { TrawelEditorialDeliveryV2PayloadSchema, type TrawelEditorialIngressResponse } from '@shared/trawel-editorial-delivery-contracts'
+import { TrawelEditorialDeliveryV2PayloadSchema, TrawelEditorialIngressResponseSchema, type TrawelEditorialIngressResponse } from '@shared/trawel-editorial-delivery-contracts'
 import { buildSyntheticApprovedSource, syntheticTrawelIds } from './support/trawel-handoff-fixture'
 
 const target = {
@@ -154,9 +157,51 @@ describe('Trawel V2 structured projection and durable delivery', () => {
     expect((await repository.findById(delivery.id))?.state).toBe('CONFIRMED')
   })
 
+  it('accepts the deployed nested delivery response and authenticates GET reconciliation', async () => {
+    const value = payload()
+    const deployedResponse = {
+      success: true,
+      idempotent: false,
+      delivery: {
+        id: syntheticTrawelIds.target,
+        handoffKey: value.handoffKey,
+        canonicalDestinationId: value.canonicalDestinationId,
+        mappingId: value.mappingId,
+        status: 'accepted',
+        result: {
+          editorial_content_ids: [syntheticTrawelIds.adventureEntry, syntheticTrawelIds.studentEntry],
+          profiles_created: ['adventure', 'student'], publication: 'draft_only',
+        },
+      },
+    }
+    const get = vi.fn(async () => new Response(JSON.stringify(deployedResponse), { status: 200 }))
+    const reconciler = new HttpTrawelDeliveryReconciler({ url: 'http://localhost/edge', internalSecret: 'test-secret', allowInsecureForTests: true, fetchFn: get })
+    expect(await reconciler.reconcile({ handoffKey: value.handoffKey, payloadFingerprint: value.payloadFingerprint })).toMatchObject({ success: true })
+    expect(get.mock.calls[0]?.[0]).toBe(`http://localhost/edge/${value.handoffKey}`)
+    expect(get.mock.calls[0]?.[1]?.headers).toMatchObject({ 'x-internal-editorial-secret': 'test-secret' })
+    const repository = new MemoryEditorialDeliveryRepository()
+    const service = new DurableTrawelDeliveryService(repository, new FakeIngress(async () => TrawelEditorialIngressResponseSchema.parse(deployedResponse)))
+    const delivery = await service.enqueue(value); await service.deliver(delivery.id)
+    expect((await repository.findById(delivery.id))?.state).toBe('CONFIRMED')
+  })
+
+  it('runs a dry run through the Library port without enqueueing or POSTing', async () => {
+    const ingress = new FakeIngress(async item => response(item))
+    const service = new DurableTrawelDeliveryService(new MemoryEditorialDeliveryRepository(), ingress)
+    const runtime = new ExplicitTrawelDeliveryRuntime({
+      loadApprovedPair: async () => [source('adventure'), source('student')],
+    }, service)
+    const dryRun = await runtime.dryRun({ target, adventureLibraryEntryId: syntheticTrawelIds.adventureEntry, studentLibraryEntryId: syntheticTrawelIds.studentEntry })
+    expect(dryRun).toMatchObject({ sourceMappingId: target.sourceMappingId, canonicalDestinationId: target.canonicalDestinationId })
+    expect(dryRun.profiles).toHaveLength(2)
+    expect(ingress.delivered).toEqual([])
+  })
+
   it('sends the internal header but never logs the secret, and classifies HTTP outcomes', async () => {
     const fetchFn = vi.fn(async () => new Response(JSON.stringify(response(payload())), { status: 200 }))
     const secret = 'secret-only-for-test'
+    expect(parseTrawelIngressConfig({ TRAWEL_INTERNAL_EDITORIAL_DELIVERIES_URL: 'https://example.test/function', TRAWEL_INTERNAL_EDITORIAL_DELIVERIES_SECRET: secret })).toEqual({ url: 'https://example.test/function', internalSecret: secret })
+    expect(() => parseTrawelIngressConfig({})).toThrow('TRAWEL_INGRESS_CONFIG_MISSING')
     const client = new HttpTrawelIngressClient({ url: 'http://localhost/edge', internalSecret: secret, allowInsecureForTests: true, fetchFn })
     await client.deliver(payload())
     expect(fetchFn.mock.calls[0]?.[1]?.headers).toMatchObject({ 'x-internal-editorial-secret': secret, 'content-type': 'application/json' })

@@ -9,7 +9,7 @@ export interface TrawelIngressClient {
 }
 
 export interface TrawelDeliveryReconciler {
-  reconcile(input: { handoffKey: string; payloadFingerprint: string }): Promise<TrawelEditorialIngressResponse | { status: 'NOT_CONFIGURED' }>
+  reconcile(input: { handoffKey: string; payloadFingerprint: string }): Promise<TrawelEditorialIngressResponse | { status: 'NOT_CONFIGURED' | 'NOT_FOUND' }>
 }
 
 /** Trawel has no validated read-back endpoint yet; this fails closed without inventing one. */
@@ -73,6 +73,40 @@ export class HttpTrawelIngressClient implements TrawelIngressClient {
       if (error instanceof TrawelIngressError) throw error
       if (isAbort(error)) throw new TrawelIngressError('ambiguous', 'Trawel delivery timed out')
       throw new TrawelIngressError('ambiguous', 'Trawel delivery transport failed')
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+}
+
+/** Authenticated GET supported by the deployed Edge Function, used only after an ambiguous POST. */
+export class HttpTrawelDeliveryReconciler implements TrawelDeliveryReconciler {
+  private readonly fetchFn: typeof fetch
+  private readonly url: string
+  private readonly timeoutMs: number
+  constructor(private readonly options: HttpTrawelIngressClientOptions) {
+    const parsed = new URL(options.url)
+    if (parsed.protocol !== 'https:' && !options.allowInsecureForTests) throw new Error('TRAWEL_INGRESS_HTTPS_REQUIRED')
+    if (!options.internalSecret.trim()) throw new Error('TRAWEL_INGRESS_SECRET_REQUIRED')
+    this.url = parsed.toString().replace(/\/$/, '')
+    this.timeoutMs = options.timeoutMs ?? 10_000
+    this.fetchFn = options.fetchFn ?? fetch
+  }
+  async reconcile(input: { handoffKey: string }): Promise<TrawelEditorialIngressResponse | { status: 'NOT_FOUND' }> {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs)
+    try {
+      const response = await this.fetchFn(`${this.url}/${encodeURIComponent(input.handoffKey)}`, {
+        method: 'GET', signal: controller.signal,
+        headers: { 'x-internal-editorial-secret': this.options.internalSecret },
+      })
+      if (response.status === 404) return { status: 'NOT_FOUND' }
+      if (!response.ok) throw new TrawelIngressError(classifyHttp(response.status), `Trawel reconciliation HTTP ${response.status}`)
+      return TrawelEditorialIngressResponseSchema.parse(await response.json())
+    } catch (error) {
+      if (error instanceof TrawelIngressError) throw error
+      if (isAbort(error)) throw new TrawelIngressError('ambiguous', 'Trawel reconciliation timed out')
+      throw new TrawelIngressError('ambiguous', 'Trawel reconciliation transport failed')
     } finally {
       clearTimeout(timeout)
     }

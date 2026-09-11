@@ -1,33 +1,84 @@
 # Protocolo durable V2 de entrega editorial
 
-## Objetivo y ownership
+## Alcance
 
-V2 es el outbox de **Investighost** para llevar una pareja editorial aprobada a un ingreso futuro de Trawel. Investighost construye, valida, persiste y reconcilia la entrega. Trawel, cuando implemente su contraparte, será dueño de persistirla e informar un recibo. Esta implementación no cambia ni requiere código de Trawel.
+V2 es el outbox local de Investighost para el ingress desplegado de Trawel
+`internal-editorial-deliveries`. No conecta Biblioteca remota, no crea mappings,
+no envía una delivery por sí mismo y nunca publica contenido.
 
-No hay scheduler, publicación automática, ni llamada a proveedores de IA, búsqueda o APIs de pago. Usar el cliente HTTP exige una invocación explícita; las pruebas usan fakes.
+## Payload externo exacto
 
-## Compatibilidad e identidad
+El POST JSON usa:
 
-`investighost-trawel-editorial-handoff-v1` continúa intacto: conserva hashes, IDs y comportamiento histórico, incluidos los drafts de Albarracín. V2 usa el schema distinto `investighost-trawel-editorial-delivery-v2`; no interpreta ni migra payloads V1.
+```ts
+{
+  schemaVersion: 'v2',
+  mappingId: 'zone:espana:albarracin',
+  canonicalDestinationId: 'investighost:zone:espana:albarracin',
+  handoffKey: '<sha256>',
+  payloadFingerprint: '<sha256>',
+  profiles: { adventure: TrawelEditorialProfile, student: TrawelEditorialProfile },
+}
+```
 
-Una entrega V2 tiene exactamente una fila `adventure` y una `student`. Su `handoffKey` es SHA-256 de la proyección de identidad canónica V2: mapping explícito, entrada de Biblioteca, `versionHash`, `contentHash`, perfil, idioma y aprobación. Por tanto, una nueva versión o un mapping diferente genera otra entrega. El `payloadFingerprint` cubre la proyección canónica completa, incluyendo el contenido. Ningún nombre o slug participa como identidad.
+`mappingId` es el `source_mapping_id` textual. El UUID interno que Trawel
+devuelva en su respuesta es una identidad remota/receipt, nunca se compara con
+el mapping de entrada.
 
-El mapping snapshot contiene `mappingId`, destino canónico Investighost y tipo/ID de entidad Trawel. El payload afirma siempre `private_draft` y `publiclyVisible: false`.
+Ambos perfiles son obligatorios. La publicación posterior puede ser por perfil,
+pero una delivery V2 no es parcial.
 
-## Outbox y estados
+## Proyección determinista
 
-La migración aditiva crea entregas, fuentes y attempts. `payload` y las fuentes son el snapshot inmutable creado por `enqueue`, antes de cualquier POST. Los retries nunca vuelven a leer el contenido actual de Biblioteca.
+`projectLibraryEntryToTrawelEditorialProfile` no lee red, entorno ni datos
+remotos. Acepta únicamente Markdown con bloques canónicos:
 
-Estados: `PENDING`, `DELIVERING`, `RETRYABLE`, `RECONCILING`, `CONFIRMED`, `CONFLICT`, `FAILED`. `CONFIRMED`, `CONFLICT` y `FAILED` son terminales. Los leases son atómicos y un lease vencido en `DELIVERING` pasa a `RECONCILING`, nunca a un reenvío ciego. La autorecuperación de lease es una transición interna equivalente y visible por el código `LEASE_EXPIRED_AMBIGUOUS`.
+```md
+## [intro] Título visible
+...
+## [overview] Título visible
+...
+```
 
-Cada envío o consulta de reconciliación crea un attempt durable, con correlación, resultado y error redactado. El outbox puede recuperarse tras un reinicio al estar almacenado en Supabase local.
+Adventure exige: `intro`, `overview`, `highlights`, `route`,
+`practical`, `risks` y `sources`.
 
-## Ingreso, retries y reconciliación
+Student exige: `intro`, `overview`, `budget`, `daily_life`, `study`,
+`practical`, `risks` y `sources`.
 
-El puerto contempla `POST /internal/editorial-deliveries` y `GET /internal/editorial-deliveries/{handoffKey}`. Admite `CONFIRMED`, `NO_DUPLICATE`, `PARTIAL`, `CONFLICT`, `RETRYABLE_ERROR` y `VALIDATION_ERROR`.
+`highlights` y `route` son opcionales para Student porque su taxonomía no
+los declara. Encabezados repetidos, texto fuera de bloques o campos requeridos
+ausentes rechazan el perfil; no se rellena contenido por inferencia.
 
-Una confirmación valida handoff key, fingerprint, mapping, ambas filas y la frontera privada antes de cerrar como `CONFIRMED`. `NO_DUPLICATE` coincide con esta misma confirmación idempotente. Error conocido antes de persistencia pasa a `RETRYABLE` con backoff; timeout u otro resultado ambiguo pasa a `RECONCILING`. Sólo una lectura remota explícita `NOT_FOUND` o error recuperable permite volver a `RETRYABLE`. `PARTIAL` permanece observable en `RECONCILING`; no hay borrado ni compensación destructiva. Fingerprint o identidad incompatibles terminan en `CONFLICT`; validación no recuperable termina en `FAILED`.
+El metadata conserva identidad de Biblioteca, hashes, aprobación, gaps,
+contradicciones y referencias públicas de fuente. Excluye capturas, prompts,
+costes, secretos y notas internas.
 
-## Seguridad e invariantes
+## Outbox y transporte
 
-La migración no altera constraints ni tablas históricas de Biblioteca, TENEMOS NOTICIA, transferencias V1 o publicación. El acceso a las tablas y RPC queda limitado a `service_role`. No se almacenan secretos ni se añade configuración. La implementación se diseñó para Supabase local existente; no ejecuta migraciones remotas.
+El snapshot se persiste antes del POST e incluye mapping textual, destino
+canónico, perfiles, hashes, handoff y fingerprint. La migración
+`20260912090000_trawel_ingress_v2_contract.sql` adapta solamente el outbox
+propio de Investighost; no toca Trawel ni Biblioteca.
+
+El cliente privilegiado recibe URL completa y secreto por dependencia, o desde
+`TRAWEL_INTERNAL_EDITORIAL_DELIVERIES_URL` y
+`TRAWEL_INTERNAL_EDITORIAL_DELIVERIES_SECRET` en el proceso privilegiado. Exige
+HTTPS salvo mocks locales, manda `content-type: application/json` y
+`x-internal-editorial-secret`, aplica timeout y jamás serializa o registra el
+secreto.
+
+Éxito, éxito idempotente, conflicto, fallo permanente, fallo reintentable y
+timeout ambiguo se distinguen en el servicio. No se presupone un GET remoto:
+la reconciliación usa `TrawelDeliveryReconciler`; sin implementación queda
+`NOT_CONFIGURED` y el outbox continúa en reconciliación.
+
+## Runtime y límites
+
+`ExplicitTrawelDeliveryRuntime` es un composition point explícito con un
+`CurrentApprovedLibraryPort` inyectado. No hay scheduler, renderer ni acceso
+a Supabase durable remoto. El host que lo use debe aportar configuración y un
+port autorizado posteriormente.
+
+Toda respuesta aceptada por Trawel se espera como `draft_only`; este módulo
+no contiene transición alguna a `published`.

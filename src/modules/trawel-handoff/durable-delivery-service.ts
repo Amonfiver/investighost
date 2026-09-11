@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto'
 import type { TrawelEditorialDeliveryV2Payload, TrawelEditorialIngressResponse } from '@shared/trawel-editorial-delivery-contracts'
 import { assertTrawelEditorialDeliveryV2Integrity } from './delivery-v2-adapter'
 import type { EditorialDelivery, EditorialDeliveryRepository } from './delivery-repository'
-import { TrawelIngressError, type TrawelIngressClient } from './trawel-ingress-client'
+import {
+  TrawelIngressError,
+  UnsupportedTrawelDeliveryReconciler,
+  type TrawelDeliveryReconciler,
+  type TrawelIngressClient,
+} from './trawel-ingress-client'
 
 export interface DurableDeliveryServiceOptions {
   now?: () => Date
@@ -21,6 +26,7 @@ export class DurableTrawelDeliveryService {
     private readonly repository: EditorialDeliveryRepository,
     private readonly ingress: TrawelIngressClient,
     options: DurableDeliveryServiceOptions = {},
+    private readonly reconciler: TrawelDeliveryReconciler = new UnsupportedTrawelDeliveryReconciler(),
   ) {
     this.now = options.now ?? (() => new Date())
     this.correlationId = options.correlationId ?? randomUUID
@@ -45,31 +51,29 @@ export class DurableTrawelDeliveryService {
       await this.repository.completeAttempt(attempt.id, attemptResult(response), this.now())
       return result
     } catch (error) {
-      const ambiguous = !(error instanceof TrawelIngressError) || error.disposition === 'ambiguous'
-      const result = ambiguous
+      const disposition = error instanceof TrawelIngressError ? error.disposition : 'ambiguous'
+      const result = disposition === 'ambiguous'
         ? await this.repository.transition(lease.delivery.id, lease.token, { state: 'RECONCILING', lastResultCode: 'AMBIGUOUS_DELIVERY_RESULT' }, this.now())
-        : await this.repository.transition(lease.delivery.id, lease.token, { state: 'RETRYABLE', nextAttemptAt: this.retryAt(), lastResultCode: 'PRE_PERSISTENCE_ERROR' }, this.now())
+        : disposition === 'retryable'
+          ? await this.repository.transition(lease.delivery.id, lease.token, { state: 'RETRYABLE', nextAttemptAt: this.retryAt(), lastResultCode: 'RETRYABLE_FAILURE' }, this.now())
+          : await this.repository.transition(lease.delivery.id, lease.token, { state: 'FAILED', lastResultCode: 'PERMANENT_FAILURE' }, this.now())
       await this.repository.completeAttempt(attempt.id, {
-        outcome: ambiguous ? 'AMBIGUOUS' : 'RETRYABLE', remoteStatusCode: null, trawelReceiptId: null,
-        errorCode: ambiguous ? 'AMBIGUOUS_DELIVERY_RESULT' : 'PRE_PERSISTENCE_ERROR', errorSummary: redact(error),
+        outcome: disposition.toUpperCase(), remoteStatusCode: null, trawelReceiptId: null,
+        errorCode: disposition.toUpperCase(), errorSummary: redact(error),
       }, this.now())
       return result
     }
   }
 
-  /** Reconciliation is the only path out of an ambiguous lease/timeout before another POST. */
+  /** Reconciliation is explicit because Trawel has no assumed GET endpoint. */
   async reconcile(deliveryId: string): Promise<EditorialDelivery | null> {
     const now = this.now(); await this.repository.recoverExpiredLeases(now)
     const lease = await this.repository.acquireForReconciliation(deliveryId, now, this.leaseForMs)
     if (lease === null) return this.repository.findById(deliveryId)
     const attempt = await this.repository.recordAttemptStart(lease.delivery.id, this.correlationId(), now)
     try {
-      const response = await this.ingress.lookup(lease.delivery.handoffKey)
-      if (response.result === 'NOT_FOUND') {
-        const result = await this.repository.transition(lease.delivery.id, lease.token, { state: 'RETRYABLE', nextAttemptAt: this.retryAt(), lastResultCode: 'REMOTE_NOT_FOUND_SAFE_RETRY' }, this.now())
-        await this.repository.completeAttempt(attempt.id, { outcome: 'RETRYABLE', remoteStatusCode: null, trawelReceiptId: null, errorCode: null, errorSummary: null }, this.now())
-        return result
-      }
+      const response = await this.reconciler.reconcile({ handoffKey: lease.delivery.handoffKey, payloadFingerprint: lease.delivery.payloadFingerprint })
+      if (!('success' in response)) throw new TrawelIngressError('ambiguous', 'Trawel reconciliation is not configured')
       const result = await this.applyReconciliationResponse(lease.delivery, lease.token, response)
       await this.repository.completeAttempt(attempt.id, attemptResult(response), this.now())
       return result
@@ -88,36 +92,37 @@ export class DurableTrawelDeliveryService {
   }
 
   private async applyDeliveryResponse(delivery: EditorialDelivery, token: string, response: TrawelEditorialIngressResponse): Promise<EditorialDelivery> {
-    if (response.result === 'CONFIRMED' || response.result === 'NO_DUPLICATE') {
+    if (response.success) {
       return this.repository.transition(delivery.id, token, this.confirmation(delivery, response), this.now())
     }
-    if (response.result === 'CONFLICT') return this.repository.transition(delivery.id, token, { state: 'CONFLICT', lastResultCode: 'CONFLICT' }, this.now())
-    if (response.result === 'VALIDATION_ERROR') return this.repository.transition(delivery.id, token, { state: 'FAILED', lastResultCode: 'VALIDATION_ERROR' }, this.now())
-    if (response.result === 'RETRYABLE_ERROR') return this.repository.transition(delivery.id, token, { state: 'RETRYABLE', nextAttemptAt: this.retryAt(), lastResultCode: 'RETRYABLE_ERROR' }, this.now())
-    return this.repository.transition(delivery.id, token, { state: 'RECONCILING', lastResultCode: 'PARTIAL' }, this.now())
+    if (response.status === 'conflict') return this.repository.transition(delivery.id, token, { state: 'CONFLICT', lastResultCode: 'CONFLICT' }, this.now())
+    if (response.status === 'retryable_error') return this.repository.transition(delivery.id, token, { state: 'RETRYABLE', nextAttemptAt: this.retryAt(), lastResultCode: 'RETRYABLE_ERROR' }, this.now())
+    return this.repository.transition(delivery.id, token, { state: 'FAILED', lastResultCode: response.status }, this.now())
   }
   private async applyReconciliationResponse(delivery: EditorialDelivery, token: string, response: TrawelEditorialIngressResponse): Promise<EditorialDelivery> {
-    if (response.result === 'CONFIRMED' || response.result === 'NO_DUPLICATE') return this.repository.transition(delivery.id, token, this.confirmation(delivery, response), this.now())
-    if (response.result === 'CONFLICT') return this.repository.transition(delivery.id, token, { state: 'CONFLICT', lastResultCode: 'CONFLICT' }, this.now())
-    if (response.result === 'VALIDATION_ERROR') return this.repository.transition(delivery.id, token, { state: 'FAILED', lastResultCode: 'VALIDATION_ERROR' }, this.now())
-    if (response.result === 'RETRYABLE_ERROR') return this.repository.transition(delivery.id, token, { state: 'RETRYABLE', nextAttemptAt: this.retryAt(), lastResultCode: 'RETRYABLE_ERROR' }, this.now())
-    return this.repository.releaseReconciliation(delivery.id, token, this.retryAt(), 'PARTIAL', this.now())
+    if (response.success) return this.repository.transition(delivery.id, token, this.confirmation(delivery, response), this.now())
+    if (response.status === 'conflict') return this.repository.transition(delivery.id, token, { state: 'CONFLICT', lastResultCode: 'CONFLICT' }, this.now())
+    if (response.status === 'retryable_error') return this.repository.transition(delivery.id, token, { state: 'RETRYABLE', nextAttemptAt: this.retryAt(), lastResultCode: 'RETRYABLE_ERROR' }, this.now())
+    return this.repository.transition(delivery.id, token, { state: 'FAILED', lastResultCode: response.status }, this.now())
   }
   private confirmation(delivery: EditorialDelivery, response: TrawelEditorialIngressResponse) {
-    const profiles = response.rows.map(row => row.profile).sort()
-    const expectedProfiles = delivery.payload.rows.map(row => row.profile).sort()
-    if (response.handoffKey !== delivery.handoffKey || response.payloadFingerprint !== delivery.payloadFingerprint
-      || response.mappingId !== delivery.destinationMappingId || response.publiclyVisible || response.publicationState !== 'private_draft'
-      || profiles.join(',') !== expectedProfiles.join(',')) {
+    const profiles = [...(response.profiles_created ?? [])].sort()
+    if ((response.handoffKey !== undefined && response.handoffKey !== delivery.handoffKey)
+      || (response.payloadFingerprint !== undefined && response.payloadFingerprint !== delivery.payloadFingerprint)
+      || (response.canonicalDestinationId !== undefined && response.canonicalDestinationId !== delivery.canonicalDestinationId)
+      || (response.publication !== undefined && response.publication !== 'draft_only')
+      || (profiles.length > 0 && profiles.join(',') !== 'adventure,student')
+      || (response.editorial_content_ids !== undefined && response.editorial_content_ids.length !== 2)) {
       return { state: 'CONFLICT' as const, lastResultCode: 'RESPONSE_IDENTITY_MISMATCH' }
     }
-    return { state: 'CONFIRMED' as const, lastResultCode: response.result, trawelReceiptId: response.receiptId, confirmedAt: this.now() }
+    return { state: 'CONFIRMED' as const, lastResultCode: response.idempotent ? 'IDEMPOTENT_SUCCESS' : 'SUCCESS', trawelReceiptId: response.delivery?.id ?? response.deliveryId ?? null, confirmedAt: this.now() }
   }
   private retryAt(): Date { return new Date(this.now().getTime() + this.retryDelayMs) }
 }
 
 function attemptResult(response: TrawelEditorialIngressResponse) {
-  return { outcome: response.result, remoteStatusCode: response.result, trawelReceiptId: response.receiptId,
-    errorCode: response.result === 'RETRYABLE_ERROR' || response.result === 'VALIDATION_ERROR' ? response.result : null, errorSummary: null }
+  return { outcome: response.success ? (response.idempotent ? 'IDEMPOTENT_SUCCESS' : 'SUCCESS') : response.status,
+    remoteStatusCode: response.status, trawelReceiptId: response.delivery?.id ?? response.deliveryId ?? null,
+    errorCode: response.success ? null : response.status, errorSummary: response.error ?? null }
 }
 function redact(error: unknown): string { return (error instanceof Error ? error.message : 'Unknown ingress error').replace(/[\r\n]/g, ' ').slice(0, 500) }

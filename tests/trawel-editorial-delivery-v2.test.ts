@@ -1,129 +1,167 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   DurableTrawelDeliveryService,
+  HttpTrawelIngressClient,
   MemoryEditorialDeliveryRepository,
+  TrawelEditorialProjectionError,
   TrawelIngressError,
   prepareTrawelEditorialDeliveryV2,
+  projectLibraryEntryToTrawelEditorialProfile,
+  type TrawelDeliveryReconciler,
   type TrawelIngressClient,
 } from '@modules/trawel-handoff'
 import { TrawelEditorialDeliveryV2PayloadSchema, type TrawelEditorialIngressResponse } from '@shared/trawel-editorial-delivery-contracts'
 import { buildSyntheticApprovedSource, syntheticTrawelIds } from './support/trawel-handoff-fixture'
 
-const mapping = {
-  mappingId: syntheticTrawelIds.target,
-  investighostCanonicalDestinationId: syntheticTrawelIds.destination,
-  trawelEntityType: 'zone' as const,
-  trawelEntityId: syntheticTrawelIds.actor,
+const target = {
+  sourceMappingId: 'zone:espana:albarracin',
+  canonicalDestinationId: 'investighost:zone:espana:albarracin',
+  entityType: 'zone' as const,
+  entitySlug: 'albarracin',
+  countrySlug: 'espana',
+  zoneSlug: 'albarracin',
 }
 
+const content = {
+  adventure: `## [intro] Introducción
+Llegada prudente a la zona.
+## [overview] Contexto
+La lectura se apoya en evidencia revisada.
+## [highlights] Destacados
+- Murallas y paisaje
+- Senderos documentados
+## [route] Ruta sugerida
+Recorrido principal descrito por las fuentes.
+## [practical] Consejos prácticos
+- Confirmar horarios
+- Llevar agua
+## [risks] Riesgos
+Las condiciones requieren comprobación.
+## [sources] Fuentes
+Consulta las referencias incluidas.
+`,
+  student: `## [intro] Introducción
+Contexto útil para una estancia de estudio.
+## [overview] Contexto
+La información distingue datos y verificaciones pendientes.
+## [budget] Presupuesto
+Los costes deben confirmarse antes de reservar.
+## [daily_life] Vida diaria
+Los servicios se contrastan con fuentes públicas.
+## [study] Estudio
+La planificación depende de la oferta confirmada.
+## [practical] Consejos prácticos
+- Confirmar transporte
+- Revisar alojamiento
+## [risks] Riesgos
+No asumir disponibilidad estacional.
+## [sources] Fuentes
+Consulta las referencias incluidas.
+`,
+}
+
+function source(profile: 'adventure' | 'student', replacement = content[profile]) {
+  return buildSyntheticApprovedSource(profile, true, { title: `${profile} estructurado`, content: replacement })
+}
 function payload() {
-  return prepareTrawelEditorialDeliveryV2({
-    mapping,
-    sources: [buildSyntheticApprovedSource('student'), buildSyntheticApprovedSource('adventure')],
-  })
+  return prepareTrawelEditorialDeliveryV2({ target, sources: [source('student'), source('adventure')] })
 }
-
-function response(value: ReturnType<typeof payload>, result: TrawelEditorialIngressResponse['result'] = 'CONFIRMED'): TrawelEditorialIngressResponse {
+function response(value: ReturnType<typeof payload>, overrides: Partial<TrawelEditorialIngressResponse> = {}): TrawelEditorialIngressResponse {
   return {
-    result, schema: value.schema, handoffKey: value.handoffKey, payloadFingerprint: value.payloadFingerprint,
-    mappingId: value.mapping.mappingId, receiptId: 'receipt-v2', rows: value.rows.map(row => ({ profile: row.profile })),
-    publicationState: 'private_draft', publiclyVisible: false, serverTimestamp: '2026-09-10T12:00:00.000Z',
+    success: true, idempotent: false, status: 'accepted', delivery: { id: syntheticTrawelIds.target, status: 'accepted' },
+    handoffKey: value.handoffKey, payloadFingerprint: value.payloadFingerprint,
+    mappingId: syntheticTrawelIds.actor, canonicalDestinationId: value.canonicalDestinationId,
+    profiles_created: ['adventure', 'student'], editorial_content_ids: [syntheticTrawelIds.adventureEntry, syntheticTrawelIds.studentEntry],
+    publication: 'draft_only', ...overrides,
   }
 }
 
 class FakeIngress implements TrawelIngressClient {
   delivered: string[] = []
-  constructor(private readonly post: (value: ReturnType<typeof payload>) => Promise<TrawelEditorialIngressResponse>, private readonly get: (key: string) => Promise<TrawelEditorialIngressResponse | { result: 'NOT_FOUND' }>) {}
+  constructor(private readonly post: (value: ReturnType<typeof payload>) => Promise<TrawelEditorialIngressResponse>) {}
   async deliver(value: ReturnType<typeof payload>) { this.delivered.push(value.handoffKey); return this.post(value) }
-  lookup(key: string) { return this.get(key) }
 }
 
-describe('V2 durable editorial delivery', () => {
-  it('has an explicit V2 contract with exactly adventure and student', () => {
-    const value = payload()
+describe('Trawel V2 structured projection and durable delivery', () => {
+  it('projects deterministic adventure and student profiles with only public traceability', () => {
+    const adventure = projectLibraryEntryToTrawelEditorialProfile(source('adventure'), target)
+    const student = projectLibraryEntryToTrawelEditorialProfile(source('student'), target)
+    expect(adventure.headline).toBe('adventure estructurado')
+    expect(adventure.intro).toBe('Llegada prudente a la zona.')
+    expect(adventure.highlights).toEqual(['Murallas y paisaje', 'Senderos documentados'])
+    expect(adventure.suggestedRoute).toContain('Recorrido principal')
+    expect(student.practicalTips).toEqual(['Confirmar transporte', 'Revisar alojamiento'])
+    expect(adventure.metadata.investighost).toMatchObject({ gaps: [{ id: 'gap-sintetico' }], contradictions: ['Contradicción sintética controlada.'] })
+    expect(JSON.stringify(adventure.metadata)).not.toContain('Captura interna')
+    expect(JSON.stringify(adventure.metadata)).not.toContain('finalRunCostEur')
+  })
+
+  it('fails closed for absent or ambiguous required Markdown blocks', () => {
+    expect(() => projectLibraryEntryToTrawelEditorialProfile(source('adventure', content.adventure.replace('## [route] Ruta sugerida\nRecorrido principal descrito por las fuentes.\n', '')), target)).toThrow(TrawelEditorialProjectionError)
+    expect(() => projectLibraryEntryToTrawelEditorialProfile(source('student', `${content.student}\n## [practical] Duplicada\n- No válida\n`), target)).toThrow(TrawelEditorialProjectionError)
+  })
+
+  it('constructs exact profiles payload, requires both profiles, and fingerprints final wire content', () => {
+    const value = payload(); const equal = payload()
     expect(TrawelEditorialDeliveryV2PayloadSchema.parse(value)).toEqual(value)
-    expect(TrawelEditorialDeliveryV2PayloadSchema.safeParse({ ...value, rows: [value.rows[0], value.rows[0]] }).success).toBe(false)
+    expect(value).toMatchObject({ schemaVersion: 'v2', mappingId: target.sourceMappingId, canonicalDestinationId: target.canonicalDestinationId })
+    expect(Object.keys(value.profiles)).toEqual(['adventure', 'student'])
+    expect(equal.payloadFingerprint).toBe(value.payloadFingerprint)
+    const revised = prepareTrawelEditorialDeliveryV2({ target, sources: [source('adventure'), source('student', content.student.replace('Confirmar transporte', 'Confirmar transporte actualizado'))] })
+    expect(revised.payloadFingerprint).not.toBe(value.payloadFingerprint)
+    expect(TrawelEditorialDeliveryV2PayloadSchema.safeParse({ ...value, profiles: { adventure: value.profiles.adventure } }).success).toBe(false)
+    expect(JSON.stringify(value)).not.toContain('TRAWEL_INTERNAL_EDITORIAL_DELIVERIES_SECRET')
   })
 
-  it('is deterministic, but versions and mappings create a new immutable handoff identity', () => {
-    const first = payload(); const equal = payload()
-    const newVersion = prepareTrawelEditorialDeliveryV2({ mapping, sources: [
-      buildSyntheticApprovedSource('adventure'),
-      buildSyntheticApprovedSource('student', true, { title: 'Estudiante v3', content: 'Contenido de una revisión nueva.\n' }),
-    ] })
-    const newMapping = prepareTrawelEditorialDeliveryV2({ mapping: { ...mapping, mappingId: syntheticTrawelIds.studentVersion }, sources: [buildSyntheticApprovedSource('adventure'), buildSyntheticApprovedSource('student')] })
-    expect(equal).toEqual(first)
-    expect(newVersion.handoffKey).not.toBe(first.handoffKey)
-    expect(newMapping.handoffKey).not.toBe(first.handoffKey)
-  })
-
-  it('persists a frozen snapshot before POST, preserves it across restart, and leases once', async () => {
-    const repository = new MemoryEditorialDeliveryRepository()
-    const ingress = new FakeIngress(async value => response(value), async () => ({ result: 'NOT_FOUND' }))
-    const firstService = new DurableTrawelDeliveryService(repository, ingress)
-    const enqueued = await firstService.enqueue(payload())
-    const frozen = structuredClone(enqueued.payload)
-    frozen.rows[0].content = 'Biblioteca changed afterwards\n'
-    expect((await repository.findById(enqueued.id))?.payload.rows[0].content).not.toBe(frozen.rows[0].content)
-    const lease = await repository.acquireForDelivery(enqueued.id, new Date(), 30_000)
-    expect(lease).not.toBeNull()
-    expect(await repository.acquireForDelivery(enqueued.id, new Date(), 30_000)).toBeNull()
-    await repository.transition(enqueued.id, lease!.token, { state: 'RETRYABLE', nextAttemptAt: new Date(0) }, new Date())
-    const restartedService = new DurableTrawelDeliveryService(repository, ingress)
-    await restartedService.deliver(enqueued.id)
-    expect(ingress.delivered).toEqual([enqueued.handoffKey])
-    expect((await repository.findById(enqueued.id))?.state).toBe('CONFIRMED')
-  })
-
-  it('recovers an expired delivery lease through reconciliation and keeps a new revision separate', async () => {
-    const repository = new MemoryEditorialDeliveryRepository(); const first = payload()
-    const second = prepareTrawelEditorialDeliveryV2({ mapping, sources: [
-      buildSyntheticApprovedSource('adventure'),
-      buildSyntheticApprovedSource('student', true, { title: 'Estudiante v3', content: 'Contenido de una revisión nueva.\n' }),
-    ] })
-    const firstDelivery = await repository.enqueue(first); const secondDelivery = await repository.enqueue(second)
-    expect(secondDelivery.id).not.toBe(firstDelivery.id)
-    const start = new Date('2026-09-10T12:00:00.000Z')
-    expect(await repository.acquireForDelivery(firstDelivery.id, start, 1)).not.toBeNull()
-    await repository.recoverExpiredLeases(new Date(start.getTime() + 2))
-    expect((await repository.findById(firstDelivery.id))?.state).toBe('RECONCILING')
-  })
-
-  it('moves ambiguous leases and timeouts into reconciliation, then confirms matching receipt', async () => {
+  it('persists an immutable snapshot and recovers an expired lease using its persisted clock', async () => {
     const repository = new MemoryEditorialDeliveryRepository(); const value = payload()
-    const ingress = new FakeIngress(async () => { throw new TrawelIngressError('ambiguous', 'timeout') }, async () => response(value, 'NO_DUPLICATE'))
-    const service = new DurableTrawelDeliveryService(repository, ingress, { retryDelayMs: 0 })
-    const enqueued = await service.enqueue(value)
-    await service.deliver(enqueued.id)
-    expect((await repository.findById(enqueued.id))?.state).toBe('RECONCILING')
-    await service.reconcile(enqueued.id)
-    expect((await repository.findById(enqueued.id))?.state).toBe('CONFIRMED')
-    expect((await repository.listAttempts(enqueued.id)).map(item => item.outcome)).toEqual(['AMBIGUOUS', 'NO_DUPLICATE'])
+    const service = new DurableTrawelDeliveryService(repository, new FakeIngress(async item => response(item)))
+    const delivery = await service.enqueue(value)
+    const frozen = structuredClone(delivery.payload); frozen.profiles.adventure.intro = 'Mutated afterwards'
+    expect((await repository.findById(delivery.id))?.payload.profiles.adventure.intro).not.toBe(frozen.profiles.adventure.intro)
+    const first = await repository.findById(delivery.id)
+    const start = new Date(first!.nextAttemptAt.getTime() + 1)
+    expect(await repository.acquireForDelivery(delivery.id, start, 1)).not.toBeNull()
+    await repository.recoverExpiredLeases(new Date(start.getTime() + 2))
+    expect((await repository.findById(delivery.id))?.state).toBe('RECONCILING')
+    const revised = await service.enqueue(prepareTrawelEditorialDeliveryV2({ target, sources: [source('adventure'), source('student', content.student.replace('Revisar alojamiento', 'Revisar alojamiento nuevo'))] }))
+    expect(revised.id).not.toBe(delivery.id)
   })
 
-  it('uses retry only after pre-persistence evidence and keeps partial delivery observable', async () => {
-    const retryRepository = new MemoryEditorialDeliveryRepository(); const value = payload()
-    const retryIngress = new FakeIngress(async () => { throw new TrawelIngressError('pre_persistence', 'connection rejected') }, async () => ({ result: 'NOT_FOUND' }))
-    const retryService = new DurableTrawelDeliveryService(retryRepository, retryIngress, { retryDelayMs: 0 })
-    const retryDelivery = await retryService.enqueue(value); await retryService.deliver(retryDelivery.id)
-    expect((await retryRepository.findById(retryDelivery.id))?.state).toBe('RETRYABLE')
-
-    const partialRepository = new MemoryEditorialDeliveryRepository()
-    const partialService = new DurableTrawelDeliveryService(partialRepository, new FakeIngress(async item => response(item, 'PARTIAL'), async () => response(value, 'PARTIAL')))
-    const partialDelivery = await partialService.enqueue(value); await partialService.deliver(partialDelivery.id)
-    expect((await partialRepository.findById(partialDelivery.id))?.state).toBe('RECONCILING')
+  it('handles success, idempotent success, conflict, permanent error, retryable error and timeout without blind POST', async () => {
+    const value = payload()
+    for (const [expected, ingress] of [
+      ['CONFIRMED', new FakeIngress(async item => response(item))],
+      ['CONFIRMED', new FakeIngress(async item => response(item, { idempotent: true }))],
+      ['CONFLICT', new FakeIngress(async () => response(value, { success: false, status: 'conflict' }))],
+      ['FAILED', new FakeIngress(async () => response(value, { success: false, status: 'validation_error' }))],
+      ['RETRYABLE', new FakeIngress(async () => { throw new TrawelIngressError('retryable', 'rate limited') })],
+      ['RECONCILING', new FakeIngress(async () => { throw new TrawelIngressError('ambiguous', 'timeout') })],
+    ] as const) {
+      const repository = new MemoryEditorialDeliveryRepository()
+      const service = new DurableTrawelDeliveryService(repository, ingress, { retryDelayMs: 0 })
+      const delivery = await service.enqueue(value); await service.deliver(delivery.id)
+      expect((await repository.findById(delivery.id))?.state).toBe(expected)
+    }
   })
 
-  it('makes incompatible confirmation a terminal conflict and validation terminal failed', async () => {
-    const conflictRepo = new MemoryEditorialDeliveryRepository(); const value = payload()
-    const conflict = response(value); conflict.payloadFingerprint = 'f'.repeat(64)
-    const conflictService = new DurableTrawelDeliveryService(conflictRepo, new FakeIngress(async () => conflict, async () => ({ result: 'NOT_FOUND' })))
-    const conflictDelivery = await conflictService.enqueue(value); await conflictService.deliver(conflictDelivery.id)
-    expect((await conflictRepo.findById(conflictDelivery.id))?.state).toBe('CONFLICT')
+  it('uses only an explicit reconciliation abstraction', async () => {
+    const repository = new MemoryEditorialDeliveryRepository(); const value = payload()
+    const ingress = new FakeIngress(async () => { throw new TrawelIngressError('ambiguous', 'timeout') })
+    const reconciler: TrawelDeliveryReconciler = { reconcile: async () => response(value, { idempotent: true }) }
+    const service = new DurableTrawelDeliveryService(repository, ingress, { retryDelayMs: 0 }, reconciler)
+    const delivery = await service.enqueue(value); await service.deliver(delivery.id); await service.reconcile(delivery.id)
+    expect((await repository.findById(delivery.id))?.state).toBe('CONFIRMED')
+  })
 
-    const failedRepo = new MemoryEditorialDeliveryRepository()
-    const failedService = new DurableTrawelDeliveryService(failedRepo, new FakeIngress(async item => response(item, 'VALIDATION_ERROR'), async () => ({ result: 'NOT_FOUND' })))
-    const failedDelivery = await failedService.enqueue(value); await failedService.deliver(failedDelivery.id)
-    expect((await failedRepo.findById(failedDelivery.id))?.state).toBe('FAILED')
+  it('sends the internal header but never logs the secret, and classifies HTTP outcomes', async () => {
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify(response(payload())), { status: 200 }))
+    const secret = 'secret-only-for-test'
+    const client = new HttpTrawelIngressClient({ url: 'http://localhost/edge', internalSecret: secret, allowInsecureForTests: true, fetchFn })
+    await client.deliver(payload())
+    expect(fetchFn.mock.calls[0]?.[1]?.headers).toMatchObject({ 'x-internal-editorial-secret': secret, 'content-type': 'application/json' })
+    await expect(new HttpTrawelIngressClient({ url: 'http://localhost/edge', internalSecret: secret, allowInsecureForTests: true, fetchFn: async () => new Response('', { status: 401 }) }).deliver(payload())).rejects.toMatchObject({ disposition: 'permanent' })
+    await expect(new HttpTrawelIngressClient({ url: 'http://localhost/edge', internalSecret: secret, allowInsecureForTests: true, fetchFn: async () => new Response('', { status: 429 }) }).deliver(payload())).rejects.toMatchObject({ disposition: 'retryable' })
+    await expect(new HttpTrawelIngressClient({ url: 'http://localhost/edge', internalSecret: secret, allowInsecureForTests: true, fetchFn: async () => { throw new DOMException('aborted', 'AbortError') } }).deliver(payload())).rejects.toMatchObject({ disposition: 'ambiguous' })
   })
 })

@@ -1,132 +1,94 @@
 import {
-  type LibraryTrawelApprovedSource,
-  LibraryTrawelApprovedPairSchema,
-} from '@shared/trawel-editorial-handoff-contracts'
-import {
   TRAWEL_EDITORIAL_DELIVERY_V2_FINGERPRINT_SCHEMA,
   TRAWEL_EDITORIAL_DELIVERY_V2_IDENTITY_SCHEMA,
   TRAWEL_EDITORIAL_DELIVERY_V2_SCHEMA,
-  TrawelEditorialDeliveryMappingSchema,
+  TrawelEditorialDeliveryTargetSchema,
   TrawelEditorialDeliveryV2PayloadSchema,
-  type TrawelEditorialDeliveryMapping,
+  type TrawelEditorialDeliveryTarget,
   type TrawelEditorialDeliveryV2Payload,
-  type TrawelEditorialDeliveryV2Row,
+  type TrawelEditorialProfile,
 } from '@shared/trawel-editorial-delivery-contracts'
-import { canonicalPayloadHash, libraryContentHash } from '@modules/library-versioning/canonicalization'
+import { LibraryTrawelApprovedPairSchema, type LibraryTrawelApprovedSource } from '@shared/trawel-editorial-handoff-contracts'
+import { canonicalPayloadHash } from '@modules/library-versioning/canonicalization'
+import { projectLibraryEntryToTrawelEditorialProfile } from './editorial-profile-projection'
 
 export interface PrepareTrawelEditorialDeliveryV2Command {
-  mapping: TrawelEditorialDeliveryMapping
+  target: TrawelEditorialDeliveryTarget
   sources: readonly [LibraryTrawelApprovedSource, LibraryTrawelApprovedSource]
 }
 
 export class TrawelEditorialDeliveryV2Error extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'TrawelEditorialDeliveryV2Error'
-  }
+  constructor(message: string) { super(message); this.name = 'TrawelEditorialDeliveryV2Error' }
 }
 
-export function prepareTrawelEditorialDeliveryV2(
-  candidate: PrepareTrawelEditorialDeliveryV2Command,
-): TrawelEditorialDeliveryV2Payload {
-  const mapping = TrawelEditorialDeliveryMappingSchema.parse(candidate.mapping)
+/** Builds the exact wire payload accepted by Trawel, before any outbox write. */
+export function prepareTrawelEditorialDeliveryV2(candidate: PrepareTrawelEditorialDeliveryV2Command): TrawelEditorialDeliveryV2Payload {
+  const target = TrawelEditorialDeliveryTargetSchema.parse(candidate.target)
   const sources = LibraryTrawelApprovedPairSchema.parse(candidate.sources)
-  const rows = sources.map(projectRow).sort((left, right) => compareText(left.profile, right.profile))
-  for (const row of rows) assertRowContentHash(row)
+  const byProfile = new Map(sources.map(source => [source.entry.profile, source]))
+  const profiles = {
+    adventure: requiredProfile(byProfile, 'adventure', target),
+    student: requiredProfile(byProfile, 'student', target),
+  }
   const handoffKey = canonicalPayloadHash({
     schema: TRAWEL_EDITORIAL_DELIVERY_V2_IDENTITY_SCHEMA,
-    mapping,
-    rows: rows.map(identityRow),
+    mappingId: target.sourceMappingId,
+    canonicalDestinationId: target.canonicalDestinationId,
+    profiles: identityProfiles(profiles),
   })
-  const payloadFingerprint = canonicalPayloadHash({
-    schema: TRAWEL_EDITORIAL_DELIVERY_V2_FINGERPRINT_SCHEMA,
+  const payloadFingerprint = fingerprint({
+    schemaVersion: TRAWEL_EDITORIAL_DELIVERY_V2_SCHEMA,
+    mappingId: target.sourceMappingId,
+    canonicalDestinationId: target.canonicalDestinationId,
     handoffKey,
-    mapping,
-    rows,
-    publicationState: 'private_draft',
-    publiclyVisible: false,
+    profiles,
   })
   return TrawelEditorialDeliveryV2PayloadSchema.parse({
-    schema: TRAWEL_EDITORIAL_DELIVERY_V2_SCHEMA,
+    schemaVersion: TRAWEL_EDITORIAL_DELIVERY_V2_SCHEMA,
+    mappingId: target.sourceMappingId,
+    canonicalDestinationId: target.canonicalDestinationId,
     handoffKey,
     payloadFingerprint,
-    mapping,
-    rows,
-    publicationState: 'private_draft',
-    publiclyVisible: false,
+    profiles,
   })
 }
 
 export function assertTrawelEditorialDeliveryV2Integrity(payload: TrawelEditorialDeliveryV2Payload): void {
   const parsed = TrawelEditorialDeliveryV2PayloadSchema.parse(payload)
-  const rows = [...parsed.rows].sort((left, right) => compareText(left.profile, right.profile))
-  for (const row of rows) assertRowContentHash(row)
   const handoffKey = canonicalPayloadHash({
     schema: TRAWEL_EDITORIAL_DELIVERY_V2_IDENTITY_SCHEMA,
-    mapping: parsed.mapping,
-    rows: rows.map(identityRow),
+    mappingId: parsed.mappingId,
+    canonicalDestinationId: parsed.canonicalDestinationId,
+    profiles: identityProfiles(parsed.profiles),
   })
   if (handoffKey !== parsed.handoffKey) throw new TrawelEditorialDeliveryV2Error('V2 handoffKey inválida')
-  const fingerprint = canonicalPayloadHash({
-    schema: TRAWEL_EDITORIAL_DELIVERY_V2_FINGERPRINT_SCHEMA,
+  const payloadFingerprint = fingerprint({
+    schemaVersion: parsed.schemaVersion,
+    mappingId: parsed.mappingId,
+    canonicalDestinationId: parsed.canonicalDestinationId,
     handoffKey,
-    mapping: parsed.mapping,
-    rows,
-    publicationState: parsed.publicationState,
-    publiclyVisible: parsed.publiclyVisible,
+    profiles: parsed.profiles,
   })
-  if (fingerprint !== parsed.payloadFingerprint) throw new TrawelEditorialDeliveryV2Error('V2 payloadFingerprint inválido')
+  if (payloadFingerprint !== parsed.payloadFingerprint) throw new TrawelEditorialDeliveryV2Error('V2 payloadFingerprint inválido')
 }
 
-function projectRow(source: LibraryTrawelApprovedSource): TrawelEditorialDeliveryV2Row {
-  const current = source.currentApproved
-  return {
-    profile: source.entry.profile,
-    libraryEntryId: source.entry.entryId,
-    versionHash: current.versionHash,
-    contentHash: current.contentHash,
-    language: current.language,
-    title: current.title,
-    content: current.content,
-    approval: current.source === 'origin_v1'
-      ? { kind: 'terminal', decisionId: current.originV1.terminalDecisionId, approvedAt: current.approvedAt }
-      : { kind: 'library_version', decisionId: requiredApproval(current.approvalDecisionId), approvedAt: current.approvedAt },
-    provenance: {
-      source: current.source,
-      versionId: current.versionId,
-      revisionId: current.revisionId,
-      originVersionHash: current.originV1.originVersionHash,
-    },
-    sources: source.entry.sources.map(item => ({
-      sourceId: item.id, title: item.title, url: item.url, publisher: item.publisher ?? null,
-      publishedAt: item.publishedAt ?? null, contentHash: item.contentHash,
-    })).sort((left, right) => compareText(left.sourceId, right.sourceId)),
-  }
+function requiredProfile(
+  byProfile: Map<'adventure' | 'student', LibraryTrawelApprovedSource>,
+  profile: 'adventure' | 'student',
+  target: TrawelEditorialDeliveryTarget,
+): TrawelEditorialProfile {
+  const source = byProfile.get(profile)
+  if (!source) throw new TrawelEditorialDeliveryV2Error(`Falta el perfil ${profile}`)
+  return projectLibraryEntryToTrawelEditorialProfile(source, target)
 }
 
-function identityRow(row: TrawelEditorialDeliveryV2Row): Record<string, unknown> {
-  return {
-    profile: row.profile,
-    libraryEntryId: row.libraryEntryId,
-    versionHash: row.versionHash,
-    contentHash: row.contentHash,
-    language: row.language,
-    approval: row.approval,
-  }
+function identityProfiles(profiles: Record<'adventure' | 'student', TrawelEditorialProfile>) {
+  return Object.fromEntries((['adventure', 'student'] as const).map(profile => {
+    const current = profiles[profile].metadata.investighost as { libraryEntryId: string; currentApproved: Record<string, unknown> }
+    return [profile, { libraryEntryId: current.libraryEntryId, currentApproved: current.currentApproved }]
+  }))
 }
 
-function assertRowContentHash(row: TrawelEditorialDeliveryV2Row): void {
-  if (row.contentHash !== libraryContentHash({
-    profile: row.profile, language: row.language, title: row.title, content: row.content,
-  })) throw new TrawelEditorialDeliveryV2Error('El contenido V2 no coincide con contentHash')
-}
-
-function requiredApproval(value: string | null): string {
-  if (value === null) throw new TrawelEditorialDeliveryV2Error('La versión derivada carece de aprobación')
-  return value
-}
-
-function compareText(left: string, right: string): number {
-  if (left === right) return 0
-  return left < right ? -1 : 1
+function fingerprint(value: Record<string, unknown>): string {
+  return canonicalPayloadHash({ schema: TRAWEL_EDITORIAL_DELIVERY_V2_FINGERPRINT_SCHEMA, ...value })
 }

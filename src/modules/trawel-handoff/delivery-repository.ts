@@ -17,8 +17,8 @@ export interface EditorialDelivery {
   protocolSchema: string
   handoffKey: string
   payloadFingerprint: string
-  destinationMappingId: string
-  investighostCanonicalDestinationId: string
+  sourceMappingId: string
+  canonicalDestinationId: string
   targetSnapshot: Record<string, unknown>
   /** Immutable snapshot; never rebuilt from Biblioteca during delivery/retry. */
   payload: TrawelEditorialDeliveryV2Payload
@@ -100,12 +100,11 @@ export class MemoryEditorialDeliveryRepository implements EditorialDeliveryRepos
     if (existingId) return clone(this.deliveries.get(existingId)!)
     const now = new Date()
     const delivery: EditorialDelivery = {
-      id: randomUUID(), protocolSchema: payload.schema, handoffKey: payload.handoffKey,
-      payloadFingerprint: payload.payloadFingerprint, destinationMappingId: payload.mapping.mappingId,
-      investighostCanonicalDestinationId: payload.mapping.investighostCanonicalDestinationId,
-      targetSnapshot: structuredClone(payload.mapping), payload: structuredClone(payload),
-      sources: payload.rows.map(row => ({ profile: row.profile, libraryEntryId: row.libraryEntryId,
-        versionHash: row.versionHash, contentHash: row.contentHash, approvalReference: structuredClone(row.approval) })),
+      id: randomUUID(), protocolSchema: payload.schemaVersion, handoffKey: payload.handoffKey,
+      payloadFingerprint: payload.payloadFingerprint, sourceMappingId: payload.mappingId,
+      canonicalDestinationId: payload.canonicalDestinationId,
+      targetSnapshot: targetSnapshot(payload), payload: structuredClone(payload),
+      sources: (['adventure', 'student'] as const).map(profile => sourceSnapshot(profile, payload)),
       state: 'PENDING', attemptCount: 0, nextAttemptAt: now, leaseExpiresAt: null, leaseToken: null,
       lastResultCode: null, trawelReceiptId: null, confirmedAt: null, createdAt: now, updatedAt: now,
     }
@@ -173,3 +172,22 @@ export class MemoryEditorialDeliveryRepository implements EditorialDeliveryRepos
 
 function clone<T>(value: T): T { return structuredClone(value) }
 function nullableClone<T>(value: T | undefined): T | null { return value === undefined ? null : clone(value) }
+
+function targetSnapshot(payload: TrawelEditorialDeliveryV2Payload): Record<string, unknown> {
+  const adventure = payload.profiles.adventure.metadata.investighost as { target: Record<string, unknown> }
+  return { sourceMappingId: payload.mappingId, canonicalDestinationId: payload.canonicalDestinationId, ...adventure.target }
+}
+
+function sourceSnapshot(profile: 'adventure' | 'student', payload: TrawelEditorialDeliveryV2Payload): EditorialDeliverySource {
+  const trace = payload.profiles[profile].metadata.investighost as {
+    libraryEntryId: string
+    currentApproved: { versionHash: string; contentHash: string; approvalDecisionId: string }
+  }
+  return {
+    profile,
+    libraryEntryId: trace.libraryEntryId,
+    versionHash: trace.currentApproved.versionHash,
+    contentHash: trace.currentApproved.contentHash,
+    approvalReference: { decisionId: trace.currentApproved.approvalDecisionId },
+  }
+}

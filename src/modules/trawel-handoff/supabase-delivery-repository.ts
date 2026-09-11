@@ -11,7 +11,7 @@ export class SupabaseEditorialDeliveryRepository implements EditorialDeliveryRep
   constructor(private readonly client: Pick<SupabaseClient, 'from' | 'rpc'>) {}
 
   async enqueue(payload: TrawelEditorialDeliveryV2Payload): Promise<EditorialDelivery> {
-    const { data, error } = await this.client.rpc('real_editorial_enqueue_trawel_delivery', { p_payload: payload })
+    const { data, error } = await this.client.rpc('real_editorial_enqueue_trawel_delivery_v2', { p_payload: payload })
     if (error) throw repositoryError('DELIVERY_ENQUEUE_FAILED', error)
     return parseDelivery(single(data))
   }
@@ -99,7 +99,7 @@ function single(value: unknown): Record<string, unknown> {
 function parseDelivery(row: Record<string, unknown>): EditorialDelivery {
   return {
     id: text(row.id), protocolSchema: text(row.protocol_schema), handoffKey: text(row.handoff_key), payloadFingerprint: text(row.payload_fingerprint),
-    destinationMappingId: text(row.destination_mapping_id), investighostCanonicalDestinationId: text(row.investighost_canonical_destination_id),
+    sourceMappingId: text(row.source_mapping_id), canonicalDestinationId: text(row.canonical_destination_id),
     targetSnapshot: object(row.target_snapshot), payload: row.payload as TrawelEditorialDeliveryV2Payload,
     sources: [], state: row.state as TrawelEditorialDeliveryState, attemptCount: Number(row.attempt_count), nextAttemptAt: date(row.next_attempt_at),
     leaseExpiresAt: nullableDate(row.lease_expires_at), leaseToken: nullableText(row.lease_token), lastResultCode: nullableText(row.last_result_code),

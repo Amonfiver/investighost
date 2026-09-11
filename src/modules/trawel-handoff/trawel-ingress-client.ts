@@ -6,36 +6,85 @@ import {
 
 export interface TrawelIngressClient {
   deliver(payload: TrawelEditorialDeliveryV2Payload): Promise<TrawelEditorialIngressResponse>
-  lookup(handoffKey: string): Promise<TrawelEditorialIngressResponse | { result: 'NOT_FOUND' }>
 }
 
-/** Lets transports distinguish a rejected request from a request whose remote outcome is unknown. */
+export interface TrawelDeliveryReconciler {
+  reconcile(input: { handoffKey: string; payloadFingerprint: string }): Promise<TrawelEditorialIngressResponse | { status: 'NOT_CONFIGURED' }>
+}
+
+/** Trawel has no validated read-back endpoint yet; this fails closed without inventing one. */
+export class UnsupportedTrawelDeliveryReconciler implements TrawelDeliveryReconciler {
+  async reconcile(): Promise<{ status: 'NOT_CONFIGURED' }> { return { status: 'NOT_CONFIGURED' } }
+}
+
 export class TrawelIngressError extends Error {
-  constructor(readonly disposition: 'pre_persistence' | 'ambiguous', message: string) {
+  constructor(readonly disposition: 'retryable' | 'permanent' | 'ambiguous', message: string) {
     super(message); this.name = 'TrawelIngressError'
   }
 }
 
-export interface HttpTrawelIngressClientOptions { baseUrl: string; fetchFn?: typeof fetch }
+export interface HttpTrawelIngressClientOptions {
+  url: string
+  internalSecret: string
+  timeoutMs?: number
+  fetchFn?: typeof fetch
+  allowInsecureForTests?: boolean
+}
 
-/** No runtime is wired to this client: using it requires an explicit caller and future Trawel endpoint. */
+export function parseTrawelIngressConfig(environment: NodeJS.ProcessEnv): Pick<HttpTrawelIngressClientOptions, 'url' | 'internalSecret'> {
+  const url = environment.TRAWEL_INTERNAL_EDITORIAL_DELIVERIES_URL
+  const internalSecret = environment.TRAWEL_INTERNAL_EDITORIAL_DELIVERIES_SECRET
+  if (!url || !internalSecret) throw new Error('TRAWEL_INGRESS_CONFIG_MISSING')
+  return { url, internalSecret }
+}
+
+/** Privileged-only client. It never serializes or logs its internal secret. */
 export class HttpTrawelIngressClient implements TrawelIngressClient {
   private readonly fetchFn: typeof fetch
-  constructor(private readonly options: HttpTrawelIngressClientOptions) { this.fetchFn = options.fetchFn ?? fetch }
+  private readonly url: string
+  private readonly timeoutMs: number
+
+  constructor(private readonly options: HttpTrawelIngressClientOptions) {
+    const parsed = new URL(options.url)
+    if (parsed.protocol !== 'https:' && !options.allowInsecureForTests) throw new Error('TRAWEL_INGRESS_HTTPS_REQUIRED')
+    if (!options.internalSecret.trim()) throw new Error('TRAWEL_INGRESS_SECRET_REQUIRED')
+    this.url = parsed.toString()
+    this.timeoutMs = options.timeoutMs ?? 10_000
+    if (!Number.isSafeInteger(this.timeoutMs) || this.timeoutMs < 1 || this.timeoutMs > 120_000) throw new Error('TRAWEL_INGRESS_TIMEOUT_INVALID')
+    this.fetchFn = options.fetchFn ?? fetch
+  }
+
   async deliver(payload: TrawelEditorialDeliveryV2Payload): Promise<TrawelEditorialIngressResponse> {
-    return this.request('/internal/editorial-deliveries', { method: 'POST', body: JSON.stringify(payload) })
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs)
+    try {
+      const response = await this.fetchFn(this.url, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'content-type': 'application/json',
+          'x-internal-editorial-secret': this.options.internalSecret,
+        },
+        body: JSON.stringify(payload),
+      })
+      if (!response.ok) throw new TrawelIngressError(classifyHttp(response.status), `Trawel delivery HTTP ${response.status}`)
+      return TrawelEditorialIngressResponseSchema.parse(await response.json())
+    } catch (error) {
+      if (error instanceof TrawelIngressError) throw error
+      if (isAbort(error)) throw new TrawelIngressError('ambiguous', 'Trawel delivery timed out')
+      throw new TrawelIngressError('ambiguous', 'Trawel delivery transport failed')
+    } finally {
+      clearTimeout(timeout)
+    }
   }
-  async lookup(handoffKey: string): Promise<TrawelEditorialIngressResponse | { result: 'NOT_FOUND' }> {
-    const response = await this.fetchFn(`${this.options.baseUrl}/internal/editorial-deliveries/${encodeURIComponent(handoffKey)}`)
-      .catch(error => { throw new TrawelIngressError('ambiguous', error instanceof Error ? error.message : 'Trawel lookup failed') })
-    if (response.status === 404) return { result: 'NOT_FOUND' }
-    if (!response.ok) throw new TrawelIngressError(response.status >= 500 ? 'ambiguous' : 'pre_persistence', `Trawel lookup HTTP ${response.status}`)
-    return TrawelEditorialIngressResponseSchema.parse(await response.json())
-  }
-  private async request(path: string, init: RequestInit): Promise<TrawelEditorialIngressResponse> {
-    const response = await this.fetchFn(`${this.options.baseUrl}${path}`, { ...init, headers: { 'content-type': 'application/json' } })
-      .catch(error => { throw new TrawelIngressError('ambiguous', error instanceof Error ? error.message : 'Trawel delivery failed') })
-    if (!response.ok) throw new TrawelIngressError(response.status >= 500 ? 'ambiguous' : 'pre_persistence', `Trawel delivery HTTP ${response.status}`)
-    return TrawelEditorialIngressResponseSchema.parse(await response.json())
-  }
+}
+
+function classifyHttp(status: number): 'retryable' | 'permanent' | 'ambiguous' {
+  if (status === 429) return 'retryable'
+  if (status === 408 || status >= 500) return 'ambiguous'
+  return 'permanent'
+}
+
+function isAbort(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
 }

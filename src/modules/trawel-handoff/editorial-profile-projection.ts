@@ -6,15 +6,16 @@ import {
 } from '@shared/trawel-editorial-delivery-contracts'
 
 const REQUIRED_KINDS = {
-  adventure: ['intro', 'overview', 'highlights', 'route', 'practical', 'risks', 'sources'],
-  student: ['intro', 'overview', 'budget', 'daily_life', 'study', 'practical', 'risks', 'sources'],
+  adventure: ['intro', 'overview', 'highlights', 'route', 'practical', 'risks'],
+  student: ['intro', 'overview', 'budget', 'daily_life', 'study', 'practical', 'risks'],
 } as const
 
 type SectionKind = (typeof REQUIRED_KINDS)[keyof typeof REQUIRED_KINDS][number]
+type EditorialProfile = keyof typeof REQUIRED_KINDS
 interface ParsedSection { kind: string; heading: string; content: string; position: number }
 
 export class TrawelEditorialProjectionError extends Error {
-  constructor(readonly code: 'MISSING_SECTION' | 'AMBIGUOUS_SECTION' | 'INVALID_MARKDOWN', message: string) {
+  constructor(readonly code: 'MISSING_SECTION' | 'MISSING_SOURCES' | 'AMBIGUOUS_SECTION' | 'INVALID_MARKDOWN', message: string) {
     super(message); this.name = 'TrawelEditorialProjectionError'
   }
 }
@@ -27,7 +28,7 @@ export function projectLibraryEntryToTrawelEditorialProfile(
   source: LibraryTrawelApprovedSource,
   target: TrawelEditorialDeliveryTarget,
 ): TrawelEditorialProfile {
-  const sections = parseCanonicalMarkdown(source.currentApproved.content)
+  const sections = parseCanonicalMarkdown(source.currentApproved.content, source.entry.profile)
   const required = REQUIRED_KINDS[source.entry.profile]
   for (const kind of required) requireOne(sections, kind)
 
@@ -37,14 +38,7 @@ export function projectLibraryEntryToTrawelEditorialProfile(
   const routeSection = sections.find(section => section.kind === 'route')
   const practicalTips = splitList(requireOne(sections, 'practical').content, 'practical')
   const excluded = new Set(['intro', 'overview', 'highlights', 'route', 'practical', 'sources'])
-  const publicSources = source.entry.sources.map(item => ({
-    sourceId: item.id,
-    title: item.title,
-    url: item.url,
-    publisher: item.publisher ?? null,
-    publishedAt: item.publishedAt ?? null,
-    contentHash: item.contentHash,
-  })).sort((left, right) => left.sourceId.localeCompare(right.sourceId))
+  const publicSources = projectDurablePublicSources(source)
 
   return TrawelEditorialProfileSchema.parse({
     headline: source.currentApproved.title,
@@ -89,24 +83,53 @@ export function projectLibraryEntryToTrawelEditorialProfile(
   })
 }
 
-function parseCanonicalMarkdown(content: string): ParsedSection[] {
+function parseCanonicalMarkdown(content: string, profile: EditorialProfile): ParsedSection[] {
   const normalized = content.replace(/\r\n/g, '\n').trim()
-  const headings = [...normalized.matchAll(/^## \[([a-z_]+)]\s*([^\n]*)\n/gm)]
+  const headings = [...normalized.matchAll(/^## ([^\n]+)\n/gm)]
   if (headings.length === 0 || headings[0]?.index !== 0) {
     throw new TrawelEditorialProjectionError('INVALID_MARKDOWN', 'El contenido no usa encabezados canónicos ## [kind]')
   }
   const seen = new Set<string>()
   return headings.map((match, position) => {
-    const kind = match[1] ?? ''
+    const parsed = parseHeading(match[1] ?? '', profile)
+    if (parsed === null) {
+      throw new TrawelEditorialProjectionError('INVALID_MARKDOWN', 'El contenido contiene un encabezado no canónico')
+    }
+    const { kind, heading } = parsed
     if (seen.has(kind)) throw new TrawelEditorialProjectionError('AMBIGUOUS_SECTION', `La sección ${kind} está repetida`)
     seen.add(kind)
-    const heading = (match[2] || kind).trim()
     const bodyStart = (match.index ?? 0) + match[0].length
     const bodyEnd = position + 1 < headings.length ? headings[position + 1]?.index ?? normalized.length : normalized.length
     const body = normalized.slice(bodyStart, bodyEnd).trim()
     if (!body) throw new TrawelEditorialProjectionError('INVALID_MARKDOWN', `La sección ${kind} está vacía`)
     return { kind, heading, content: body, position }
   })
+}
+
+function parseHeading(value: string, profile: EditorialProfile): Pick<ParsedSection, 'kind' | 'heading'> | null {
+  const canonical = /^\[([a-z_]+)]\s*(.*)$/.exec(value)
+  if (canonical !== null) {
+    const kind = canonical[1] ?? ''
+    return { kind, heading: (canonical[2] || kind).trim() }
+  }
+  if (profile === 'student' && value === 'Introducción') {
+    return { kind: 'intro', heading: value }
+  }
+  return null
+}
+
+function projectDurablePublicSources(source: LibraryTrawelApprovedSource) {
+  if (source.entry.sources.length === 0) {
+    throw new TrawelEditorialProjectionError('MISSING_SOURCES', 'Faltan fuentes durables para la proyección pública')
+  }
+  return source.entry.sources.map(item => ({
+    sourceId: item.id,
+    title: item.title,
+    url: item.url,
+    publisher: item.publisher ?? null,
+    publishedAt: item.publishedAt ?? null,
+    contentHash: item.contentHash,
+  })).sort((left, right) => left.sourceId.localeCompare(right.sourceId))
 }
 
 function requireOne(sections: ParsedSection[], kind: SectionKind): ParsedSection {

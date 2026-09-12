@@ -40,8 +40,6 @@ Recorrido principal descrito por las fuentes.
 - Llevar agua
 ## [risks] Riesgos
 Las condiciones requieren comprobación.
-## [sources] Fuentes
-Consulta las referencias incluidas.
 `,
   student: `## [intro] Introducción
 Contexto útil para una estancia de estudio.
@@ -58,8 +56,6 @@ La planificación depende de la oferta confirmada.
 - Revisar alojamiento
 ## [risks] Riesgos
 No asumir disponibilidad estacional.
-## [sources] Fuentes
-Consulta las referencias incluidas.
 `,
 }
 
@@ -94,9 +90,66 @@ describe('Trawel V2 structured projection and durable delivery', () => {
     expect(adventure.highlights).toEqual(['Murallas y paisaje', 'Senderos documentados'])
     expect(adventure.suggestedRoute).toContain('Recorrido principal')
     expect(student.practicalTips).toEqual(['Confirmar transporte', 'Revisar alojamiento'])
+    expect(adventure.sources).toEqual([{
+      sourceId: 'source-sintetica', title: 'Fuente pública sintética', url: 'https://example.test/fuente-sintetica',
+      publisher: 'Editorial Sintética', publishedAt: '2026-01-01T00:00:00.000Z', contentHash: '4'.repeat(64),
+    }])
     expect(adventure.metadata.investighost).toMatchObject({ gaps: [{ id: 'gap-sintetico' }], contradictions: ['Contradicción sintética controlada.'] })
     expect(JSON.stringify(adventure.metadata)).not.toContain('Captura interna')
     expect(JSON.stringify(adventure.metadata)).not.toContain('finalRunCostEur')
+    expect(JSON.stringify(adventure.sources)).not.toContain('Captura interna')
+    expect(JSON.stringify(adventure.sources)).not.toContain('finalRunCostEur')
+  })
+
+  it('accepts only the exact Student alias Introducción for intro', () => {
+    const aliased = content.student.replace('## [intro] Introducción', '## Introducción')
+    expect(projectLibraryEntryToTrawelEditorialProfile(source('student', aliased), target).intro)
+      .toBe('Contexto útil para una estancia de estudio.')
+    for (const heading of ['Intro general', 'Presentación', 'Introduccion larga', 'Introducción y contexto', 'Acerca de']) {
+      expect(() => projectLibraryEntryToTrawelEditorialProfile(
+        source('student', content.student.replace('## [intro] Introducción', `## ${heading}`)), target,
+      )).toThrow(TrawelEditorialProjectionError)
+    }
+  })
+
+  it('does not create aliases for Student daily_life/practical or Adventure risks', () => {
+    expect(() => projectLibraryEntryToTrawelEditorialProfile(source(
+      'student', content.student.replace('## [daily_life] Vida diaria', '## Población, economía y vida cotidiana'),
+    ), target)).toThrow(TrawelEditorialProjectionError)
+    expect(() => projectLibraryEntryToTrawelEditorialProfile(source(
+      'student', content.student.replace('## [practical] Consejos prácticos', '## Acceso y gestión del turismo'),
+    ), target)).toThrow(TrawelEditorialProjectionError)
+    expect(() => projectLibraryEntryToTrawelEditorialProfile(source(
+      'adventure', content.adventure.replace('## [risks] Riesgos', '## No confundas los dos Guadalaviar'),
+    ), target)).toThrow(TrawelEditorialProjectionError)
+  })
+
+  it('projects ordered durable sources without a Markdown sources block and rejects their absence', () => {
+    const adventure = source('adventure')
+    const original = adventure.entry.sources[0]!
+    adventure.entry.sources = [
+      { ...original, id: 'source-zeta', url: 'https://example.test/zeta', normalizedUrl: 'https://example.test/zeta' },
+      { ...original, id: 'source-alpha', url: 'https://example.test/alpha', normalizedUrl: 'https://example.test/alpha' },
+    ]
+    const projected = projectLibraryEntryToTrawelEditorialProfile(adventure, target)
+    expect(projected.sources.map(item => item.sourceId)).toEqual(['source-alpha', 'source-zeta'])
+    expect(projected.metadata.investighost.sourceReferences).toEqual(['source-alpha', 'source-zeta'])
+    expect(projected.metadata.investighost.gaps).toEqual([{ id: 'gap-sintetico', topic: 'alcance-sintetico', importance: 'medium', requiredForProfiles: ['adventure', 'student'], resolvableWithResearch: false }])
+    expect(projected.metadata.investighost.contradictions).toEqual(['Contradicción sintética controlada.'])
+
+    const withoutSources = source('student')
+    withoutSources.entry.sources = []
+    expect(() => projectLibraryEntryToTrawelEditorialProfile(withoutSources, target))
+      .toThrow(/Faltan fuentes durables/)
+  })
+
+  it('keeps Albarracín-like free-form headings fail-closed after Pack A', () => {
+    const adventureOrigin = `Introducción narrativa sin etiqueta\n## Una primera jornada entre murallas y edificios históricos\nContenido aprobado.\n`
+    const studentOrigin = `## Introducción\nContexto aprobado.\n## Una historia de larga duración\nContenido aprobado.\n`
+    expect(() => projectLibraryEntryToTrawelEditorialProfile(source('adventure', adventureOrigin), target))
+      .toThrow(TrawelEditorialProjectionError)
+    expect(() => projectLibraryEntryToTrawelEditorialProfile(source('student', studentOrigin), target))
+      .toThrow(TrawelEditorialProjectionError)
   })
 
   it('fails closed for absent or ambiguous required Markdown blocks', () => {

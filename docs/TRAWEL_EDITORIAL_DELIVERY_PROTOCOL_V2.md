@@ -63,10 +63,21 @@ remotos. Acepta únicamente Markdown con bloques canónicos:
 ```
 
 Adventure exige: `intro`, `overview`, `highlights`, `route`,
-`practical`, `risks` y `sources`.
+`practical` y `risks`.
 
 Student exige: `intro`, `overview`, `budget`, `daily_life`, `study`,
-`practical`, `risks` y `sources`.
+`practical` y `risks`.
+
+La única excepción de heading permitida es para Student y es literal:
+`## Introducción` equivale a `## [intro] Introducción`. No se aceptan
+variantes, sinónimos ni encabezados parcialmente coincidentes. No existen
+aliases para Adventure `risks` ni para Student `daily_life` o `practical`.
+
+Las fuentes no se declaran en Markdown: se proyectan exclusivamente desde
+`LibraryEntry.sources`, que debe contener al menos una fuente durable. La
+proyección conserva solo `sourceId`, título, URL HTTPS, publisher público si
+existe, fecha de publicación y hash; ordena por `sourceId` y no incluye
+capturas, prompts, costes, secretos ni notas internas.
 
 `highlights` y `route` son opcionales para Student porque su taxonomía no
 los declara. Encabezados repetidos, texto fuera de bloques o campos requeridos
@@ -75,6 +86,10 @@ ausentes rechazan el perfil; no se rellena contenido por inferencia.
 El metadata conserva identidad de Biblioteca, hashes, aprobación, gaps,
 contradicciones y referencias públicas de fuente. Excluye capturas, prompts,
 costes, secretos y notas internas.
+
+Pack A no convierte contenido narrativo libre en estructura editorial. Las
+secciones estructurales pendientes de Albarracín continúan rechazándose y
+requieren la revisión durable de Pack B antes de cualquier dry run real.
 
 ## Outbox y transporte
 

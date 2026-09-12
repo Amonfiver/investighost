@@ -1,4 +1,4 @@
 {
   "extends": "../tsconfig.json",
-  "include": ["run-albarracin-pack-b.ts"]
+  "include": ["run-albarracin-pack-b.ts", "run-albarracin-adventure-r2.ts"]
 }

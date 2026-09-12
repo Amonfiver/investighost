@@ -10,7 +10,7 @@
     "build:vite": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit --project scripts/tsconfig.json",
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {

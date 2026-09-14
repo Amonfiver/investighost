@@ -6,6 +6,7 @@ import {
 import { evaluateRealEditorialPreflight } from '@modules/real-pipeline/real-editorial-preflight'
 import {
   REAL_EDITORIAL_E2E04_POLICY,
+  REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY,
   REAL_EDITORIAL_MORELLA_POLICY,
   RealEditorialPilotPolicySchema,
   RealEditorialPilotPrepareSchema,
@@ -68,7 +69,7 @@ function albarracinPilot() {
 }
 
 describe('segunda destinación editorial real E2E-04', () => {
-  it('mantiene Morella como valor por defecto y exige Albarracín de forma explícita', () => {
+  it('mantiene Morella como valor por defecto y admite destinos explícitos aislados', () => {
     expect(RealEditorialPilotPrepareSchema.parse({}).policyId)
       .toBe(REAL_EDITORIAL_MORELLA_POLICY.id)
     expect(RealEditorialPilotPrepareSchema.parse({
@@ -77,6 +78,7 @@ describe('segunda destinación editorial real E2E-04', () => {
 
     expect(RealEditorialPilotPolicySchema.safeParse(REAL_EDITORIAL_MORELLA_POLICY).success).toBe(true)
     expect(RealEditorialPilotPolicySchema.safeParse(REAL_EDITORIAL_E2E04_POLICY).success).toBe(true)
+    expect(RealEditorialPilotPolicySchema.safeParse(REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY).success).toBe(true)
     expect(RealEditorialPilotPolicySchema.safeParse({
       ...REAL_EDITORIAL_E2E04_POLICY,
       destination: REAL_EDITORIAL_MORELLA_POLICY.destination,
@@ -91,6 +93,12 @@ describe('segunda destinación editorial real E2E-04', () => {
     expect(morella).toMatch(/^[a-f0-9]{64}$/)
     expect(albarracin).toMatch(/^[a-f0-9]{64}$/)
     expect(albarracin).not.toBe(morella)
+  })
+
+  it('separa Cuenca de Morella y Albarracín en la identidad durable', () => {
+    const cuenca = realEditorialIdentityKey('deepseek-benchmark', REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY)
+    expect(cuenca).not.toBe(realEditorialIdentityKey('deepseek-benchmark', REAL_EDITORIAL_MORELLA_POLICY))
+    expect(cuenca).not.toBe(realEditorialIdentityKey('deepseek-benchmark', REAL_EDITORIAL_E2E04_POLICY))
   })
 
   it('deriva la misión de Albarracín sin ampliar límites ni fronteras', () => {

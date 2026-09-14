@@ -73,9 +73,19 @@ export const REAL_EDITORIAL_E2E04_POLICY = {
   ...REAL_EDITORIAL_POLICY_LIMITS,
 } as const
 
+export const REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY = {
+  id: 'cuenca-real-editorial-deepseek-benchmark-v1',
+  destination: 'Cuenca',
+  normalizedDestination: 'cuenca',
+  countryCode: 'ES',
+  destinationType: 'locality',
+  ...REAL_EDITORIAL_POLICY_LIMITS,
+} as const
+
 export const REAL_EDITORIAL_PILOT_POLICIES = [
   REAL_EDITORIAL_MORELLA_POLICY,
   REAL_EDITORIAL_E2E04_POLICY,
+  REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY,
 ] as const
 
 // Compatibilidad: todas las rutas históricas que no eligen policy siguen siendo Morella.
@@ -84,14 +94,17 @@ export const REAL_EDITORIAL_PILOT_POLICY = REAL_EDITORIAL_MORELLA_POLICY
 export const RealEditorialPilotPolicyIdSchema = z.enum([
   REAL_EDITORIAL_MORELLA_POLICY.id,
   REAL_EDITORIAL_E2E04_POLICY.id,
+  REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY.id,
 ])
 
 export function realEditorialPolicyById(
   policyId: z.infer<typeof RealEditorialPilotPolicyIdSchema>,
 ) {
-  return policyId === REAL_EDITORIAL_E2E04_POLICY.id
-    ? REAL_EDITORIAL_E2E04_POLICY
-    : REAL_EDITORIAL_MORELLA_POLICY
+  if (policyId === REAL_EDITORIAL_E2E04_POLICY.id) return REAL_EDITORIAL_E2E04_POLICY
+  if (policyId === REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY.id) {
+    return REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY
+  }
+  return REAL_EDITORIAL_MORELLA_POLICY
 }
 
 export const REAL_EDITORIAL_COVERAGE_BUDGET = {
@@ -111,6 +124,8 @@ const CurrentMaximumCostSchema = z.number().finite()
 export const REAL_EDITORIAL_FEATURE_TOKEN = 'morella-real-editorial-pilot-authorized'
 export const REAL_EDITORIAL_E2E04_FEATURE_TOKEN =
   'albarracin-real-editorial-e2e04-authorized'
+export const REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_FEATURE_TOKEN =
+  'cuenca-real-editorial-deepseek-benchmark-authorized'
 
 export function resolveRealEditorialFeatureFlag(value?: string): boolean {
   return realEditorialPolicyIdForFeatureToken(value) !== null
@@ -121,6 +136,9 @@ export function realEditorialPolicyIdForFeatureToken(
 ): z.infer<typeof RealEditorialPilotPolicyIdSchema> | null {
   if (value === REAL_EDITORIAL_FEATURE_TOKEN) return REAL_EDITORIAL_MORELLA_POLICY.id
   if (value === REAL_EDITORIAL_E2E04_FEATURE_TOKEN) return REAL_EDITORIAL_E2E04_POLICY.id
+  if (value === REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_FEATURE_TOKEN) {
+    return REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY.id
+  }
   return null
 }
 
@@ -129,10 +147,12 @@ export const RealEditorialPilotPolicySchema = z.object({
   destination: z.enum([
     REAL_EDITORIAL_MORELLA_POLICY.destination,
     REAL_EDITORIAL_E2E04_POLICY.destination,
+    REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY.destination,
   ]),
   normalizedDestination: z.enum([
     REAL_EDITORIAL_MORELLA_POLICY.normalizedDestination,
     REAL_EDITORIAL_E2E04_POLICY.normalizedDestination,
+    REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY.normalizedDestination,
   ]),
   countryCode: z.literal(REAL_EDITORIAL_PILOT_POLICY.countryCode),
   destinationType: z.literal(REAL_EDITORIAL_PILOT_POLICY.destinationType),
@@ -201,7 +221,7 @@ export const RealEditorialPilotStateSchema = z.enum([
 ])
 
 export const RealEditorialPilotIdentitySchema = z.object({
-  normalizedDestination: z.enum(['morella', 'albarracin']),
+  normalizedDestination: z.enum(['morella', 'albarracin', 'cuenca']),
   countryCode: z.literal('ES'),
   destinationType: z.literal('locality'),
   mode: z.literal('real_editorial_pilot'),
@@ -1380,8 +1400,8 @@ export const RealEditorialPilotRecordSchema = z.object({
   preparationKey: IdentifierSchema,
   identityKey: Sha256Schema,
   canonicalDestinationId: z.string().uuid(),
-  destinationName: z.enum(['Morella', 'Albarracín']),
-  normalizedDestination: z.enum(['morella', 'albarracin']),
+  destinationName: z.enum(['Morella', 'Albarracín', 'Cuenca']),
+  normalizedDestination: z.enum(['morella', 'albarracin', 'cuenca']),
   countryCode: z.literal('ES'),
   destinationType: z.literal('locality'),
   language: z.literal('es'),

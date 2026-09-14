@@ -115,6 +115,7 @@ import { executeRealConnectivityCheck } from './real-connectivity-runtime'
 import { getRealProfileSettingsRuntime } from './real-profile-settings-runtime'
 import { REAL_CONNECTIVITY_CONFIRMATION } from '@shared/real-connectivity-contracts'
 import {
+  REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY,
   REAL_EDITORIAL_E2E04_POLICY,
   RealEditorialPilotActionSchema,
 } from '@shared/real-editorial-pilot-contracts'
@@ -315,6 +316,16 @@ async function providerCenterAction<T>(
 
 // Ciclo de vida de la app
 app.whenReady().then(async () => {
+  const cuencaBenchmarkAction = process.argv
+    .find(argument => argument.startsWith('--real-editorial-cuenca-benchmark='))
+    ?.split('=', 2)[1]
+  if (!app.isPackaged && cuencaBenchmarkAction) {
+    await runLocalAuditCommand(
+      'REAL_EDITORIAL_CUENCA_BENCHMARK',
+      async () => runRealEditorialCuencaBenchmarkCommand(cuencaBenchmarkAction),
+    )
+    return
+  }
   const e2e04Action = process.argv
     .find(argument => argument.startsWith('--real-editorial-e2e04='))
     ?.split('=', 2)[1]
@@ -573,6 +584,31 @@ async function runRealEditorialE2E04Command(action: string): Promise<unknown> {
   if (action === 'progress') return runtime.progress({ pilotId })
   if (action === 'result') return runtime.result({ pilotId })
   throw new Error('Acción E2E-04 no reconocida')
+}
+
+async function runRealEditorialCuencaBenchmarkCommand(action: string): Promise<unknown> {
+  const runtime = getRealEditorialPilotRuntime()
+  if (action === 'preflight') {
+    return runtime.preflight(
+      readOptionalE2E04PilotId(process.argv),
+      REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY.id,
+    )
+  }
+  if (action === 'prepare') {
+    return runtime.prepare({
+      policyId: REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY.id,
+      variantKey: 'deepseek-benchmark-cuenca-20260914',
+      preparationKey: 'cuenca-real-editorial-deepseek-benchmark-v1-prepare',
+      taskOrigin: 'human_authorized',
+      profiles: [
+        { profile: 'adventure', enabled: true, targetWords: 1_000, depth: 'standard' },
+        { profile: 'student', enabled: true, targetWords: 1_800, depth: 'deep' },
+      ],
+    })
+  }
+  const pilotId = readE2E04PilotId(process.argv)
+  if (action === 'confirm-budget') return runtime.confirmBudget({ pilotId })
+  throw new Error('Acción de benchmark Cuenca no reconocida')
 }
 
 function readE2E04PilotId(arguments_: string[]): string {

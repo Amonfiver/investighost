@@ -6,6 +6,8 @@ import {
 import {
   REAL_EDITORIAL_E2E04_FEATURE_TOKEN,
   REAL_EDITORIAL_E2E04_POLICY,
+  REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_FEATURE_TOKEN,
+  REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY,
   REAL_EDITORIAL_FEATURE_TOKEN,
   REAL_EDITORIAL_MORELLA_POLICY,
 } from '@shared/real-editorial-pilot-contracts'
@@ -47,6 +49,16 @@ describe('contrato de autorización del piloto editorial real', () => {
       enabled: true,
       featureToken: REAL_EDITORIAL_E2E04_FEATURE_TOKEN,
       policyId: REAL_EDITORIAL_E2E04_POLICY.id,
+    })
+  })
+
+  it('aísla el token del benchmark Cuenca en su policy específica', () => {
+    expect(readRealEditorialAuthorization({
+      [REAL_EDITORIAL_FEATURE_ENV]: REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_FEATURE_TOKEN,
+    })).toEqual({
+      enabled: true,
+      featureToken: REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_FEATURE_TOKEN,
+      policyId: REAL_EDITORIAL_CUENCA_DEEPSEEK_BENCHMARK_POLICY.id,
     })
   })
 

@@ -158,7 +158,7 @@ describe('preflight editorial real independiente', () => {
     })
   })
 
-  it('autoriza conciliar una reserva iniciada cuando el análisis durable ya existe', () => {
+  it('autoriza conciliar una reserva iniciada cuando ya existe el resultado durable del proveedor', () => {
     const result = evaluateRealEditorialPreflight(input({
       pendingReservations: 1,
       recoverableReservations: 1,

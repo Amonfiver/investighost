@@ -425,19 +425,27 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       .select('run_id,stage,operation')
       .eq('pilot_id', pilotId)
       .eq('state', 'started')
-      .eq('operation', 'analysis')
     if (reservations.error) throw reservations.error
     let recoverable = 0
     for (const row of reservations.data ?? []) {
-      const roundMatch = /^([12])_analysis$/.exec(String(row.stage))
-      if (!roundMatch) continue
-      const artifact = await this.latestArtifact(
-        String(row.run_id),
-        'round',
-        `round-${roundMatch[1]}`,
-      )
-      if (artifact && isRecord(artifact.payload) && isRecord(artifact.payload.analysis)) {
-        recoverable += 1
+      const stage = String(row.stage)
+      const analysisRound = String(row.operation) === 'analysis'
+        ? /^([12])_analysis$/.exec(stage)?.[1]
+        : undefined
+      const researchRound = String(row.operation) === 'research'
+        ? /^([12])_research$/.exec(stage)?.[1]
+        : undefined
+      if (analysisRound) {
+        const artifact = await this.latestArtifact(String(row.run_id), 'round', `round-${analysisRound}`)
+        if (artifact && isRecord(artifact.payload) && isRecord(artifact.payload.analysis)) recoverable += 1
+      }
+      if (researchRound) {
+        const artifact = await this.latestArtifact(
+          String(row.run_id),
+          'tavily_result',
+          `round-${researchRound}`,
+        )
+        if (artifact && isRecord(artifact.payload)) recoverable += 1
       }
     }
     return recoverable

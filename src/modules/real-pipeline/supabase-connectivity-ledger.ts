@@ -6,10 +6,13 @@ import {
 } from '@shared/real-connectivity-contracts'
 import {
   REAL_CONNECTIVITY_TARIFF_IDS,
+  connectivityTariffId,
+  type ConnectivityIntelligenceSelection,
   type RealConnectivityLedgerPort,
   type RealConnectivityReservationInput,
   type RealConnectivitySettlementInput,
 } from './real-connectivity-check'
+import { pricingEntryAt } from '@shared/provider-pricing-catalog'
 
 export class SupabaseConnectivityLedgerError extends Error {
   readonly retryable = false
@@ -74,7 +77,9 @@ export class SupabaseConnectivityLedger implements RealConnectivityLedgerPort {
     }
   }
 
-  async prepare(): Promise<void> {
+  async prepare(intelligence: ConnectivityIntelligenceSelection = {
+    providerId: 'openai', model: 'gpt-5.6-luna', apiModel: 'gpt-5.6-luna', reasoningEffort: 'none',
+  }, pricingAt = new Date()): Promise<void> {
     await this.insertOrVerifyTariff({
       id: REAL_CONNECTIVITY_TARIFF_IDS.tavily,
       provider_id: 'tavily',
@@ -90,20 +95,25 @@ export class SupabaseConnectivityLedger implements RealConnectivityLedgerPort {
       effective_from: REAL_CONNECTIVITY_FX_POLICY.effectiveFrom,
       source_reference: tariffSource('https://docs.tavily.com/documentation/api-credits'),
     })
+    const pricing = pricingEntryAt(intelligence.providerId, intelligence.model, pricingAt)
+    if (!pricing) throw new SupabaseConnectivityLedgerError(
+      'INTELLIGENCE_TARIFF_UNAVAILABLE',
+      'No existe una tarifa vigente para la inteligencia configurada',
+    )
     await this.insertOrVerifyTariff({
-      id: REAL_CONNECTIVITY_TARIFF_IDS.openai,
-      provider_id: 'openai',
-      model: REAL_CONNECTIVITY_POLICY.openai.model,
-      operation: REAL_CONNECTIVITY_POLICY.openai.operation,
-      version: 1,
+      id: connectivityTariffId(intelligence.providerId, pricing.timeBand),
+      provider_id: intelligence.providerId,
+      model: intelligence.model,
+      operation: REAL_CONNECTIVITY_POLICY.intelligence.operation,
+      version: pricing.timeBand === 'peak' ? 2 : 1,
       currency: 'EUR',
       unit_scale: 1_000_000,
-      input_unit_cost: 1,
-      output_unit_cost: 6,
+      input_unit_cost: pricing.inputPerMillion,
+      output_unit_cost: pricing.outputPerMillion,
       tool_unit_cost: 0,
       credit_unit_cost: 0,
       effective_from: REAL_CONNECTIVITY_FX_POLICY.effectiveFrom,
-      source_reference: tariffSource('https://developers.openai.com/api/docs/models/gpt-5.6-luna'),
+      source_reference: tariffSource(pricing.sourceUrl),
     })
     await this.insertOrVerifyBudget(
       'real_task_budgets',

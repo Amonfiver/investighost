@@ -55,13 +55,13 @@ function input(
 }
 
 function provider(
-  id: 'tavily' | 'openai',
+  id: 'tavily' | 'openai' | 'deepseek',
   category: 'research_tool' | 'intelligence_engine',
   selectedModel: string,
 ) {
   return {
     id,
-    displayName: id === 'tavily' ? 'Tavily' : 'OpenAI',
+    displayName: id === 'tavily' ? 'Tavily' : id === 'deepseek' ? 'DeepSeek' : 'OpenAI',
     category,
     configured: true,
     credentialMask: '••••••••' as const,
@@ -80,7 +80,7 @@ function provider(
 
 function mutateProvider(
   candidate: RealConnectivityPreflightInput,
-  id: 'tavily' | 'openai',
+  id: 'tavily' | 'openai' | 'deepseek',
   patch: Partial<RealConnectivityPreflightInput['providerCenter']['providers'][number]>,
 ) {
   candidate.providerCenter.providers = candidate.providerCenter.providers.map(entry =>
@@ -121,13 +121,57 @@ describe('preflight real sin red', () => {
     expect(evaluateRealConnectivityPreflight(mutateProvider(
       input(),
       'openai',
-      { selectedModel: 'modelo-no-permitido' },
+      { availableModels: ['modelo-no-permitido'] },
     )).status).toBe('missing_tariff')
     expect(evaluateRealConnectivityPreflight(mutateProvider(
       input(),
       'openai',
       { tariffStatus: 'stale' },
     )).status).toBe('missing_tariff')
+  })
+
+  it('acepta DeepSeek requerido con OpenAI inactivo y no lo exige', () => {
+    const candidate = input({
+      providerCenter: {
+        ...input().providerCenter,
+        providers: [
+          provider('tavily', 'research_tool', 'search-and-extract'),
+          { ...provider('openai', 'intelligence_engine', 'gpt-5.6-luna'), active: false },
+          provider('deepseek', 'intelligence_engine', 'deepseek-flash'),
+        ],
+      },
+      requiredIntelligence: [{ providerId: 'deepseek', model: 'deepseek-flash' }],
+    })
+    expect(evaluateRealConnectivityPreflight(candidate).status).toBe('ready_for_live_connectivity_check')
+  })
+
+  it('falla cerrado cuando DeepSeek requerido no tiene credencial o cuando una ruta híbrida requiere OpenAI inactivo', () => {
+    const deepseekMissing = input({
+      providerCenter: {
+        ...input().providerCenter,
+        providers: [
+          provider('tavily', 'research_tool', 'search-and-extract'),
+          { ...provider('deepseek', 'intelligence_engine', 'deepseek-flash'), configured: false, credentialMask: undefined },
+        ],
+      },
+      requiredIntelligence: [{ providerId: 'deepseek', model: 'deepseek-flash' }],
+    })
+    expect(evaluateRealConnectivityPreflight(deepseekMissing).status).toBe('missing_credentials')
+    const hybrid = input({
+      providerCenter: {
+        ...input().providerCenter,
+        providers: [
+          provider('tavily', 'research_tool', 'search-and-extract'),
+          { ...provider('openai', 'intelligence_engine', 'gpt-5.6-luna'), active: false },
+          provider('deepseek', 'intelligence_engine', 'deepseek-flash'),
+        ],
+      },
+      requiredIntelligence: [
+        { providerId: 'deepseek', model: 'deepseek-flash' },
+        { providerId: 'openai', model: 'gpt-5.6-luna' },
+      ],
+    })
+    expect(evaluateRealConnectivityPreflight(hybrid).status).toBe('provider_inactive')
   })
 
   it('distingue presupuesto inválido y feature flag apagada', () => {

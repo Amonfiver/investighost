@@ -1,6 +1,7 @@
 import {
   evaluateRealConnectivityPreflight,
   MORELLA_REAL_PILOT_POLICY,
+  readRealLlmRouting,
   resolveRealExecutionFeatureFlag,
   type RealConnectivityPreflight,
 } from '@modules/real-pipeline'
@@ -10,6 +11,7 @@ import { getProviderCenterRuntime } from './provider-center-runtime'
 export async function getRealConnectivityPreflightRuntime(): Promise<RealConnectivityPreflight> {
   const providerCenter = (await getProviderCenterRuntime()).snapshot()
   const infrastructure = await inspectLocalInfrastructure()
+  const routing = readRealLlmRouting()
 
   return evaluateRealConnectivityPreflight({
     featureEnabled: resolveRealExecutionFeatureFlag(
@@ -36,6 +38,12 @@ export async function getRealConnectivityPreflightRuntime(): Promise<RealConnect
       trawelConnected: false,
       automaticEnabled: false,
     },
+    requiredIntelligence: [...new Map(
+      Object.values(routing.routes).map(route => [
+        `${route.providerId}:${route.model}`,
+        { providerId: route.providerId, model: route.model },
+      ]),
+    ).values()],
   })
 }
 

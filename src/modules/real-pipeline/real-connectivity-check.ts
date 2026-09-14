@@ -8,6 +8,7 @@ import {
   type RealConnectivityCallResult,
   type RealConnectivityResult,
 } from '@shared/real-connectivity-contracts'
+import { pricingEntryAt } from '@shared/provider-pricing-catalog'
 
 export interface RealConnectivityReservationInput {
   idempotencyKey: string
@@ -17,9 +18,9 @@ export interface RealConnectivityReservationInput {
   taskId: string
   batchId: string
   budgetDate: string
-  stage: 'connectivity_tavily' | 'connectivity_openai'
+  stage: 'connectivity_tavily' | 'connectivity_intelligence'
   operation: 'search' | 'responses'
-  providerId: 'tavily' | 'openai'
+  providerId: 'tavily' | 'openai' | 'deepseek'
   model: string
   estimatedCostEur: number
   tariffId: string
@@ -43,7 +44,7 @@ export interface RealConnectivitySettlementInput {
 
 export interface RealConnectivityLedgerPort {
   inspect(): Promise<RealConnectivityAudit>
-  prepare(): Promise<void>
+  prepare(intelligence?: ConnectivityIntelligenceSelection, pricingAt?: Date): Promise<void>
   acquire(executionId: string, leaseToken: string, expiresAt: string): Promise<boolean>
   release(leaseToken: string): Promise<boolean>
   reserve(input: RealConnectivityReservationInput): Promise<string>
@@ -58,7 +59,7 @@ export interface TavilyConnectivityResponse {
   durationMs: number
 }
 
-export interface OpenAIConnectivityResponse {
+export interface IntelligenceConnectivityResponse {
   remoteId: string
   inputTokens: number
   cachedInputTokens: number
@@ -69,7 +70,17 @@ export interface OpenAIConnectivityResponse {
 
 export interface RealConnectivityNetworkPort {
   tavilySearch(signal: AbortSignal): Promise<TavilyConnectivityResponse>
-  openAIResponse(signal: AbortSignal): Promise<OpenAIConnectivityResponse>
+  intelligenceResponse(
+    selection: ConnectivityIntelligenceSelection,
+    signal: AbortSignal,
+  ): Promise<IntelligenceConnectivityResponse>
+}
+
+export interface ConnectivityIntelligenceSelection {
+  providerId: 'openai' | 'deepseek'
+  model: string
+  apiModel: string
+  reasoningEffort?: 'none' | 'low' | 'high' | 'max'
 }
 
 export type RealConnectivityProviderFailureKind = 'failed' | 'unknown'
@@ -94,6 +105,9 @@ export class RealConnectivityCheckService {
     private readonly network: RealConnectivityNetworkPort,
     private readonly now: () => Date = () => new Date(),
     private readonly id: () => string = randomUUID,
+    private readonly intelligence: ConnectivityIntelligenceSelection = {
+      providerId: 'openai', model: 'gpt-5.6-luna', apiModel: 'gpt-5.6-luna', reasoningEffort: 'none',
+    },
   ) {}
 
   async execute(candidate: unknown): Promise<RealConnectivityResult> {
@@ -127,7 +141,7 @@ export class RealConnectivityCheckService {
     }
 
     try {
-      await this.ledger.prepare()
+      await this.ledger.prepare(this.intelligence, this.now())
       acquired = await this.ledger.acquire(
         executionId,
         leaseToken,
@@ -144,10 +158,10 @@ export class RealConnectivityCheckService {
           errorCode = tavily.errorCode
           errorMessage = tavily.errorMessage
         } else {
-          const openai = await this.executeOpenAI(executionId, calls)
-          status = openai.ok ? 'succeeded' : openai.status
-          errorCode = openai.ok ? undefined : openai.errorCode
-          errorMessage = openai.ok ? undefined : openai.errorMessage
+          const intelligence = await this.executeIntelligence(executionId, calls)
+          status = intelligence.ok ? 'succeeded' : intelligence.status
+          errorCode = intelligence.ok ? undefined : intelligence.errorCode
+          errorMessage = intelligence.ok ? undefined : intelligence.errorMessage
         }
       }
     } catch (error) {
@@ -244,6 +258,7 @@ export class RealConnectivityCheckService {
       })
       calls.push({
         providerId: 'tavily',
+        model: policy.model,
         status: 'succeeded',
         remoteIdMask: maskRemoteId(response.remoteId),
         durationMs: response.durationMs,
@@ -259,29 +274,37 @@ export class RealConnectivityCheckService {
       })
       return { ok: true }
     } catch (error) {
-      return this.settleFailure('tavily', reservationId, error, calls)
+      return this.settleFailure('tavily', policy.model, reservationId, error, calls)
     }
   }
 
-  private async executeOpenAI(
+  private async executeIntelligence(
     executionId: string,
     calls: RealConnectivityCallResult[],
   ): Promise<StepOutcome> {
-    const policy = REAL_CONNECTIVITY_POLICY.openai
+    const policy = REAL_CONNECTIVITY_POLICY.intelligence
+    const tariff = pricingEntryAt(this.intelligence.providerId, this.intelligence.model, this.now())
+    if (!tariff) throw new RealConnectivityProviderError(
+      'INTELLIGENCE_TARIFF_UNAVAILABLE',
+      'No existe tarifa vigente para la inteligencia configurada',
+      'failed',
+      0,
+    )
     const reservationId = await this.ledger.reserve({
       ...reservationBase(executionId, this.now()),
-      idempotencyKey: 'connectivity-10d-openai-v1',
-      stage: 'connectivity_openai',
+      idempotencyKey: `connectivity-10d-${this.intelligence.providerId}-v1`,
+      stage: 'connectivity_intelligence',
       operation: policy.operation,
-      providerId: policy.providerId,
-      model: policy.model,
+      providerId: this.intelligence.providerId,
+      model: this.intelligence.model,
       estimatedCostEur: policy.reserveEur,
-      tariffId: REAL_CONNECTIVITY_TARIFF_IDS.openai,
+      tariffId: connectivityTariffId(this.intelligence.providerId, tariff.timeBand),
       promptVersion: REAL_CONNECTIVITY_POLICY.version,
-      schemaVersion: 'connectivity-openai-v1',
+      schemaVersion: 'connectivity-intelligence-v1',
       inputHash: hash({
         prompt: policy.prompt,
-        model: policy.model,
+        providerId: this.intelligence.providerId,
+        model: this.intelligence.model,
         maxOutputTokens: policy.maxOutputTokens,
         store: policy.store,
         tools: policy.tools,
@@ -292,8 +315,8 @@ export class RealConnectivityCheckService {
     await this.ledger.start(reservationId)
 
     try {
-      const response = await this.network.openAIResponse(new AbortController().signal)
-      const costUsd = openAICostUsd(response)
+      const response = await this.network.intelligenceResponse(this.intelligence, new AbortController().signal)
+      const costUsd = intelligenceCostUsd(response, tariff)
       const costEur = convertUsdToEur(costUsd)
       await this.ledger.settle({
         reservationId,
@@ -306,9 +329,9 @@ export class RealConnectivityCheckService {
         tools: [],
         outputHash: hash(response.outputText),
       })
-      const expectedOutputMatched = response.outputText === policy.expectedOutput
       calls.push({
-        providerId: 'openai',
+        providerId: this.intelligence.providerId,
+        model: this.intelligence.model,
         status: 'succeeded',
         remoteIdMask: maskRemoteId(response.remoteId),
         durationMs: response.durationMs,
@@ -319,27 +342,16 @@ export class RealConnectivityCheckService {
         estimatedCostEur: policy.reserveEur,
         costUsd,
         costEur,
-        expectedOutputMatched,
-        ...(!expectedOutputMatched && {
-          errorCode: 'UNEXPECTED_OPENAI_OUTPUT',
-          errorMessage: 'OpenAI no devolvió el literal esperado',
-        }),
       })
-      return expectedOutputMatched
-        ? { ok: true }
-        : {
-            ok: false,
-            status: 'failed',
-            errorCode: 'UNEXPECTED_OPENAI_OUTPUT',
-            errorMessage: 'OpenAI no devolvió el literal esperado',
-          }
+      return { ok: true }
     } catch (error) {
-      return this.settleFailure('openai', reservationId, error, calls)
+      return this.settleFailure(this.intelligence.providerId, this.intelligence.model, reservationId, error, calls)
     }
   }
 
   private async settleFailure(
-    providerId: 'tavily' | 'openai',
+    providerId: 'tavily' | 'openai' | 'deepseek',
+    model: string,
     reservationId: string,
     error: unknown,
     calls: RealConnectivityCallResult[],
@@ -364,6 +376,7 @@ export class RealConnectivityCheckService {
     })
     calls.push({
       providerId,
+      model,
       status: failure.kind,
       durationMs: failure.durationMs,
       credits: 0,
@@ -372,7 +385,7 @@ export class RealConnectivityCheckService {
       outputTokens: 0,
       estimatedCostEur: providerId === 'tavily'
         ? REAL_CONNECTIVITY_POLICY.tavily.reserveEur
-        : REAL_CONNECTIVITY_POLICY.openai.reserveEur,
+        : REAL_CONNECTIVITY_POLICY.intelligence.reserveEur,
       ...(failure.kind === 'failed' && { costUsd: 0, costEur: 0 }),
       errorCode: failure.code,
       errorMessage: failure.message,
@@ -417,7 +430,19 @@ export class RealConnectivityCheckService {
 export const REAL_CONNECTIVITY_TARIFF_IDS = {
   tavily: '76000000-0000-4000-8000-000000000001',
   openai: '76000000-0000-4000-8000-000000000002',
+  deepseekPeak: '76000000-0000-4000-8000-000000000003',
+  deepseekOffPeak: '76000000-0000-4000-8000-000000000004',
 } as const
+
+export function connectivityTariffId(
+  providerId: 'openai' | 'deepseek',
+  timeBand?: 'peak' | 'off_peak',
+): string {
+  if (providerId === 'openai') return REAL_CONNECTIVITY_TARIFF_IDS.openai
+  return timeBand === 'peak'
+    ? REAL_CONNECTIVITY_TARIFF_IDS.deepseekPeak
+    : REAL_CONNECTIVITY_TARIFF_IDS.deepseekOffPeak
+}
 
 interface StepSuccess {
   ok: true
@@ -455,13 +480,20 @@ function dateInMadrid(value: Date): string {
   return `${part('year')}-${part('month')}-${part('day')}`
 }
 
-function openAICostUsd(response: OpenAIConnectivityResponse): number {
+function intelligenceCostUsd(
+  response: IntelligenceConnectivityResponse,
+  tariff: {
+    inputPerMillion?: number
+    cachedInputPerMillion?: number
+    outputPerMillion?: number
+  },
+): number {
   const cached = Math.min(response.inputTokens, response.cachedInputTokens)
   const uncached = response.inputTokens - cached
   return roundMoney(
-    uncached / 1_000_000
-    + cached * 0.1 / 1_000_000
-    + response.outputTokens * 6 / 1_000_000,
+    uncached * (tariff.inputPerMillion ?? 0) / 1_000_000
+    + cached * (tariff.cachedInputPerMillion ?? 0) / 1_000_000
+    + response.outputTokens * (tariff.outputPerMillion ?? 0) / 1_000_000,
   )
 }
 

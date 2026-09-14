@@ -53,6 +53,10 @@ export const RealConnectivityPreflightInputSchema = z.object({
     trawelConnected: z.boolean(),
     automaticEnabled: z.boolean(),
   }),
+  requiredIntelligence: z.array(z.object({
+    providerId: z.enum(['openai', 'deepseek']),
+    model: z.string().trim().min(1).max(160),
+  })).min(1).default([{ providerId: 'openai', model: 'gpt-5.6-luna' }]),
 })
 
 export type RealConnectivityPreflightStatus = z.infer<
@@ -105,9 +109,13 @@ export function evaluateRealConnectivityPreflight(candidate: unknown): RealConne
     'safeStorage no ofrece un backend seguro; las credenciales quedan bloqueadas.',
   )
 
-  for (const providerId of ['tavily', 'openai'] as const) {
+  const requiredIntelligence = uniqueRequiredIntelligence(input.requiredIntelligence)
+  const requiredProviderIds = ['tavily', ...requiredIntelligence.map(entry => entry.providerId)] as const
+  for (const providerId of requiredProviderIds) {
     const provider = input.providerCenter.providers.find(entry => entry.id === providerId)
-    const name = providerId === 'tavily' ? 'Tavily' : 'OpenAI'
+    const name = providerId === 'tavily'
+      ? 'Tavily'
+      : providerId === 'deepseek' ? 'DeepSeek' : 'OpenAI'
     add(
       `${providerId}_credential`,
       `${name}: credencial`,
@@ -119,19 +127,18 @@ export function evaluateRealConnectivityPreflight(candidate: unknown): RealConne
       `${providerId}_active`,
       `${name}: activo`,
       Boolean(provider?.active),
-      'Activo como único proveedor de su categoría.',
+      'Activo para una ruta requerida.',
       'Proveedor inactivo.',
     )
-    add(
-      `${providerId}_model`,
-      `${name}: modelo permitido`,
-      Boolean(
-        provider?.selectedModel
-        && provider.availableModels.includes(provider.selectedModel),
-      ),
-      `Modelo permitido: ${provider?.selectedModel ?? 'ninguno'}.`,
-      'El modelo no pertenece al catálogo permitido.',
-    )
+    if (providerId === 'tavily') {
+      add(
+        `${providerId}_model`,
+        `${name}: modelo permitido`,
+        Boolean(provider?.selectedModel && provider.availableModels.includes(provider.selectedModel)),
+        `Modelo permitido: ${provider?.selectedModel ?? 'ninguno'}.`,
+        'El modelo no pertenece al catálogo permitido.',
+      )
+    }
     add(
       `${providerId}_tariff`,
       `${name}: tarifa`,
@@ -142,16 +149,16 @@ export function evaluateRealConnectivityPreflight(candidate: unknown): RealConne
         : 'No existe una tarifa oficial verificada para la selección.',
     )
   }
-  const selectedOpenAI = input.providerCenter.providers
-    .find(entry => entry.id === 'openai')
-    ?.selectedModel
-  add(
-    'connectivity_model',
-    'Modelo de conectividad',
-    selectedOpenAI === REAL_CONNECTIVITY_POLICY.openai.model,
-    'La única llamada OpenAI usará gpt-5.6-luna.',
-    'La prueba exige seleccionar exactamente gpt-5.6-luna.',
-  )
+  for (const required of requiredIntelligence) {
+    const provider = input.providerCenter.providers.find(entry => entry.id === required.providerId)
+    add(
+      `${required.providerId}_${required.model}_model`,
+      `${required.providerId === 'deepseek' ? 'DeepSeek' : 'OpenAI'}: modelo resuelto`,
+      Boolean(provider?.availableModels.includes(required.model)),
+      `Modelo de ruta permitido: ${required.model}.`,
+      `El modelo resuelto ${required.model} no pertenece al catálogo permitido.`,
+    )
+  }
 
   const limits = input.limits
   const budgetsValid = limits.warningBudgetEur <= limits.taskBudgetEur
@@ -227,7 +234,7 @@ export function evaluateRealConnectivityPreflight(candidate: unknown): RealConne
     'connectivity_budget',
     'Presupuesto de conectividad',
     REAL_CONNECTIVITY_POLICY.tavily.reserveEur
-      + REAL_CONNECTIVITY_POLICY.openai.reserveEur
+      + REAL_CONNECTIVITY_POLICY.intelligence.reserveEur
       === REAL_CONNECTIVITY_POLICY.budgetEur
       && REAL_CONNECTIVITY_POLICY.maxProviderCalls === 2
       && REAL_CONNECTIVITY_POLICY.maxRetries === 0,
@@ -295,14 +302,9 @@ function resolveStatus(checks: RealConnectivityPreflightCheck[]): RealConnectivi
   const blocked = (code: string) =>
     checks.some(check => check.code === code && check.status === 'block')
   if (blocked('safe_storage')) return 'unsafe_storage'
-  if (blocked('tavily_credential') || blocked('openai_credential')) return 'missing_credentials'
-  if (blocked('tavily_active') || blocked('openai_active')) return 'provider_inactive'
-  if (
-    blocked('tavily_tariff')
-    || blocked('openai_tariff')
-    || blocked('tavily_model')
-    || blocked('openai_model')
-  ) return 'missing_tariff'
+  if (checks.some(check => check.code.endsWith('_credential') && check.status === 'block')) return 'missing_credentials'
+  if (checks.some(check => check.code.endsWith('_active') && check.status === 'block')) return 'provider_inactive'
+  if (checks.some(check => (check.code.endsWith('_tariff') || check.code.endsWith('_model')) && check.status === 'block')) return 'missing_tariff'
   if (blocked('budgets') || blocked('provider_limits')) return 'budget_invalid'
   if (blocked('feature_flag')) return 'real_feature_disabled'
   if (checks.some(check => check.status === 'block')) return 'blocked'
@@ -315,4 +317,10 @@ function normalize(value: string): string {
     .replace(/\p{Diacritic}/gu, '')
     .trim()
     .toLowerCase()
+}
+
+function uniqueRequiredIntelligence(
+  values: Array<{ providerId: 'openai' | 'deepseek'; model: string }>,
+) {
+  return [...new Map(values.map(value => [`${value.providerId}:${value.model}`, value])).values()]
 }

@@ -7,7 +7,7 @@ import {
 import {
   RealConnectivityCheckService,
   RealConnectivityProviderError,
-  type OpenAIConnectivityResponse,
+  type IntelligenceConnectivityResponse,
   type RealConnectivityLedgerPort,
   type RealConnectivityNetworkPort,
   type RealConnectivityReservationInput,
@@ -99,11 +99,12 @@ class FakeLedger implements RealConnectivityLedgerPort {
 
 class FakeNetwork implements RealConnectivityNetworkPort {
   tavilyCalls = 0
-  openAICalls = 0
+  intelligenceCalls = 0
+  intelligenceSelection?: { providerId: string; model: string; apiModel: string }
 
   constructor(
     private readonly tavilyResult: TavilyConnectivityResponse | Error = tavilySuccess(),
-    private readonly openAIResult: OpenAIConnectivityResponse | Error = openAISuccess(),
+    private readonly intelligenceResult: IntelligenceConnectivityResponse | Error = intelligenceSuccess(),
   ) {}
 
   async tavilySearch(): Promise<TavilyConnectivityResponse> {
@@ -112,10 +113,11 @@ class FakeNetwork implements RealConnectivityNetworkPort {
     return this.tavilyResult
   }
 
-  async openAIResponse(): Promise<OpenAIConnectivityResponse> {
-    this.openAICalls += 1
-    if (this.openAIResult instanceof Error) throw this.openAIResult
-    return this.openAIResult
+  async intelligenceResponse(selection: { providerId: 'openai' | 'deepseek'; model: string; apiModel: string }): Promise<IntelligenceConnectivityResponse> {
+    this.intelligenceCalls += 1
+    this.intelligenceSelection = selection
+    if (this.intelligenceResult instanceof Error) throw this.intelligenceResult
+    return this.intelligenceResult
   }
 }
 
@@ -136,7 +138,7 @@ describe('PROMPT 10D · prueba real mínima simulada antes de red', () => {
     const { result, network } = await execute(providerFailure('TAVILY_AUTH_REJECTED', 'failed'))
     expect(result.status).toBe('failed')
     expect(result.calls[0].errorCode).toBe('TAVILY_AUTH_REJECTED')
-    expect(network.openAICalls).toBe(0)
+    expect(network.intelligenceCalls).toBe(0)
   })
 
   it('Tavily 429: se detiene sin reintento', async () => {
@@ -154,45 +156,56 @@ describe('PROMPT 10D · prueba real mínima simulada antes de red', () => {
   it('Tavily respuesta inválida: no adivina coste ni continúa', async () => {
     const { result, network } = await execute(providerFailure('TAVILY_INVALID_RESPONSE', 'unknown'))
     expect(result.calls[0].status).toBe('unknown')
-    expect(network.openAICalls).toBe(0)
+    expect(network.intelligenceCalls).toBe(0)
   })
 
-  it('OpenAI success: exige el literal exacto y concilia tokens', async () => {
+  it('inteligencia OpenAI histórica: concilia tokens sin depender de texto libre', async () => {
     const { result } = await execute()
     expect(result.calls[1]).toMatchObject({
       providerId: 'openai',
       status: 'succeeded',
-      expectedOutputMatched: true,
       inputTokens: 14,
       outputTokens: 6,
     })
   })
 
-  it('OpenAI 401: Tavily queda conciliado y la segunda llamada falla', async () => {
+  it('DeepSeek usa la selección resuelta y conserva coste/tokens identificados', async () => {
+    const ledger = new FakeLedger()
+    const network = new FakeNetwork()
+    const result = await service(ledger, network, {
+      providerId: 'deepseek', model: 'deepseek-flash', apiModel: 'deepseek-v4-flash', reasoningEffort: 'none',
+    }).execute(authorization)
+    expect(network.intelligenceSelection).toMatchObject({
+      providerId: 'deepseek', model: 'deepseek-flash', apiModel: 'deepseek-v4-flash',
+    })
+    expect(result.calls[1]).toMatchObject({ providerId: 'deepseek', model: 'deepseek-flash' })
+    expect(ledger.reservations.get('reservation-2')?.input.tariffId).toBeTruthy()
+  })
+
+  it('inteligencia 401: Tavily queda conciliado y la segunda llamada falla', async () => {
     const { result } = await execute(undefined, providerFailure('OPENAI_AUTH_REJECTED', 'failed'))
     expect(result.status).toBe('failed')
     expect(result.calls.map(call => call.status)).toEqual(['succeeded', 'failed'])
   })
 
-  it('OpenAI 429: no abre una tercera llamada', async () => {
+  it('inteligencia 429: no abre una tercera llamada', async () => {
     const { result, network } = await execute(undefined, providerFailure('OPENAI_RATE_LIMITED', 'failed'))
     expect(result.status).toBe('failed')
-    expect(network.tavilyCalls + network.openAICalls).toBe(2)
+    expect(network.tavilyCalls + network.intelligenceCalls).toBe(2)
   })
 
-  it('OpenAI timeout ambiguo: se detiene con reserva unknown', async () => {
+  it('inteligencia timeout ambiguo: se detiene con reserva unknown', async () => {
     const { result } = await execute(undefined, providerFailure('OPENAI_AMBIGUOUS_TIMEOUT', 'unknown'))
     expect(result.status).toBe('unknown')
     expect(result.audit.pendingReservations).toBe(1)
   })
 
-  it('OpenAI salida inesperada: concilia el uso y no reintenta', async () => {
-    const unexpected = { ...openAISuccess(), outputText: 'OTRA_RESPUESTA' }
+  it('inteligencia acepta una respuesta estructuralmente completada sin depender del texto', async () => {
+    const unexpected = { ...intelligenceSuccess(), outputText: 'OTRA_RESPUESTA' }
     const { result, network } = await execute(undefined, unexpected)
-    expect(result.status).toBe('failed')
-    expect(result.calls[1].errorCode).toBe('UNEXPECTED_OPENAI_OUTPUT')
+    expect(result.status).toBe('succeeded')
     expect(result.audit.pendingReservations).toBe(0)
-    expect(network.openAICalls).toBe(1)
+    expect(network.intelligenceCalls).toBe(1)
   })
 
   it('presupuesto insuficiente: bloquea antes de usar red', async () => {
@@ -264,29 +277,33 @@ describe('PROMPT 10D · prueba real mínima simulada antes de red', () => {
   it('zero retry: un fallo invoca al proveedor una sola vez', async () => {
     const { network } = await execute(providerFailure('TAVILY_SERVER_ERROR', 'failed'))
     expect(network.tavilyCalls).toBe(1)
-    expect(network.openAICalls).toBe(0)
+    expect(network.intelligenceCalls).toBe(0)
     expect(REAL_CONNECTIVITY_POLICY.maxRetries).toBe(0)
   })
 
   it('máximo dos llamadas: el camino feliz ejecuta una por proveedor', async () => {
     const { result, network } = await execute()
     expect(network.tavilyCalls).toBe(1)
-    expect(network.openAICalls).toBe(1)
+    expect(network.intelligenceCalls).toBe(1)
     expect(result.calls).toHaveLength(REAL_CONNECTIVITY_POLICY.maxProviderCalls)
   })
 })
 
 async function execute(
   tavilyResult?: TavilyConnectivityResponse | Error,
-  openAIResult?: OpenAIConnectivityResponse | Error,
+  intelligenceResult?: IntelligenceConnectivityResponse | Error,
 ) {
   const ledger = new FakeLedger()
-  const network = new FakeNetwork(tavilyResult, openAIResult)
+  const network = new FakeNetwork(tavilyResult, intelligenceResult)
   const result = await service(ledger, network).execute(authorization)
   return { ledger, network, result }
 }
 
-function service(ledger: FakeLedger, network: FakeNetwork): RealConnectivityCheckService {
+function service(
+  ledger: FakeLedger,
+  network: FakeNetwork,
+  intelligence?: { providerId: 'openai' | 'deepseek'; model: string; apiModel: string; reasoningEffort?: 'none' | 'low' | 'high' | 'max' },
+): RealConnectivityCheckService {
   const timestamps = [
     '2026-07-25T20:00:00.000+02:00',
     '2026-07-25T20:00:01.000+02:00',
@@ -300,6 +317,7 @@ function service(ledger: FakeLedger, network: FakeNetwork): RealConnectivityChec
     network,
     () => new Date(timestamps[Math.min(timestamp++, timestamps.length - 1)]),
     () => `00000000-0000-4000-8000-${String(++identifier).padStart(12, '0')}`,
+    intelligence,
   )
 }
 
@@ -312,13 +330,13 @@ function tavilySuccess(): TavilyConnectivityResponse {
   }
 }
 
-function openAISuccess(): OpenAIConnectivityResponse {
+function intelligenceSuccess(): IntelligenceConnectivityResponse {
   return {
     remoteId: 'response-remote-0002',
     inputTokens: 14,
     cachedInputTokens: 0,
     outputTokens: 6,
-    outputText: REAL_CONNECTIVITY_POLICY.openai.expectedOutput,
+    outputText: 'CONNECTIVITY_OK',
     durationMs: 50,
   }
 }

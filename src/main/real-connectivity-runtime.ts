@@ -2,6 +2,7 @@ import {
   LiveRealConnectivityNetwork,
   RealConnectivityCheckService,
   SupabaseConnectivityLedger,
+  readRealLlmRouting,
 } from '@modules/real-pipeline'
 import type { RealConnectivityResult } from '@shared/real-connectivity-contracts'
 import { createLocalSupabaseClientFromEnv } from '@services/supabase'
@@ -23,9 +24,13 @@ export async function executeRealConnectivityCheck(
 
   const { client } = createLocalSupabaseClientFromEnv()
   const providerCenter = await getProviderCenterRuntime()
+  const routing = readRealLlmRouting()
   const service = new RealConnectivityCheckService(
     new SupabaseConnectivityLedger(client, dateInMadrid(new Date())),
     new LiveRealConnectivityNetwork(providerCenter, featureToken),
+    undefined,
+    undefined,
+    routing.routes.analysis,
   )
   return service.execute(authorization)
 }

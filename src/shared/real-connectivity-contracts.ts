@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const REAL_CONNECTIVITY_CONFIRMATION =
-  'AUTORIZO 1 TAVILY SEARCH BASIC Y 1 OPENAI GPT-5.6-LUNA, MÁXIMO 0,02 EUR, SIN MORELLA NI PUBLICACIÓN'
+  'AUTORIZO 1 TAVILY SEARCH BASIC Y 1 RESPONSES DE INTELIGENCIA CONFIGURADA, MÁXIMO 0,02 EUR, SIN MORELLA NI PUBLICACIÓN'
 
 export const REAL_CONNECTIVITY_FX_POLICY = {
   version: 'connectivity-fx-2026-07-25.1',
@@ -36,12 +36,9 @@ export const REAL_CONNECTIVITY_POLICY = {
     includeImages: false,
     autoParameters: false,
   },
-  openai: {
-    providerId: 'openai',
-    model: 'gpt-5.6-luna',
+  intelligence: {
     operation: 'responses',
-    prompt: 'Responde únicamente con: CONEXION_OPENAI_OK',
-    expectedOutput: 'CONEXION_OPENAI_OK',
+    prompt: 'Comprobación mínima de conectividad Investighost. Responde de forma breve.',
     maxOutputTokens: 16,
     reserveEur: 0.012,
     store: false,
@@ -62,7 +59,8 @@ const PublicIdentifierSchema = z.string().trim().min(1).max(160)
 const HttpsUrlSchema = z.string().url().refine(value => new URL(value).protocol === 'https:')
 
 export const RealConnectivityCallResultSchema = z.object({
-  providerId: z.enum(['tavily', 'openai']),
+  providerId: z.enum(['tavily', 'openai', 'deepseek']),
+  model: z.string().trim().min(1).max(160),
   status: z.enum(['succeeded', 'failed', 'unknown']),
   remoteIdMask: z.string().trim().min(1).max(32).optional(),
   durationMs: z.number().int().nonnegative(),

@@ -5,6 +5,7 @@ import type {
 } from 'openai/resources/responses/responses'
 import { z } from 'zod'
 import { REAL_CONNECTIVITY_POLICY } from '@shared/real-connectivity-contracts'
+import { deepSeekSdkClientFactory } from './deepseek-responses-client'
 import type { ProviderCenterService } from './provider-center'
 import {
   issueLiveProviderNetworkPermit,
@@ -12,7 +13,8 @@ import {
 } from './live-provider-access'
 import {
   RealConnectivityProviderError,
-  type OpenAIConnectivityResponse,
+  type ConnectivityIntelligenceSelection,
+  type IntelligenceConnectivityResponse,
   type RealConnectivityNetworkPort,
   type TavilyConnectivityResponse,
 } from './real-connectivity-check'
@@ -28,7 +30,7 @@ const TavilyConnectivityResponseSchema = z.object({
   }),
 })
 
-interface OpenAIConnectivitySdkClient {
+interface ResponsesConnectivitySdkClient {
   responses: {
     create(
       request: ResponseCreateParamsNonStreaming,
@@ -39,7 +41,8 @@ interface OpenAIConnectivitySdkClient {
 
 export interface LiveRealConnectivityNetworkDependencies {
   fetchImplementation?: typeof fetch
-  openAIClientFactory?: (credential: string) => OpenAIConnectivitySdkClient
+  openAIClientFactory?: (credential: string) => ResponsesConnectivitySdkClient
+  deepSeekClientFactory?: (credential: string) => ResponsesConnectivitySdkClient
   timeoutMs?: number
   nowMs?: () => number
 }
@@ -124,68 +127,78 @@ export class LiveRealConnectivityNetwork implements RealConnectivityNetworkPort 
     })
   }
 
-  async openAIResponse(signal: AbortSignal): Promise<OpenAIConnectivityResponse> {
+  async intelligenceResponse(
+    selection: ConnectivityIntelligenceSelection,
+    signal: AbortSignal,
+  ): Promise<IntelligenceConnectivityResponse> {
     const started = this.nowMs()
-    return this.providerCenter.withCredential('openai', async (credential, selectedModel) => {
-      if (selectedModel !== REAL_CONNECTIVITY_POLICY.openai.model) {
+    const providerName = selection.providerId === 'deepseek' ? 'DeepSeek' : 'OpenAI'
+    return this.providerCenter.withCredential(selection.providerId, async credential => {
+      const provider = this.providerCenter.snapshot().providers
+        .find(entry => entry.id === selection.providerId)
+      if (!provider?.availableModels.includes(selection.model)) {
         throw new RealConnectivityProviderError(
-          'OPENAI_MODEL_MISMATCH',
-          'El modelo activo no es gpt-5.6-luna',
+          'INTELLIGENCE_MODEL_UNAVAILABLE',
+          'El modelo resuelto no pertenece al perfil del proveedor',
           'failed',
           this.nowMs() - started,
         )
       }
-      this.permit()
-      const client = (this.dependencies.openAIClientFactory ?? defaultOpenAIClientFactory)(credential)
+      this.permit(selection.providerId)
+      const client = selection.providerId === 'deepseek'
+        ? (this.dependencies.deepSeekClientFactory ?? defaultDeepSeekClientFactory)(credential)
+        : (this.dependencies.openAIClientFactory ?? defaultOpenAIClientFactory)(credential)
       let response: Response
       try {
         response = await withAmbiguousTimeout(
           nextSignal => client.responses.create({
-            model: REAL_CONNECTIVITY_POLICY.openai.model,
-            input: REAL_CONNECTIVITY_POLICY.openai.prompt,
-            max_output_tokens: REAL_CONNECTIVITY_POLICY.openai.maxOutputTokens,
-            store: REAL_CONNECTIVITY_POLICY.openai.store,
-            reasoning: { effort: REAL_CONNECTIVITY_POLICY.openai.reasoningEffort },
+            model: selection.apiModel,
+            input: REAL_CONNECTIVITY_POLICY.intelligence.prompt,
+            max_output_tokens: REAL_CONNECTIVITY_POLICY.intelligence.maxOutputTokens,
+            store: REAL_CONNECTIVITY_POLICY.intelligence.store,
+            ...(supportedReasoningEffort(selection.reasoningEffort) && {
+              reasoning: { effort: supportedReasoningEffort(selection.reasoningEffort) },
+            }),
           }, { signal: nextSignal }),
           signal,
           this.timeoutMs,
-          'OPENAI_AMBIGUOUS_TIMEOUT',
+          'INTELLIGENCE_AMBIGUOUS_TIMEOUT',
           () => this.nowMs() - started,
         )
       } catch (error) {
         if (error instanceof RealConnectivityProviderError) throw error
         const status = providerStatus(error)
         if (status === 401 || status === 403) {
-          throw providerHttpError('OPENAI_AUTH_REJECTED', 'OpenAI rechazó la credencial', status, this.nowMs() - started)
+          throw providerHttpError('INTELLIGENCE_AUTH_REJECTED', `${providerName} rechazó la credencial`, status, this.nowMs() - started)
         }
         if (status === 429) {
-          throw providerHttpError('OPENAI_RATE_LIMITED', 'OpenAI rechazó la llamada por límite', status, this.nowMs() - started)
+          throw providerHttpError('INTELLIGENCE_RATE_LIMITED', `${providerName} rechazó la llamada por límite`, status, this.nowMs() - started)
         }
         if (status !== undefined && status >= 500) {
-          throw providerHttpError('OPENAI_SERVER_ERROR', 'OpenAI no está disponible', status, this.nowMs() - started)
+          throw providerHttpError('INTELLIGENCE_SERVER_ERROR', `${providerName} no está disponible`, status, this.nowMs() - started)
         }
         if (status !== undefined) {
-          throw providerHttpError('OPENAI_REQUEST_REJECTED', 'OpenAI rechazó la llamada', status, this.nowMs() - started)
+          throw providerHttpError('INTELLIGENCE_REQUEST_REJECTED', `${providerName} rechazó la llamada`, status, this.nowMs() - started)
         }
         throw new RealConnectivityProviderError(
-          'OPENAI_NETWORK_AMBIGUOUS',
-          'OpenAI terminó sin resultado conciliable',
+          'INTELLIGENCE_NETWORK_AMBIGUOUS',
+          `${providerName} terminó sin resultado conciliable`,
           'unknown',
           this.nowMs() - started,
         )
       }
       if (response.error) {
         throw new RealConnectivityProviderError(
-          'OPENAI_RESPONSE_ERROR',
-          'OpenAI devolvió un resultado de coste ambiguo',
+          'INTELLIGENCE_RESPONSE_ERROR',
+          `${providerName} devolvió un resultado de coste ambiguo`,
           'unknown',
           this.nowMs() - started,
         )
       }
       if (response.status !== 'completed' && response.status !== 'incomplete') {
         throw new RealConnectivityProviderError(
-          'OPENAI_INVALID_STATUS',
-          'OpenAI no terminó en un estado conciliable',
+          'INTELLIGENCE_INVALID_STATUS',
+          `${providerName} no terminó en un estado conciliable`,
           'unknown',
           this.nowMs() - started,
         )
@@ -201,7 +214,7 @@ export class LiveRealConnectivityNetwork implements RealConnectivityNetworkPort 
     })
   }
 
-  private permit(): LiveProviderNetworkPermit {
+  private permit(providerId: 'openai' | 'deepseek' = 'openai'): LiveProviderNetworkPermit {
     return issueLiveProviderNetworkPermit({
       featureToken: this.featureToken,
       providerCenter: this.providerCenter.snapshot(),
@@ -209,16 +222,21 @@ export class LiveRealConnectivityNetwork implements RealConnectivityNetworkPort 
       taskAuthorized: true,
       budgetReserved: true,
       globalGuardAcquired: true,
+      intelligenceProviderIds: [providerId],
     })
   }
 }
 
-function defaultOpenAIClientFactory(credential: string): OpenAIConnectivitySdkClient {
+function defaultOpenAIClientFactory(credential: string): ResponsesConnectivitySdkClient {
   return new OpenAI({
     apiKey: credential,
     maxRetries: REAL_CONNECTIVITY_POLICY.maxRetries,
     timeout: 15_000,
-  }) as OpenAIConnectivitySdkClient
+  }) as ResponsesConnectivitySdkClient
+}
+
+function defaultDeepSeekClientFactory(credential: string): ResponsesConnectivitySdkClient {
+  return deepSeekSdkClientFactory(credential) as unknown as ResponsesConnectivitySdkClient
 }
 
 function providerHttpError(
@@ -233,6 +251,12 @@ function providerHttpError(
 function providerStatus(error: unknown): number | undefined {
   if (!error || typeof error !== 'object' || !('status' in error)) return undefined
   return typeof error.status === 'number' ? error.status : undefined
+}
+
+function supportedReasoningEffort(
+  value: ConnectivityIntelligenceSelection['reasoningEffort'],
+): 'low' | 'high' | undefined {
+  return value === 'low' || value === 'high' ? value : undefined
 }
 
 async function withAmbiguousTimeout<T>(

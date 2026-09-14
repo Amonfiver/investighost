@@ -72,7 +72,7 @@ describe('clientes de conectividad real bajo transporte simulado', () => {
     expect(calls).toBe(1)
   })
 
-  it('OpenAI usa Luna, store false, reasoning none, salida corta y cero herramientas', async () => {
+  it('OpenAI histórico usa el modelo resuelto, store false y cero herramientas', async () => {
     let captured: Record<string, unknown> | undefined
     const network = new LiveRealConnectivityNetwork(
       fakeProviderCenter(),
@@ -100,15 +100,16 @@ describe('clientes de conectividad real bajo transporte simulado', () => {
       },
     )
 
-    const result = await network.openAIResponse(new AbortController().signal)
+    const result = await network.intelligenceResponse({
+      providerId: 'openai', model: 'gpt-5.6-luna', apiModel: 'gpt-5.6-luna', reasoningEffort: 'none',
+    }, new AbortController().signal)
 
     expect(result.outputText).toBe('CONEXION_OPENAI_OK')
     expect(captured).toEqual({
       model: 'gpt-5.6-luna',
-      input: 'Responde únicamente con: CONEXION_OPENAI_OK',
-      max_output_tokens: REAL_CONNECTIVITY_POLICY.openai.maxOutputTokens,
+      input: REAL_CONNECTIVITY_POLICY.intelligence.prompt,
+      max_output_tokens: REAL_CONNECTIVITY_POLICY.intelligence.maxOutputTokens,
       store: false,
-      reasoning: { effort: 'none' },
     })
     expect(captured).not.toHaveProperty('tools')
   })
@@ -130,13 +131,39 @@ describe('clientes de conectividad real bajo transporte simulado', () => {
       },
     )
 
-    await expect(network.openAIResponse(new AbortController().signal))
+    await expect(network.intelligenceResponse({
+      providerId: 'openai', model: 'gpt-5.6-luna', apiModel: 'gpt-5.6-luna', reasoningEffort: 'none',
+    }, new AbortController().signal))
       .rejects.toMatchObject<RealConnectivityProviderError>({
-        code: 'OPENAI_RATE_LIMITED',
+        code: 'INTELLIGENCE_RATE_LIMITED',
         kind: 'failed',
         retryable: false,
       })
     expect(calls).toBe(1)
+  })
+
+  it('DeepSeek usa el modelo API resuelto, store false y retries de transporte cero', async () => {
+    let captured: Record<string, unknown> | undefined
+    const network = new LiveRealConnectivityNetwork(
+      fakeProviderCenter(),
+      REAL_EXECUTION_FEATURE_TOKEN,
+      {
+        deepSeekClientFactory: () => ({ responses: { create: async request => {
+          captured = request as unknown as Record<string, unknown>
+          return {
+            id: 'deepseek-response-1', status: 'completed', error: null, output: [], output_text: 'ok',
+            usage: { input_tokens: 7, output_tokens: 3, input_tokens_details: { cached_tokens: 2 } },
+          } as never
+        } } }),
+      },
+    )
+    const result = await network.intelligenceResponse({
+      providerId: 'deepseek', model: 'deepseek-flash', apiModel: 'deepseek-v4-flash', reasoningEffort: 'none',
+    }, new AbortController().signal)
+    expect(result).toMatchObject({ inputTokens: 7, cachedInputTokens: 2, outputTokens: 3 })
+    expect(captured).toMatchObject({ model: 'deepseek-v4-flash', store: false })
+    expect(captured).not.toHaveProperty('tools')
+    expect(REAL_CONNECTIVITY_POLICY.maxRetries).toBe(0)
   })
 })
 
@@ -150,28 +177,29 @@ function fakeProviderCenter(): ProviderCenterService {
     providers: [
       provider('tavily', 'research_tool', 'search-and-extract'),
       provider('openai', 'intelligence_engine', 'gpt-5.6-luna'),
+      provider('deepseek', 'intelligence_engine', 'deepseek-flash'),
     ],
   }
   return {
     snapshot: () => snapshot,
     withCredential: async (
-      providerId: 'tavily' | 'openai',
+      providerId: 'tavily' | 'openai' | 'deepseek',
       operation: (credential: string, selectedModel: string) => Promise<unknown>,
     ) => operation(
-      providerId === 'tavily' ? 'credential-tavily-simulated' : 'credential-openai-simulated',
-      providerId === 'tavily' ? 'search-and-extract' : 'gpt-5.6-luna',
+      providerId === 'tavily' ? 'credential-tavily-simulated' : `credential-${providerId}-simulated`,
+      providerId === 'tavily' ? 'search-and-extract' : providerId === 'deepseek' ? 'deepseek-flash' : 'gpt-5.6-luna',
     ),
   } as unknown as ProviderCenterService
 }
 
 function provider(
-  id: 'tavily' | 'openai',
+  id: 'tavily' | 'openai' | 'deepseek',
   category: 'research_tool' | 'intelligence_engine',
   selectedModel: string,
 ) {
   return {
     id,
-    displayName: id === 'tavily' ? 'Tavily' : 'OpenAI',
+    displayName: id === 'tavily' ? 'Tavily' : id === 'deepseek' ? 'DeepSeek' : 'OpenAI',
     category,
     configured: true,
     credentialMask: '••••••••' as const,

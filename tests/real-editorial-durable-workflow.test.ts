@@ -255,6 +255,13 @@ class FakeResearchTool implements ResearchTool {
   }
 }
 
+class SevenCreditResearchTool extends FakeResearchTool {
+  async research(mission: RealResearchMission): Promise<ResearchToolResult> {
+    const result = await super.research(mission)
+    return { ...result, credits: 7 }
+  }
+}
+
 class InvalidUrlResearchTool implements ResearchTool {
   readonly id = 'tavily'
   readonly model = 'search-and-extract'
@@ -623,6 +630,65 @@ describe('workflow editorial durable con clientes falsos', () => {
     expect(intelligence.calls).toEqual([])
     expect(await repository.latestArtifact(runId, 'tavily_result', 'round-1'))
       .toBeUndefined()
+  })
+
+  it('concilia el ajuste Tavily 0.048 → 0.056 con la tarifa de investigación', async () => {
+    const repository = new MemoryDurableRepository()
+    const ledger = ledgerRepository()
+
+    await expect(new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: {
+        researchTool: new SevenCreditResearchTool(),
+        intelligenceEngine: new FailingAnalysisEngine(),
+      },
+      now: () => new Date(now),
+      id: () => '82400000-0000-4000-8000-000000000001',
+    }).execute(repository.pilot, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'CLIENT_ERROR' })
+
+    const researchKey = `real-editorial-task:${pilotId}:round:1:research:attempt:1`
+    const research = await ledger.findByIdempotencyKey(researchKey)
+    const adjustment = await ledger.findByIdempotencyKey(`${researchKey.replace(':attempt:1', '')}:cost-adjustment:attempt:1`)
+
+    expect(research).toMatchObject({
+      state: 'reconciled',
+      calculatedCost: 0.048,
+      input: { providerId: 'tavily', tariffId: 'morella-v1-tavily-search' },
+    })
+    expect(adjustment).toMatchObject({
+      state: 'reconciled',
+      calculatedCost: 0.008,
+      input: {
+        providerId: 'tavily',
+        model: 'search-and-extract',
+        tariffId: 'morella-v1-tavily-search',
+        operation: 'cost-adjustment',
+        retryOfCallId: research?.callId,
+      },
+    })
+    expect(ledger.budgetSnapshot().task).toMatchObject({ reserved: 0, spent: 0.056 })
+
+    const researchEntriesBeforeReplay = await ledger.entries(research?.callId)
+    const replayResearch = new SevenCreditResearchTool()
+    await expect(new DurableRealEditorialPipeline({
+      repository,
+      ledgerRepository: ledger,
+      providers: {
+        researchTool: replayResearch,
+        intelligenceEngine: new FailingAnalysisEngine(),
+      },
+      now: () => new Date(now),
+      id: () => '82400000-0000-4000-8000-000000000002',
+    }).execute(repository.pilot, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'CLIENT_ERROR' })
+
+    expect(replayResearch.rounds).toEqual([])
+    expect(await ledger.findByIdempotencyKey(researchKey)).toMatchObject({ state: 'reconciled' })
+    expect(await ledger.findByIdempotencyKey(`${researchKey.replace(':attempt:1', '')}:cost-adjustment:attempt:1`))
+      .toMatchObject({ state: 'reconciled' })
+    expect(await ledger.entries(research?.callId)).toEqual(researchEntriesBeforeReplay)
   })
 
   it('reutiliza la misión durable aunque el reloj de la reanudación sea posterior', async () => {

@@ -774,15 +774,24 @@ function metadataFactory(
   const promptVersion = `${policy.normalizedDestination}-real-editorial-v1`
   return {
     create(operationId, attempt, estimatedCost, retryOfCallId) {
-      const research = operationId.endsWith(':research')
-      const route = research ? undefined : intelligenceRouteForOperation(intelligenceEngine, operationId)
+      const costAdjustment = operationId.endsWith(':cost-adjustment')
+      const baseOperationId = costAdjustment
+        ? operationId.slice(0, -':cost-adjustment'.length)
+        : operationId
+      // Un ajuste es parte de la misma operación ya ejecutada: hereda proveedor,
+      // modelo y tarifa de aquella. En particular, un ajuste de Tavily no debe
+      // convertirse en una reserva de inteligencia.
+      const research = baseOperationId.endsWith(':research')
+      const route = research ? undefined : intelligenceRouteForOperation(intelligenceEngine, baseOperationId)
       const providerId = research ? 'tavily' : route!.providerId
       const model = research ? 'search-and-extract' : route!.model
       const tariffId = research
         ? 'morella-v1-tavily-search'
         : pricingEntryAt(providerId, model, new Date())?.id ?? 'configured-responses-tariff'
-      const operation = operationId.split(':').at(-1) ?? 'unknown'
-      const stage = operationId.split(':').slice(-2).join('_')
+      const operation = costAdjustment ? 'cost-adjustment' : baseOperationId.split(':').at(-1) ?? 'unknown'
+      const stage = `${baseOperationId.split(':').slice(-2).join('_')}${
+        costAdjustment ? '_cost-adjustment' : ''
+      }`
       const payloadHash = createHash('sha256').update(JSON.stringify({
         operationId,
         pilotId: pilot.id,

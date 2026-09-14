@@ -6,6 +6,7 @@ import {
   evaluateRealEditorialPreflight,
   inspectOpenAIEditorialResponseContracts,
   inspectInstalledOpenAIResponsesCapability,
+  readRealLlmRouting,
   realEditorialIdentityKey,
   SupabaseRealEditorialLedgerRepository,
   SupabaseRealEditorialPilotRepository,
@@ -72,9 +73,8 @@ export class RealEditorialPilotRuntime {
           : 'no_conflict'
     const providerCenter = await getProviderCenterRuntime()
     const authorization = readRealEditorialAuthorization()
-    const openAIRequestContract = inspectOpenAIEditorialResponseContracts(
-      policy.providers.model,
-    )
+    const routing = readRealLlmRouting()
+    const openAIRequestContract = inspectOpenAIEditorialResponseContracts(routing.default.apiModel)
     const firstContractIssue = openAIRequestContract.operations
       .flatMap(operation => operation.issues)[0]
     return evaluateRealEditorialPreflight({
@@ -99,6 +99,7 @@ export class RealEditorialPilotRuntime {
           ? 'Modelo, input y esquemas estrictos compatibles según validación local.'
           : `Payload incompatible: ${firstContractIssue?.path ?? 'contrato desconocido'}.`,
       },
+      intelligenceProviderIds: [...new Set(Object.values(routing.routes).map(route => route.providerId))],
       duplicateResolution,
       pilot,
       boundaries: {
@@ -518,7 +519,7 @@ export class RealEditorialPilotRuntime {
           ledgerRepository,
           providers: {
             researchTool: providers.tavily,
-            intelligenceEngine: providers.openai,
+            intelligenceEngine: providers.intelligence,
           },
           guardLease: { executionId, leaseToken },
         }).execute(pilot, controller.signal),

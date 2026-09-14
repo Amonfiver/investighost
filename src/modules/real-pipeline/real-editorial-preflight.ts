@@ -50,6 +50,7 @@ export const RealEditorialPreflightInputSchema = z.object({
     value => value.valid === (value.issueCount === 0),
     'La validez del payload debe coincidir con el número de incompatibilidades',
   ),
+  intelligenceProviderIds: z.array(z.enum(['openai', 'deepseek'])).min(1).default(['openai']),
   duplicateResolution: z.enum([
     'manual_only_coexists',
     'no_conflict',
@@ -90,7 +91,7 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
     'safeStorage no ofrece un backend seguro.',
   )
 
-  for (const providerId of ['tavily', 'openai'] as const) {
+  for (const providerId of ['tavily', ...new Set(input.intelligenceProviderIds)]) {
     const provider = input.providerCenter.providers.find(entry => entry.id === providerId)
     const label = providerId === 'tavily' ? 'Tavily' : 'OpenAI'
     add(
@@ -103,9 +104,9 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
     add(
       `${providerId}_active`,
       `${label}: proveedor activo`,
-      Boolean(provider?.active),
-      'Proveedor activo en su categoría.',
-      'El proveedor está inactivo.',
+      providerId === 'deepseek' ? Boolean(provider?.configured) : Boolean(provider?.active),
+      providerId === 'deepseek' ? 'Proveedor disponible para routing.' : 'Proveedor activo en su categoría.',
+      providerId === 'deepseek' ? 'El proveedor no está disponible para routing.' : 'El proveedor está inactivo.',
     )
     add(
       `${providerId}_tariff`,
@@ -116,14 +117,6 @@ export function evaluateRealEditorialPreflight(candidate: unknown): RealEditoria
     )
   }
 
-  const openAI = input.providerCenter.providers.find(entry => entry.id === 'openai')
-  add(
-    'openai_model',
-    'Modelo OpenAI',
-    openAI?.selectedModel === input.policy.providers.model,
-    'gpt-5.6-luna seleccionado.',
-    'El piloto exige exactamente gpt-5.6-luna.',
-  )
   add(
     'openai_responses_sdk',
     'OpenAI Responses',
@@ -297,9 +290,9 @@ function resolveEditorialStatus(
   const blocked = (code: string) =>
     checks.some(check => check.code === code && check.status === 'block')
   if (blocked('safe_storage')) return 'unsafe_storage'
-  if (blocked('tavily_credential') || blocked('openai_credential')) return 'missing_credentials'
-  if (blocked('tavily_active') || blocked('openai_active')) return 'provider_inactive'
-  if (blocked('tavily_tariff') || blocked('openai_tariff') || blocked('openai_model')) {
+  if (checks.some(check => check.code.endsWith('_credential') && check.status === 'block')) return 'missing_credentials'
+  if (checks.some(check => check.code.endsWith('_active') && check.status === 'block')) return 'provider_inactive'
+  if (checks.some(check => check.code.endsWith('_tariff') && check.status === 'block')) {
     return 'missing_tariff'
   }
   if (blocked('repository')) return 'repository_unavailable'

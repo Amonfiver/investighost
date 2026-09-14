@@ -52,7 +52,9 @@ export interface OpenAIResponsesClient {
 }
 
 export interface OpenAIIntelligenceConfiguration {
+  providerId: string
   model: string
+  telemetryModel?: string
   promptVersion: string
   schemaVersion: string
   maxOutputTokens: number
@@ -62,9 +64,20 @@ export interface OpenAIIntelligenceConfiguration {
   outputCostPerMillion: number
   currency: 'EUR' | 'USD'
   simulation: boolean
+  reasoningEffort?: 'none' | 'low' | 'high' | 'max'
+  temperature?: number
+  topP?: number
+  costForUsage?: (usage: {
+    inputTokens: number
+    cachedInputTokens: number
+    outputTokens: number
+    occurredAt: Date
+  }) => number
+  now?: () => Date
 }
 
 const defaultConfiguration: OpenAIIntelligenceConfiguration = {
+  providerId: 'openai',
   model: 'structured-responses',
   promptVersion: 'real-editorial-v1',
   schemaVersion: 'real-intelligence-v1',
@@ -119,7 +132,7 @@ export class OpenAIIntelligenceError extends Error {
 }
 
 export class OpenAIIntelligenceEngine implements IntelligenceEngine {
-  readonly id = 'openai'
+  readonly id: string
   readonly simulation: boolean
   readonly model: string
   private readonly configuration: OpenAIIntelligenceConfiguration
@@ -129,7 +142,8 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     configuration: Partial<OpenAIIntelligenceConfiguration> = {},
   ) {
     this.configuration = { ...defaultConfiguration, ...configuration }
-    this.model = this.configuration.model
+    this.id = this.configuration.providerId
+    this.model = this.configuration.telemetryModel ?? this.configuration.model
     this.simulation = this.configuration.simulation
   }
 
@@ -339,6 +353,13 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
       },
       max_output_tokens: this.configuration.maxOutputTokens,
       store: false,
+      ...(this.configuration.reasoningEffort
+        ? { reasoning: { effort: this.configuration.reasoningEffort } }
+        : {}),
+      ...(this.configuration.temperature !== undefined
+        ? { temperature: this.configuration.temperature }
+        : {}),
+      ...(this.configuration.topP !== undefined ? { top_p: this.configuration.topP } : {}),
     }
     const inspection = inspectOpenAIResponseRequest(request)
     if (!inspection.valid) {
@@ -352,11 +373,21 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     const outputTokens = response.usage.output_tokens
     const cachedInputTokens = response.usage.input_tokens_details?.cached_tokens ?? 0
     const uncachedInputTokens = Math.max(0, inputTokens - cachedInputTokens)
-    const estimatedCost = uncachedInputTokens * this.configuration.inputCostPerMillion / 1_000_000
-      + cachedInputTokens * this.configuration.cachedInputCostPerMillion / 1_000_000
-      + outputTokens * this.configuration.outputCostPerMillion / 1_000_000
+    const estimatedCost = this.configuration.costForUsage
+      ? this.configuration.costForUsage({
+          inputTokens,
+          cachedInputTokens,
+          outputTokens,
+          occurredAt: (this.configuration.now ?? (() => new Date()))(),
+        })
+      : uncachedInputTokens * this.configuration.inputCostPerMillion / 1_000_000
+        + cachedInputTokens * this.configuration.cachedInputCostPerMillion / 1_000_000
+        + outputTokens * this.configuration.outputCostPerMillion / 1_000_000
     return {
+      providerId: this.id,
+      model: this.model,
       inputTokens,
+      cachedInputTokens,
       outputTokens,
       estimatedCost,
       currency: this.configuration.currency,

@@ -15,6 +15,7 @@ export const ProviderPublicStatusSchema = z.object({
   id: ProviderIdSchema,
   displayName: z.string().trim().min(1).max(120),
   category: RealProviderCategorySchema,
+  baseUrl: z.string().url().optional(),
   configured: z.boolean(),
   credentialMask: z.literal('••••••••').optional(),
   active: z.boolean(),

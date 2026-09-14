@@ -49,6 +49,8 @@ import type {
   TavilyRequestIdentity,
   TavilyRequestJournal,
 } from './tavily-research-tool'
+import { pricingEntryAt } from '@shared/provider-pricing-catalog'
+import type { IntelligenceRoutingStage, ResolvedIntelligenceRoute } from './llm-routing'
 
 export const REAL_EDITORIAL_OPERATION_BUDGETS = {
   researchPerRound: 0.048,
@@ -124,7 +126,7 @@ export class DurableRealEditorialPipeline {
       )
       const calls = new LedgeredWorkflowCallExecutor(
         ledger,
-        metadataFactory(pilot, executionId),
+        metadataFactory(pilot, executionId, durableProviders.intelligenceEngine),
         pilot.budget.taskLimitCost,
         operationId => durableOperationResultAvailable(
           this.dependencies.repository,
@@ -765,6 +767,7 @@ async function initialMissionForExecution(
 function metadataFactory(
   pilot: RealEditorialPilotRecord,
   executionId: string,
+  intelligenceEngine: IntelligenceEngine,
 ): LedgeredCallMetadataFactory {
   if (!pilot.budget) throw new DurableRealEditorialError('BUDGET_REQUIRED', 'Falta el presupuesto editorial')
   const policy = realEditorialPolicyById(pilot.policyId)
@@ -772,11 +775,12 @@ function metadataFactory(
   return {
     create(operationId, attempt, estimatedCost, retryOfCallId) {
       const research = operationId.endsWith(':research')
-      const providerId = research ? 'tavily' : 'openai'
-      const model = research ? 'search-and-extract' : policy.providers.model
+      const route = research ? undefined : intelligenceRouteForOperation(intelligenceEngine, operationId)
+      const providerId = research ? 'tavily' : route!.providerId
+      const model = research ? 'search-and-extract' : route!.model
       const tariffId = research
         ? 'morella-v1-tavily-search'
-        : 'morella-v1-openai-responses'
+        : pricingEntryAt(providerId, model, new Date())?.id ?? 'configured-responses-tariff'
       const operation = operationId.split(':').at(-1) ?? 'unknown'
       const stage = operationId.split(':').slice(-2).join('_')
       const payloadHash = createHash('sha256').update(JSON.stringify({
@@ -831,6 +835,27 @@ function metadataFactory(
         }),
       }
     },
+  }
+}
+
+function intelligenceRouteForOperation(
+  engine: IntelligenceEngine,
+  operationId: string,
+): ResolvedIntelligenceRoute {
+  const stage: IntelligenceRoutingStage = operationId.endsWith(':draft_adventure')
+    ? 'draft_adventure'
+    : operationId.endsWith(':draft_student')
+      ? 'draft_student'
+      : operationId.endsWith(':final-review')
+        ? 'review'
+        : 'analysis'
+  if ('routeFor' in engine && typeof engine.routeFor === 'function') {
+    return engine.routeFor(stage) as ResolvedIntelligenceRoute
+  }
+  return {
+    providerId: engine.id === 'deepseek' ? 'deepseek' : 'openai',
+    model: engine.model,
+    apiModel: engine.model,
   }
 }
 

@@ -14,6 +14,9 @@ export interface OpenAIResponseRequest {
   }
   max_output_tokens: number
   store: false
+  reasoning?: { effort: 'none' | 'low' | 'high' | 'max' }
+  temperature?: number
+  top_p?: number
 }
 
 export interface OpenAIResponsePayloadIssue {
@@ -32,7 +35,9 @@ export interface OpenAIResponsePayloadInspection {
   issues: OpenAIResponsePayloadIssue[]
 }
 
-const REQUEST_KEYS = new Set(['model', 'input', 'text', 'max_output_tokens', 'store'])
+const REQUEST_KEYS = new Set([
+  'model', 'input', 'text', 'max_output_tokens', 'store', 'reasoning', 'temperature', 'top_p',
+])
 const INPUT_KEYS = new Set(['role', 'content'])
 const TEXT_KEYS = new Set(['format'])
 const FORMAT_KEYS = new Set(['type', 'name', 'strict', 'schema'])
@@ -119,6 +124,24 @@ export function inspectOpenAIResponseRequest(
   }
   if (candidate.store !== false) {
     issue(issues, '$.store', 'invalid_parameter', 'El piloto no permite almacenar la respuesta en el proveedor')
+  }
+  if (candidate.reasoning !== undefined) {
+    if (!isRecord(candidate.reasoning) || !['none', 'low', 'high', 'max'].includes(String(candidate.reasoning.effort))) {
+      issue(issues, '$.reasoning', 'invalid_parameter', 'reasoning.effort no es compatible')
+    }
+  }
+  if (candidate.temperature !== undefined && (
+    typeof candidate.temperature !== 'number' || candidate.temperature < 0 || candidate.temperature > 2
+  )) {
+    issue(issues, '$.temperature', 'invalid_parameter', 'temperature debe estar entre 0 y 2')
+  }
+  if (candidate.top_p !== undefined && (
+    typeof candidate.top_p !== 'number' || candidate.top_p <= 0 || candidate.top_p > 1
+  )) {
+    issue(issues, '$.top_p', 'invalid_parameter', 'top_p debe estar entre 0 y 1')
+  }
+  if (candidate.temperature !== undefined && candidate.top_p !== undefined) {
+    issue(issues, '$', 'invalid_parameter', 'temperature y top_p no pueden configurarse simultáneamente')
   }
   return { valid: issues.length === 0, issues }
 }

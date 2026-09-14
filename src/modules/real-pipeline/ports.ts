@@ -79,7 +79,10 @@ export interface IntelligenceRoundAnalysis {
   gaps: RealKnowledgeGap[]
   decision: RealContinueDecision
   usage: {
+    providerId: string
+    model: string
     inputTokens: number
+    cachedInputTokens?: number
     outputTokens: number
     estimatedCost: number
     currency: 'EUR' | 'USD'
@@ -95,7 +98,10 @@ export interface IntelligenceDraft {
   promptVersion: string
   schemaVersion: string
   usage: {
+    providerId: string
+    model: string
     inputTokens: number
+    cachedInputTokens?: number
     outputTokens: number
     estimatedCost: number
     currency: 'EUR' | 'USD'
@@ -109,7 +115,10 @@ export interface IntelligenceReview {
   promptVersion: string
   schemaVersion: string
   usage: {
+    providerId: string
+    model: string
     inputTokens: number
+    cachedInputTokens?: number
     outputTokens: number
     estimatedCost: number
     currency: 'EUR' | 'USD'

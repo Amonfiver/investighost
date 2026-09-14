@@ -7,7 +7,7 @@ export const ProviderTariffStatusSchema = z.enum(['current', 'stale', 'unverifie
 
 export const ProviderPricingEntrySchema = z.object({
   id: z.string().trim().min(1).max(160),
-  providerId: z.enum(['tavily', 'openai']),
+  providerId: z.enum(['tavily', 'openai', 'deepseek']),
   product: z.string().trim().min(1).max(160),
   model: z.string().trim().min(1).max(160),
   snapshot: z.string().trim().min(1).max(160).optional(),
@@ -24,6 +24,7 @@ export const ProviderPricingEntrySchema = z.object({
   reviewAfter: TimestampSchema,
   sourceUrl: HttpsUrlSchema,
   verified: z.boolean(),
+  timeBand: z.enum(['peak', 'off_peak']).optional(),
 }).superRefine((entry, context) => {
   if (entry.operation === 'responses') {
     for (const field of ['inputPerMillion', 'cachedInputPerMillion', 'outputPerMillion'] as const) {
@@ -47,8 +48,8 @@ export type ProviderPricingCatalog = z.infer<typeof ProviderPricingCatalogSchema
 export type ProviderTariffStatus = z.infer<typeof ProviderTariffStatusSchema>
 
 export const PROVIDER_PRICING_CATALOG = ProviderPricingCatalogSchema.parse({
-  version: '2026-07-25.1',
-  publishedAt: '2026-07-25T00:00:00.000+02:00',
+  version: '2026-09-14.1',
+  publishedAt: '2026-09-14T00:00:00.000Z',
   entries: [
     {
       id: 'tavily-search-basic-2026-07-25',
@@ -63,6 +64,40 @@ export const PROVIDER_PRICING_CATALOG = ProviderPricingCatalogSchema.parse({
       verifiedAt: '2026-07-25T00:00:00.000+02:00',
       reviewAfter: '2026-08-25T00:00:00.000+02:00',
       sourceUrl: 'https://docs.tavily.com/documentation/api-credits',
+      verified: true,
+    },
+    {
+      id: 'deepseek-deepseek-flash-off-peak-2026-08-16',
+      providerId: 'deepseek',
+      product: 'DeepSeek Responses API V4.1 Flash',
+      model: 'deepseek-flash',
+      operation: 'responses',
+      currency: 'USD',
+      inputPerMillion: 0.22,
+      cachedInputPerMillion: 0.007,
+      outputPerMillion: 0.66,
+      timeBand: 'off_peak',
+      effectiveFrom: '2026-08-16T16:00:00.000Z',
+      verifiedAt: '2026-09-14T00:00:00.000Z',
+      reviewAfter: '2026-10-14T00:00:00.000Z',
+      sourceUrl: 'https://api-docs.deepseek.com/quick_start/pricing/',
+      verified: true,
+    },
+    {
+      id: 'deepseek-deepseek-flash-peak-2026-08-16',
+      providerId: 'deepseek',
+      product: 'DeepSeek Responses API V4.1 Flash',
+      model: 'deepseek-flash',
+      operation: 'responses',
+      currency: 'USD',
+      inputPerMillion: 0.44,
+      cachedInputPerMillion: 0.014,
+      outputPerMillion: 1.32,
+      timeBand: 'peak',
+      effectiveFrom: '2026-08-16T16:00:00.000Z',
+      verifiedAt: '2026-09-14T00:00:00.000Z',
+      reviewAfter: '2026-10-14T00:00:00.000Z',
+      sourceUrl: 'https://api-docs.deepseek.com/quick_start/pricing/',
       verified: true,
     },
     {
@@ -163,6 +198,8 @@ export const PROVIDER_PRICING_CATALOG = ProviderPricingCatalogSchema.parse({
 
 export const OPENAI_ALLOWED_MODELS = ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol'] as const
 export const OPENAI_DEFAULT_MODEL = OPENAI_ALLOWED_MODELS[0]
+export const DEEPSEEK_ALLOWED_MODELS = ['deepseek-flash'] as const
+export const DEEPSEEK_DEFAULT_MODEL = DEEPSEEK_ALLOWED_MODELS[0]
 
 export function pricingEntriesFor(
   providerId: string,
@@ -180,7 +217,32 @@ export function tariffStatus(
   return now.getTime() < new Date(entry.reviewAfter).getTime() ? 'current' : 'stale'
 }
 
+export function deepSeekPricingBand(now: Date): 'peak' | 'off_peak' {
+  const weekday = now.getUTCDay()
+  if (weekday === 0 || weekday === 6) return 'off_peak'
+  const hour = now.getUTCHours()
+  return (hour >= 1 && hour < 4) || (hour >= 6 && hour < 10) ? 'peak' : 'off_peak'
+}
+
+export function pricingEntryAt(
+  providerId: string,
+  model: string,
+  now: Date,
+  catalog: ProviderPricingCatalog = PROVIDER_PRICING_CATALOG,
+): ProviderPricingEntry | undefined {
+  const entries = pricingEntriesFor(providerId, model, catalog)
+  if (providerId === 'deepseek') {
+    return entries.find(entry => entry.timeBand === deepSeekPricingBand(now))
+  }
+  return entries.find(entry => entry.operation === 'responses') ?? entries[0]
+}
+
 export function pricingSummary(entries: ProviderPricingEntry[]): string {
+  const deepSeekPeak = entries.find(entry => entry.timeBand === 'peak')
+  const deepSeekOffPeak = entries.find(entry => entry.timeBand === 'off_peak')
+  if (deepSeekPeak && deepSeekOffPeak) {
+    return `DeepSeek peak/off-peak: $${deepSeekPeak.inputPerMillion}/$${deepSeekPeak.cachedInputPerMillion}/$${deepSeekPeak.outputPerMillion}; $${deepSeekOffPeak.inputPerMillion}/$${deepSeekOffPeak.cachedInputPerMillion}/$${deepSeekOffPeak.outputPerMillion} por 1M entrada/cache/salida`
+  }
   const responses = entries.find(entry => entry.operation === 'responses')
   if (responses) {
     return `$${responses.inputPerMillion}/$${responses.cachedInputPerMillion}/$${responses.outputPerMillion} por 1M tokens entrada/cache/salida`

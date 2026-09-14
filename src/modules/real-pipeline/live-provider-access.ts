@@ -20,6 +20,7 @@ export const LiveProviderAccessInputSchema = z.object({
   taskAuthorized: z.boolean(),
   budgetReserved: z.boolean(),
   globalGuardAcquired: z.boolean(),
+  intelligenceProviderIds: z.array(z.enum(['openai', 'deepseek'])).min(1).default(['openai']),
 })
 
 export type LiveProviderAccessErrorCode =
@@ -59,12 +60,13 @@ export function issueLiveProviderNetworkPermit(candidate: unknown): LiveProvider
       'El almacenamiento seguro de proveedores no está disponible',
     )
   }
-  for (const providerId of ['tavily', 'openai'] as const) {
+  const requiredProviderIds = ['tavily', ...new Set(input.intelligenceProviderIds)]
+  for (const providerId of requiredProviderIds) {
     const provider = input.providerCenter.providers.find(entry => entry.id === providerId)
     if (!provider?.configured) {
       throw new LiveProviderAccessError('PROVIDER_NOT_CONFIGURED', 'Falta una credencial de proveedor')
     }
-    if (!provider.active) {
+    if (providerId !== 'deepseek' && !provider.active) {
       throw new LiveProviderAccessError('PROVIDER_INACTIVE', 'Falta activar un proveedor requerido')
     }
     if (

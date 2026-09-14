@@ -418,7 +418,10 @@ describe('OpenAI IntelligenceEngine estructurado y sin red', () => {
       new AbortController().signal,
     )
     expect(result.usage).toEqual({
+      providerId: 'openai',
+      model: 'gpt-synthetic-structured',
       inputTokens: 1_000,
+      cachedInputTokens: 0,
       outputTokens: 500,
       estimatedCost: 0.002,
       currency: 'EUR',

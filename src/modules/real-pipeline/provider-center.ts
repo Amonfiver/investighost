@@ -14,6 +14,8 @@ import type { RealProviderCategory } from '@shared/real-pipeline-contracts'
 import {
   OPENAI_ALLOWED_MODELS,
   OPENAI_DEFAULT_MODEL,
+  DEEPSEEK_ALLOWED_MODELS,
+  DEEPSEEK_DEFAULT_MODEL,
   PROVIDER_PRICING_CATALOG,
   pricingEntriesFor,
   pricingSummary,
@@ -25,6 +27,7 @@ export interface ProviderCatalogEntry {
   id: string
   displayName: string
   category: RealProviderCategory
+  baseUrl?: string
   models: string[]
   defaultModel: string
 }
@@ -43,6 +46,14 @@ export const INITIAL_PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
     category: 'intelligence_engine',
     models: [...OPENAI_ALLOWED_MODELS],
     defaultModel: OPENAI_DEFAULT_MODEL,
+  },
+  {
+    id: 'deepseek',
+    displayName: 'DeepSeek',
+    category: 'intelligence_engine',
+    baseUrl: 'https://api.deepseek.com',
+    models: [...DEEPSEEK_ALLOWED_MODELS],
+    defaultModel: DEEPSEEK_DEFAULT_MODEL,
   },
 ]
 
@@ -165,6 +176,7 @@ export class ProviderCenterService {
           id: provider.id,
           displayName: provider.displayName,
           category: provider.category,
+          baseUrl: provider.baseUrl,
           configured,
           credentialMask: configured ? '••••••••' : undefined,
           active: configured && Boolean(stored?.active),
@@ -266,6 +278,7 @@ export class ProviderCenterService {
   async withCredential<T>(
     providerId: string,
     operation: (credential: string, selectedModel: string) => Promise<T>,
+    options: { requireActive?: boolean } = {},
   ): Promise<T> {
     this.assertSecure()
     const provider = this.provider(providerId)
@@ -273,7 +286,7 @@ export class ProviderCenterService {
     if (!stored?.encryptedCredential) {
       throw new ProviderCenterError('NOT_CONFIGURED', 'El proveedor debe configurarse antes de usarse')
     }
-    if (!stored.active) {
+    if ((options.requireActive ?? true) && !stored.active) {
       throw new ProviderCenterError('NOT_CONFIGURED', 'El proveedor debe estar activo antes de usarse')
     }
     const credential = this.decryptCredential(stored)

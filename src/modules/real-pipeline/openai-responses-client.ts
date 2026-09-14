@@ -30,6 +30,11 @@ export interface OpenAISdkResponsesClientDependencies {
   clientFactory?: (credential: string) => unknown
 }
 
+export interface OpenAICompatibleResponsesClientOptions {
+  providerLabel?: string
+  baseURL?: string
+}
+
 export type OpenAIResponsesCapabilityStatus =
   | 'available'
   | 'sdk_incompatible'
@@ -47,20 +52,25 @@ export interface OpenAIResponsesCapability {
 export class OpenAISdkResponsesClient implements OpenAIResponsesClient {
   private readonly client: OpenAISdkClient
   readonly capability: OpenAIResponsesCapability
+  private readonly providerLabel: string
 
   constructor(
     credential: string,
     private readonly networkPermit: LiveProviderNetworkPermit,
     dependencies: OpenAISdkResponsesClientDependencies = {},
+    options: OpenAICompatibleResponsesClientOptions = {},
   ) {
     assertLiveProviderNetworkPermit(networkPermit)
+    this.providerLabel = options.providerLabel ?? 'OpenAI'
     let candidate: unknown
     try {
-      candidate = (dependencies.clientFactory ?? defaultClientFactory)(credential)
+      candidate = dependencies.clientFactory
+        ? dependencies.clientFactory(credential)
+        : defaultClientFactory(credential, options.baseURL)
     } catch {
       throw new OpenAIIntelligenceError(
         'CLIENT_INVALID',
-        'El cliente OpenAI no pudo construirse',
+        `El cliente ${this.providerLabel} no pudo construirse`,
       )
     }
     this.capability = inspectOpenAIResponsesClient(candidate)
@@ -82,7 +92,7 @@ export class OpenAISdkResponsesClient implements OpenAIResponsesClient {
       const first = payload.issues[0]
       throw new OpenAIIntelligenceError(
         'INVALID_REQUEST',
-        `La petición OpenAI Responses no supera la validación local (${first?.path ?? 'contrato'})`,
+        `La petición ${this.providerLabel} Responses no supera la validación local (${first?.path ?? 'contrato'})`,
       )
     }
     let response: Response
@@ -92,19 +102,19 @@ export class OpenAISdkResponsesClient implements OpenAIResponsesClient {
         { signal },
       )
     } catch (error) {
-      throw classifyOpenAIError(error, signal)
+      throw classifyOpenAIError(error, signal, this.providerLabel)
     }
     if (response.error) {
       throw new OpenAIIntelligenceError(
         'REMOTE_RESPONSE_ERROR',
-        'OpenAI Responses devolvió un error',
+        `${this.providerLabel} Responses devolvió un error`,
         providerUsage(response.id),
       )
     }
     if (response.status !== 'completed' && response.status !== 'incomplete') {
       throw new OpenAIIntelligenceError(
         'REMOTE_INVALID_RESPONSE',
-        'OpenAI Responses no terminó en un estado conciliable',
+        `${this.providerLabel} Responses no terminó en un estado conciliable`,
         providerUsage(response.id),
       )
     }
@@ -161,8 +171,8 @@ export function inspectInstalledOpenAIResponsesCapability(
   }
 }
 
-function defaultClientFactory(credential: string): OpenAISdkClient {
-  return new OpenAI({ apiKey: credential, maxRetries: 0 }) as OpenAISdkClient
+function defaultClientFactory(credential: string, baseURL?: string): OpenAISdkClient {
+  return new OpenAI({ apiKey: credential, baseURL, maxRetries: 0 }) as OpenAISdkClient
 }
 
 function capabilityProbeClientFactory(): OpenAISdkClient {
@@ -217,13 +227,14 @@ function capabilityError(
 function classifyOpenAIError(
   error: unknown,
   signal: AbortSignal,
+  providerLabel: string,
 ): OpenAIIntelligenceError {
   if (error instanceof OpenAIIntelligenceError) return error
   if (signal.aborted || error instanceof OpenAI.APIUserAbortError) {
-    return new OpenAIIntelligenceError('CANCELLED', 'La operación OpenAI fue cancelada')
+    return new OpenAIIntelligenceError('CANCELLED', `La operación ${providerLabel} fue cancelada`)
   }
   if (error instanceof OpenAI.APIConnectionTimeoutError) {
-    return new OpenAIIntelligenceError('TIMEOUT', 'OpenAI superó el tiempo máximo')
+    return new OpenAIIntelligenceError('TIMEOUT', `${providerLabel} superó el tiempo máximo`)
   }
   const status = numberField(error, 'status')
   const body = isRecord(error) && isRecord(error.error) ? error.error : undefined
@@ -235,7 +246,7 @@ function classifyOpenAIError(
   if (status === 401 || code === 'invalid_api_key') {
     return new OpenAIIntelligenceError(
       'AUTHENTICATION_ERROR',
-      'OpenAI rechazó la credencial',
+      `${providerLabel} rechazó la credencial`,
       usage,
       remoteError,
     )
@@ -243,7 +254,7 @@ function classifyOpenAIError(
   if (code === 'model_not_found' || param === 'model') {
     return new OpenAIIntelligenceError(
       'MODEL_UNAVAILABLE',
-      'OpenAI no admite el modelo seleccionado',
+      `${providerLabel} no admite el modelo seleccionado`,
       usage,
       remoteError,
     )
@@ -256,7 +267,7 @@ function classifyOpenAIError(
     ].filter(Boolean).join('; ')
     return new OpenAIIntelligenceError(
       'REMOTE_HTTP_ERROR',
-      `OpenAI rechazó la petición (${detail})`,
+      `${providerLabel} rechazó la petición (${detail})`,
       usage,
       remoteError,
     )
@@ -264,12 +275,12 @@ function classifyOpenAIError(
   if (error instanceof OpenAI.APIConnectionError) {
     return new OpenAIIntelligenceError(
       'NETWORK_AMBIGUOUS',
-      'OpenAI no devolvió una respuesta de red conciliable',
+      `${providerLabel} no devolvió una respuesta de red conciliable`,
     )
   }
   return new OpenAIIntelligenceError(
     'CLIENT_ERROR',
-    'El cliente OpenAI falló antes de producir una respuesta clasificable',
+    `El cliente ${providerLabel} falló antes de producir una respuesta clasificable`,
   )
 }
 

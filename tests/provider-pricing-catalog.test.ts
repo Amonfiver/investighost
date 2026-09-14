@@ -12,11 +12,12 @@ describe('catálogo versionado de modelos y tarifas oficiales', () => {
   it('valida la versión, moneda, fuentes y fecha de revisión', () => {
     const catalog = ProviderPricingCatalogSchema.parse(PROVIDER_PRICING_CATALOG)
 
-    expect(catalog.version).toBe('2026-07-25.1')
+    expect(catalog.version).toBe('2026-09-14.1')
     expect(catalog.entries.every(entry => entry.currency === 'USD')).toBe(true)
     expect(catalog.entries.every(entry => entry.sourceUrl.startsWith('https://'))).toBe(true)
     expect(catalog.entries.every(entry => entry.sourceUrl.includes('openai.com')
-      || entry.sourceUrl.includes('tavily.com'))).toBe(true)
+      || entry.sourceUrl.includes('tavily.com')
+      || entry.sourceUrl.includes('deepseek.com'))).toBe(true)
     expect(catalog.entries.every(entry => entry.reviewAfter > entry.verifiedAt)).toBe(true)
   })
 

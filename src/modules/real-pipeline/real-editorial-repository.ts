@@ -2235,9 +2235,24 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     if (
       ambiguity.source_state !== 'unknown'
       || reservation.state !== 'unknown'
-      || reservation.provider_id !== 'tavily'
-      || reservation.operation !== 'research'
     ) return undefined
+    if (reservation.provider_id === 'tavily' && reservation.operation === 'research') {
+      return this.tavilyPrudentialReconciliationFor(pilot, ambiguity, reservation)
+    }
+    if (
+      ['openai', 'deepseek'].includes(String(reservation.provider_id))
+      && reservation.operation === 'analysis'
+    ) {
+      return this.intelligencePrudentialReconciliationFor(pilot, reservation)
+    }
+    return undefined
+  }
+
+  private async tavilyPrudentialReconciliationFor(
+    pilot: RealEditorialPilotRecord,
+    ambiguity: Record<string, unknown>,
+    reservation: Record<string, unknown>,
+  ): Promise<RealEditorialAmbiguousCall['prudentialReconciliation']> {
     const [tariffResult, requestEventResult, checkpoint] = await Promise.all([
       this.client.from('real_editorial_tariffs')
         .select('provider_id,model,operation,currency,unit_scale,credit_unit_cost')
@@ -2310,6 +2325,61 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       releasedReserveEur: moneyValue(
         maximumExposureEur - maximumSubrequestCostEur,
       ),
+      currency: 'EUR',
+      providerConfirmed: false,
+      possibleDuplicateCharge: true,
+      checkpointVersion: checkpoint.version,
+      workflowVersion,
+    }
+  }
+
+  private async intelligencePrudentialReconciliationFor(
+    pilot: RealEditorialPilotRecord,
+    reservation: Record<string, unknown>,
+  ): Promise<RealEditorialAmbiguousCall['prudentialReconciliation']> {
+    const [tariffResult, checkpoint] = await Promise.all([
+      this.client.from('real_editorial_tariffs')
+        .select('provider_id,model,operation,currency,unit_scale,input_unit_cost,output_unit_cost')
+        .eq('id', reservation.tariff_id).maybeSingle(),
+      this.latestArtifact(pilot.currentRunId, 'checkpoint', 'workflow'),
+    ])
+    assertNoError(tariffResult.error, 'No se pudo leer la tarifa de inteligencia ambigua')
+    if (!tariffResult.data || !checkpoint || !isRecord(checkpoint.payload)) {
+      throw new RealEditorialRepositoryError(
+        'CHECKPOINT_INVALID',
+        'La llamada de inteligencia ambigua no conserva tarifa y checkpoint conciliables',
+      )
+    }
+    const tariff = tariffResult.data
+    const providerId = String(reservation.provider_id)
+    const unitScale = Number(tariff.unit_scale)
+    const inputUnitCost = Number(tariff.input_unit_cost)
+    const outputUnitCost = Number(tariff.output_unit_cost)
+    const workflowVersion = checkpoint.payload.version
+    const maximumExposureEur = Number(reservation.reserved_cost)
+    const inputHash = String(reservation.input_hash ?? '')
+    if (
+      !['openai', 'deepseek'].includes(providerId)
+      || tariff.provider_id !== providerId
+      || tariff.model !== reservation.model
+      || tariff.operation !== 'responses'
+      || tariff.currency !== reservation.currency
+      || unitScale !== 1_000_000
+      || !Number.isFinite(inputUnitCost) || inputUnitCost <= 0
+      || !Number.isFinite(outputUnitCost) || outputUnitCost <= 0
+      || !Number.isFinite(maximumExposureEur) || maximumExposureEur <= 0
+      || typeof workflowVersion !== 'string' || workflowVersion.length === 0
+      || !/^[a-f0-9]{64}$/.test(inputHash)
+    ) {
+      throw new RealEditorialRepositoryError(
+        'BUDGET_INVALID',
+        'La llamada de inteligencia ambigua no conserva el contrato prudencial completo',
+      )
+    }
+    return {
+      query: `${providerId} analysis ${String(reservation.stage)}; request fingerprint ${inputHash}`,
+      maximumSubrequestCostEur: maximumExposureEur,
+      releasedReserveEur: 0,
       currency: 'EUR',
       providerConfirmed: false,
       possibleDuplicateCharge: true,

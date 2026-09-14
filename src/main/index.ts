@@ -608,6 +608,34 @@ async function runRealEditorialCuencaBenchmarkCommand(action: string): Promise<u
   }
   const pilotId = readE2E04PilotId(process.argv)
   if (action === 'confirm-budget') return runtime.confirmBudget({ pilotId })
+  if (action === 'reconcile-prudential') {
+    const progress = await runtime.progress({ pilotId })
+    const pending = progress.humanRequiredCall
+    if (
+      !pending
+      || pending.providerId !== 'deepseek'
+      || pending.operation !== 'analysis'
+      || pending.sourceState !== 'unknown'
+      || pending.maximumExposureEur !== 0.022
+      || !pending.prudentialReconciliation
+      || pending.prudentialReconciliation.maximumSubrequestCostEur !== 0.022
+    ) {
+      throw new Error('La ambigüedad durable no coincide con la conciliación prudencial Cuenca/DeepSeek')
+    }
+    return runtime.resolveAmbiguousCall({
+      pilotId,
+      runId: pending.runId,
+      callId: pending.callId,
+      actorId: MANUAL_LOCAL_ACTOR_ID,
+      decision: 'prudential_cost_assumed',
+      prudentialCostEur: 0.022,
+      currency: 'EUR',
+      reason: 'DeepSeek no confirmó consumo ni devolvió identificador remoto tras el timeout; se asume el máximo reservado.',
+      note: 'Decisión humana Investighost 037: cierre prudencial sin afirmar consumo confirmado.',
+      acceptsPotentialDuplicateCharge: true,
+      confirmed: true,
+    })
+  }
   if (action === 'start') return runtime.start({ pilotId })
   if (action === 'resume') return runtime.resume({ pilotId })
   if (action === 'progress') return runtime.progress({ pilotId })

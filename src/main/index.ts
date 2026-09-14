@@ -609,6 +609,7 @@ async function runRealEditorialCuencaBenchmarkCommand(action: string): Promise<u
   const pilotId = readE2E04PilotId(process.argv)
   if (action === 'confirm-budget') return runtime.confirmBudget({ pilotId })
   if (action === 'start') return runtime.start({ pilotId })
+  if (action === 'resume') return runtime.resume({ pilotId })
   if (action === 'progress') return runtime.progress({ pilotId })
   if (action === 'result') return runtime.result({ pilotId })
   throw new Error('Acción de benchmark Cuenca no reconocida')

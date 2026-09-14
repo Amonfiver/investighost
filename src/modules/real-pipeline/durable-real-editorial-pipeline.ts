@@ -872,7 +872,7 @@ function intelligenceRouteForOperation(
     return engine.routeFor(stage) as ResolvedIntelligenceRoute
   }
   return {
-    providerId: engine.id === 'deepseek' ? 'deepseek' : 'openai',
+    providerId: engine.id === 'deepseek' || engine.model === 'deepseek-flash' ? 'deepseek' : 'openai',
     model: engine.model,
     apiModel: engine.model,
   }

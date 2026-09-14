@@ -17,6 +17,7 @@ export interface LedgeredCallMetadataFactory {
     attempt: number,
     estimatedCost: number,
     retryOfCallId?: string,
+    inheritedReservation?: ProviderCallReservation,
   ): ProviderCallReservationInput
 }
 
@@ -220,6 +221,7 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
       attempt,
       adjustmentCost,
       reservation.callId,
+      reservation,
     ))
     if (adjustment.state === 'unknown') {
       throw new RealWorkflowError(

@@ -773,7 +773,7 @@ function metadataFactory(
   const policy = realEditorialPolicyById(pilot.policyId)
   const promptVersion = `${policy.normalizedDestination}-real-editorial-v1`
   return {
-    create(operationId, attempt, estimatedCost, retryOfCallId) {
+    create(operationId, attempt, estimatedCost, retryOfCallId, inheritedReservation) {
       const costAdjustment = operationId.endsWith(':cost-adjustment')
       const baseOperationId = costAdjustment
         ? operationId.slice(0, -':cost-adjustment'.length)
@@ -783,11 +783,12 @@ function metadataFactory(
       // convertirse en una reserva de inteligencia.
       const research = baseOperationId.endsWith(':research')
       const route = research ? undefined : intelligenceRouteForOperation(intelligenceEngine, baseOperationId)
-      const providerId = research ? 'tavily' : route!.providerId
-      const model = research ? 'search-and-extract' : route!.model
-      const tariffId = research
+      const inherited = costAdjustment ? inheritedReservation?.input : undefined
+      const providerId = inherited?.providerId ?? (research ? 'tavily' : route!.providerId)
+      const model = inherited?.model ?? (research ? 'search-and-extract' : route!.model)
+      const tariffId = inherited?.tariffId ?? (research
         ? 'morella-v1-tavily-search'
-        : pricingEntryAt(providerId, model, new Date())?.id ?? 'configured-responses-tariff'
+        : pricingEntryAt(providerId, model, new Date())?.id ?? 'configured-responses-tariff')
       const operation = costAdjustment ? 'cost-adjustment' : baseOperationId.split(':').at(-1) ?? 'unknown'
       const stage = `${baseOperationId.split(':').slice(-2).join('_')}${
         costAdjustment ? '_cost-adjustment' : ''
@@ -812,10 +813,10 @@ function metadataFactory(
         attempt,
         retryOfCallId,
         estimatedCost,
-        currency: 'EUR',
+        currency: inherited?.currency ?? 'EUR',
         tariffId,
-        promptVersion,
-        schemaVersion: 'real-editorial-snapshot-v1',
+        promptVersion: inherited?.promptVersion ?? promptVersion,
+        schemaVersion: inherited?.schemaVersion ?? 'real-editorial-snapshot-v1',
         inputHash: createProviderCallPayloadFingerprint({
           executionId,
           requestId: pilot.id,
@@ -831,10 +832,10 @@ function metadataFactory(
           retryOfCallId,
           estimatedCost,
           reservedCost: estimatedCost,
-          currency: 'EUR',
+          currency: inherited?.currency ?? 'EUR',
           tariffId,
-          promptVersion,
-          schemaVersion: 'real-editorial-snapshot-v1',
+          promptVersion: inherited?.promptVersion ?? promptVersion,
+          schemaVersion: inherited?.schemaVersion ?? 'real-editorial-snapshot-v1',
           payloadHash,
           maxInputTokens: 200_000,
           maxOutputTokens: 50_000,

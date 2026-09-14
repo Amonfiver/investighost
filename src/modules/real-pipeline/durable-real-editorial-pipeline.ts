@@ -166,6 +166,15 @@ export class DurableRealEditorialPipeline {
         },
       )
       const settings = defaultRealProfileSettings(this.now())
+      await reconcileStartedRoundOneResearch(
+        this.dependencies.ledgerRepository,
+        this.dependencies.repository,
+        pilot,
+        mission,
+        durableProviders.researchTool,
+        calls,
+        signal,
+      )
       const result = await pipeline.execute(mission, settings, signal)
       const roundResults = []
       for (const round of result.research.completedRounds) {
@@ -1038,4 +1047,30 @@ async function durableOperationResultAvailable(
     return Boolean(await repository.latestArtifact(runId, 'final_review', 'final'))
   }
   return false
+}
+
+async function reconcileStartedRoundOneResearch(
+  ledgerRepository: CostLedgerRepository,
+  repository: RealEditorialPilotRepository,
+  pilot: RealEditorialPilotRecord,
+  mission: RealResearchMission,
+  researchTool: ResearchTool,
+  calls: LedgeredWorkflowCallExecutor,
+  signal: AbortSignal,
+): Promise<void> {
+  if (!pilot.budget) return
+  const operationId = `${pilot.budget.taskId}:round:1:research`
+  const reservation = await ledgerRepository.findByIdempotencyKey(`${operationId}:attempt:1`)
+  if (reservation?.state !== 'started') return
+  const persisted = await repository.latestArtifact(pilot.currentRunId, 'tavily_result', 'round-1')
+  if (!persisted) return
+
+  // La respuesta Tavily ya fue persistida antes del fallo del ledger. Se la
+  // reinyecta por el executor canónico para conciliar reserva y ajuste sin
+  // volver a delegar al proveedor externo.
+  await calls.execute(
+    operationId,
+    REAL_EDITORIAL_OPERATION_BUDGETS.researchPerRound,
+    context => researchTool.research(mission, signal, context),
+  )
 }

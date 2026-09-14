@@ -12,7 +12,7 @@ describe('catálogo versionado de modelos y tarifas oficiales', () => {
   it('valida la versión, moneda, fuentes y fecha de revisión', () => {
     const catalog = ProviderPricingCatalogSchema.parse(PROVIDER_PRICING_CATALOG)
 
-    expect(catalog.version).toBe('2026-09-14.1')
+    expect(catalog.version).toBe('2026-09-14.2')
     expect(catalog.entries.every(entry => entry.currency === 'USD')).toBe(true)
     expect(catalog.entries.every(entry => entry.sourceUrl.startsWith('https://'))).toBe(true)
     expect(catalog.entries.every(entry => entry.sourceUrl.includes('openai.com')
@@ -48,6 +48,19 @@ describe('catálogo versionado de modelos y tarifas oficiales', () => {
     ]))
   })
 
+  it('registra la revisión humana Tavily de 2026-09-14 durante 30 días', () => {
+    const entries = pricingEntriesFor('tavily', 'search-and-extract')
+    expect(entries).toHaveLength(4)
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        verifiedAt: '2026-09-14T00:00:00.000Z',
+        reviewAfter: '2026-10-14T00:00:00.000Z',
+        sourceUrl: 'https://www.tavily.com/pricing',
+      }),
+    ]))
+    expect(entries.every(entry => tariffStatus(entry, new Date('2026-09-14T12:00:00.000Z')) === 'current')).toBe(true)
+  })
+
   it('solo permite modelos OpenAI con tarifa explícita actual', () => {
     expect(OPENAI_DEFAULT_MODEL).toBe('gpt-5.6-luna')
     expect(OPENAI_ALLOWED_MODELS).toEqual([
@@ -68,7 +81,7 @@ describe('catálogo versionado de modelos y tarifas oficiales', () => {
   it('caduca la tarifa al llegar su fecha de revisión', () => {
     const entry = PROVIDER_PRICING_CATALOG.entries[0]
 
-    expect(tariffStatus(entry, new Date('2026-08-24T23:59:59.000+02:00'))).toBe('current')
+    expect(tariffStatus(entry, new Date('2026-10-13T23:59:59.000Z'))).toBe('current')
     expect(tariffStatus(entry, new Date(entry.reviewAfter))).toBe('stale')
   })
 })

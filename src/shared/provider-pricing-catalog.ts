@@ -48,7 +48,7 @@ export type ProviderPricingCatalog = z.infer<typeof ProviderPricingCatalogSchema
 export type ProviderTariffStatus = z.infer<typeof ProviderTariffStatusSchema>
 
 export const PROVIDER_PRICING_CATALOG = ProviderPricingCatalogSchema.parse({
-  version: '2026-09-16.1',
+  version: '2026-09-16.2',
   publishedAt: '2026-09-16T00:00:00.000Z',
   entries: [
     {
@@ -146,18 +146,18 @@ export const PROVIDER_PRICING_CATALOG = ProviderPricingCatalogSchema.parse({
       verified: true,
     },
     {
-      id: 'openai-gpt-5.6-luna-2026-07-25',
+      id: 'openai-gpt-5.6-luna-2026-09-16',
       providerId: 'openai',
       product: 'OpenAI Responses API',
       model: 'gpt-5.6-luna',
       operation: 'responses',
       currency: 'USD',
-      inputPerMillion: 1,
-      cachedInputPerMillion: 0.1,
-      outputPerMillion: 6,
-      effectiveFrom: '2026-07-25T00:00:00.000+02:00',
-      verifiedAt: '2026-07-25T00:00:00.000+02:00',
-      reviewAfter: '2026-08-25T00:00:00.000+02:00',
+      inputPerMillion: 0.2,
+      cachedInputPerMillion: 0.02,
+      outputPerMillion: 1.2,
+      effectiveFrom: '2026-09-16T00:00:00.000Z',
+      verifiedAt: '2026-09-16T00:00:00.000Z',
+      reviewAfter: '2026-10-16T00:00:00.000Z',
       sourceUrl: 'https://developers.openai.com/api/docs/models/gpt-5.6-luna',
       verified: true,
     },

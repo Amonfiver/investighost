@@ -12,7 +12,7 @@ describe('catálogo versionado de modelos y tarifas oficiales', () => {
   it('valida la versión, moneda, fuentes y fecha de revisión', () => {
     const catalog = ProviderPricingCatalogSchema.parse(PROVIDER_PRICING_CATALOG)
 
-    expect(catalog.version).toBe('2026-09-16.1')
+    expect(catalog.version).toBe('2026-09-16.2')
     expect(catalog.entries.every(entry => entry.currency === 'USD')).toBe(true)
     expect(catalog.entries.every(entry => entry.sourceUrl.startsWith('https://'))).toBe(true)
     expect(catalog.entries.every(entry => entry.sourceUrl.includes('openai.com')
@@ -84,9 +84,10 @@ describe('catálogo versionado de modelos y tarifas oficiales', () => {
     ])
     expect(pricingEntriesFor('openai', 'gpt-5.6-luna')).toEqual([
       expect.objectContaining({
-        inputPerMillion: 1,
-        cachedInputPerMillion: 0.1,
-        outputPerMillion: 6,
+        id: 'openai-gpt-5.6-luna-2026-09-16',
+        inputPerMillion: 0.2,
+        cachedInputPerMillion: 0.02,
+        outputPerMillion: 1.2,
       }),
     ])
     expect(pricingEntriesFor('openai', 'modelo-no-permitido')).toEqual([])

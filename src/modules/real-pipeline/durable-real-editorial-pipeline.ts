@@ -290,17 +290,18 @@ export class DurableRealEditorialPipeline {
         )
       }
       const operationId = `${mission.taskId}:round:1:analysis`
-      const previous = await this.dependencies.ledgerRepository.findByIdempotencyKey(
-        `${operationId}:attempt:3`,
-      )
-      if (previous?.state !== 'reconciled' || await durableOperationResultAvailable(
+      const attempts = await Promise.all([...Array(9)].map(async (_value, index) =>
+        this.dependencies.ledgerRepository.findByIdempotencyKey(`${operationId}:attempt:${index + 1}`),
+      ))
+      const previous = [...attempts].reverse().find((attempt): attempt is NonNullable<typeof attempt> => Boolean(attempt))
+      if (!previous || !['reconciled', 'failed', 'cancelled'].includes(previous.state) || await durableOperationResultAvailable(
         this.dependencies.repository,
         pilot.currentRunId,
         operationId,
       )) {
         throw new DurableRealEditorialError(
           'CHECKPOINT_REQUIRED',
-          'La recuperación requiere exactamente el attempt 3 conciliado sin artifact',
+          'La recuperación requiere una secuencia terminal de analysis sin artifact durable',
         )
       }
       const durableProviders = durableProvidersFor(
@@ -315,7 +316,7 @@ export class DurableRealEditorialPipeline {
         operation => durableOperationResultAvailable(this.dependencies.repository, pilot.currentRunId, operation),
         pilot.budget.spentCost,
       )
-      calls.seedAttempt(operationId, 3, previous.callId)
+      calls.seedAttempt(operationId, previous.input.attempt, previous.callId)
       durableProviders.intelligenceEngine.validateAnalyze?.(mission, checkpoint.dossier)
       const analysis = await calls.execute(
         operationId,
@@ -323,10 +324,10 @@ export class DurableRealEditorialPipeline {
         context => durableProviders.intelligenceEngine.analyze(mission, checkpoint.dossier!, signal, context),
       )
       const reservation = await this.dependencies.ledgerRepository.findByIdempotencyKey(
-        `${operationId}:attempt:4`,
+        `${operationId}:attempt:${previous.input.attempt + 1}`,
       )
       if (!reservation || reservation.state !== 'reconciled') {
-        throw new DurableRealEditorialError('CHECKPOINT_REQUIRED', 'El attempt 4 no quedó conciliado durablemente')
+        throw new DurableRealEditorialError('CHECKPOINT_REQUIRED', 'El nuevo attempt no quedó conciliado durablemente')
       }
       return { analysis, reservation }
     } finally {

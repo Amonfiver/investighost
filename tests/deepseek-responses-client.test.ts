@@ -74,6 +74,7 @@ describe('adapter DeepSeek Responses', () => {
         input_tokens: 2_048,
         output_tokens: 12_000,
         input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 0 },
       },
     })
   })

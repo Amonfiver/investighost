@@ -45,6 +45,9 @@ export interface OpenAIResponseEnvelope {
     input_tokens_details?: {
       cached_tokens: number
     }
+    output_tokens_details?: {
+      reasoning_tokens: number
+    }
   }
 }
 
@@ -391,6 +394,7 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     const inputTokens = response.usage.input_tokens
     const outputTokens = response.usage.output_tokens
     const cachedInputTokens = response.usage.input_tokens_details?.cached_tokens ?? 0
+    const reasoningTokens = response.usage.output_tokens_details?.reasoning_tokens ?? 0
     const uncachedInputTokens = Math.max(0, inputTokens - cachedInputTokens)
     const estimatedCost = this.configuration.costForUsage
       ? this.configuration.costForUsage({
@@ -407,6 +411,7 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
       model: this.model,
       inputTokens,
       cachedInputTokens,
+      reasoningTokens,
       outputTokens,
       estimatedCost,
       currency: this.configuration.currency,
@@ -422,6 +427,8 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
       calculatedCost: usage.estimatedCost,
       toolCalls: 1,
       inputTokens: usage.inputTokens,
+      cachedInputTokens: usage.cachedInputTokens,
+      reasoningTokens: usage.reasoningTokens,
       outputTokens: usage.outputTokens,
     }
   }

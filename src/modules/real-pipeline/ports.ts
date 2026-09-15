@@ -38,6 +38,8 @@ export interface ProviderFailureUsage {
   calculatedCost: number
   toolCalls: number
   inputTokens?: number
+  cachedInputTokens?: number
+  reasoningTokens?: number
   outputTokens?: number
   outputHash?: string
 }
@@ -83,6 +85,7 @@ export interface IntelligenceRoundAnalysis {
     model: string
     inputTokens: number
     cachedInputTokens?: number
+    reasoningTokens?: number
     outputTokens: number
     estimatedCost: number
     currency: 'EUR' | 'USD'

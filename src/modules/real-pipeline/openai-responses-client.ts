@@ -136,6 +136,9 @@ export class OpenAISdkResponsesClient implements OpenAIResponsesClient {
         input_tokens_details: {
           cached_tokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
         },
+        output_tokens_details: {
+          reasoning_tokens: response.usage?.output_tokens_details?.reasoning_tokens ?? 0,
+        },
       },
     }
   }

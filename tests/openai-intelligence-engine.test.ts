@@ -395,6 +395,18 @@ describe('OpenAI IntelligenceEngine estructurado y sin red', () => {
     expect(client.requests[0].reasoning).toEqual({ effort: 'low' })
   })
 
+  it('omite reasoning por defecto y envía effort none cuando la ruta lo exige', async () => {
+    const omitted = new FakeResponsesClient([response(analysisOutput())])
+    await engine(omitted).analyze(mission(), dossier(), new AbortController().signal)
+    expect(omitted.requests[0]).not.toHaveProperty('reasoning')
+
+    const disabled = new FakeResponsesClient([response(analysisOutput())])
+    await engine(disabled, { reasoningEffort: 'none' }).analyze(
+      mission(), dossier(), new AbortController().signal,
+    )
+    expect(disabled.requests[0].reasoning).toEqual({ effort: 'none' })
+  })
+
   it('rechaza JSON inválido y salida ajena al schema', async () => {
     const invalidJson = response()
     invalidJson.output_text = '{'
@@ -456,6 +468,7 @@ describe('OpenAI IntelligenceEngine estructurado y sin red', () => {
       model: 'gpt-synthetic-structured',
       inputTokens: 1_000,
       cachedInputTokens: 0,
+      reasoningTokens: 0,
       outputTokens: 500,
       estimatedCost: 0.002,
       currency: 'EUR',

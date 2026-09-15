@@ -46,13 +46,24 @@ describe('routing LLM configurable', () => {
       INVESTIGHOST_LLM_DEFAULT_TOP_P: '0.9',
     })).not.toThrow()
   })
+
+  it('envía reasoning none únicamente cuando la ruta DeepSeek lo pide explícitamente', () => {
+    const omitted = readRealLlmRouting({})
+    const explicit = readRealLlmRouting({ INVESTIGHOST_LLM_ANALYSIS_REASONING_EFFORT: 'none' })
+
+    expect(omitted.routes.analysis.reasoningEffort).toBeUndefined()
+    expect(explicit.routes.analysis).toMatchObject({
+      providerId: 'deepseek', model: 'deepseek-flash', reasoningEffort: 'none',
+    })
+    expect(explicit.routes.draft_student).toMatchObject({ providerId: 'deepseek', model: 'deepseek-flash' })
+  })
 })
 
 describe('tarifa DeepSeek peak/off-peak', () => {
   it.each([
-    ['lunes 01:00 UTC', '2026-09-14T01:00:00.000Z', 'peak', 0.44, 0.014, 1.32],
-    ['lunes 04:00 UTC', '2026-09-14T04:00:00.000Z', 'off_peak', 0.22, 0.007, 0.66],
-    ['sábado 06:00 UTC', '2026-09-19T06:00:00.000Z', 'off_peak', 0.22, 0.007, 0.66],
+    ['lunes 01:00 UTC', '2026-09-14T01:00:00.000Z', 'peak', 0.30, 0.006, 1.20],
+    ['lunes 04:00 UTC', '2026-09-14T04:00:00.000Z', 'off_peak', 0.15, 0.003, 0.60],
+    ['sábado 06:00 UTC', '2026-09-19T06:00:00.000Z', 'off_peak', 0.15, 0.003, 0.60],
   ])('%s', (_label, timestamp, band, input, cached, output) => {
     const now = new Date(timestamp)
     expect(deepSeekPricingBand(now)).toBe(band)

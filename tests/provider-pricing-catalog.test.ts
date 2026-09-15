@@ -12,13 +12,27 @@ describe('catálogo versionado de modelos y tarifas oficiales', () => {
   it('valida la versión, moneda, fuentes y fecha de revisión', () => {
     const catalog = ProviderPricingCatalogSchema.parse(PROVIDER_PRICING_CATALOG)
 
-    expect(catalog.version).toBe('2026-09-14.2')
+    expect(catalog.version).toBe('2026-09-16.1')
     expect(catalog.entries.every(entry => entry.currency === 'USD')).toBe(true)
     expect(catalog.entries.every(entry => entry.sourceUrl.startsWith('https://'))).toBe(true)
     expect(catalog.entries.every(entry => entry.sourceUrl.includes('openai.com')
       || entry.sourceUrl.includes('tavily.com')
       || entry.sourceUrl.includes('deepseek.com'))).toBe(true)
     expect(catalog.entries.every(entry => entry.reviewAfter > entry.verifiedAt)).toBe(true)
+  })
+
+  it('versiona la tarifa vigente de DeepSeek V4.1 Flash sin reescribir receipts históricos', () => {
+    expect(pricingEntriesFor('deepseek', 'deepseek-flash')).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'deepseek-deepseek-flash-off-peak-2026-09-16',
+        inputPerMillion: 0.15, cachedInputPerMillion: 0.003, outputPerMillion: 0.60,
+        verifiedAt: '2026-09-16T00:00:00.000Z', reviewAfter: '2026-10-16T00:00:00.000Z',
+      }),
+      expect.objectContaining({
+        id: 'deepseek-deepseek-flash-peak-2026-09-16',
+        inputPerMillion: 0.30, cachedInputPerMillion: 0.006, outputPerMillion: 1.20,
+      }),
+    ]))
   })
 
   it('conserva Search, Extract basic/advanced y su coste por crédito', () => {

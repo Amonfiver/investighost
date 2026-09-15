@@ -474,8 +474,8 @@ export class RealEditorialPilotRuntime {
       || route.model !== 'deepseek-flash'
       || route.apiModel !== 'deepseek-v4-flash'
       || route.timeoutMs !== 90_000
-      || route.maxOutputTokens !== 12_000
-      || route.reasoningEffort !== undefined
+      || route.maxOutputTokens !== 10_000
+      || route.reasoningEffort !== 'none'
       || route.temperature !== undefined
       || route.topP !== undefined
     ) {

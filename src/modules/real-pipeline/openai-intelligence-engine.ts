@@ -168,27 +168,31 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
       this.analysisResponseSchema(),
       signal,
     )
-    const intermediate = parseStructuredOutput(response, this.analysisResponseSchema())
-    const output = this.configuration.analysisResponseTransformer
-      ? parseTransformedAnalysis(intermediate, this.configuration.analysisResponseTransformer)
-      : OpenAIRoundAnalysisOutputSchema.parse(intermediate)
-    if (mission.round === 2 && output.decision.action === 'continue_focused') {
-      throw new OpenAIIntelligenceError('INVALID_RESPONSE', 'El motor intentó proponer una tercera investigación')
-    }
-    return {
-      masterKnowledge: RealMasterKnowledgeSchema.parse({
-        requestId: mission.requestId,
-        destinationId: mission.destination.canonicalId,
-        revision: mission.round,
-        claims: output.claims,
-        contradictions: output.contradictions,
-        generatedAt: mission.createdAt,
-      }),
-      coverage: output.coverage,
-      proposedQueries: output.proposedQueries,
-      gaps: output.gaps,
-      decision: output.decision,
-      usage: this.usage(response),
+    try {
+      const intermediate = parseStructuredOutput(response, this.analysisResponseSchema())
+      const output = this.configuration.analysisResponseTransformer
+        ? parseTransformedAnalysis(intermediate, this.configuration.analysisResponseTransformer)
+        : OpenAIRoundAnalysisOutputSchema.parse(intermediate)
+      if (mission.round === 2 && output.decision.action === 'continue_focused') {
+        throw new OpenAIIntelligenceError('INVALID_RESPONSE', 'El motor intentó proponer una tercera investigación')
+      }
+      return {
+        masterKnowledge: RealMasterKnowledgeSchema.parse({
+          requestId: mission.requestId,
+          destinationId: mission.destination.canonicalId,
+          revision: mission.round,
+          claims: output.claims,
+          contradictions: output.contradictions,
+          generatedAt: mission.createdAt,
+        }),
+        coverage: output.coverage,
+        proposedQueries: output.proposedQueries,
+        gaps: output.gaps,
+        decision: output.decision,
+        usage: this.usage(response),
+      }
+    } catch (error) {
+      throw this.withCompletedResponseUsage(error, response)
     }
   }
 
@@ -431,6 +435,31 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
       reasoningTokens: usage.reasoningTokens,
       outputTokens: usage.outputTokens,
     }
+  }
+
+  /**
+   * Un JSON que falla el contrato local sigue siendo una respuesta completada
+   * y facturable. Conservamos su receipt remoto/uso para que el ledger no la
+   * convierta erróneamente en un fallo de coste cero.
+   */
+  private withCompletedResponseUsage(
+    error: unknown,
+    response: OpenAIResponseEnvelope,
+  ): OpenAIIntelligenceError {
+    if (error instanceof OpenAIIntelligenceError && error.providerUsage) return error
+    if (error instanceof OpenAIIntelligenceError) {
+      return new OpenAIIntelligenceError(
+        error.code,
+        error.message,
+        this.failureUsage(response),
+        error.remoteError,
+      )
+    }
+    return new OpenAIIntelligenceError(
+      'INVALID_RESPONSE',
+      'La salida completada no supera la validación estructurada local',
+      this.failureUsage(response),
+    )
   }
 }
 

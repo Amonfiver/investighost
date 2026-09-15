@@ -140,6 +140,30 @@ describe('envelope reducido para analysis DeepSeek, sin red', () => {
       .rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
   })
 
+  it('conserva uso y remote id cuando una respuesta completed falla el contrato canónico', async () => {
+    const incompleteCanonical = analysis()
+    delete incompleteCanonical.decision
+    const client = new FakeResponsesClient({
+      id: 'ds-completed-invalid-canonical', status: 'completed',
+      output_text: JSON.stringify({ canonicalJson: JSON.stringify(incompleteCanonical) }),
+      usage: {
+        input_tokens: 100,
+        output_tokens: 50,
+        input_tokens_details: { cached_tokens: 90 },
+        output_tokens_details: { reasoning_tokens: 0 },
+      },
+    })
+
+    await expect(deepSeekEngine(client).analyze(mission(), dossier(), new AbortController().signal))
+      .rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+        providerUsage: {
+          providerRequestIds: ['ds-completed-invalid-canonical'],
+          inputTokens: 100, cachedInputTokens: 90, reasoningTokens: 0, outputTokens: 50,
+        },
+      })
+  })
+
   it('usa una sola subllamada auditable y solo acepta el resultado canónico', async () => {
     const client = new FakeResponsesClient({ id: 'ds-envelope-1', status: 'completed', output_text: JSON.stringify({ canonicalJson: JSON.stringify(analysis()) }), usage: { input_tokens: 100, output_tokens: 50 } })
     const result = await deepSeekEngine(client).analyze(mission(), dossier(), new AbortController().signal)

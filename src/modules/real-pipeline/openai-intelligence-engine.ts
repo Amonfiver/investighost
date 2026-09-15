@@ -1,9 +1,10 @@
 import { zodTextFormat } from 'openai/helpers/zod'
-import type { ZodTypeAny } from 'zod'
+import type { SafeParseReturnType, ZodTypeAny } from 'zod'
 import {
   OpenAIDraftOutputSchema,
   OpenAIReviewOutputSchema,
   OpenAIRoundAnalysisOutputSchema,
+  type OpenAIRoundAnalysisOutput,
 } from '@shared/openai-intelligence-contracts'
 import {
   RealMasterKnowledgeSchema,
@@ -67,6 +68,10 @@ export interface OpenAIIntelligenceConfiguration {
   reasoningEffort?: 'none' | 'low' | 'high' | 'max'
   temperature?: number
   topP?: number
+  /** Schema de transporte para analysis; el resultado sigue transformándose al contrato canónico. */
+  analysisResponseSchema?: ZodTypeAny
+  analysisResponseTransformer?: (candidate: unknown) => SafeParseReturnType<unknown, OpenAIRoundAnalysisOutput>
+  analysisInstruction?: string
   costForUsage?: (usage: {
     inputTokens: number
     cachedInputTokens: number
@@ -156,11 +161,14 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     const dossier = RealResearchDossierSchema.parse(dossierCandidate)
     const response = await this.call(
       'round_analysis',
-      analysisPayload(mission, dossier),
-      OpenAIRoundAnalysisOutputSchema,
+      analysisPayload(mission, dossier, this.configuration.analysisInstruction),
+      this.analysisResponseSchema(),
       signal,
     )
-    const output = parseStructuredOutput(response, OpenAIRoundAnalysisOutputSchema)
+    const intermediate = parseStructuredOutput(response, this.analysisResponseSchema())
+    const output = this.configuration.analysisResponseTransformer
+      ? parseTransformedAnalysis(intermediate, this.configuration.analysisResponseTransformer)
+      : OpenAIRoundAnalysisOutputSchema.parse(intermediate)
     if (mission.round === 2 && output.decision.action === 'continue_focused') {
       throw new OpenAIIntelligenceError('INVALID_RESPONSE', 'El motor intentó proponer una tercera investigación')
     }
@@ -187,7 +195,7 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
   ): void {
     const mission = RealResearchMissionSchema.parse(missionCandidate)
     const dossier = RealResearchDossierSchema.parse(dossierCandidate)
-    this.buildRequest('round_analysis', analysisPayload(mission, dossier), OpenAIRoundAnalysisOutputSchema)
+    this.buildRequest('round_analysis', analysisPayload(mission, dossier, this.configuration.analysisInstruction), this.analysisResponseSchema())
   }
 
   async draft(
@@ -375,6 +383,10 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     return request
   }
 
+  private analysisResponseSchema(): ZodTypeAny {
+    return this.configuration.analysisResponseSchema ?? OpenAIRoundAnalysisOutputSchema
+  }
+
   private usage(response: OpenAIResponseEnvelope) {
     const inputTokens = response.usage.input_tokens
     const outputTokens = response.usage.output_tokens
@@ -472,6 +484,7 @@ function invalidRequestError(issues: OpenAIResponsePayloadIssue[]): OpenAIIntell
 function analysisPayload(
   mission: RealResearchMission,
   dossier: RealResearchDossier,
+  outputContractInstruction?: string,
 ): Record<string, unknown> {
   return {
     mission,
@@ -480,7 +493,7 @@ function analysisPayload(
       'Analiza únicamente el expediente recibido. No navegues ni presupongas fuentes externas.',
       'No propongas más investigación para elevar solo el porcentaje de cobertura; una query debe',
       'resolver un gap material concreto y preservar una redacción prudente por perfil.',
-    ].join(' '),
+    ].join(' ') + (outputContractInstruction ? ` ${outputContractInstruction}` : ''),
   }
 }
 
@@ -556,6 +569,17 @@ function parseStructuredOutput<T>(
   const parsed = schema.safeParse(decoded)
   if (!parsed.success) {
     throw new OpenAIIntelligenceError('INVALID_RESPONSE', 'La salida no cumple el esquema estricto')
+  }
+  return parsed.data
+}
+
+function parseTransformedAnalysis(
+  candidate: unknown,
+  transform: (candidate: unknown) => SafeParseReturnType<unknown, OpenAIRoundAnalysisOutput>,
+): OpenAIRoundAnalysisOutput {
+  const parsed = transform(candidate)
+  if (!parsed.success) {
+    throw new OpenAIIntelligenceError('INVALID_RESPONSE', 'La salida intermedia no cumple el contrato canónico')
   }
   return parsed.data
 }

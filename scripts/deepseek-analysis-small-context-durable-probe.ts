@@ -4,9 +4,9 @@ import { promisify } from 'node:util'
 import path from 'node:path'
 import dotenv from 'dotenv'
 import { zodTextFormat } from 'openai/helpers/zod'
-import { OpenAIRoundAnalysisOutputSchema } from '../src/shared/openai-intelligence-contracts'
 import { pricingEntryAt } from '../src/shared/provider-pricing-catalog'
 import { DeepSeekResponsesClient, deepSeekSdkClientFactory } from '../src/modules/real-pipeline/deepseek-responses-client'
+import { DEEPSEEK_ANALYSIS_ENVELOPE_INSTRUCTION, DeepSeekRoundAnalysisEnvelopeSchema, canonicalAnalysisFromDeepSeekEnvelope } from '../src/modules/real-pipeline/deepseek-analysis-envelope'
 import { DurableProbeCapture } from '../src/modules/real-pipeline/durable-probe-capture'
 import { issueLiveProviderNetworkPermit } from '../src/modules/real-pipeline/live-provider-access'
 import { OpenAIIntelligenceEngine } from '../src/modules/real-pipeline/openai-intelligence-engine'
@@ -29,7 +29,7 @@ async function main(): Promise<void> {
   const [mission, source] = await readProbeInputs()
   const dossier = makeDossier(mission, source)
   const request = requestMeasurement(mission, dossier)
-  await capture.begin('deepseek-analysis-small-context-v2', {
+  await capture.begin('deepseek-analysis-envelope-v1', {
     status: 'preflight',
     cuenca: { pilotId, runId, sourceReadOnly: true, truncatedSourceCharacters: source.content.length },
     request,
@@ -72,6 +72,9 @@ async function main(): Promise<void> {
         providerId: 'deepseek', model: 'deepseek-v4-flash', telemetryModel: 'deepseek-flash',
         maxOutputTokens, timeoutMs, currency: 'EUR', simulation: false,
         costForUsage: usage => costEur(usage.inputTokens, usage.cachedInputTokens, usage.outputTokens) ?? 0,
+        analysisResponseSchema: DeepSeekRoundAnalysisEnvelopeSchema,
+        analysisResponseTransformer: canonicalAnalysisFromDeepSeekEnvelope,
+        analysisInstruction: DEEPSEEK_ANALYSIS_ENVELOPE_INSTRUCTION,
       })
       return engine.analyze(mission as never, dossier as never, new AbortController().signal)
     })
@@ -134,10 +137,10 @@ function requestMeasurement(mission: RecordValue, dossier: RecordValue): RecordV
   const instruction = 'Analiza únicamente el expediente recibido. No navegues ni presupongas fuentes externas. No propongas más investigación para elevar solo el porcentaje de cobertura; una query debe resolver un gap material concreto y preservar una redacción prudente por perfil.'
   const system = ['Investighost · prompt real-editorial-v1.', 'Trabaja solo con el JSON proporcionado.', 'No uses navegación web, herramientas externas ni conocimientos no respaldados por el expediente.'].join(' ')
   const user = JSON.stringify({ operation: 'round_analysis', mission, dossier, instruction })
-  const schema = zodTextFormat(OpenAIRoundAnalysisOutputSchema, 'round_analysis').schema
+  const schema = zodTextFormat(DeepSeekRoundAnalysisEnvelopeSchema, 'round_analysis').schema
   return {
     provider: 'deepseek', logicalModel: 'deepseek-flash', apiModel: 'deepseek-v4-flash', timeoutMs, maxOutputTokens,
-    reasoning: 'omitted', temperature: 'omitted', topP: 'omitted', textFormat: 'json_schema', strict: true, store: false, tools: [], sdkRetries: 0,
+    reasoning: 'omitted', temperature: 'omitted', topP: 'omitted', textFormat: 'json_schema', strict: true, schemaMode: 'deepseek_analysis_envelope_v1', store: false, tools: [], sdkRetries: 0,
     systemChars: system.length, systemBytes: Buffer.byteLength(system), userChars: user.length, userBytes: Buffer.byteLength(user),
     totalInputChars: system.length + user.length, totalInputBytes: Buffer.byteLength(system) + Buffer.byteLength(user),
     estimatedTokensAt4Chars: Math.ceil((system.length + user.length) / 4), schemaBytes: Buffer.byteLength(JSON.stringify(schema)),
@@ -202,7 +205,8 @@ function errorSummary(error: unknown): RecordValue {
   return {
     name: error instanceof Error ? error.name : undefined, code: stringValue(value.code), type: stringValue(remote.type) ?? stringValue(value.type),
     status: typeof remote.status === 'number' ? remote.status : typeof value.status === 'number' ? value.status : undefined,
-    remoteCode: stringValue(remote.code), param: stringValue(remote.param) ?? stringValue(value.param), message: sanitize(error instanceof Error ? error.message : undefined),
+    remoteCode: stringValue(remote.code), param: stringValue(remote.param) ?? stringValue(value.param),
+    message: sanitize(stringValue(remote.message) ?? (error instanceof Error ? error.message : undefined)),
   }
 }
 

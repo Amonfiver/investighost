@@ -2,6 +2,7 @@ import type { ProviderCenterSnapshot } from '@shared/provider-center-contracts'
 import { pricingEntryAt, tariffStatus } from '@shared/provider-pricing-catalog'
 import { ProviderCenterError, type ProviderCenterService } from './provider-center'
 import { DeepSeekResponsesClient } from './deepseek-responses-client'
+import { DEEPSEEK_ANALYSIS_ENVELOPE_INSTRUCTION, DeepSeekRoundAnalysisEnvelopeSchema, canonicalAnalysisFromDeepSeekEnvelope } from './deepseek-analysis-envelope'
 import { readRealLlmRouting, type IntelligenceProviderId, type IntelligenceRoutingStage, type RealLlmRouting, type ResolvedIntelligenceRoute } from './llm-routing'
 import { OpenAIIntelligenceEngine } from './openai-intelligence-engine'
 import { OpenAISdkResponsesClient } from './openai-responses-client'
@@ -24,13 +25,13 @@ export async function withLiveProviderClients<T>(providerCenter: ProviderCenterS
   return providerCenter.withCredential('tavily', tavilyCredential => withIntelligenceCredentials(providerCenter, ids, async credentials => {
     const tavily = new TavilyResearchTool(new TavilyFetchTransport({ credential: tavilyCredential, networkPermit: permit }), { timeoutMs: readRealTavilyTimeoutPolicy(options.environment).timeoutMs }, { simulation: false, requestJournal: options.tavilyRequestJournal })
     const stages = Object.fromEntries((Object.keys(routing.routes) as IntelligenceRoutingStage[]).map(stage => [stage, {
-      route: routing.routes[stage], engine: createEngine(routing.routes[stage], credentials[routing.routes[stage].providerId], permit),
+      route: routing.routes[stage], engine: createEngine(stage, routing.routes[stage], credentials[routing.routes[stage].providerId], permit),
     }])) as unknown as ConstructorParameters<typeof RoutedIntelligenceEngine>[0]
     return operation({ tavily, intelligence: new RoutedIntelligenceEngine(stages) })
   }))
 }
 
-function createEngine(route: ResolvedIntelligenceRoute, credential: string, permit: ReturnType<typeof issueLiveProviderNetworkPermit>): OpenAIIntelligenceEngine {
+function createEngine(stage: IntelligenceRoutingStage, route: ResolvedIntelligenceRoute, credential: string, permit: ReturnType<typeof issueLiveProviderNetworkPermit>): OpenAIIntelligenceEngine {
   const client = route.providerId === 'deepseek' ? new DeepSeekResponsesClient(credential, permit) : new OpenAISdkResponsesClient(credential, permit)
   return new OpenAIIntelligenceEngine(client, {
     providerId: route.providerId, model: route.apiModel, telemetryModel: route.model,
@@ -38,6 +39,11 @@ function createEngine(route: ResolvedIntelligenceRoute, credential: string, perm
     reasoningEffort: route.reasoningEffort, temperature: route.temperature, topP: route.topP,
     currency: 'USD', simulation: false,
     costForUsage: usage => estimatedRouteCost(route, usage, usage.occurredAt),
+    ...(stage === 'analysis' && route.providerId === 'deepseek' ? {
+      analysisResponseSchema: DeepSeekRoundAnalysisEnvelopeSchema,
+      analysisResponseTransformer: canonicalAnalysisFromDeepSeekEnvelope,
+      analysisInstruction: DEEPSEEK_ANALYSIS_ENVELOPE_INSTRUCTION,
+    } : {}),
   })
 }
 

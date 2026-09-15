@@ -357,8 +357,42 @@ describe('OpenAI IntelligenceEngine estructurado y sin red', () => {
       mission(),
       dossier(),
       new AbortController().signal,
-    )).rejects.toMatchObject({ code: 'INCOMPLETE' })
+    )).rejects.toMatchObject({
+      code: 'INCOMPLETE',
+      providerUsage: {
+        providerRequestIds: ['response-synthetic'],
+        inputTokens: 1_000,
+        outputTokens: 500,
+        calculatedCost: 0.002,
+      },
+      remoteError: {
+        type: 'incomplete',
+        code: 'max_output_tokens',
+      },
+    })
     expect(client.requests).toHaveLength(1)
+  })
+
+  it('preserva telemetría de incomplete aunque se hubiera solicitado reasoning', async () => {
+    const client = new FakeResponsesClient([response(undefined, {
+      status: 'incomplete',
+      incomplete_details: { reason: 'max_output_tokens' },
+      usage: { input_tokens: 1_200, output_tokens: 4_000 },
+    })])
+    const execution = engine(client, { reasoningEffort: 'low' }).analyze(
+      mission(),
+      dossier(),
+      new AbortController().signal,
+    )
+    await expect(execution).rejects.toMatchObject({
+      code: 'INCOMPLETE',
+      providerUsage: {
+        providerRequestIds: ['response-synthetic'],
+        inputTokens: 1_200,
+        outputTokens: 4_000,
+      },
+    })
+    expect(client.requests[0].reasoning).toEqual({ effort: 'low' })
   })
 
   it('rechaza JSON inválido y salida ajena al schema', async () => {

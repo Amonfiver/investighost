@@ -313,9 +313,16 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
       throw new OpenAIIntelligenceError('REFUSAL', 'El motor rechazó la salida estructurada')
     }
     if (response.status === 'incomplete') {
+      const reason = response.incomplete_details?.reason ?? 'unknown'
       throw new OpenAIIntelligenceError(
         'INCOMPLETE',
-        `La respuesta quedó incompleta (${response.incomplete_details?.reason ?? 'sin razón'})`,
+        `La respuesta quedó incompleta (${reason})`,
+        this.failureUsage(response),
+        {
+          type: 'incomplete',
+          code: reason,
+          message: 'Responses terminó en estado incomplete antes de la validación estructurada',
+        },
       )
     }
     if (!response.output_text) {
@@ -392,6 +399,18 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
       estimatedCost,
       currency: this.configuration.currency,
       providerRequestIds: [response.id],
+    }
+  }
+
+  private failureUsage(response: OpenAIResponseEnvelope): ProviderFailureUsage {
+    const usage = this.usage(response)
+    return {
+      providerRequestIds: usage.providerRequestIds,
+      credits: 0,
+      calculatedCost: usage.estimatedCost,
+      toolCalls: 1,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
     }
   }
 }

@@ -43,4 +43,38 @@ describe('adapter DeepSeek Responses', () => {
     expect(result).toMatchObject({ id: 'ds-response-1', usage: { input_tokens: 10, output_tokens: 2, input_tokens_details: { cached_tokens: 4 } } })
     expect(JSON.stringify({ calls, result })).not.toContain(credential)
   })
+
+  it('proyecta incomplete, el motivo, texto parcial y uso sin cambiarlo por un error local', async () => {
+    const client = new DeepSeekResponsesClient(credential, permit(), {
+      clientFactory: () => ({ responses: { create: async () => ({
+        id: 'ds-incomplete-1',
+        status: 'incomplete',
+        error: null,
+        incomplete_details: { reason: 'max_output_tokens' },
+        output: [],
+        output_text: '{"claims":[',
+        usage: { input_tokens: 2_048, output_tokens: 12_000 },
+      }) } }),
+    })
+
+    const result = await client.create({
+      model: 'deepseek-v4-flash',
+      input: [{ role: 'system', content: 'fixture' }, { role: 'user', content: '{}' }],
+      text: { format: { type: 'json_schema', name: 'fixture', strict: true, schema: { type: 'object', properties: {}, required: [], additionalProperties: false } } },
+      max_output_tokens: 12_000,
+      store: false,
+    }, new AbortController().signal)
+
+    expect(result).toEqual({
+      id: 'ds-incomplete-1',
+      status: 'incomplete',
+      output_text: '{"claims":[',
+      incomplete_details: { reason: 'max_output_tokens' },
+      usage: {
+        input_tokens: 2_048,
+        output_tokens: 12_000,
+        input_tokens_details: { cached_tokens: 0 },
+      },
+    })
+  })
 })

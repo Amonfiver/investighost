@@ -42,6 +42,55 @@ function metadata(): LedgeredCallMetadataFactory {
 }
 
 describe('conciliación de fallos facturables y reanudación idempotente', () => {
+  it('asienta incomplete recibido con remote id, uso y motivo sanitizado', async () => {
+    let sequence = 0
+    const repository = new MemoryCostLedgerRepository(
+      { task: 0.2, batch: 0.2, daily: 0.2, currency: 'EUR' },
+      { now: () => new Date(now), id: () => `incomplete-ledger-id-${++sequence}` },
+    )
+    const ledger = new CostLedgerService(repository, { now: () => new Date(now) })
+    await ledger.acquireExecution(
+      'real-editorial:run-morella',
+      'lease-incomplete',
+      new Date('2026-07-26T00:00:00.000Z'),
+    )
+    const incomplete = vi.fn(async () => {
+      throw new OpenAIIntelligenceError(
+        'INCOMPLETE',
+        'La respuesta quedó incompleta (max_output_tokens)',
+        {
+          providerRequestIds: ['ds-incomplete-1'],
+          credits: 0,
+          calculatedCost: 0.006,
+          toolCalls: 1,
+          inputTokens: 2_048,
+          outputTokens: 12_000,
+        },
+        {
+          type: 'incomplete',
+          code: 'max_output_tokens',
+          message: 'Responses terminó en estado incomplete antes de la validación estructurada',
+        },
+      )
+    })
+
+    await expect(new LedgeredWorkflowCallExecutor(
+      ledger,
+      metadata(),
+      0.2,
+    ).execute('task-morella:round:1:analysis', 0.022, incomplete))
+      .rejects.toMatchObject({ code: 'INCOMPLETE' })
+
+    expect((await repository.entries()).at(-1)).toMatchObject({
+      state: 'failed',
+      remoteId: 'ds-incomplete-1',
+      inputTokens: 2_048,
+      outputTokens: 12_000,
+      calculatedCost: 0.006,
+      sanitizedError: 'INCOMPLETE|type=incomplete|code=max_output_tokens|message=Responses terminó en estado incomplete antes de la validación estructurada',
+    })
+  })
+
   it('clasifica una respuesta recibida con fallo de persistencia como éxito remoto', async () => {
     let sequence = 0
     const repository = new MemoryCostLedgerRepository(

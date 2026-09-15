@@ -81,6 +81,7 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     if (!this.canReserve(estimatedCost)) {
       throw new RealWorkflowError('BUDGET_EXCEEDED', 'El presupuesto impide reservar la operación')
     }
+    await this.hydrateTerminalAttempt(operationId, estimatedCost, options.retryTerminalAttempts)
     let attempt = (this.attempts.get(operationId) ?? 0) + 1
     let previous = this.previousReservations.get(operationId)
     this.attempts.set(operationId, attempt)
@@ -226,6 +227,42 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
 
   snapshot() {
     return { operationIds: [...this.completed.keys()], spentCost: this.spentCost }
+  }
+
+  /**
+   * Un proceso nuevo no conserva el contador en memoria. Antes de reservar
+   * busca intentos terminales ya durables por su clave estable y continúa con
+   * el siguiente número. Es esencial cuando cambia el routing/proveedor: el
+   * intento histórico no se debe sobrescribir ni comparar como si fuese la
+   * misma petición.
+   */
+  private async hydrateTerminalAttempt(
+    operationId: string,
+    estimatedCost: number,
+    retryTerminalAttempts: boolean | undefined,
+  ): Promise<void> {
+    if (this.attempts.has(operationId)) return
+    let latest: ProviderCallReservation | undefined
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
+      const identity = this.metadata.create(operationId, attempt, estimatedCost)
+      const stored = await this.ledger.findByIdempotencyKey(identity.idempotencyKey)
+      if (stored) latest = stored
+    }
+    if (!latest) return
+    if (latest.state === 'unknown') {
+      throw new RealWorkflowError(
+        'BUDGET_EXCEEDED',
+        'La llamada durable previa requiere revisión humana y no se reintenta',
+      )
+    }
+    if (!['failed', 'cancelled'].includes(latest.state)) return
+    if (retryTerminalAttempts === false) {
+      throw new RealWorkflowError(
+        'LIMIT_EXCEEDED',
+        'La etapa durable anterior terminó; requiere una decisión humana antes de reintentarla',
+      )
+    }
+    this.seedAttempt(operationId, latest.input.attempt, latest.callId)
   }
 
   private async settleWithDurableCostAdjustment(

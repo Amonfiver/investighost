@@ -588,6 +588,9 @@ async function runRealEditorialE2E04Command(action: string): Promise<unknown> {
 }
 
 async function runRealEditorialCuencaBenchmarkCommand(action: string): Promise<unknown> {
+  if (action === 'activate-openai') {
+    return providerCenterAction(service => service.setActive({ providerId: 'openai', active: true }))
+  }
   const runtime = getRealEditorialPilotRuntime()
   if (action === 'preflight') {
     return runtime.preflight(

@@ -282,6 +282,33 @@ describe('conciliación de fallos facturables y reanudación idempotente', () =>
     expect(new Set((await repository.entries()).map(entry => entry.reservationId)).size).toBe(2)
   })
 
+  it('continúa en el siguiente attempt cuando el routing cambia tras un fallo terminal', async () => {
+    let sequence = 0
+    const repository = new MemoryCostLedgerRepository(
+      { task: 0.2, batch: 0.2, daily: 0.2, currency: 'EUR' },
+      { now: () => new Date(now), id: () => `routing-change-${++sequence}` },
+    )
+    const ledger = new CostLedgerService(repository, { now: () => new Date(now) })
+    await ledger.acquireExecution('real-editorial:run-morella', 'lease-routing-change', new Date('2026-07-26T00:00:00.000Z'))
+    const legacy: LedgeredCallMetadataFactory = {
+      create(targetOperationId, attempt, estimatedCost, retryOfCallId) {
+        return {
+          ...metadata().create(targetOperationId, attempt, estimatedCost, retryOfCallId),
+          providerId: 'deepseek', model: 'deepseek-flash', tariffId: 'morella-v1-deepseek-responses',
+        }
+      },
+    }
+    const first = await ledger.reserve(legacy.create('task-morella:round:1:analysis', 1, 0.022))
+    await ledger.start(first.id)
+    await ledger.settle({ reservationId: first.id, outcome: 'failed', calculatedCost: 0, usage: { inputTokens: 0, outputTokens: 0, toolCalls: 1, credits: 0 }, sanitizedError: 'INVALID_RESPONSE' })
+
+    await new LedgeredWorkflowCallExecutor(ledger, metadata(), 0.2)
+      .execute('task-morella:round:1:analysis', 0.022, async () => ({ providerRequestIds: ['openai-retry'] }))
+
+    expect(await repository.findByIdempotencyKey('task-morella:round:1:analysis:attempt:2'))
+      .toMatchObject({ state: 'reconciled', input: { providerId: 'openai', retryOfCallId: first.callId } })
+  })
+
   it('mantiene una red ambigua sin conciliación ni reintento automático', async () => {
     let sequence = 0
     const repository = new MemoryCostLedgerRepository(

@@ -89,6 +89,11 @@ export class CostLedgerService {
     return this.repository.reserve(input)
   }
 
+  /** Consulta de recuperación: nunca crea ni modifica una reserva. */
+  findByIdempotencyKey(idempotencyKey: string): Promise<ProviderCallReservation | undefined> {
+    return this.repository.findByIdempotencyKey(idempotencyKey)
+  }
+
   start(reservationId: string): Promise<ProviderCallReservation> {
     return this.repository.start(reservationId)
   }

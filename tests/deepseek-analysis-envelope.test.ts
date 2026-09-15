@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { zodTextFormat } from 'openai/helpers/zod'
+import { z } from 'zod'
 import {
   DEEPSEEK_ANALYSIS_ENVELOPE_INSTRUCTION,
   DeepSeekRoundAnalysisEnvelopeSchema,
   canonicalAnalysisFromDeepSeekEnvelope,
+  parseDeepSeekCanonicalJson,
 } from '@modules/real-pipeline/deepseek-analysis-envelope'
 import {
   OpenAIIntelligenceEngine,
@@ -85,6 +87,12 @@ describe('envelope reducido para analysis DeepSeek, sin red', () => {
     }
 
     expect(inspectOpenAIResponseRequest(request)).toEqual({ valid: true, issues: [] })
+    expect(reduced).toMatchObject({
+      type: 'object',
+      properties: { canonicalJson: { type: 'string' } },
+      required: ['canonicalJson'],
+      additionalProperties: false,
+    })
     expect(Buffer.byteLength(JSON.stringify(reduced))).toBeLessThan(Buffer.byteLength(JSON.stringify(canonical)) / 10)
     const transformed = canonicalAnalysisFromDeepSeekEnvelope({ canonicalJson: JSON.stringify(analysis()) })
     expect(transformed.success).toBe(true)
@@ -117,6 +125,13 @@ describe('envelope reducido para analysis DeepSeek, sin red', () => {
 
   it('falla cerrado si el JSON interno no es parseable', () => {
     expect(canonicalAnalysisFromDeepSeekEnvelope({ canonicalJson: '{' }).success).toBe(false)
+  })
+
+  it('reutiliza el envelope final con un schema local pequeño', () => {
+    const simple = z.object({ name: z.string(), score: z.number().int(), tags: z.array(z.string()) }).strict()
+    expect(parseDeepSeekCanonicalJson({ canonicalJson: '{"name":"Probe","score":7,"tags":["test"]}' }, simple))
+      .toMatchObject({ success: true, data: { name: 'Probe', score: 7, tags: ['test'] } })
+    expect(parseDeepSeekCanonicalJson({ canonicalJson: '{"name":"Probe"}' }, simple).success).toBe(false)
   })
 
   it('rechaza JSON inválido antes de transformar', async () => {

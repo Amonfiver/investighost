@@ -12,7 +12,7 @@ import {
  * de forma sigue ocurriendo inmediatamente después contra el schema canónico.
  */
 export const DeepSeekRoundAnalysisEnvelopeSchema = z.object({
-  canonicalJson: z.string().trim().min(2).max(120_000),
+  canonicalJson: z.string(),
 }).strict()
 
 export type DeepSeekRoundAnalysisEnvelope = z.infer<typeof DeepSeekRoundAnalysisEnvelopeSchema>
@@ -33,11 +33,19 @@ export const DEEPSEEK_ANALYSIS_ENVELOPE_INSTRUCTION = [
 export function canonicalAnalysisFromDeepSeekEnvelope(
   candidate: unknown,
 ): z.SafeParseReturnType<unknown, OpenAIRoundAnalysisOutput> {
+  return parseDeepSeekCanonicalJson(candidate, OpenAIRoundAnalysisOutputSchema)
+}
+
+/** Reutilizable en sondas: envelope estricto, JSON interior y schema local. */
+export function parseDeepSeekCanonicalJson<T>(
+  candidate: unknown,
+  schema: z.ZodType<T>,
+): z.SafeParseReturnType<unknown, T> {
   const envelope = DeepSeekRoundAnalysisEnvelopeSchema.safeParse(candidate)
   if (!envelope.success) return envelope as z.SafeParseError<unknown>
   try {
-    return OpenAIRoundAnalysisOutputSchema.safeParse(JSON.parse(envelope.data.canonicalJson))
+    return schema.safeParse(JSON.parse(envelope.data.canonicalJson))
   } catch {
-    return OpenAIRoundAnalysisOutputSchema.safeParse(undefined)
+    return schema.safeParse(undefined)
   }
 }

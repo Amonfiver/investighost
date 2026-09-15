@@ -246,6 +246,93 @@ export class DurableRealEditorialPipeline {
       if (!this.dependencies.guardLease) await ledger.releaseExecution(leaseToken)
     }
   }
+
+  /**
+   * Recuperación humana y acotada: vuelve a ejecutar únicamente analysis cuando
+   * hay una respuesta previa confirmada cuyo artifact se perdió localmente.
+   * Nunca delega Research, Adventure, Student ni Review.
+   */
+  async recoverLostAnalysis(
+    pilot: RealEditorialPilotRecord,
+    signal: AbortSignal,
+  ): Promise<{ analysis: IntelligenceRoundAnalysis; reservation: import('@shared/real-cost-contracts').ProviderCallReservation }> {
+    if (!pilot.budgetConfirmed || !pilot.budget) {
+      throw new DurableRealEditorialError('BUDGET_REQUIRED', 'El piloto no tiene presupuesto confirmado')
+    }
+    if (await this.dependencies.repository.latestArtifact(pilot.currentRunId, 'round', 'round-1')) {
+      throw new DurableRealEditorialError('CHECKPOINT_REQUIRED', 'El analysis ya conserva un artifact durable')
+    }
+    const executionId = this.dependencies.guardLease?.executionId
+      ?? `real-editorial:${pilot.currentRunId}`
+    const leaseToken = this.dependencies.guardLease?.leaseToken ?? this.id()
+    const ledger = new CostLedgerService(this.dependencies.ledgerRepository, { now: this.now })
+    const acquired = this.dependencies.guardLease
+      ? true
+      : await ledger.acquireExecution(
+        executionId,
+        leaseToken,
+        new Date(this.now().getTime() + 30 * 60 * 1_000),
+      )
+    if (!acquired) throw new DurableRealEditorialError('GUARD_BUSY', 'La guarda editorial está ocupada')
+
+    try {
+      const mission = await initialMissionForExecution(this.dependencies.repository, pilot, this.now)
+      const checkpointStore = new SupabaseRealWorkflowCheckpointStore(
+        this.dependencies.repository,
+        pilot.id,
+        pilot.currentRunId,
+      )
+      const checkpoint = await checkpointStore.load(mission.taskId)
+      if (!checkpoint?.dossier || checkpoint.completedRound !== 0 || !checkpoint.dossier.rounds.includes(1)) {
+        throw new DurableRealEditorialError(
+          'CHECKPOINT_REQUIRED',
+          'No existe un dossier durable de la ronda 1 apto para recuperar solo analysis',
+        )
+      }
+      const operationId = `${mission.taskId}:round:1:analysis`
+      const previous = await this.dependencies.ledgerRepository.findByIdempotencyKey(
+        `${operationId}:attempt:3`,
+      )
+      if (previous?.state !== 'reconciled' || await durableOperationResultAvailable(
+        this.dependencies.repository,
+        pilot.currentRunId,
+        operationId,
+      )) {
+        throw new DurableRealEditorialError(
+          'CHECKPOINT_REQUIRED',
+          'La recuperación requiere exactamente el attempt 3 conciliado sin artifact',
+        )
+      }
+      const durableProviders = durableProvidersFor(
+        this.dependencies.providers,
+        this.dependencies.repository,
+        pilot,
+      )
+      const calls = new LedgeredWorkflowCallExecutor(
+        ledger,
+        metadataFactory(pilot, executionId, durableProviders.intelligenceEngine),
+        pilot.budget.taskLimitCost,
+        operation => durableOperationResultAvailable(this.dependencies.repository, pilot.currentRunId, operation),
+        pilot.budget.spentCost,
+      )
+      calls.seedAttempt(operationId, 3, previous.callId)
+      durableProviders.intelligenceEngine.validateAnalyze?.(mission, checkpoint.dossier)
+      const analysis = await calls.execute(
+        operationId,
+        REAL_EDITORIAL_OPERATION_BUDGETS.analysisPerRound,
+        context => durableProviders.intelligenceEngine.analyze(mission, checkpoint.dossier!, signal, context),
+      )
+      const reservation = await this.dependencies.ledgerRepository.findByIdempotencyKey(
+        `${operationId}:attempt:4`,
+      )
+      if (!reservation || reservation.state !== 'reconciled') {
+        throw new DurableRealEditorialError('CHECKPOINT_REQUIRED', 'El attempt 4 no quedó conciliado durablemente')
+      }
+      return { analysis, reservation }
+    } finally {
+      if (!this.dependencies.guardLease) await ledger.releaseExecution(leaseToken)
+    }
+  }
 }
 
 export type DurableRealEditorialErrorCode =

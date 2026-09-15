@@ -454,6 +454,120 @@ export class RealEditorialPilotRuntime {
     return this.repository.resolveHistoricalIncidents(input)
   }
 
+  async recoverConfirmedAnalysisArtifact(candidate: unknown) {
+    const { pilotId } = RealEditorialPilotActionSchema.parse(candidate)
+    if (this.controllers.has(pilotId)) throw new Error('No se puede recuperar analysis mientras el piloto se ejecuta')
+    const pilot = await this.repository.getPilot(pilotId)
+    if (!pilot?.budget || pilot.state !== 'preflight') {
+      throw new Error('La recuperación exige un piloto detenido en preflight con presupuesto durable')
+    }
+    assertPolicyAuthorization(pilot.policyId)
+    const authorization = readRealEditorialAuthorization()
+    if (!authorization.featureToken) throw new Error('La feature flag editorial no dispone de token')
+    const inspection = await this.repository.inspect(pilot.identityKey, pilot.id, pilot.policyId)
+    if (!inspection.guardFree || inspection.pendingReservations > 0) {
+      throw new Error('La guarda y las reservas deben estar libres antes de recuperar analysis')
+    }
+    const route = readRealLlmRouting().routes.analysis
+    if (
+      route.providerId !== 'deepseek'
+      || route.model !== 'deepseek-flash'
+      || route.apiModel !== 'deepseek-v4-flash'
+      || route.timeoutMs !== 90_000
+      || route.maxOutputTokens !== 12_000
+      || route.reasoningEffort !== undefined
+      || route.temperature !== undefined
+      || route.topP !== undefined
+    ) {
+      throw new Error('La recuperación exige la configuración DeepSeek analysis validada del benchmark')
+    }
+    const [{ data: lossIncident, error: lossError }, existing] = await Promise.all([
+      this.client.from('real_editorial_incidents').select('id').eq('pilot_id', pilot.id)
+        .eq('run_id', pilot.currentRunId).eq('code', 'VALIDATED_RESULT_LOST_AFTER_PROVIDER_SUCCESS')
+        .is('resolved_at', null).maybeSingle(),
+      this.repository.latestArtifact(pilot.currentRunId, 'round', 'round-1'),
+    ])
+    if (lossError || !lossIncident || existing) {
+      throw new Error('No existe la condición durable exacta para recrear el artifact de analysis')
+    }
+
+    const controller = new AbortController()
+    this.controllers.set(pilotId, controller)
+    const executionId = `real-editorial:${pilot.currentRunId}:analysis-recovery`
+    const leaseToken = randomUUID()
+    const ledgerRepository = new SupabaseRealEditorialLedgerRepository(
+      this.client,
+      pilot.id,
+      pilot.currentRunId,
+    )
+    const ledger = new CostLedgerService(ledgerRepository)
+    const acquired = await ledger.acquireExecution(
+      executionId,
+      leaseToken,
+      new Date(Date.now() + 30 * 60 * 1_000),
+    )
+    if (!acquired) {
+      this.controllers.delete(pilotId)
+      throw new Error('La guarda editorial real está ocupada')
+    }
+    try {
+      const providerCenter = await getProviderCenterRuntime()
+      const recovered = await withLiveProviderClients(
+        providerCenter,
+        {
+          featureToken: authorization.featureToken,
+          preflightStatus: 'ready_for_real_editorial_pilot',
+          taskAuthorized: true,
+          budgetReserved: true,
+          globalGuardAcquired: true,
+        },
+        async providers => new DurableRealEditorialPipeline({
+          repository: this.repository,
+          ledgerRepository,
+          providers: { researchTool: providers.tavily, intelligenceEngine: providers.intelligence },
+          guardLease: { executionId, leaseToken },
+        }).recoverLostAnalysis(pilot, controller.signal),
+        {
+          tavilyRequestJournal: new DurableRealEditorialTavilyRequestJournal(
+            this.repository,
+            pilot.id,
+            pilot.currentRunId,
+          ),
+        },
+      )
+      const [{ data: receipt, error: receiptError }, artifact] = await Promise.all([
+        this.client.from('real_editorial_analysis_provider_receipts').select('id')
+          .eq('call_id', recovered.reservation.callId).eq('reservation_id', recovered.reservation.id)
+          .maybeSingle(),
+        this.repository.latestArtifact(pilot.currentRunId, 'round', 'round-1'),
+      ])
+      if (receiptError || !receipt || !artifact) {
+        throw new Error('El attempt de recuperación no conserva receipt y artifact durables')
+      }
+      const { error: resolveError } = await this.client.from('real_editorial_incidents')
+        .update({ resolved_at: new Date().toISOString() }).eq('id', lossIncident.id).is('resolved_at', null)
+      if (resolveError) throw new Error('No se pudo marcar como supersedido el incidente del artifact perdido')
+      await this.repository.appendEvent(pilot.id, pilot.currentRunId, 'real.editorial.analysis.loss.superseded', 'preflight', {
+        previousIncidentId: lossIncident.id,
+        recoveredAttempt: recovered.reservation.input.attempt,
+        recoveredCallId: recovered.reservation.callId,
+        receiptId: receipt.id,
+        providerCalled: false,
+      })
+      return {
+        attemptId: recovered.reservation.input.attempt,
+        callId: recovered.reservation.callId,
+        reservationId: recovered.reservation.id,
+        receiptId: receipt.id,
+        remoteId: recovered.analysis.usage.providerRequestIds?.[0] ?? null,
+        usage: recovered.analysis.usage,
+      }
+    } finally {
+      await ledger.releaseExecution(leaseToken)
+      this.controllers.delete(pilotId)
+    }
+  }
+
   async start(candidate: unknown) {
     return this.execute(candidate, false)
   }

@@ -48,6 +48,24 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     this.initialSpendIsAuthoritative = initialSpentCost !== undefined
   }
 
+  /**
+   * Reanuda una operación cuya secuencia durable ya tiene intentos terminales.
+   * Solo prepara la identidad del siguiente intento: la reserva, el inicio y la
+   * conciliación siguen pasando por el ledger normal.
+   */
+  seedAttempt(operationId: string, completedAttempts: number, retryOfCallId?: string): void {
+    if (!Number.isInteger(completedAttempts) || completedAttempts < 0 || completedAttempts >= 10) {
+      throw new TypeError('El intento durable previo no es válido')
+    }
+    if (this.running.has(operationId) || this.completed.has(operationId)) {
+      throw new TypeError('No se puede resembrar una operación activa o completada')
+    }
+    this.attempts.set(operationId, completedAttempts)
+    if (retryOfCallId) {
+      this.previousReservations.set(operationId, { callId: retryOfCallId } as ProviderCallReservation)
+    }
+  }
+
   async execute<T>(
     operationId: string,
     estimatedCost: number,

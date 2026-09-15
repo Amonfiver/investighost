@@ -316,10 +316,11 @@ async function providerCenterAction<T>(
 
 // Ciclo de vida de la app
 app.whenReady().then(async () => {
+  const localAudit = !app.isPackaged || process.env.INVESTIGHOST_LOCAL_AUDIT === '1'
   const cuencaBenchmarkAction = process.argv
     .find(argument => argument.startsWith('--real-editorial-cuenca-benchmark='))
     ?.split('=', 2)[1]
-  if (!app.isPackaged && cuencaBenchmarkAction) {
+  if (localAudit && cuencaBenchmarkAction) {
     await runLocalAuditCommand(
       'REAL_EDITORIAL_CUENCA_BENCHMARK',
       async () => runRealEditorialCuencaBenchmarkCommand(cuencaBenchmarkAction),
@@ -330,7 +331,7 @@ app.whenReady().then(async () => {
     .find(argument => argument.startsWith('--real-editorial-e2e04='))
     ?.split('=', 2)[1]
     ?? process.env.INVESTIGHOST_REAL_EDITORIAL_E2E04_ACTION
-  if (!app.isPackaged && e2e04Action) {
+  if (localAudit && e2e04Action) {
     await runLocalAuditCommand(
       'REAL_EDITORIAL_E2E04',
       async () => runRealEditorialE2E04Command(e2e04Action),
@@ -636,6 +637,7 @@ async function runRealEditorialCuencaBenchmarkCommand(action: string): Promise<u
       confirmed: true,
     })
   }
+  if (action === 'recover-analysis') return runtime.recoverConfirmedAnalysisArtifact({ pilotId })
   if (action === 'start') return runtime.start({ pilotId })
   if (action === 'resume') return runtime.resume({ pilotId })
   if (action === 'progress') return runtime.progress({ pilotId })

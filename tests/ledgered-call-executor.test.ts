@@ -42,6 +42,32 @@ function metadata(): LedgeredCallMetadataFactory {
 }
 
 describe('conciliación de fallos facturables y reanudación idempotente', () => {
+  it('crea el siguiente attempt durable al recuperar un artifact perdido', async () => {
+    let sequence = 0
+    const repository = new MemoryCostLedgerRepository(
+      { task: 0.2, batch: 0.2, daily: 0.2, currency: 'EUR' },
+      { now: () => new Date(now), id: () => `recovery-ledger-id-${++sequence}` },
+    )
+    const ledger = new CostLedgerService(repository, { now: () => new Date(now) })
+    await ledger.acquireExecution(
+      'real-editorial:run-morella',
+      'lease-analysis-recovery',
+      new Date('2026-07-26T00:00:00.000Z'),
+    )
+    const executor = new LedgeredWorkflowCallExecutor(ledger, metadata(), 0.2)
+    executor.seedAttempt('task-morella:round:1:analysis', 3, 'lost-analysis-call')
+
+    await executor.execute('task-morella:round:1:analysis', 0.022, async () => ({
+      usage: { inputTokens: 100, outputTokens: 20, estimatedCost: 0.001 },
+    }))
+
+    expect(await repository.findByIdempotencyKey('task-morella:round:1:analysis:attempt:4'))
+      .toMatchObject({
+        state: 'reconciled',
+        input: { attempt: 4, retryOfCallId: 'lost-analysis-call' },
+      })
+  })
+
   it('asienta incomplete recibido con remote id, uso y motivo sanitizado', async () => {
     let sequence = 0
     const repository = new MemoryCostLedgerRepository(

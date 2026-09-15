@@ -18,6 +18,7 @@ const migrations = [
   '20260808130000_real_editorial_round_one_budget_review_repair.sql',
   '20260809100000_real_editorial_round_one_active_source_selection.sql',
   '20260914220000_real_editorial_deepseek_prudential_reconciliation.sql',
+  '20260915190000_real_editorial_deepseek_analysis_receipts.sql',
 ]
 
 async function migration(name: string): Promise<string> {
@@ -297,6 +298,18 @@ describe('esquema durable del piloto editorial real', () => {
     expect(sql).toContain("'HUMAN_PRUDENTIAL_COST_ASSUMED'")
     expect(sql).toContain("'providerConfirmed',false")
     expect(sql).toContain("'possibleDuplicateChargeAccepted',true")
+    expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
+    expect(sql).not.toMatch(/api\.deepseek|api\.openai|fetch\(/i)
+  })
+
+  it('permite receipts de analysis DeepSeek con las mismas garantías que OpenAI', async () => {
+    const sql = await migration(migrations[16])
+
+    expect(sql).toContain("reservation.provider_id not in ('openai','deepseek')")
+    expect(sql).toContain('ANALYSIS_RECEIPT_CALL_INVALID')
+    expect(sql).toContain('ANALYSIS_RECEIPT_CONFLICT')
+    expect(sql).toContain('for update')
+    expect(sql).toContain('real_editorial_analysis_provider_receipts')
     expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
     expect(sql).not.toMatch(/api\.deepseek|api\.openai|fetch\(/i)
   })

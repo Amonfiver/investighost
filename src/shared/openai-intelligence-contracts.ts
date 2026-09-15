@@ -10,7 +10,7 @@ const CoverageWarningsSchema = z.array(z.string().trim().min(1).max(500))
 const IdentifierSchema = z.string().trim().min(1).max(160)
 const NonEmptyTextSchema = z.string().trim().min(1)
 
-const OpenAIKnowledgeGapSchema = z.object({
+export const OpenAIKnowledgeGapSchema = z.object({
   id: IdentifierSchema,
   topic: IdentifierSchema.max(160),
   description: NonEmptyTextSchema.max(1_000),
@@ -19,14 +19,14 @@ const OpenAIKnowledgeGapSchema = z.object({
   resolvableWithResearch: z.boolean(),
 })
 
-const OpenAIFocusedQuerySchema = z.object({
+export const OpenAIFocusedQuerySchema = z.object({
   id: IdentifierSchema,
   gapId: IdentifierSchema,
   query: NonEmptyTextSchema.max(500),
   rationale: NonEmptyTextSchema.max(1_000),
 })
 
-const OpenAIContinueDecisionSchema = z.discriminatedUnion('action', [
+export const OpenAIContinueDecisionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('continue_focused'),
     nextRound: z.literal(2),

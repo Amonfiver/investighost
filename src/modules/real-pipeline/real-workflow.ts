@@ -416,7 +416,8 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
     const researchAlreadyCheckpointed = checkpoint.state === analyzingState
       && Boolean(checkpoint.dossier?.rounds.includes(mission.round))
     const expectedResearchCalls = queryCount + 1
-    const expectedCalls = (researchAlreadyCheckpointed ? 0 : expectedResearchCalls) + 1
+    const analysisStages = this.providers.intelligenceEngine.analysisStageIds?.length ?? 1
+    const expectedCalls = (researchAlreadyCheckpointed ? 0 : expectedResearchCalls) + analysisStages
     if (checkpoint.providerCalls + expectedCalls > mission.limits.maxProviderCalls) {
       throw new RealWorkflowError('LIMIT_EXCEEDED', 'La ronda supera el máximo de llamadas')
     }
@@ -486,11 +487,23 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
     }
     if (!dossier) throw new RealWorkflowError('CHECKPOINT_INVALID', 'Falta el expediente de la ronda')
     this.providers.intelligenceEngine.validateAnalyze?.(mission, dossier)
-    const analysis = await this.callExecutor.execute(
-      analysisOperationId,
-      this.configuration.analysisCostPerRound,
-      context => this.providers.intelligenceEngine.analyze(mission, dossier, signal, context),
-    )
+    const analysis = this.providers.intelligenceEngine.analysisStrategy === 'deepseek_multi_stage'
+      && this.providers.intelligenceEngine.analyzeMultiStage
+      ? await this.providers.intelligenceEngine.analyzeMultiStage(
+        mission,
+        dossier,
+        signal,
+        (stage, operation) => this.callExecutor.execute(
+          `${analysisOperationId}.${stage}`,
+          this.providers.intelligenceEngine.analysisStageBudget?.(stage) ?? this.configuration.analysisCostPerRound,
+          operation,
+        ),
+      )
+      : await this.callExecutor.execute(
+        analysisOperationId,
+        this.configuration.analysisCostPerRound,
+        context => this.providers.intelligenceEngine.analyze(mission, dossier, signal, context),
+      )
     this.assertAnalysisRound(mission.round, analysis)
     const simulatedCostAfterAnalysis = this.callExecutor.snapshot().spentCost
     const expectedMarginalCostEur = this.configuration.researchCostPerRound + this.configuration.analysisCostPerRound

@@ -639,6 +639,7 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
   readonly id: string
   readonly model: string
   readonly simulation: boolean
+  readonly analysisStrategy?: 'deepseek_multi_stage'
 
   constructor(
     private readonly delegate: IntelligenceEngine,
@@ -649,6 +650,7 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
     this.id = delegate.id
     this.model = delegate.model
     this.simulation = delegate.simulation
+    this.analysisStrategy = delegate.analysisStrategy
   }
 
   validateAnalyze(
@@ -673,6 +675,47 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
       return structuredClone(existing.payload.analysis) as unknown as IntelligenceRoundAnalysis
     }
     const analysis = await this.delegate.analyze(mission, dossier, signal)
+    return this.persistAnalysis(mission, dossier, analysis, context)
+  }
+
+  get analysisStageIds(): readonly string[] | undefined { return this.delegate.analysisStageIds }
+
+  analysisStageBudget(stage: string): number {
+    if (!this.delegate.analysisStageBudget) throw new Error('La inteligencia no admite etapas')
+    return this.delegate.analysisStageBudget(stage)
+  }
+
+  async analyzeMultiStage(...args: Parameters<NonNullable<IntelligenceEngine['analyzeMultiStage']>>) {
+    const [mission, dossier, signal, executeStage] = args
+    if (!this.delegate.analyzeMultiStage) throw new Error('La inteligencia no admite etapas')
+    const analysis = await this.delegate.analyzeMultiStage(
+      mission,
+      dossier,
+      signal,
+      async (stage, operation) => {
+        const key = `analysis-stage/round-${mission.round}/${stage}`
+        const existing = await this.repository.latestArtifact(this.runId, 'checkpoint', key)
+        if (existing && isRecord(existing.payload) && 'output' in existing.payload && 'usage' in existing.payload) {
+          return structuredClone(existing.payload) as { output: unknown; usage: IntelligenceRoundAnalysis['usage'] }
+        }
+        const result = await executeStage(stage, operation)
+        await this.repository.appendArtifact(this.pilotId, this.runId, 'checkpoint', key, 1, {
+          stage,
+          output: result.output,
+          usage: result.usage,
+        })
+        return result
+      },
+    )
+    return this.persistAnalysis(mission, dossier, analysis)
+  }
+
+  private async persistAnalysis(
+    mission: RealResearchMission,
+    dossier: RealResearchDossier,
+    analysis: IntelligenceRoundAnalysis,
+    context?: ProviderCallExecutionContext,
+  ): Promise<IntelligenceRoundAnalysis> {
     try {
       const providerReceiptId = context && this.repository.recordAnalysisProviderResponse
         ? await this.repository.recordAnalysisProviderResponse(
@@ -1116,6 +1159,15 @@ async function durableOperationResultAvailable(
   runId: string,
   operationId: string,
 ): Promise<boolean> {
+  if (operationId.includes(':analysis.stage_')) {
+    const round = operationId.includes(':round:2:') ? 2 : 1
+    const stage = operationId.split('.').at(-1)
+    return Boolean(stage && await repository.latestArtifact(
+      runId,
+      'checkpoint',
+      `analysis-stage/round-${round}/${stage}`,
+    ))
+  }
   if (operationId.endsWith(':research')) {
     const round = operationId.includes(':round:2:') ? 2 : 1
     return Boolean(await repository.latestArtifact(runId, 'tavily_result', `round-${round}`))

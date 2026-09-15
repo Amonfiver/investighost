@@ -26,10 +26,12 @@ export class RoutedIntelligenceEngine implements IntelligenceEngine {
   readonly id = 'configured-llm-routing'
   readonly model: string
   readonly simulation: boolean
+  readonly analysisStrategy?: 'deepseek_multi_stage'
 
   constructor(private readonly stages: Record<IntelligenceRoutingStage, RoutedIntelligenceStage>) {
     this.model = stages.analysis.route.model
     this.simulation = Object.values(stages).every(stage => stage.engine.simulation)
+    this.analysisStrategy = stages.analysis.engine.analysisStrategy
   }
 
   routeFor(stage: IntelligenceRoutingStage): ResolvedIntelligenceRoute {
@@ -46,6 +48,22 @@ export class RoutedIntelligenceEngine implements IntelligenceEngine {
     signal: AbortSignal,
   ): Promise<IntelligenceRoundAnalysis> {
     return this.stages.analysis.engine.analyze(mission, dossier, signal)
+  }
+
+  get analysisStageIds(): readonly string[] | undefined {
+    return this.stages.analysis.engine.analysisStageIds
+  }
+
+  analysisStageBudget(stage: string): number {
+    const budget = this.stages.analysis.engine.analysisStageBudget
+    if (!budget) throw new Error('La ruta analysis no admite etapas')
+    return budget.call(this.stages.analysis.engine, stage)
+  }
+
+  analyzeMultiStage(...args: Parameters<NonNullable<IntelligenceEngine['analyzeMultiStage']>>) {
+    const run = this.stages.analysis.engine.analyzeMultiStage
+    if (!run) throw new Error('La ruta analysis no admite etapas')
+    return run.apply(this.stages.analysis.engine, args)
   }
 
   validateDraft(

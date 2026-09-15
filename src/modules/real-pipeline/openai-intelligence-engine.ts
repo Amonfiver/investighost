@@ -196,6 +196,24 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
     }
   }
 
+  /** Transporte structured-output reutilizable para capacidades por proveedor. */
+  async generateStructured<T>(
+    operation: string,
+    payload: Record<string, unknown>,
+    schema: ZodTypeAny,
+    signal: AbortSignal,
+  ): Promise<{ output: T; usage: IntelligenceRoundAnalysis['usage'] }> {
+    const response = await this.call(operation, payload, schema, signal)
+    try {
+      return {
+        output: parseStructuredOutput(response, schema) as T,
+        usage: this.usage(response),
+      }
+    } catch (error) {
+      throw this.withCompletedResponseUsage(error, response)
+    }
+  }
+
   validateAnalyze(
     missionCandidate: RealResearchMission,
     dossierCandidate: RealResearchDossier,

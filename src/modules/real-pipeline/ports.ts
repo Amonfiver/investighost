@@ -137,6 +137,19 @@ export interface IntelligenceEngine {
     mission: RealResearchMission,
     dossier: RealResearchDossier,
   ): void
+  /** Capacidad opcional: analysis DeepSeek se divide en operaciones ledger independientes. */
+  readonly analysisStrategy?: 'deepseek_multi_stage'
+  readonly analysisStageIds?: readonly string[]
+  analysisStageBudget?(stage: string): number
+  analyzeMultiStage?(
+    mission: RealResearchMission,
+    dossier: RealResearchDossier,
+    signal: AbortSignal,
+    executeStage: (
+      stage: string,
+      operation: (context?: ProviderCallExecutionContext) => Promise<{ output: unknown; usage: IntelligenceRoundAnalysis['usage'] }>,
+    ) => Promise<{ output: unknown; usage: IntelligenceRoundAnalysis['usage'] }>,
+  ): Promise<IntelligenceRoundAnalysis>
   analyze(
     mission: RealResearchMission,
     dossier: RealResearchDossier,

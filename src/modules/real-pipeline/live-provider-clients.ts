@@ -2,9 +2,10 @@ import type { ProviderCenterSnapshot } from '@shared/provider-center-contracts'
 import { pricingEntryAt, tariffStatus } from '@shared/provider-pricing-catalog'
 import { ProviderCenterError, type ProviderCenterService } from './provider-center'
 import { DeepSeekResponsesClient } from './deepseek-responses-client'
-import { DEEPSEEK_ANALYSIS_ENVELOPE_INSTRUCTION, DeepSeekRoundAnalysisEnvelopeSchema, canonicalAnalysisFromDeepSeekEnvelope } from './deepseek-analysis-envelope'
+import { DeepSeekMultiStageAnalysisEngine } from './deepseek-multistage-analysis'
 import { readRealLlmRouting, type IntelligenceProviderId, type IntelligenceRoutingStage, type RealLlmRouting, type ResolvedIntelligenceRoute } from './llm-routing'
 import { OpenAIIntelligenceEngine } from './openai-intelligence-engine'
+import type { IntelligenceEngine } from './ports'
 import { OpenAISdkResponsesClient } from './openai-responses-client'
 import { RoutedIntelligenceEngine } from './routed-intelligence-engine'
 import { issueLiveProviderNetworkPermit, type LiveProviderAccessInputSchema } from './live-provider-access'
@@ -31,20 +32,18 @@ export async function withLiveProviderClients<T>(providerCenter: ProviderCenterS
   }))
 }
 
-function createEngine(stage: IntelligenceRoutingStage, route: ResolvedIntelligenceRoute, credential: string, permit: ReturnType<typeof issueLiveProviderNetworkPermit>): OpenAIIntelligenceEngine {
+function createEngine(stage: IntelligenceRoutingStage, route: ResolvedIntelligenceRoute, credential: string, permit: ReturnType<typeof issueLiveProviderNetworkPermit>): IntelligenceEngine {
   const client = route.providerId === 'deepseek' ? new DeepSeekResponsesClient(credential, permit) : new OpenAISdkResponsesClient(credential, permit)
-  return new OpenAIIntelligenceEngine(client, {
+  const engine = new OpenAIIntelligenceEngine(client, {
     providerId: route.providerId, model: route.apiModel, telemetryModel: route.model,
     maxOutputTokens: route.maxOutputTokens ?? 12_000, timeoutMs: route.timeoutMs ?? 30_000,
     reasoningEffort: route.reasoningEffort, temperature: route.temperature, topP: route.topP,
     currency: 'USD', simulation: false,
     costForUsage: usage => estimatedRouteCost(route, usage, usage.occurredAt),
-    ...(stage === 'analysis' && route.providerId === 'deepseek' ? {
-      analysisResponseSchema: DeepSeekRoundAnalysisEnvelopeSchema,
-      analysisResponseTransformer: canonicalAnalysisFromDeepSeekEnvelope,
-      analysisInstruction: DEEPSEEK_ANALYSIS_ENVELOPE_INSTRUCTION,
-    } : {}),
   })
+  return stage === 'analysis' && route.providerId === 'deepseek'
+    ? new DeepSeekMultiStageAnalysisEngine(engine)
+    : engine
 }
 
 function estimatedRouteCost(route: ResolvedIntelligenceRoute, usage: { inputTokens: number; cachedInputTokens: number; outputTokens: number }, now: Date): number {

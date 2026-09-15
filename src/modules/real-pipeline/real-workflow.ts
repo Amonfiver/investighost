@@ -97,6 +97,7 @@ export interface WorkflowCallExecutor {
     operationId: string,
     estimatedCost: number,
     operation: (context?: ProviderCallExecutionContext) => Promise<T>,
+    options?: { retryTerminalAttempts?: boolean },
   ): Promise<T>
   canReserve(estimatedCost: number): boolean
   canExecute(operationId: string, estimatedCost: number): boolean
@@ -114,7 +115,9 @@ export class MemoryWorkflowCallExecutor implements WorkflowCallExecutor {
     operationId: string,
     estimatedCost: number,
     operation: (context?: ProviderCallExecutionContext) => Promise<T>,
+    _options?: { retryTerminalAttempts?: boolean },
   ): Promise<T> {
+    void _options
     if (this.completed.has(operationId)) return structuredClone(this.completed.get(operationId)) as T
     const current = this.running.get(operationId)
     if (current) return structuredClone(await current) as T
@@ -497,6 +500,7 @@ export class ControlledRealWorkflow implements InvestighostRealWorkflow {
           `${analysisOperationId}.${stage}`,
           this.providers.intelligenceEngine.analysisStageBudget?.(stage) ?? this.configuration.analysisCostPerRound,
           operation,
+          { retryTerminalAttempts: false },
         ),
       )
       : await this.callExecutor.execute(

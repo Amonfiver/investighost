@@ -42,6 +42,23 @@ function metadata(): LedgeredCallMetadataFactory {
 }
 
 describe('conciliación de fallos facturables y reanudación idempotente', () => {
+  it('no reintenta silenciosamente una etapa multi-stage terminal', async () => {
+    let sequence = 0
+    const repository = new MemoryCostLedgerRepository(
+      { task: 0.2, batch: 0.2, daily: 0.2, currency: 'EUR' },
+      { now: () => new Date(now), id: () => `stage-terminal-${++sequence}` },
+    )
+    const ledger = new CostLedgerService(repository, { now: () => new Date(now) })
+    await ledger.acquireExecution('real-editorial:run-morella', 'lease-stage-terminal', new Date('2026-07-26T00:00:00.000Z'))
+    const first = await ledger.reserve(metadata().create('task-morella:round:1:analysis.stage_c', 1, 0.008))
+    await ledger.start(first.id)
+    await ledger.settle({ reservationId: first.id, outcome: 'failed', calculatedCost: 0, usage: { inputTokens: 0, outputTokens: 0, toolCalls: 1, credits: 0 }, sanitizedError: 'INVALID_RESPONSE' })
+    const execute = new LedgeredWorkflowCallExecutor(ledger, metadata(), 0.2)
+    await expect(execute.execute('task-morella:round:1:analysis.stage_c', 0.008, async () => ({ ok: true }), { retryTerminalAttempts: false }))
+      .rejects.toMatchObject({ code: 'LIMIT_EXCEEDED' })
+    expect(await repository.findByIdempotencyKey('task-morella:round:1:analysis.stage_c:attempt:2')).toBeUndefined()
+  })
+
   it('crea el siguiente attempt durable al recuperar un artifact perdido', async () => {
     let sequence = 0
     const repository = new MemoryCostLedgerRepository(

@@ -70,6 +70,7 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     operationId: string,
     estimatedCost: number,
     operation: (context?: ProviderCallExecutionContext) => Promise<T>,
+    options: { retryTerminalAttempts?: boolean } = {},
   ): Promise<T> {
     if (this.completed.has(operationId)) return structuredClone(this.completed.get(operationId)) as T
     const current = this.running.get(operationId)
@@ -91,6 +92,12 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     ))
     this.previousReservations.set(operationId, reservation)
     while (['failed', 'cancelled'].includes(reservation.state)) {
+      if (options.retryTerminalAttempts === false) {
+        throw new RealWorkflowError(
+          'LIMIT_EXCEEDED',
+          'La etapa durable anterior terminó; requiere una decisión humana antes de reintentarla',
+        )
+      }
       if (attempt >= 10) {
         throw new RealWorkflowError(
           'LIMIT_EXCEEDED',

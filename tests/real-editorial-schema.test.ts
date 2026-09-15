@@ -19,6 +19,7 @@ const migrations = [
   '20260809100000_real_editorial_round_one_active_source_selection.sql',
   '20260914220000_real_editorial_deepseek_prudential_reconciliation.sql',
   '20260915190000_real_editorial_deepseek_analysis_receipts.sql',
+  '20260915193000_real_editorial_confirmed_analysis_loss_reconciliation.sql',
 ]
 
 async function migration(name: string): Promise<string> {
@@ -226,6 +227,26 @@ describe('esquema durable del piloto editorial real', () => {
     expect(sql).not.toMatch(/insert into public\.real_editorial_call_reservations/i)
     expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
     expect(sql).not.toMatch(/api\.tavily|api\.openai|fetch\(/i)
+  })
+
+  it('concilia una respuesta DeepSeek confirmada pero perdida sin llamarla de nuevo', async () => {
+    const sql = await migration(migrations[17])
+
+    expect(sql).toContain('real_editorial_confirmed_analysis_response_losses')
+    expect(sql).toContain('reconcile_real_editorial_confirmed_analysis_response_loss')
+    expect(sql).toContain("provider_id = 'deepseek'")
+    expect(sql).toContain("operation = 'analysis'")
+    expect(sql).toContain('input_token_cap = 200000')
+    expect(sql).toContain('output_token_cap = 12000')
+    expect(sql).toContain("'VALIDATED_RESULT_LOST_AFTER_PROVIDER_SUCCESS'")
+    expect(sql).toContain("'providerResult','confirmed_success'")
+    expect(sql).toContain("'costKind','prudential_confirmed_response_usage_lost'")
+    expect(sql).toContain("reservation.state <> 'started'")
+    expect(sql).toContain('CONFIRMED_ANALYSIS_LOSS_IDEMPOTENCY_CONFLICT')
+    expect(sql).toContain('CONFIRMED_ANALYSIS_LOSS_BUDGET_EXCEEDED')
+    expect(sql).toContain("'CONFIRMED_RESPONSE_LOSS_PRUDENTIAL_ADJUSTMENT'")
+    expect(sql).not.toMatch(/(?:delete|truncate)\s+from/i)
+    expect(sql).not.toMatch(/api\.deepseek|api\.openai|api\.tavily|fetch\(/i)
   })
 
   it('resuelve incidentes históricos con evidencia sin tocar ledger ni ejecutar trabajo', async () => {

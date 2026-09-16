@@ -125,6 +125,7 @@ import { readRealEditorialAuthorization } from './real-editorial-authorization'
 import { createLocalSupabaseClientFromEnv } from '@services/supabase'
 import {
   RealEditorialLibraryVersionDraftApplicationService,
+  RealEditorialLibraryVersioningService,
   SupabaseRealEditorialLibraryVersioningRepository,
 } from '@modules/library-versioning'
 import { readRealLlmRouting, withLiveProviderClients } from '@modules/real-pipeline'
@@ -729,6 +730,8 @@ async function runRealEditorialCuencaBenchmarkCommand(action: string): Promise<u
     })
   }
   if (action === 'correct-library-052') return createCuencaEditorialCorrections()
+  if (action === 'refine-library-053') return saveCuencaEditorialRefinements()
+  if (action === 'approve-library-053') return approveCuencaEditorialRefinements()
   if (action === 'review-library-052') return reviewCuencaEditorialCorrections()
   if (action === 'review-library-052-openai-fallback') return reviewCuencaEditorialCorrections(true)
   throw new Error('Acción de benchmark Cuenca no reconocida')
@@ -821,6 +824,184 @@ function correctCuencaStudent(content: string): string {
     'Sobre el resolí, el expediente solo confirma que se cita entre las referencias gastronómicas; su caracterización concreta no queda corroborada y no se afirma aquí.',
     'la caracterización no corroborada de resolí',
   )
+}
+
+async function saveCuencaEditorialRefinements() {
+  const { client } = createLocalSupabaseClientFromEnv()
+  const repository = new SupabaseRealEditorialLibraryVersioningRepository(client)
+  const drafts = new RealEditorialLibraryVersionDraftApplicationService(repository, repository, repository)
+  const plans = [
+    {
+      profile: 'adventure' as const,
+      versionId: '4a6ca898-7967-4052-a7a2-d6d25c26ce2a',
+      title: 'Cuenca (España) para aventureros: hoces, serranía y patrimonio con incógnitas operativas',
+      correction: refineCuencaAdventure053,
+      summary: '053: se eliminan recorribilidad a pie y caracterizaciones kársticas o de disolución no respaldadas.',
+    },
+    {
+      profile: 'student' as const,
+      versionId: '7791d810-35a8-4269-bfa6-c2fad5132b4d',
+      title: 'Cuenca (España): historia, monumentos y cultura',
+      correction: refineCuencaStudent053,
+      summary: '053: se eliminan valoraciones y relaciones espaciales no respaldadas; vida cotidiana queda explícitamente sin caracterizar.',
+    },
+  ]
+  const saved = []
+  for (const plan of plans) {
+    const detail = await repository.getVersionDetail(plan.versionId)
+    const result = await drafts.saveDraft({
+      versionId: plan.versionId,
+      expectedPreviousRevisionHash: detail.currentRevision.revisionHash,
+      title: plan.title,
+      content: plan.correction(detail.currentRevision.content),
+      changeSummary: plan.summary,
+      actorId: MANUAL_LOCAL_ACTOR_ID,
+      operationKey: operationKey(`investighost:053:cuenca:${plan.profile}:revision:2`),
+    })
+    if (result.status !== 'ok') throw new Error(`No se pudo guardar la revisión 053 de ${plan.profile}`)
+    saved.push({
+      profile: plan.profile,
+      libraryEntryId: result.entrySummary.libraryEntryId,
+      versionId: result.versionDetail.version.versionId,
+      revisionId: result.savedRevision.id,
+      revisionNumber: result.savedRevision.revisionNumber,
+      versionHash: result.versionDetail.version.versionHash,
+      contentHash: result.savedRevision.contentHash,
+      revisionHash: result.savedRevision.revisionHash,
+    })
+  }
+  return saved
+}
+
+function refineCuencaAdventure053(content: string): string {
+  let refined = replaceExactlyOnce(
+    content,
+    'Ese es el material con el que trabaja un perfil de aventura: terreno kárstico, formaciones modeladas por disolución, bosque y agua.',
+    'Para este perfil, el expediente solo permite señalar los lugares naturales y las actividades nombradas, sin caracterizar su geología.',
+    'la caracterización kárstica no respaldada',
+  )
+  refined = replaceExactlyOnce(
+    refined,
+    'Cuenca (España) ofrece, según el expediente, un paquete coherente para quien va a caminar: ciudad colgada entre hoces, patrimonio concentrado y recorrible a pie en el casco, un cinturón natural kárstico con ríos y formaciones singulares, un yacimiento cretácico de relevancia y una cultura viva con nombres propios.',
+    'Cuenca (España) reúne, según el expediente, ciudad entre hoces, lugares patrimoniales nombrados, entornos naturales citados, un yacimiento del Cretácico inferior y referencias culturales concretas.',
+    'la recorribilidad a pie y el paisaje kárstico del cierre',
+  )
+  return refined
+}
+
+function refineCuencaStudent053(content: string): string {
+  let refined = replaceExactlyOnce(
+    content,
+    'El puente de San Pablo es el punto desde el que tradicionalmente se contemplan esas casas, aunque cuidado: el expediente no describe miradores, recorridos ni distancias, así que no te diré cuánto se tarda de un sitio a otro.',
+    'El expediente cita el puente de San Pablo y las Casas Colgadas, pero no describe su relación espacial, usos ni recorridos; por eso no se añade una función de mirador ni tiempos de desplazamiento.',
+    'el mirador tradicional no respaldado',
+  )
+  refined = replaceExactlyOnce(
+    refined,
+    'La plaza Mayor funciona como centro urbano de referencia.',
+    'La plaza Mayor figura entre los lugares citados por el expediente.',
+    'el centro urbano no respaldado',
+  )
+  refined = replaceExactlyOnce(
+    refined,
+    'La catedral de Santa María y San Julián es el gran edificio religioso citado.',
+    'La catedral de Santa María y San Julián figura entre los lugares citados.',
+    'la valoración de la catedral',
+  )
+  refined = replaceExactlyOnce(
+    refined,
+    'El túnel de Alfonso VIII conecta, por lo que se desprende del nombre, con la memoria del rey conquistador, pero el expediente no detalla su historia constructiva.',
+    'El túnel de Alfonso VIII figura entre los lugares citados; el expediente no detalla su historia constructiva.',
+    'la inferencia sobre el túnel',
+  )
+  return refined
+}
+
+async function approveCuencaEditorialRefinements() {
+  const { client } = createLocalSupabaseClientFromEnv()
+  const repository = new SupabaseRealEditorialLibraryVersioningRepository(client)
+  const service = new RealEditorialLibraryVersioningService(repository)
+  const approved = []
+  for (const [profile, versionId] of [
+    ['adventure', '4a6ca898-7967-4052-a7a2-d6d25c26ce2a'],
+    ['student', '7791d810-35a8-4269-bfa6-c2fad5132b4d'],
+  ] as const) {
+    const detail = await repository.getVersionDetail(versionId)
+    const revision = detail.currentRevision
+    let effective = await repository.getEffectiveVersionFindings(versionId, revision.id)
+    const acceptedRiskFindingKeys = effective.items.map(item => item.findingKey).sort()
+    for (const item of effective.items) {
+      if (!item.isBaseline) continue
+      const state = await repository.getVersionStateSnapshot(versionId)
+      const reconciliation = await service.reconcileFindings({
+        versionId,
+        revisionId: revision.id,
+        expectedState: 'draft',
+        expectedRevisionHash: revision.revisionHash,
+        expectedTraceabilityHash: state.traceabilityHash,
+        finding: {
+          findingKey: item.findingKey,
+          sourceFindingType: item.sourceFindingType,
+          sourceFindingId: item.sourceFindingId,
+          origin: item.origin,
+          disposition: 'accepted_risk',
+          claimRelation: item.claimRelation,
+          supportStatus: item.supportStatus,
+          subjectText: item.subjectText,
+          diffAnchor: null,
+          claimIds: item.claimIds,
+          evidenceReferences: item.evidenceReferences,
+          sourceIds: item.sourceIds,
+          editorDeclaration: 'Revisión 053: contenido preservado con límites, gaps y contradicciones visibles.',
+          justification: 'La revisión final no identifica una afirmación material no respaldada tras las correcciones 053; los límites heredados permanecen explícitos y no se publican.',
+        },
+        createdByActorId: MANUAL_LOCAL_ACTOR_ID,
+        operationKey: operationKey(`investighost:053:${profile}:reconcile:${item.findingKey}`),
+      })
+      if (reconciliation.status !== 'ok') throw new Error(`No se pudo reconciliar ${profile}/${item.findingKey}`)
+      effective = await repository.getEffectiveVersionFindings(versionId, revision.id)
+    }
+    const submittedState = await repository.getVersionStateSnapshot(versionId)
+    const submitted = await service.submitForReview({
+      versionId,
+      revisionId: revision.id,
+      expectedState: 'draft',
+      expectedRevisionHash: revision.revisionHash,
+      expectedTraceabilityHash: submittedState.traceabilityHash,
+      reason: '053: revisión final completada; las advertencias restantes son informativas y los límites documentales siguen visibles.',
+      actorId: MANUAL_LOCAL_ACTOR_ID,
+      operationKey: operationKey(`investighost:053:${profile}:submit`),
+    })
+    if (submitted.status !== 'ok') throw new Error(`No se pudo enviar ${profile} a revisión canónica`)
+    const reviewState = await repository.getVersionStateSnapshot(versionId)
+    if (!reviewState.aggregateHash) throw new Error(`Falta el hash de decisión de ${profile}`)
+    const decision = await service.decideVersion({
+      versionId,
+      revisionId: revision.id,
+      decisionType: 'approve',
+      expectedPreviousState: 'ready_for_review',
+      expectedDecisionTargetHash: reviewState.aggregateHash,
+      reason: '053: aprobación humana canónica tras correcciones mínimas y revisión final sin defectos materiales.',
+      actorId: MANUAL_LOCAL_ACTOR_ID,
+      affectedFindingKeys: [],
+      changeInstructions: [],
+      acceptedRiskFindingKeys,
+      separationOfDutiesException: true,
+      separationOfDutiesReason: 'Operador local autorizado documenta la excepción para cerrar la revisión editorial humana de Cuenca.',
+      operationKey: operationKey(`investighost:053:${profile}:approve`),
+    })
+    if (decision.status !== 'ok') throw new Error(`No se pudo aprobar ${profile}`)
+    const [current, decisions] = await Promise.all([
+      repository.getCurrentApprovedVersion(detail.version.libraryEntryId),
+      repository.listVersionDecisions(versionId),
+    ])
+    const terminalDecision = decisions.at(-1)
+    if (!terminalDecision || terminalDecision.decisionType !== 'approve') {
+      throw new Error(`La aprobación ${profile} no conserva su decisión durable`)
+    }
+    approved.push({ profile, decisionId: terminalDecision.id, current })
+  }
+  return approved
 }
 
 function replaceExactlyOnce(content: string, search: string, replacement: string, label: string): string {

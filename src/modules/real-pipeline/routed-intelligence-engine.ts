@@ -24,6 +24,7 @@ export interface RoutedIntelligenceStage {
  */
 export class RoutedIntelligenceEngine implements IntelligenceEngine {
   readonly id = 'configured-llm-routing'
+  readonly routedByStage = true
   readonly model: string
   readonly simulation: boolean
   readonly analysisStrategy?: 'deepseek_multi_stage'

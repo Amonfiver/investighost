@@ -639,6 +639,7 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
   readonly id: string
   readonly model: string
   readonly simulation: boolean
+  readonly routedByStage: boolean
   readonly analysisStrategy?: 'deepseek_multi_stage'
 
   constructor(
@@ -650,7 +651,18 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
     this.id = delegate.id
     this.model = delegate.model
     this.simulation = delegate.simulation
+    this.routedByStage = (delegate as IntelligenceEngine & { routedByStage?: boolean }).routedByStage === true
     this.analysisStrategy = delegate.analysisStrategy
+  }
+
+  routeFor(stage: IntelligenceRoutingStage): ResolvedIntelligenceRoute {
+    if ('routeFor' in this.delegate && typeof this.delegate.routeFor === 'function') {
+      return this.delegate.routeFor(stage) as ResolvedIntelligenceRoute
+    }
+    const providerId = this.delegate.id === 'deepseek' || this.delegate.model === 'deepseek-flash'
+      ? 'deepseek'
+      : 'openai'
+    return { providerId, model: this.delegate.model, apiModel: this.delegate.model }
   }
 
   validateAnalyze(
@@ -758,7 +770,10 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
     signal: AbortSignal,
     constraints?: RealEditorialCoverageConstraints,
   ): Promise<IntelligenceDraft[]> {
-    const stored = await Promise.all(['adventure', 'student'].map(profile =>
+    const requestedProfiles = mission.profiles
+      .filter(profile => profile.enabled)
+      .map(profile => profile.profile)
+    const stored = await Promise.all(requestedProfiles.map(profile =>
       this.repository.latestArtifact(
         this.runId,
         profile === 'adventure' ? 'draft_adventure' : 'draft_student',
@@ -771,17 +786,11 @@ class DurableIntelligenceEngine implements IntelligenceEngine {
     await this.repository.updateState(
       this.pilotId,
       this.runId,
-      'generating_adventure',
+      requestedProfiles.includes('adventure') ? 'generating_adventure' : 'generating_student',
       completedRound,
     )
     const drafts = await this.delegate.draft(mission, knowledge, signal, constraints)
     await this.repository.saveDrafts(this.pilotId, this.runId, drafts)
-    await this.repository.updateState(
-      this.pilotId,
-      this.runId,
-      'generating_student',
-      completedRound,
-    )
     return drafts
   }
 
@@ -1176,12 +1185,11 @@ async function durableOperationResultAvailable(
     const round = operationId.includes(':round:2:') ? 2 : 1
     return Boolean(await repository.latestArtifact(runId, 'round', `round-${round}`))
   }
-  if (operationId.endsWith(':drafting')) {
-    const [adventure, student] = await Promise.all([
-      repository.latestArtifact(runId, 'draft_adventure', 'adventure'),
-      repository.latestArtifact(runId, 'draft_student', 'student'),
-    ])
-    return Boolean(adventure && student)
+  if (operationId.endsWith(':draft_adventure')) {
+    return Boolean(await repository.latestArtifact(runId, 'draft_adventure', 'adventure'))
+  }
+  if (operationId.endsWith(':draft_student')) {
+    return Boolean(await repository.latestArtifact(runId, 'draft_student', 'student'))
   }
   if (operationId.endsWith(':final-review')) {
     return Boolean(await repository.latestArtifact(runId, 'final_review', 'final'))

@@ -55,16 +55,25 @@ export class FullRealEditorialPipeline {
       research.masterKnowledge,
       research.editorialConstraints,
     )
-    const drafts = await this.calls.execute(
-      `${mission.taskId}:drafting`,
-      this.configuration.draftingCost,
-      () => this.intelligence.draft(
+    const enabledProfiles = mission.profiles.filter(profile => profile.enabled)
+    const drafts = isStageRoutedIntelligence(this.intelligence)
+      ? await this.draftByProfile(
         mission,
+        enabledProfiles,
         research.masterKnowledge,
-        signal,
         research.editorialConstraints,
-      ),
-    )
+        signal,
+      )
+      : await this.calls.execute(
+        `${mission.taskId}:drafting`,
+        this.configuration.draftingCost,
+        () => this.intelligence.draft(
+          mission,
+          research.masterKnowledge,
+          signal,
+          research.editorialConstraints,
+        ),
+      )
     this.intelligence.validateReview?.(
       mission,
       research.masterKnowledge,
@@ -94,6 +103,27 @@ export class FullRealEditorialPipeline {
       externalEffects: false,
     }
   }
+
+  private async draftByProfile(
+    mission: RealResearchMission,
+    profiles: RealResearchMission['profiles'],
+    knowledge: Parameters<IntelligenceEngine['draft']>[1],
+    constraints: Parameters<IntelligenceEngine['draft']>[3],
+    signal: AbortSignal,
+  ): Promise<IntelligenceDraft[]> {
+    const draftingCostPerProfile = this.configuration.draftingCost / profiles.length
+    const drafts: IntelligenceDraft[] = []
+    for (const profile of profiles) {
+      const profileMission: RealResearchMission = { ...mission, profiles: [profile] }
+      const profileDrafts = await this.calls.execute(
+        `${mission.taskId}:draft_${profile.profile}`,
+        draftingCostPerProfile,
+        () => this.intelligence.draft(profileMission, knowledge, signal, constraints),
+      )
+      drafts.push(...profileDrafts)
+    }
+    return drafts
+  }
 }
 
 export class FullEditorialPipelineError extends Error {
@@ -105,4 +135,8 @@ export class FullEditorialPipelineError extends Error {
 
 function wordCount(value: string): number {
   return value.trim() ? value.trim().split(/\s+/).length : 0
+}
+
+function isStageRoutedIntelligence(engine: IntelligenceEngine): boolean {
+  return (engine as IntelligenceEngine & { routedByStage?: boolean }).routedByStage === true
 }

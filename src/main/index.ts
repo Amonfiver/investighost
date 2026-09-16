@@ -19,6 +19,7 @@
 
 import { app, BrowserWindow, ipcMain } from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
+import { createHash } from 'node:crypto'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import dotenv from 'dotenv'
@@ -120,6 +121,13 @@ import {
   RealEditorialPilotActionSchema,
 } from '@shared/real-editorial-pilot-contracts'
 import { getRealEditorialPilotRuntime } from './real-editorial-pilot-runtime'
+import { readRealEditorialAuthorization } from './real-editorial-authorization'
+import { createLocalSupabaseClientFromEnv } from '@services/supabase'
+import {
+  RealEditorialLibraryVersionDraftApplicationService,
+  SupabaseRealEditorialLibraryVersioningRepository,
+} from '@modules/library-versioning'
+import { readRealLlmRouting, withLiveProviderClients } from '@modules/real-pipeline'
 
 ipcMain.handle('contributions:import-pending', async () => {
   return (await getContributionImportRuntime()).importPending()
@@ -698,7 +706,204 @@ async function runRealEditorialCuencaBenchmarkCommand(action: string): Promise<u
   if (action === 'resume') return runtime.resume({ pilotId })
   if (action === 'progress') return runtime.progress({ pilotId })
   if (action === 'result') return runtime.result({ pilotId })
+  if (action === 'approve-terminal') {
+    return runtime.resolveTerminalDecision({
+      pilotId,
+      runId: 'ceb14fcc-8d70-43e1-af7e-619013ff324b',
+      actorId: MANUAL_LOCAL_ACTOR_ID,
+      decision: 'approve_editorial_result',
+      reason: 'Aprobación canónica para crear revisiones editoriales inmutables en Biblioteca; las correcciones 052 se revisarán y aprobarán como versiones derivadas antes de cualquier publicación.',
+      observations: 'No publica ni conecta Trawel. Conserva el origen y habilita únicamente la revisión derivada trazable.',
+      affectedProfiles: ['adventure', 'student'],
+      profileComments: [],
+      warningsAccepted: true,
+      confirmed: true,
+    })
+  }
+  if (action === 'move-library') {
+    return runtime.moveApprovedResultToLibrary({
+      pilotId,
+      runId: 'ceb14fcc-8d70-43e1-af7e-619013ff324b',
+      actorId: MANUAL_LOCAL_ACTOR_ID,
+      confirmed: true,
+    })
+  }
+  if (action === 'correct-library-052') return createCuencaEditorialCorrections()
+  if (action === 'review-library-052') return reviewCuencaEditorialCorrections()
+  if (action === 'review-library-052-openai-fallback') return reviewCuencaEditorialCorrections(true)
   throw new Error('Acción de benchmark Cuenca no reconocida')
+}
+
+async function createCuencaEditorialCorrections() {
+  const runtime = getRealEditorialPilotRuntime()
+  const entries = await runtime.listLibraryEntries({ destination: 'Cuenca', origin: 'real_editorial_pilot' })
+  const adventure = entries.find(entry => entry.profile === 'adventure')
+  const student = entries.find(entry => entry.profile === 'student')
+  if (!adventure || !student || entries.length !== 2) {
+    throw new Error('Biblioteca no conserva exactamente las dos entradas de Cuenca para la revisión 052')
+  }
+  const { client } = createLocalSupabaseClientFromEnv()
+  const repository = new SupabaseRealEditorialLibraryVersioningRepository(client)
+  const drafts = new RealEditorialLibraryVersionDraftApplicationService(repository, repository, repository)
+  const correctedAdventure = correctCuencaAdventure(adventure.content)
+  const correctedStudent = correctCuencaStudent(student.content)
+  const results = await Promise.all([
+    createCuencaCorrectedVersion(drafts, repository, adventure.entryId, adventure.title, correctedAdventure, 'adventure'),
+    createCuencaCorrectedVersion(drafts, repository, student.entryId, student.title, correctedStudent, 'student'),
+  ])
+  const accepted = []
+  for (const result of results) {
+    if (result.status !== 'ok') {
+      throw new Error('La revisión editorial 052 no pudo crear sus versiones derivadas de forma canónica')
+    }
+    accepted.push({
+      profile: result.entrySummary.profile,
+      libraryEntryId: result.entrySummary.libraryEntryId,
+      versionId: result.version.versionId,
+      revisionId: result.currentRevision.id,
+      versionHash: result.version.versionHash,
+      contentHash: result.currentRevision.contentHash,
+      revisionHash: result.currentRevision.revisionHash,
+      state: result.stateSnapshot.effectiveState,
+      operationReplayed: result.operationReplayed,
+    })
+  }
+  return accepted
+}
+
+async function createCuencaCorrectedVersion(
+  drafts: RealEditorialLibraryVersionDraftApplicationService,
+  repository: SupabaseRealEditorialLibraryVersioningRepository,
+  libraryEntryId: string,
+  title: string,
+  content: string,
+  profile: 'adventure' | 'student',
+) {
+  const summary = await repository.getVersioningSummary(libraryEntryId)
+  return drafts.createDraft({
+    libraryEntryId,
+    expectedHeadHash: summary.currentApproved.versionHash,
+    title,
+    content,
+    changeSummary: profile === 'adventure'
+      ? '052: se eliminan inferencias espaciales y evidencia exclusiva del perfil estudiante; se homogeneizan los gaps g1–g7.'
+      : '052: se retira la caracterización no corroborada de resolí sin alterar las referencias gastronómicas respaldadas.',
+    actorId: MANUAL_LOCAL_ACTOR_ID,
+    operationKey: operationKey(`investighost:052:cuenca:${profile}:corrected-library-version:v1`),
+  })
+}
+
+function correctCuencaAdventure(content: string): string {
+  let corrected = replaceExactlyOnce(
+    content,
+    'El conjunto dibuja un eje peatonal de alto valor escénico: el puente de San Pablo es el punto donde la hoz del Huécar y las Casas Colgadas se contemplan juntas, y la plaza Mayor funciona como nudo entre catedral, torre y callejeo.',
+    'El expediente no acredita una relación espacial, recorrido, proximidad u orientación más precisa entre esos lugares; por eso esta guía no los convierte en un itinerario ni en un punto de vista concreto.',
+    'la precisión espacial de puente/plaza',
+  )
+  corrected = replaceExactlyOnce(
+    corrected,
+    'Vida cotidiana: pinceladas, no estadísticas\n\nEl expediente ofrece observaciones cualitativas sobre huertos, artesanía, barrios, restauración, vida nocturna y celebraciones en Cuenca (España), pero no aporta población actual ni una caracterización demográfica sistemática (c10). Es decir: se puede hablar del pulso del barrio, no de cuántos habitantes tiene.\n\n',
+    'Límite de perfil: vida cotidiana\n\nNo incorporo una caracterización de vida cotidiana en este perfil de aventura: la evidencia específica disponible para ese asunto pertenece al alcance del perfil Student. La información de población y prácticas contemporáneas queda abierta y no se usa aquí.\n\n',
+    'la fuga de evidencia Student',
+  )
+  return replaceExactlyOnce(
+    corrected,
+    'Los huecos que no voy a rellenar\n\nAquí está la parte importante.',
+    'Los huecos que no voy a rellenar\n\nGaps abiertos y explícitos: g1 acceso y desplazamiento local; g2 costes, horarios, reservas y condiciones de visita; g3 rutas, recorridos, duración, dificultad, desnivel y distancias; g4 temporada y riesgos; g5 población; g6 vida cotidiana contemporánea; g7 corroboración independiente de los datos del documental. Los gaps g5 y g6 no se desarrollan en el perfil Adventure por pertenecer al alcance Student, pero permanecen visibles y sin rellenar.\n\nAquí está la parte importante.',
+    'la declaración homogénea de gaps g1–g7',
+  )
+}
+
+function correctCuencaStudent(content: string): string {
+  return replaceExactlyOnce(
+    content,
+    'Ojo con el resolí: es un dulce, y si buscas recetas, asegúrate de que la fuente habla de Cuenca (España).',
+    'Sobre el resolí, el expediente solo confirma que se cita entre las referencias gastronómicas; su caracterización concreta no queda corroborada y no se afirma aquí.',
+    'la caracterización no corroborada de resolí',
+  )
+}
+
+function replaceExactlyOnce(content: string, search: string, replacement: string, label: string): string {
+  const first = content.indexOf(search)
+  if (first < 0 || first !== content.lastIndexOf(search)) {
+    throw new Error(`No se pudo aplicar de forma determinista ${label}`)
+  }
+  return `${content.slice(0, first)}${replacement}${content.slice(first + search.length)}`
+}
+
+function operationKey(value: string): string {
+  return createHash('sha256').update(value).digest('hex')
+}
+
+async function reviewCuencaEditorialCorrections(useOpenAiFallback = false) {
+  const runtime = getRealEditorialPilotRuntime()
+  const terminal = await runtime.result({ pilotId: 'a8e4d6ad-ce09-46bd-81d9-bc316ae620a9' })
+  if (!terminal) throw new Error('El resultado terminal de Cuenca no está disponible para la revisión 052')
+  const { client } = createLocalSupabaseClientFromEnv()
+  const versioning = new SupabaseRealEditorialLibraryVersioningRepository(client)
+  const entries = await runtime.listLibraryEntries({ destination: 'Cuenca', origin: 'real_editorial_pilot' })
+  const masterKnowledge = terminal.snapshot.masterKnowledge
+  if (!masterKnowledge) {
+    throw new Error('Falta el conocimiento maestro inmutable de Cuenca')
+  }
+  const corrected = [...terminal.drafts]
+  for (const profile of ['adventure', 'student'] as const) {
+    const entry = entries.find(item => item.profile === profile)
+    if (!entry) throw new Error(`Falta la entrada ${profile} de Biblioteca`)
+    const summary = await versioning.getVersioningSummary(entry.entryId)
+    if (!summary.latestVersion || summary.latestVersion.versionNumber !== 2) {
+      throw new Error(`Falta la revisión derivada 052 de ${profile}`)
+    }
+    const detail = await versioning.getVersionDetail(summary.latestVersion.versionId)
+    const original = terminal.drafts.find(draft => draft.profile === profile)
+    if (!original) throw new Error(`Falta el borrador original ${profile}`)
+    const index = corrected.findIndex(draft => draft.profile === profile)
+    if (index < 0) throw new Error(`Falta el borrador corregible ${profile}`)
+    corrected[index] = {
+      ...original,
+      title: detail.currentRevision.title,
+      content: detail.currentRevision.content,
+    }
+  }
+  const mission = await client.from('real_editorial_artifacts').select('payload').eq('run_id', terminal.runId)
+    .eq('artifact_kind', 'mission').eq('artifact_key', 'initial').eq('version', 1).single()
+  if (mission.error || !mission.data) throw new Error('Falta la misión inmutable de Cuenca')
+  const authorization = readRealEditorialAuthorization()
+  if (!authorization.enabled || !authorization.featureToken) {
+    throw new Error('La autorización editorial real no está disponible para la revisión 052')
+  }
+  const providerCenter = await getProviderCenterRuntime()
+  const routing = readRealLlmRouting()
+  if (useOpenAiFallback) {
+    routing.routes.review = {
+      ...routing.routes.analysis,
+      providerId: 'openai',
+      model: 'gpt-5.6-luna',
+      apiModel: 'gpt-5.6-luna',
+    }
+  }
+  const review = await withLiveProviderClients(
+    providerCenter,
+    {
+      featureToken: authorization.featureToken,
+      preflightStatus: 'ready_for_real_editorial_pilot',
+      taskAuthorized: true,
+      budgetReserved: true,
+      globalGuardAcquired: true,
+    },
+    providers => providers.intelligence.review(
+      mission.data.payload as never,
+      masterKnowledge,
+      corrected as never,
+      AbortSignal.timeout(60_000),
+    ),
+    { routing },
+  )
+  return {
+    provider: useOpenAiFallback ? 'openai' : 'deepseek',
+    model: useOpenAiFallback ? 'gpt-5.6-luna' : 'deepseek-flash',
+    review,
+  }
 }
 
 function readE2E04PilotId(arguments_: string[]): string {

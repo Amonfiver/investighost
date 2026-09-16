@@ -585,11 +585,16 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     const studentPayload = draftPayloads.find(
       draft => isRecord(draft) && draft.profile === 'student',
     )
+    const acceptedRoundOneCoverage = snapshot.currentRound === 1
+      && (await this.client.from('real_editorial_coverage_reviews')
+        .select('id,latest_decision_id')
+        .eq('pilot_id', pilot.id).eq('run_id', pilot.currentRunId).eq('status', 'accepted')
+        .maybeSingle()).data?.latest_decision_id !== null
     if (
       snapshot.pilotId !== pilot.id
       || snapshot.runId !== pilot.currentRunId
       || snapshot.state !== 'pending_human_review'
-      || snapshot.currentRound !== 2
+      || (snapshot.currentRound !== 2 && !acceptedRoundOneCoverage)
       || !adventurePayload
       || !studentPayload
       || !snapshotPayload.review
@@ -624,7 +629,11 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
       )
     }
     const latestRound = snapshot.roundResults.at(-1)
-    if (!latestRound || latestRound.round !== 2 || !snapshot.masterKnowledge) {
+    if (
+      !latestRound
+      || (latestRound.round !== 2 && !(latestRound.round === 1 && acceptedRoundOneCoverage))
+      || !snapshot.masterKnowledge
+    ) {
       throw new RealEditorialRepositoryError(
         'CHECKPOINT_INVALID',
         'El resultado terminal no conserva la cobertura de la segunda ronda',
@@ -3939,9 +3948,11 @@ export type RealEditorialTerminalSnapshotV1PayloadKind =
 /**
  * Compatibility specification for real-editorial-snapshot-v1.
  *
- * Historical snapshots were parsed through a schema that omitted only
- * usage.providerRequestIds. Full immutable artifacts retained that field.
- * This projection is deliberately version-specific and removes no other data.
+ * Historical snapshots retained the public usage contract but omitted receipt
+ * telemetry (provider request ids, model/provider identifiers and internal
+ * token counters). Full immutable artifacts retained that telemetry.
+ * This projection is deliberately version-specific and removes no content,
+ * source, claim, cost or public usage data.
  */
 export function projectTerminalPayloadForSnapshotV1Compatibility(
   kind: RealEditorialTerminalSnapshotV1PayloadKind,
@@ -3977,7 +3988,13 @@ export function projectTerminalPayloadForSnapshotV1Compatibility(
       `El payload terminal ${kind} diverge en $.usage`,
     )
   }
-  delete projected.usage.providerRequestIds
+  for (const field of [
+    'providerRequestIds',
+    'model',
+    'providerId',
+    'reasoningTokens',
+    'cachedInputTokens',
+  ]) delete projected.usage[field]
   return projected
 }
 

@@ -262,4 +262,16 @@ describe('decisión humana durable de cobertura', () => {
     expect(repository).toContain("state: 'ready_for_drafting'")
     expect(repository).not.toContain("state: 'researching_round_3'")
   })
+
+  it('versiona la aceptación humana de ronda 1 sin abrir adquisición adicional', async () => {
+    const migration = await readFile(new URL(
+      '../supabase/migrations/20260916094500_real_editorial_round_one_coverage_acceptance.sql',
+      import.meta.url,
+    ), 'utf8')
+    expect(migration).toContain("checkpoint.payload->>'completedRound' <> '1'")
+    expect(migration).toContain("checkpoint.payload#>>'{lastDecision,action}' <> 'continue_focused'")
+    expect(migration).toContain("'roundOneResearchClosed',true")
+    expect(migration).toContain("'providerCalled',false,'workflowResumed',false")
+    expect(migration).not.toContain('tavily_search')
+  })
 })

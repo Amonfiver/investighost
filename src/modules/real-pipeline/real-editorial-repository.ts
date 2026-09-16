@@ -899,9 +899,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     const decision = RealContinueDecisionSchema.safeParse(payload.lastDecision)
     if (
       payload.state !== 'review_required'
-      || payload.completedRound !== 2
-      || !decision.success
-      || decision.data.action !== 'stop_review_required'
+      || !coverageReviewCheckpointEligible(payload, decision.success ? decision.data.action : undefined)
       || !isRecord(payload.coverage)
       || payload.coverage.sufficient !== false
       || !isRecord(payload.masterKnowledge)
@@ -2452,7 +2450,7 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
     const coverageGateRequired = Boolean(
       checkpoint
       && isRecord(checkpoint.payload)
-      && checkpoint.payload.completedRound === 2
+      && [1, 2].includes(Number(checkpoint.payload.completedRound))
       && isRecord(checkpoint.payload.coverage)
       && checkpoint.payload.coverage.sufficient === false,
     )
@@ -3756,9 +3754,7 @@ function reopenCoverageBudgetCheckpoint(
   const contradictions = stringArray(payload.masterKnowledge.contradictions)
   if (
     payload.state !== 'review_required'
-    || payload.completedRound !== 2
-    || !decision.success
-    || decision.data.action !== 'stop_review_required'
+    || !coverageReviewCheckpointEligible(payload, decision.success ? decision.data.action : undefined)
     || !gaps.success
     || realEditorialPayloadHash([...gaps.data.map(gap => gap.id)].sort())
       !== realEditorialPayloadHash([...constraints.unresolvedGapIds].sort())
@@ -3816,6 +3812,7 @@ function mapWorkflowState(state: RealWorkflowCheckpoint['state']): RealEditorial
 function resumeWorkflowState(
   checkpoint: RealWorkflowCheckpoint,
 ): RealWorkflowCheckpoint['state'] {
+  if (checkpoint.state === 'ready_for_drafting') return 'ready_for_drafting'
   if (checkpoint.completedRound === 0) return 'queued'
   if (
     checkpoint.completedRound === 2
@@ -3824,6 +3821,21 @@ function resumeWorkflowState(
   ) return 'ready_for_drafting'
   if (checkpoint.lastDecision?.action === 'stop_review_required') return 'review_required'
   return 'researching_round_2'
+}
+
+/**
+ * La aceptación humana de cobertura puede cerrar la investigación tras una
+ * primera ronda si el operador ha prohibido expresamente más adquisición. La
+ * decisión del modelo sigue siendo visible (`continue_focused`) y el cierre
+ * solo se desbloquea mediante cobertura + presupuesto durables.
+ */
+function coverageReviewCheckpointEligible(
+  payload: Record<string, unknown>,
+  action: string | undefined,
+): boolean {
+  const completedRound = Number(payload.completedRound)
+  return (completedRound === 2 && action === 'stop_review_required')
+    || (completedRound === 1 && action === 'continue_focused')
 }
 
 export function realEditorialPayloadHash(payload: unknown): string {

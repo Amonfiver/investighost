@@ -641,6 +641,59 @@ async function runRealEditorialCuencaBenchmarkCommand(action: string): Promise<u
     })
   }
   if (action === 'recover-analysis') return runtime.recoverConfirmedAnalysisArtifact({ pilotId })
+  if (action === 'accept-round-one-coverage-with-warnings') {
+    const progress = await runtime.progress({ pilotId })
+    const coverage = progress.coverageReview
+    const expectedGaps = ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7']
+    if (
+      progress.pilot.currentRunId !== 'ceb14fcc-8d70-43e1-af7e-619013ff324b'
+      || progress.pilot.state !== 'review_required'
+      || !coverage
+      || coverage.status !== 'required'
+      || coverage.coverageScore !== 0.58
+      || JSON.stringify(coverage.gaps.map(gap => gap.id)) !== JSON.stringify(expectedGaps)
+      || coverage.contradictions.length !== 4
+      || coverage.currentMaximumCostEur !== 0.2
+      || coverage.estimates.acceptWithWarnings.remainingEstimatedCostEur !== 0.06
+    ) throw new Error('La aceptación de cobertura no coincide con el checkpoint Cuenca de ronda 1')
+    return runtime.resolveCoverageDecision({
+      pilotId,
+      runId: progress.pilot.currentRunId,
+      actorId: MANUAL_LOCAL_ACTOR_ID,
+      decision: 'accept_with_warnings',
+      reason: 'Autorización humana Cuenca 051: no adquirir más Tavily; redactar únicamente con evidencia trazada y advertencias obligatorias.',
+      note: 'No tratar como verificados acceso, aparcamiento, horarios, precios, reservas, rutas, duración, desnivel, riesgos, temporada, población ni vida cotidiana sin evidencia específica. Excluir Cuenca Ecuador; conservar contradicciones y gaps en los borradores y revisión.',
+      riskAccepted: true,
+      confirmed: true,
+    })
+  }
+  if (action === 'authorize-round-one-coverage-extension-250') {
+    const progress = await runtime.progress({ pilotId })
+    const coverage = progress.coverageReview
+    const review = progress.budgetReview
+    if (
+      progress.pilot.currentRunId !== 'ceb14fcc-8d70-43e1-af7e-619013ff324b'
+      || progress.pilot.state !== 'review_required'
+      || coverage?.status !== 'accepted'
+      || !coverage.editorialConstraints
+      || !review
+      || review.status !== 'pending'
+      || review.context !== 'coverage_acceptance'
+      || review.currentMaximumCostEur !== 0.2
+      || review.remainingEstimatedCostEur !== 0.06
+      || review.coverageDecisionId !== coverage.latestDecision?.decisionId
+    ) throw new Error('La ampliación no coincide con la aceptación de cobertura Cuenca')
+    return runtime.resolveBudgetDecision({
+      pilotId,
+      runId: progress.pilot.currentRunId,
+      actorId: MANUAL_LOCAL_ACTOR_ID,
+      decision: 'authorize_extension',
+      newMaximumCostEur: 0.25,
+      reason: 'Autorización humana Cuenca 051: extensión manual hasta EUR 0.25 para completar borradores y revisión sin nuevas fuentes.',
+      note: 'Extensión acotada al run Cuenca actual; no autoriza Tavily adicional, publicación, Biblioteca, Trawel ni otro destino.',
+      confirmed: true,
+    })
+  }
   if (action === 'start') return runtime.start({ pilotId })
   if (action === 'resume') return runtime.resume({ pilotId })
   if (action === 'progress') return runtime.progress({ pilotId })

@@ -23,6 +23,8 @@ El POST JSON usa:
   provenance: {},
   approval: {},
   profiles: { adventure: TrawelEditorialProfile, student: TrawelEditorialProfile },
+  // Optional, destination-level V2 extension. Omit for text-only consumers.
+  destinationVisuals?: { imageSlot1: ..., imageSlot2: ... },
 }
 ```
 
@@ -83,9 +85,31 @@ capturas, prompts, costes, secretos ni notas internas.
 los declara. Encabezados repetidos, texto fuera de bloques o campos requeridos
 ausentes rechazan el perfil; no se rellena contenido por inferencia.
 
-El metadata conserva identidad de Biblioteca, hashes, aprobación, gaps,
-contradicciones y referencias públicas de fuente. Excluye capturas, prompts,
-costes, secretos y notas internas.
+El body de cada perfil es exclusivamente contenido de consumo. Antes de que una
+revisión pueda ser `currentApproved`, el contrato `PUBLIC_SAFE` rechaza IDs de
+claims/evidencia/gaps, estados y lenguaje de auditoría, referencias a expediente
+o dossier y Markdown escapado visible. La trazabilidad completa (claims, gaps,
+contradicciones, procedencia y evidencia de revisión) permanece en Investighost;
+no se proyecta como texto, lista ni metadata consumible de Trawel. El metadata
+V2 conserva únicamente identidad de Biblioteca, hashes y aprobación necesarios
+para el handoff. Las fuentes siguen siendo referencias públicas estructuradas.
+
+Markdown válido, incluido `**énfasis**`, se conserva; se rechaza solo el escape
+visible, por ejemplo `\\*\\*énfasis\\*\\*`.
+
+## Slots visuales opcionales
+
+V2 admite opcionalmente `destinationVisuals`, con `imageSlot1` (hero) e
+`imageSlot2` (supporting), pertenecientes al destino y no a Adventure/Student.
+Los estados son `EMPTY`, `PENDING`, `APPROVED` y `REJECTED`. La ausencia de
+slots o dos slots `EMPTY` no bloquea la publicación textual ni cambia el payload
+text-only existente.
+
+La proyección V2 solo transporta asset, URL y atribución de un slot `APPROVED`
+con permiso de uso, derechos comprobados y `approvedForPublicUse = true`. Una
+referencia `referenceOnly`, pendiente o rechazada conserva sus datos internos en
+Investighost y no cruza como imagen pública. Trawel solo muestra los metadatos
+recibidos; no decide derechos, licencia, atribución ni sustituciones.
 
 Pack A no convierte contenido narrativo libre en estructura editorial. Las
 secciones estructurales pendientes de Albarracín continúan rechazándose y

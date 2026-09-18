@@ -38,6 +38,7 @@ import {
   canonicalizeLibraryDocument,
   libraryRequestFingerprint,
 } from './canonicalization'
+import { assertPublicSafeLibraryDocument } from './public-safe-content'
 
 export type LibraryVersioningOperation =
   | 'create_version'
@@ -245,6 +246,7 @@ export class RealEditorialLibraryVersioningService {
     candidate: DecideLibraryVersionCommand,
   ): Promise<LibraryVersionCommandResult> {
     const command = DecideLibraryVersionCommandSchema.parse(candidate)
+    if (command.decisionType === 'approve') await this.assertPublicSafeApproval(command)
     const actor = await this.actors.authorize(command.actorId, command.decisionType)
     return this.repository.decideVersion(prepare(
       'decide_version',
@@ -270,6 +272,17 @@ export class RealEditorialLibraryVersioningService {
 
   async getCurrentApproved(libraryEntryId: string): Promise<CurrentApprovedLibraryContent | null> {
     return this.repository.getCurrentApproved(libraryEntryId)
+  }
+
+  /** The concrete Supabase repository is also a reader; test-only write ports may omit it. */
+  private async assertPublicSafeApproval(command: DecideLibraryVersionCommand): Promise<void> {
+    const reader = this.repository as Partial<RealEditorialLibraryVersioningReadRepository>
+    if (typeof reader.getVersionDetail !== 'function') return
+    const detail = await reader.getVersionDetail(command.versionId)
+    if (detail.currentRevision.id !== command.revisionId) {
+      throw new LibraryVersioningRepositoryError('STALE_REVISION', 'La revisión a aprobar ya no es la vigente')
+    }
+    assertPublicSafeLibraryDocument(detail.currentRevision.title, detail.currentRevision.content)
   }
 }
 

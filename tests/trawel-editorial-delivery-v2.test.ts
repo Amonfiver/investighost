@@ -10,10 +10,12 @@ import {
   prepareTrawelEditorialDeliveryV2,
   parseTrawelIngressConfig,
   projectLibraryEntryToTrawelEditorialProfile,
+  PublicSafeContentError,
   type TrawelDeliveryReconciler,
   type TrawelIngressClient,
 } from '@modules/trawel-handoff'
 import { TrawelEditorialDeliveryV2PayloadSchema, TrawelEditorialIngressResponseSchema, type TrawelEditorialIngressResponse } from '@shared/trawel-editorial-delivery-contracts'
+import { emptyDestinationVisualContract, projectDestinationVisualsForTrawel } from '@shared/destination-visual-contract'
 import { buildSyntheticApprovedSource, syntheticTrawelIds } from './support/trawel-handoff-fixture'
 
 const target = {
@@ -94,9 +96,14 @@ describe('Trawel V2 structured projection and durable delivery', () => {
       sourceId: 'source-sintetica', title: 'Fuente pública sintética', url: 'https://example.test/fuente-sintetica',
       publisher: 'Editorial Sintética', publishedAt: '2026-01-01T00:00:00.000Z', contentHash: '4'.repeat(64),
     }])
-    expect(adventure.metadata.investighost).toMatchObject({ gaps: [{ id: 'gap-sintetico' }], contradictions: ['Contradicción sintética controlada.'] })
+    expect(adventure.metadata.investighost).toMatchObject({
+      profile: 'adventure', libraryEntryId: syntheticTrawelIds.adventureEntry,
+      currentApproved: expect.objectContaining({ versionId: syntheticTrawelIds.studentVersion }),
+    })
     expect(JSON.stringify(adventure.metadata)).not.toContain('Captura interna')
     expect(JSON.stringify(adventure.metadata)).not.toContain('finalRunCostEur')
+    expect(JSON.stringify(adventure.metadata)).not.toContain('gap-sintetico')
+    expect(JSON.stringify(adventure.metadata)).not.toContain('Contradicción sintética')
     expect(JSON.stringify(adventure.sources)).not.toContain('Captura interna')
     expect(JSON.stringify(adventure.sources)).not.toContain('finalRunCostEur')
   })
@@ -133,9 +140,9 @@ describe('Trawel V2 structured projection and durable delivery', () => {
     ]
     const projected = projectLibraryEntryToTrawelEditorialProfile(adventure, target)
     expect(projected.sources.map(item => item.sourceId)).toEqual(['source-alpha', 'source-zeta'])
-    expect(projected.metadata.investighost.sourceReferences).toEqual(['source-alpha', 'source-zeta'])
-    expect(projected.metadata.investighost.gaps).toEqual([{ id: 'gap-sintetico', topic: 'alcance-sintetico', importance: 'medium', requiredForProfiles: ['adventure', 'student'], resolvableWithResearch: false }])
-    expect(projected.metadata.investighost.contradictions).toEqual(['Contradicción sintética controlada.'])
+    expect(projected.metadata.investighost).not.toHaveProperty('sourceReferences')
+    expect(projected.metadata.investighost).not.toHaveProperty('gaps')
+    expect(projected.metadata.investighost).not.toHaveProperty('contradictions')
 
     const withoutSources = source('student')
     withoutSources.entry.sources = []
@@ -157,6 +164,20 @@ describe('Trawel V2 structured projection and durable delivery', () => {
     expect(() => projectLibraryEntryToTrawelEditorialProfile(source('student', `${content.student}\n## [practical] Duplicada\n- No válida\n`), target)).toThrow(TrawelEditorialProjectionError)
   })
 
+  it('blocks internal editorial markers and visible escaped Markdown before V2 projection', () => {
+    for (const forbidden of ['(c11)', 'g7', 'El expediente no acredita esta visita.', 'claimId: c3', 'texto \\*\\*destacado\\*\\*']) {
+      expect(() => projectLibraryEntryToTrawelEditorialProfile(
+        source('adventure', content.adventure.replace('Llegada prudente a la zona.', forbidden)), target,
+      )).toThrow(PublicSafeContentError)
+    }
+  })
+
+  it('preserves valid Markdown while rejecting only visibly escaped Markdown', () => {
+    const validMarkdown = content.adventure.replace('Llegada prudente a la zona.', '**Llegada prudente** a la zona.')
+    expect(projectLibraryEntryToTrawelEditorialProfile(source('adventure', validMarkdown), target).intro)
+      .toBe('**Llegada prudente** a la zona.')
+  })
+
   it('constructs exact profiles payload, requires both profiles, and fingerprints final wire content', () => {
     const value = payload(); const equal = payload()
     expect(TrawelEditorialDeliveryV2PayloadSchema.parse(value)).toEqual(value)
@@ -167,6 +188,20 @@ describe('Trawel V2 structured projection and durable delivery', () => {
     expect(revised.payloadFingerprint).not.toBe(value.payloadFingerprint)
     expect(TrawelEditorialDeliveryV2PayloadSchema.safeParse({ ...value, profiles: { adventure: value.profiles.adventure } }).success).toBe(false)
     expect(JSON.stringify(value)).not.toContain('TRAWEL_INTERNAL_EDITORIAL_DELIVERIES_SECRET')
+  })
+
+  it('keeps V2 text-only compatible and can carry two empty destination-level visual slots', () => {
+    const textOnly = payload()
+    expect(textOnly.destinationVisuals).toBeUndefined()
+    const visuals = projectDestinationVisualsForTrawel(emptyDestinationVisualContract(syntheticTrawelIds.destination))
+    const extended = prepareTrawelEditorialDeliveryV2({
+      target, sources: [source('adventure'), source('student')], destinationVisuals: visuals,
+    })
+    expect(extended.destinationVisuals).toMatchObject({
+      destinationId: syntheticTrawelIds.destination,
+      imageSlot1: { state: 'EMPTY', imageUrl: null }, imageSlot2: { state: 'EMPTY', imageUrl: null },
+    })
+    expect(JSON.stringify(extended.profiles)).not.toContain('imageSlot')
   })
 
   it('persists an immutable snapshot and recovers an expired lease using its persisted clock', async () => {

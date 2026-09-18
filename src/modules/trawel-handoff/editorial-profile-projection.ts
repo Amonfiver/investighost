@@ -4,6 +4,10 @@ import {
   type TrawelEditorialDeliveryTarget,
   type TrawelEditorialProfile,
 } from '@shared/trawel-editorial-delivery-contracts'
+import {
+  assertPublicSafeLibraryDocument,
+  assertPublicSafeTrawelProfile,
+} from '@modules/library-versioning/public-safe-content'
 
 const REQUIRED_KINDS = {
   adventure: ['intro', 'overview', 'highlights', 'route', 'practical', 'risks'],
@@ -31,6 +35,7 @@ export function projectLibraryEntryToTrawelEditorialProfile(
   const sections = parseCanonicalMarkdown(source.currentApproved.content, source.entry.profile)
   const required = REQUIRED_KINDS[source.entry.profile]
   for (const kind of required) requireOne(sections, kind)
+  assertPublicSafeLibraryDocument(source.currentApproved.title, source.currentApproved.content)
 
   const intro = requireOne(sections, 'intro').content
   const overview = requireOne(sections, 'overview').content
@@ -40,7 +45,7 @@ export function projectLibraryEntryToTrawelEditorialProfile(
   const excluded = new Set(['intro', 'overview', 'highlights', 'route', 'practical', 'sources'])
   const publicSources = projectDurablePublicSources(source)
 
-  return TrawelEditorialProfileSchema.parse({
+  const profile = {
     headline: source.currentApproved.title,
     intro,
     whatMakesSpecial: overview,
@@ -75,12 +80,12 @@ export function projectLibraryEntryToTrawelEditorialProfile(
           approvalDecisionId: source.currentApproved.approvalDecisionId ?? source.currentApproved.originV1.terminalDecisionId,
           approvedAt: source.currentApproved.approvedAt,
         },
-        gaps: source.currentApproved.originV1.gaps.map(publicGap),
-        contradictions: source.currentApproved.originV1.contradictions,
-        sourceReferences: publicSources.map(item => item.sourceId),
       },
     },
-  })
+  }
+  const parsed = TrawelEditorialProfileSchema.parse(profile)
+  assertPublicSafeTrawelProfile(parsed)
+  return parsed
 }
 
 function parseCanonicalMarkdown(content: string, profile: EditorialProfile): ParsedSection[] {
@@ -147,22 +152,4 @@ function splitList(content: string, kind: string): string[] {
     throw new TrawelEditorialProjectionError('INVALID_MARKDOWN', `La sección ${kind} requiere una lista explícita`)
   }
   return values
-}
-
-function publicGap(value: unknown): Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new TrawelEditorialProjectionError('INVALID_MARKDOWN', 'La trazabilidad de gaps no es segura')
-  }
-  const gap = value as Record<string, unknown>
-  if (typeof gap.id !== 'string' || typeof gap.topic !== 'string' || typeof gap.importance !== 'string'
-    || !Array.isArray(gap.requiredForProfiles) || typeof gap.resolvableWithResearch !== 'boolean') {
-    throw new TrawelEditorialProjectionError('INVALID_MARKDOWN', 'La trazabilidad de gaps no es válida')
-  }
-  return {
-    id: gap.id,
-    topic: gap.topic,
-    importance: gap.importance,
-    requiredForProfiles: gap.requiredForProfiles,
-    resolvableWithResearch: gap.resolvableWithResearch,
-  }
 }

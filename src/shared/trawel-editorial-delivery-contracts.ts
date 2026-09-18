@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { LibraryVersionSha256Schema, LibraryVersionUuidSchema } from './real-editorial-library-contracts'
 import { TrawelEditorialPublicSourceSchema } from './trawel-editorial-handoff-contracts'
+import { TrawelDestinationVisualContractSchema } from './destination-visual-contract'
 
 /** Wire contract for Trawel's deployed internal-editorial-deliveries ingress. */
 export const TRAWEL_EDITORIAL_DELIVERY_V2_SCHEMA = 'v2' as const
@@ -67,12 +68,14 @@ export const TrawelEditorialDeliveryV2PayloadSchema = z.object({
   provenance: z.record(JsonValueSchema),
   approval: z.record(JsonValueSchema),
   profiles: z.object({ adventure: TrawelEditorialProfileSchema, student: TrawelEditorialProfileSchema }).strict(),
+  /** Optional V2 extension. Existing consumers receive the unchanged text-only payload. */
+  destinationVisuals: TrawelDestinationVisualContractSchema.optional(),
 }).strict()
 
 const DeliveryResultSchema = z.object({
   editorial_content_ids: z.array(LibraryVersionUuidSchema).max(2).optional(),
   profiles_created: z.array(ProfileSchema).max(2).optional(),
-  publication: z.literal('draft_only').optional(),
+  publication: z.enum(['draft_only', 'available_to_trawel']).optional(),
 }).passthrough()
 const DeliverySchema = z.object({
   id: LibraryVersionUuidSchema,
@@ -96,7 +99,7 @@ export const TrawelEditorialIngressResponseSchema = z.object({
   canonicalDestinationId: CanonicalDestinationIdSchema.optional(),
   profiles_created: z.array(ProfileSchema).max(2).optional(),
   editorial_content_ids: z.array(LibraryVersionUuidSchema).max(2).optional(),
-  publication: z.literal('draft_only').optional(),
+  publication: z.enum(['draft_only', 'available_to_trawel']).optional(),
   error: z.string().trim().min(1).max(2_000).optional(),
 }).passthrough()
 

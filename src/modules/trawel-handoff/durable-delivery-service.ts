@@ -118,7 +118,7 @@ export class DurableTrawelDeliveryService {
       || (response.payloadFingerprint !== undefined && response.payloadFingerprint !== delivery.payloadFingerprint)
       || (response.canonicalDestinationId !== undefined && response.canonicalDestinationId !== delivery.canonicalDestinationId)
       || (response.delivery?.canonicalDestinationId !== undefined && response.delivery.canonicalDestinationId !== delivery.canonicalDestinationId)
-      || ((response.publication ?? result?.publication) !== undefined && (response.publication ?? result?.publication) !== 'draft_only')
+      || ((response.publication ?? result?.publication) !== undefined && !['draft_only', 'available_to_trawel'].includes(response.publication ?? result?.publication ?? ''))
       || (profiles.length > 0 && profiles.join(',') !== 'adventure,student')
       || ((response.editorial_content_ids ?? result?.editorial_content_ids) !== undefined && (response.editorial_content_ids ?? result?.editorial_content_ids)?.length !== 2)) {
       return { state: 'CONFLICT' as const, lastResultCode: 'RESPONSE_IDENTITY_MISMATCH' }

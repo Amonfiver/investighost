@@ -1,5 +1,25 @@
 # Investighost — cierre y punto de reanudación actual
 
+## Prompt investighost 059 — limpieza pública de Cuenca y contrato visual preparado
+
+Fecha de actualización: 2026-09-18.
+
+- `PUBLIC_SAFE` es ahora un gate previo a aprobar una versión derivada y previo
+  a su proyección V2. El body público y la trazabilidad editorial interna están
+  separados: claims, evidencia, gaps, contradicciones y review permanecen en
+  Investighost; no se proyectan como prosa ni metadata consumible de perfil.
+- Cuenca obtuvo nuevas revisiones aprobadas para Adventure y Student sin Tavily,
+  OpenAI ni DeepSeek. El rerun es idempotente y conserva las mismas identidades.
+- V2 sigue siendo compatible con payloads de solo texto. El nuevo contrato
+  opcional `destinationVisuals` tiene dos slots de destino (`imageSlot1` y
+  `imageSlot2`), ambos `EMPTY` para Cuenca. No hay búsqueda, descarga ni
+  pipeline visual; `referenceOnly` no cruza a Trawel y solo un asset con
+  derechos comprobados puede proyectarse como público.
+- El ingress remoto de Trawel no está configurado en este entorno, por lo que
+  el payload de Cuenca se calculó y verificó, pero no se emitió un POST ni se
+  pudo comprobar `/pais/espana/cuenca` aquí. Esta limitación no altera las
+  aprobaciones locales ni habilita trabajo editorial en Trawel.
+
 ## Estado vigente — E2E-03 validado exclusivamente con Trawel sintético
 
 Fecha de actualización: 2026-08-08.

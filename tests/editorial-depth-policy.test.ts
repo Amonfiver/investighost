@@ -3,6 +3,7 @@ import {
   EditorialDepthPolicyError,
   assertContentNotTooThin,
   assertProfilesDifferentiated,
+  assertReadableAndScannable,
 } from '@modules/library-versioning/editorial-depth-policy'
 
 const evidence = {
@@ -24,6 +25,7 @@ Las hoces, el casco histórico y la declaración patrimonial explican el caráct
 - Puente de San Pablo como parte del conjunto patrimonial citado.
 - Plaza Mayor, catedral y torre Mangana como referencias del casco histórico.
 - Ciudad Encantada y torcas para observar el paisaje kárstico de la serranía.
+- Las Hoyas y el museo paleontológico para enlazar paisaje y ciencia.
 
 ## [route] Combinar ciudad y serranía
 Empieza por los lugares del casco histórico y deja la naturaleza para otra parte de la visita. La ruta no fija tiempos ni distancias: el orden permite separar patrimonio, paisaje y actividades con una comprobación previa de las condiciones vigentes.
@@ -76,5 +78,22 @@ describe('editorial depth policy', () => {
     expect(() => assertProfilesDifferentiated(
       { title: 'A', content: richAdventure }, { title: 'B', content: richStudent },
     )).not.toThrow()
+  })
+
+  it('fails a wall of prose but accepts structured, useful copy', () => {
+    expect(() => assertReadableAndScannable({ profile: 'adventure', title: 'A', content: richAdventure }))
+      .not.toThrow()
+    expect(() => assertReadableAndScannable({
+      profile: 'adventure', title: 'A',
+      content: richAdventure.replace('Cuenca invita a explorar una ciudad construida entre paisaje y patrimonio.',
+        `${'Una frase repetida que impide encontrar lo importante. '.repeat(35)}`),
+    })).toThrow(/READABILITY/)
+  })
+
+  it('requires scan-friendly highlights rather than a title-only adventure profile', () => {
+    expect(() => assertReadableAndScannable({
+      profile: 'adventure', title: 'A',
+      content: richAdventure.replace('- Las Hoyas y el museo paleontológico para enlazar paisaje y ciencia.\n', ''),
+    })).toThrow(/SCANNABILITY/)
   })
 })

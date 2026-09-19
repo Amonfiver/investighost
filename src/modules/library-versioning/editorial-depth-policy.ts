@@ -26,6 +26,14 @@ export interface EditorialDepthAssessment {
   reasons: string[]
 }
 
+export interface EditorialReadabilityAssessment {
+  readability: boolean
+  scannability: boolean
+  paragraphCount: number
+  longParagraphCount: number
+  reasons: string[]
+}
+
 const requiredSections: Record<EditorialDepthProfile, readonly string[]> = {
   adventure: ['intro', 'overview', 'highlights', 'route', 'practical', 'risks'],
   student: ['intro', 'overview', 'budget', 'daily_life', 'study', 'practical', 'risks'],
@@ -119,8 +127,47 @@ export function assertProfilesDifferentiated(
   }
 }
 
+/**
+ * Consumer-facing quality gate. It protects useful depth from becoming a wall
+ * of prose: it evaluates hierarchy and early utility in addition to density.
+ */
+export function assessEditorialReadability(input: Pick<EditorialDepthInput, 'profile' | 'title' | 'content'>): EditorialReadabilityAssessment {
+  assertPublicSafeLibraryDocument(input.title, input.content)
+  const sections = parseSections(input.content)
+  const byKind = new Map(sections.map(section => [section.kind, section.content]))
+  const paragraphs = sections.flatMap(section => proseParagraphs(section.content))
+  const longParagraphCount = paragraphs.filter(paragraph => wordCount(paragraph) > 130).length
+  const reasons: string[] = []
+  const introWords = wordCount(byKind.get('intro') ?? '')
+  const operationalPrompts = (normalize(input.content).match(/\b(?:confirma|comprueba|verifica|consulta)\b/g)?.length ?? 0)
+
+  if (introWords > 165) reasons.push('intro:too-long')
+  if (longParagraphCount > 0) reasons.push('paragraphs:too-long')
+  if (operationalPrompts > 6) reasons.push('practical:repetitive')
+
+  if (input.profile === 'adventure') {
+    if (listItems(byKind.get('highlights') ?? '').length < 5) reasons.push('highlights:not-scannable')
+    if (!byKind.get('route') || !byKind.get('practical')) reasons.push('plan:missing')
+  } else {
+    if (!byKind.get('overview') || !byKind.get('study') || !byKind.get('daily_life')) reasons.push('learning:missing')
+    if ((byKind.get('study')?.match(/¿/g)?.length ?? 0) < 2) reasons.push('study:questions-missing')
+    if (listItems(byKind.get('practical') ?? '').length < 3) reasons.push('practical:not-scannable')
+  }
+
+  const scannability = !reasons.some(reason => /(?:not-scannable|missing|questions)/.test(reason))
+  const readability = !reasons.some(reason => /(?:too-long|repetitive)/.test(reason))
+  return { readability, scannability, paragraphCount: paragraphs.length, longParagraphCount, reasons }
+}
+
+export function assertReadableAndScannable(input: Pick<EditorialDepthInput, 'profile' | 'title' | 'content'>): EditorialReadabilityAssessment {
+  const assessment = assessEditorialReadability(input)
+  if (!assessment.readability) throw new EditorialDepthPolicyError('READABILITY', assessment.reasons.join(', '))
+  if (!assessment.scannability) throw new EditorialDepthPolicyError('SCANNABILITY', assessment.reasons.join(', '))
+  return assessment
+}
+
 export class EditorialDepthPolicyError extends Error {
-  constructor(readonly code: 'CONTENT_TOO_THIN' | 'PROFILE_DIFFERENTIATION', detail: string) {
+  constructor(readonly code: 'CONTENT_TOO_THIN' | 'PROFILE_DIFFERENTIATION' | 'READABILITY' | 'SCANNABILITY', detail: string) {
     super(`${code}:${detail}`)
     this.name = 'EditorialDepthPolicyError'
   }
@@ -140,6 +187,12 @@ function parseSections(content: string): ParsedSection[] {
 
 function listItems(content: string): string[] {
   return content.split('\n').filter(line => /^(?:[-*]|\d+\.)\s+\S/.test(line.trim()))
+}
+
+function proseParagraphs(content: string): string[] {
+  return content.split(/\n\s*\n/u)
+    .map(block => block.trim())
+    .filter(block => block.length > 0 && !block.split('\n').every(line => /^(?:[-*]|\d+\.)\s+/.test(line.trim())))
 }
 
 function wordCount(content: string): number {

@@ -6,6 +6,7 @@ import {
   assertContentNotTooThin,
   assertProfilesDifferentiated,
   assertPublicSafeLibraryDocument,
+  assertReadableAndScannable,
   RealEditorialLibraryVersionDraftApplicationService,
   RealEditorialLibraryVersioningService,
   SupabaseRealEditorialLibraryVersioningRepository,
@@ -15,11 +16,7 @@ import { prepareTrawelEditorialDeliveryV2, projectLibraryEntryToTrawelEditorialP
 import type { LibraryTrawelApprovedSource } from '@shared/trawel-editorial-handoff-contracts'
 import { emptyDestinationVisualContract, projectDestinationVisualsForTrawel } from '@shared/destination-visual-contract'
 
-const ENTRIES = {
-  adventure: 'c9683342-5eb6-4d29-91fa-6eeadabe21af',
-  student: 'c2c1bf05-45f4-4b04-bc3f-e4894c909bf4',
-} as const
-
+const ENTRIES = { adventure: 'c9683342-5eb6-4d29-91fa-6eeadabe21af', student: 'c2c1bf05-45f4-4b04-bc3f-e4894c909bf4' } as const
 const EVIDENCE = {
   validClaimCount: 11,
   thematicAreas: ['patrimonio', 'historia', 'paisaje', 'naturaleza', 'cultura', 'arte', 'paleontología'],
@@ -28,92 +25,88 @@ const EVIDENCE = {
 
 const CONTENT = {
   adventure: {
-    title: 'Cuenca (España): patrimonio, paisaje y rutas para explorar con calma',
-    content: `## [intro] Una ciudad que se explora entre hoces
-Cuenca propone una combinación poco habitual: un casco histórico levantado entre las hoces de los ríos Júcar y Huécar, patrimonio visible a cada paso y una serranía que amplía el viaje hacia formas kársticas, ríos y actividades al aire libre. La ciudad no se entiende como una colección aislada de monumentos. El relieve forma parte de la experiencia y ayuda a explicar por qué el conjunto histórico y su paisaje natural cercano fueron reconocidos como Ciudad Patrimonio de la Humanidad en 1996.
+    title: 'Cuenca (España): patrimonio, paisaje y una escapada para explorar',
+    content: `## [intro] Por qué ir a Cuenca
+Cuenca reúne tres viajes en uno: un casco histórico entre las hoces del Júcar y el Huécar, arte abstracto dentro de las Casas Colgadas y una serranía de formas calizas, torcas y ríos. Es una buena elección si te gusta alternar calles con personalidad, patrimonio visible y una escapada de naturaleza. El conjunto histórico y su paisaje cercano fueron reconocidos como Ciudad Patrimonio de la Humanidad en 1996: aquí el relieve no es un fondo, forma parte de lo que vienes a descubrir.
 
-Para quien viaja con ganas de explorar, el atractivo está en alternar espacios urbanos concretos con el entorno natural citado alrededor de la ciudad. Hay lugares para detenerse en la arquitectura, una escena artística ligada al Museo de Arte Abstracto Español, referencias culturales y gastronómicas, y un territorio donde aparecen la Serranía de Cuenca, la Ciudad Encantada, las torcas y Las Hoyas. El plan funciona mejor si se deja margen: esta guía sugiere un orden de descubrimiento, no tiempos, distancias ni dificultades que no estén confirmados.
+## [overview] Una ciudad para mirar de cerca y ampliar hacia la sierra
+La mejor manera de entender Cuenca es dejar que el paisaje ordene la visita. Las hoces enmarcan el casco y dan sentido a sus edificios, sus espacios urbanos y sus puntos de paso. La ciudad fue fundada bajo dominio islámico y Alfonso VIII la conquistó el 21 de septiembre de 1177, tras nueve meses de asedio: una referencia breve pero útil para mirar el patrimonio con otra perspectiva.
 
-## [overview] Patrimonio en un relieve que marca el recorrido
-La imagen de Cuenca nace de su emplazamiento entre el Júcar y el Huécar. El casco histórico se sitúa en ese paisaje de hoces, y el entorno natural cercano no queda fuera de la visita: es parte de la identidad del destino. Recorrer la ciudad con esa idea en mente cambia la mirada. Las calles, los edificios religiosos, los puntos patrimoniales y los espacios de paso pertenecen a un conjunto que dialoga con el terreno.
+También hay un motivo claro para venir por el arte. El Museo de Arte Abstracto Español abrió en 1966 en las Casas Colgadas y se vincula a Fernando Zóbel, Gustavo Torner y Antonio Pérez. Guarda esta combinación para un momento sin prisas: es uno de esos lugares donde arquitectura, paisaje y colección se refuerzan entre sí.
 
-La historia aporta otra capa para la exploración. La ciudad fue fundada bajo dominio islámico y Alfonso VIII la conquistó el 21 de septiembre de 1177 tras nueve meses de asedio. No hace falta convertir el paseo en una lección: basta con usar esa referencia para entender que el casco conserva una memoria histórica además de una presencia visual. La plaza Mayor, la catedral de Santa María y San Julián, la torre Mangana, el arco de Bezudo y el túnel de Alfonso VIII ofrecen nombres concretos desde los que componer una visita atenta.
+## [highlights] No te pierdas
+- Casas Colgadas y Museo de Arte Abstracto Español: el gran icono de Cuenca gana interés al reunir patrimonio y una colección de arte abstracto español en el mismo lugar.
+- Puente de San Pablo, plaza Mayor y catedral: una terna muy útil para centrar el paseo por el casco histórico y reconocer algunos de sus espacios más citados.
+- Torre Mangana, arco de Bezudo y túnel de Alfonso VIII: tres paradas para ir más allá de la postal y buscar referencias urbanas e históricas con nombre propio.
+- Serranía de Cuenca, Ciudad Encantada y torcas: la extensión natural para quien quiere cambiar piedra urbana por formaciones, bosque y relieve calizo.
+- Las Hoyas y Museo de Paleontología de Castilla-La Mancha: una combinación poco común para enlazar fósiles, Cretácico inferior y Concavenator con el paisaje que rodea la ciudad.
+- Semana Santa, Turbas y Semana de Música Religiosa: pistas culturales para completar la visita si coinciden con el momento del viaje.
 
-La ciudad también permite pasar de patrimonio a arte sin cambiar de escenario. El Museo de Arte Abstracto Español abrió en 1966 en las Casas Colgadas, y la escena artística local se relaciona con Fernando Zóbel, Gustavo Torner y Antonio Pérez. Es una buena razón para no mirar las Casas Colgadas solo como icono: aquí reúnen arquitectura, colección y una puerta de entrada al arte español contemporáneo.
+## [route] Un plan recomendado sin forzar el reloj
+Para una visita corta, prioriza el casco histórico: Casas Colgadas, Museo de Arte Abstracto Español, puente de San Pablo, plaza Mayor, catedral, torre Mangana, arco de Bezudo y túnel de Alfonso VIII forman un núcleo muy reconocible. No hace falta convertirlo en una carrera; el interés está en alternar arquitectura, historia y paisaje.
 
-## [highlights] Paradas que dan forma a la visita
-- **Casas Colgadas y Museo de Arte Abstracto Español.** Son un punto de partida potente porque unen uno de los lugares más reconocibles de Cuenca con un museo abierto en 1966. Conviene reservar tiempo mental para dos lecturas: la del edificio dentro del conjunto histórico y la del arte que alberga.
-- **Puente de San Pablo, plaza Mayor y catedral.** Estos nombres permiten organizar el paseo por el casco sin inventar un trazado cerrado. El puente, la plaza Mayor y la catedral de Santa María y San Julián están entre los lugares documentados y ayudan a mantener el foco en el patrimonio visible.
-- **Torre Mangana, arco de Bezudo y túnel de Alfonso VIII.** Son hitos para ampliar la exploración más allá de los iconos. Su interés está en que invitan a recorrer y reconocer capas diferentes del casco histórico, desde referencias urbanas hasta la memoria del rey conquistador.
-- **Serranía de Cuenca, Ciudad Encantada y torcas.** Fuera de la ciudad, la Serranía reúne paisaje kárstico, la Ciudad Encantada y las torcas de Palancares y Tierra Muerta. Son los nombres que convierten una escapada de naturaleza en una continuación coherente de la visita urbana.
-- **Las Hoyas y el Museo de Paleontología de Castilla-La Mancha.** El yacimiento de Las Hoyas, del Cretácico inferior, se relaciona con fósiles de plantas y animales y con Concavenator. El museo añade una escala científica al viaje y da un contrapunto excelente a la arquitectura y al relieve.
-- **Cultura local y mesa.** Semana Santa, la procesión de las Turbas y la Semana de Música Religiosa son referencias culturales de Cuenca. En la gastronomía aparecen ajoarriero, morteruelo, pisto y resolí: nombres útiles para reconocer una cocina local sin prometer establecimientos ni menús concretos.
+Si dispones de más tiempo, reserva una parte del viaje para la Serranía de Cuenca. Ciudad Encantada, torcas de Palancares y Tierra Muerta, El Hosquillo y los senderos junto a los ríos permiten ampliar la escala. Caminar, bicicleta y piragua aparecen entre las posibilidades del entorno, pero elige solo una línea de actividad después de revisar sus condiciones reales.
 
-## [route] Un orden prudente: ciudad, paisaje y escapada
-Empieza por el casco histórico y deja que el relieve dé sentido a la jornada. Un primer bloque puede reunir Casas Colgadas, Museo de Arte Abstracto Español, puente de San Pablo, plaza Mayor, catedral, torre Mangana, arco de Bezudo y túnel de Alfonso VIII. No es una ruta medida ni pretende indicar el orden exacto de las calles; es una secuencia de exploración que concentra patrimonio, arte e historia en el núcleo urbano.
+Para una extensión distinta, apunta Las Hoyas y el Museo de Paleontología de Castilla-La Mancha. Es una manera especialmente interesante de pasar del relieve actual a los fósiles de plantas, animales y Concavenator, sin repetir el mismo tipo de visita.
 
-En un segundo bloque, cambia de escala. La Serranía de Cuenca permite buscar la Ciudad Encantada, las torcas de Palancares y Tierra Muerta, El Hosquillo y los senderos junto a los ríos que aparecen en la información disponible. Caminar, ir en bicicleta y navegar en piragua por las hoces se mencionan como actividades posibles en el entorno, pero la elección concreta debe depender de condiciones verificadas el día de la visita. Sin datos respaldados sobre recorridos, duración o dificultad, lo razonable es escoger una sola línea de exploración natural y no encadenar promesas imposibles.
+## [interests] Si te gusta
+- Patrimonio y fotografía: busca el diálogo entre el casco histórico, las hoces y las Casas Colgadas.
+- Arte: combina las Casas Colgadas con el Museo de Arte Abstracto Español y sus vínculos con Zóbel, Torner y Antonio Pérez.
+- Naturaleza: deja espacio para Serranía, Ciudad Encantada, torcas, ríos y El Hosquillo.
+- Ciencia: Las Hoyas y el museo paleontológico aportan una lectura del Cretácico inferior.
+- Cultura y sabores: reconoce Semana Santa, Turbas, música religiosa, ajoarriero, morteruelo, pisto y resolí sin convertir la visita en un catálogo.
 
-Si hay una tercera parte del viaje, dedica atención a Las Hoyas y al Museo de Paleontología de Castilla-La Mancha. Esta combinación conecta el paisaje actual con fósiles del Cretácico inferior y evita que la escapada a naturaleza se reduzca a una fotografía. El resultado es un itinerario temático, no una agenda cerrada: ciudad histórica primero, serranía después y paleontología como puente entre territorio y tiempo profundo.
+## [practical] Antes de ir
+- Agrupa en una sola comprobación horarios, precios, reservas y accesibilidad de museos, monumentos y espacios culturales.
+- Para la Serranía y las actividades junto a los ríos, revisa el acceso y las condiciones del día antes de decidir el plan.
+- No des por hechas distancias, duración, dificultad, señalización, transporte o servicios: esta guía no los fija.
+- Si el viaje gira en torno a una fiesta, música o gastronomía, comprueba fechas y oferta concreta antes de organizarlo.
 
-## [practical] Preparar una exploración que deje margen
-- Antes de entrar en museos, monumentos o espacios culturales, confirma horarios, precios, reservas y condiciones de accesibilidad actualizados. La guía no fija esos datos porque pueden cambiar.
-- Para la Serranía, la Ciudad Encantada, las torcas, El Hosquillo y los senderos junto a los ríos, verifica cómo se accede y qué condiciones están vigentes. Decide la actividad después de conocer el estado del día, no al revés.
-- Si te interesan caminar, bicicleta o piragua, busca información reciente sobre la opción elegida antes de contar con ella. No hay indicaciones fiables aquí sobre distancias, desnivel, señalización, empresas o duración.
-- Separa el casco histórico de la salida natural en vez de intentar abarcarlo todo. Así podrás disfrutar de los lugares concretos de la ciudad y adaptar la escapada al tiempo real disponible.
-- Para la cultura y la gastronomía, usa Semana Santa, Turbas, música religiosa, ajoarriero, morteruelo, pisto y resolí como pistas de interés. Confirma programas, fechas y oferta concreta antes de organizar el viaje alrededor de ellos.
+## [risks] Un límite sencillo: plan flexible
+No hay datos operativos suficientes para prometer una ruta concreta, una dificultad, una temporada, una duración o un coste. Trata esos aspectos como decisiones del momento y confirma la información vigente antes de salir al entorno natural.
 
-## [risks] Límites operativos que conviene resolver antes de salir
-La información disponible no establece horarios, precios, reservas, accesibilidad, transporte local ni duraciones de visita para Cuenca. Tampoco permite fijar una ruta concreta, un punto de inicio, una dificultad o una recomendación de temporada para las actividades de naturaleza. Por eso, una visita responsable debe comprobar esos detalles de forma actualizada antes de desplazarse.
-
-En la serranía y junto a los ríos, trata las condiciones del terreno, el tiempo y la disponibilidad de actividades como variables. No hay una evaluación específica de riesgos que permita dar instrucciones técnicas de seguridad. Mantén el plan flexible, confirma las condiciones locales y elige solo actividades compatibles con la información vigente y con tu experiencia.`,
+El resultado puede seguir siendo una escapada muy completa: casco histórico para empezar, serranía para ampliar y paleontología o cultura para elegir según tus intereses.`,
   },
   student: {
-    title: 'Cuenca (España): una guía para estudiar paisaje, historia, arte y cultura',
-    content: `## [intro] Una ciudad para aprender mirando relaciones
-Cuenca ofrece una visita especialmente útil para estudiar cómo se conectan paisaje, historia, patrimonio, arte y cultura. La ciudad se asienta entre las hoces de los ríos Júcar y Huécar; esa situación permite empezar por una pregunta sencilla: ¿de qué manera condiciona el relieve la forma en que se entiende un casco histórico? El conjunto histórico y su paisaje natural cercano fueron reconocidos como Ciudad Patrimonio de la Humanidad en 1996, de modo que ciudad y entorno deben observarse juntos.
+    title: 'Cuenca (España): claves para aprender entre paisaje, historia y arte',
+    content: `## [intro] Una ciudad para entender mirando
+Cuenca permite ver con claridad cómo un paisaje puede influir en una ciudad. Está situada entre las hoces del Júcar y el Huécar, y su casco histórico no se separa del entorno natural cercano. Por eso es un destino excelente para relacionar geografía, historia, patrimonio, arte y ciencia sin tener que tratarlos como temas aislados.
 
-Esta guía no plantea la visita como una lista de cosas que hacer. Propone usar lugares concretos para comprender conceptos. Las Casas Colgadas y el Museo de Arte Abstracto Español permiten relacionar arquitectura y arte; la plaza Mayor, la catedral, la torre Mangana, el arco de Bezudo y el túnel de Alfonso VIII ayudan a ordenar el patrimonio; la Serranía, las torcas y Las Hoyas abren la puerta a geografía y paleontología. El objetivo es volver de Cuenca con preguntas mejor formuladas y conexiones claras entre los lugares visitados.
+## [overview] Cinco claves para entender Cuenca
+- Paisaje: las hoces del Júcar y el Huécar ayudan a explicar el carácter de una ciudad asentada entre relieves marcados.
+- Historia: Cuenca fue fundada bajo dominio islámico y Alfonso VIII la conquistó el 21 de septiembre de 1177 tras nueve meses de asedio.
+- Patrimonio: el casco histórico y el paisaje natural cercano fueron reconocidos como Ciudad Patrimonio de la Humanidad en 1996.
+- Arte: el Museo de Arte Abstracto Español abrió en 1966 en las Casas Colgadas y se vincula a Fernando Zóbel, Gustavo Torner y Antonio Pérez.
+- Ciencia: Las Hoyas, del Cretácico inferior, y el Museo de Paleontología permiten conectar fósiles, plantas, animales y Concavenator.
 
-## [overview] Paisaje, historia y patrimonio como una misma lectura
-Las hoces del Júcar y el Huécar son el primer concepto para trabajar. No son un fondo decorativo: sitúan la ciudad en un relieve concreto y explican por qué paisaje y casco histórico se presentan como una unidad patrimonial. Al observar la ciudad, conviene anotar dónde aparece el terreno en la experiencia del paseo y cómo cambia la percepción de los edificios cuando se los relaciona con las hoces.
+## [budget] Planificar sin inventar cifras
+No hay cifras fiables aquí para entradas, transporte, alojamiento, reservas o actividades. Para una salida de estudio, reúne esos datos actuales antes de calcular el presupuesto. Separa la parte urbana de una posible escapada a la Serranía: no requieren las mismas confirmaciones ni tienen por qué formar un único plan.
 
-La segunda capa es histórica. Cuenca fue fundada bajo dominio islámico y fue conquistada por Alfonso VIII el 21 de septiembre de 1177 después de nueve meses de asedio. Esta información permite construir una línea temporal breve pero precisa: fundación en época islámica, conquista de 1177 y reconocimiento patrimonial de 1996. No hace falta añadir etapas no confirmadas para aprovecharla; la tarea educativa es preguntar qué clase de información aporta cada fecha y qué aspectos de la ciudad ayuda a interpretar.
+## [daily_life] Cultura que se puede reconocer
+Semana Santa, la procesión de las Turbas y la Semana de Música Religiosa son referencias útiles para hablar de tradición, celebración y música. Ajoarriero, morteruelo, pisto y resolí permiten abrir otra conversación: cómo una cocina local se relaciona con la identidad de un lugar.
 
-El casco ofrece un vocabulario de observación: Casas Colgadas, puente de San Pablo, plaza Mayor, torre Mangana, arco de Bezudo, catedral de Santa María y San Julián, túnel de Alfonso VIII y Museo de Arte Abstracto Español. En vez de memorizar los nombres como una lista, sitúalos en tres grupos: arquitectura y patrimonio, espacios urbanos y referencias para conectar lugar e historia. Después compara qué se puede observar directamente y qué necesita una explicación histórica adicional.
+También aparecen huertos, artesanía, barrios, restauración, vida nocturna y celebraciones. Úsalos como pistas para observar vida local y diversidad cultural, no como base para sacar cifras de población o conclusiones demográficas que no están disponibles.
 
-## [budget] Preparar el presupuesto sin inventar cifras
-No hay información fiable disponible aquí sobre precios de entradas, transporte, alojamiento, reservas o costes de actividades. Para una salida de estudio, eso no impide planificar; obliga a hacerlo con prudencia. Reúne los datos actuales de cada museo, monumento, actividad o espacio natural antes de calcular un presupuesto y evita trasladar importes antiguos de una temporada a otra.
+## [study] Qué observar y cómo ponerte a prueba
+Empieza por el relieve. Desde el casco, fíjate en la presencia de las hoces y escribe tres palabras para describir la relación entre ciudad y paisaje. Pregúntate: ¿cómo cambia la forma de una ciudad al asentarse entre dos hoces? ¿Por qué tendría sentido que el paisaje cercano forme parte de la lectura patrimonial?
 
-También conviene separar los posibles gastos urbanos de los de una escapada a la Serranía. El casco histórico, los museos y las visitas culturales requieren confirmaciones distintas de las de la Ciudad Encantada, las torcas, El Hosquillo o las actividades junto a los ríos. Esta separación es útil para aprender a convertir una idea de visita en un plan responsable sin fingir que los costes están fijados por una guía general.
+Después ordena tres fechas: la fundación bajo dominio islámico, la conquista de 1177 y el reconocimiento patrimonial de 1996. No necesitas una cronología enorme. Basta con distinguir qué cuenta cada fecha: origen de la ciudad, conflicto histórico y reconocimiento de un conjunto formado por ciudad y paisaje.
 
-## [daily_life] Cultura y gastronomía como temas de observación
-La Semana Santa, la procesión de las Turbas y la Semana de Música Religiosa aparecen como referencias culturales relevantes en Cuenca. En una visita educativa pueden servir para hablar de tradición, celebración, música y presencia pública de la cultura. No hace falta suponer fechas, recorridos ni programas: lo interesante es identificar qué prácticas forman parte de la vida cultural de un lugar y qué información adicional sería necesaria para asistir a una edición concreta.
+Para observar el casco, busca Casas Colgadas, puente de San Pablo, plaza Mayor, torre Mangana, arco de Bezudo, catedral de Santa María y San Julián y túnel de Alfonso VIII. Divide tus notas en arquitectura, espacio urbano e historia. ¿Qué puedes describir directamente? ¿Qué preguntas necesitas responder después para comprender mejor cada lugar?
 
-La gastronomía abre otra vía de aprendizaje. Ajoarriero, morteruelo, pisto y resolí son nombres citados como parte de la cocina tradicional. Puedes preguntar qué relación existe entre un plato, su nombre y la identidad local, o comparar cómo una tradición culinaria se transmite junto con las fiestas y las historias de una ciudad. Hay observaciones cualitativas sobre huertos, artesanía, barrios, restauración, vida nocturna y celebraciones; úsalas para reconocer diversidad de vida local, no para extraer cifras de población o conclusiones demográficas que no están disponibles.
+El arte añade otra capa. Compara las Casas Colgadas con el Museo de Arte Abstracto Español: el museo abrió allí en 1966. ¿Qué cambia cuando un edificio patrimonial también contiene una colección de arte? Relaciona esa pregunta con Zóbel, Torner y Antonio Pérez, sin confundir el nombre de un artista con una respuesta completa.
 
-## [study] Un cuaderno de campo para historia, arte, paisaje y ciencia
-Empieza con el paisaje. Desde los lugares del casco, observa la presencia de las hoces del Júcar y del Huécar y escribe tres palabras que describan la relación entre ciudad y relieve. Después responde: ¿por qué tendría sentido que el paisaje natural cercano forme parte de la lectura patrimonial del conjunto histórico? La respuesta no necesita datos nuevos; debe apoyarse en lo que ves y en la idea de que la ciudad está situada entre ambas hoces.
+Por último, conecta naturaleza y ciencia. Ciudad Encantada, torcas de Palancares y Tierra Muerta, El Hosquillo y los senderos junto a los ríos ayudan a observar formas del relieve y agua. Las Hoyas y el museo paleontológico permiten seguir la cadena paisaje, yacimiento, fósil y museo. ¿Cómo ayuda un museo a interpretar un territorio que no se comprende solo con mirarlo?
 
-Pasa a la historia. Coloca 1177 y 1996 en una línea temporal. Junto a 1177, anota la conquista por Alfonso VIII tras nueve meses de asedio; junto a 1996, el reconocimiento como Ciudad Patrimonio de la Humanidad. Pregunta qué diferencia hay entre una fecha de conflicto y una fecha de reconocimiento patrimonial. Después busca, en los nombres del casco, cuáles te parecen ligados a memoria histórica: plaza Mayor, catedral, torre Mangana, arco de Bezudo y túnel de Alfonso VIII son buenos puntos de partida para discutir cómo los topónimos y monumentos conservan referencias al pasado.
+## [practical] Prepara la visita para aprender más
+- Lleva un cuaderno con cuatro apartados: paisaje, historia, arte y ciencia.
+- Confirma una vez los horarios, reservas, precios y accesibilidad antes de repartir tareas o actividades.
+- Separa el casco histórico de cualquier salida a la Serranía para poder observar ambos con calma.
+- Si coincides con una celebración cultural, revisa fecha y características actuales antes de incluirla en el plan.
 
-Para el arte, compara Casas Colgadas y Museo de Arte Abstracto Español. El museo abrió en 1966 en las Casas Colgadas y se vincula a Fernando Zóbel, Gustavo Torner y Antonio Pérez. Formula una hipótesis: ¿cómo cambia la lectura de un edificio cuando, además de formar parte del patrimonio, contiene una colección de arte? No necesitas conocer toda la historia del museo para responder; observa la convivencia entre lugar, fecha y nombres de artistas, y distingue lo que estás viendo de lo que estás interpretando.
-
-La salida a la Serranía permite trabajar geografía física. Ciudad Encantada y torcas de Palancares y Tierra Muerta se mencionan dentro de un paisaje kárstico. Escribe una pregunta para cada forma: una sobre el aspecto del terreno y otra sobre los procesos que podrían explicar una forma kárstica. La actividad no exige poner nombres técnicos sin apoyo; enseña a mirar, describir y preparar una investigación posterior con un objetivo claro. El Hosquillo y los senderos junto a los ríos amplían el mapa de observación hacia bosque, agua y movimiento.
-
-Termina con paleontología. Las Hoyas es un yacimiento del Cretácico inferior relacionado con fósiles de plantas, animales y Concavenator; el Museo de Paleontología de Castilla-La Mancha ayuda a conectar esos restos con una lectura pública de la ciencia. Dibuja una cadena de cuatro términos: paisaje actual, yacimiento, fósiles y museo. Después pregunta cómo puede un museo ayudar a interpretar un territorio que no se comprende solo con mirarlo. Así, una visita a Cuenca se convierte en un pequeño trabajo interdisciplinar y no en una acumulación de fotografías.
-
-## [practical] Preparar una visita de aprendizaje responsable
-- Confirma con antelación horarios, reservas, precios y accesibilidad de museos, monumentos y espacios naturales. Son datos variables que deben verificarse antes de asignar actividades a un grupo.
-- Lleva un cuaderno de campo con cuatro apartados: paisaje, historia, arte y ciencia. Anota observaciones junto a preguntas, sin convertir lo no confirmado en un hecho.
-- Separa la exploración del casco de cualquier salida a la Serranía. Esto permite dedicar atención a los conceptos y adaptar el trabajo exterior a las condiciones reales del día.
-- Si el programa coincide con una celebración cultural, confirma su fecha y características actuales antes de usarla como actividad. La Semana Santa, las Turbas y la música religiosa son temas de estudio, no un calendario garantizado.
-- Revisa el acceso y las condiciones vigentes antes de considerar caminar, bicicleta o piragua. La guía reconoce esas posibilidades en el entorno, pero no fija recorridos, duración ni dificultad.
-
-## [risks] Límites que deben actualizarse antes de una salida
-La información disponible no determina cómo llegar, qué transporte usar, cuánto duran las visitas, cuánto cuestan, si necesitan reserva o qué accesibilidad tiene cada lugar. Tampoco permite prometer una actividad concreta en la Serranía o junto a los ríos. Una buena planificación educativa debe confirmar cada uno de esos aspectos con información vigente antes de convertir la guía en un itinerario de grupo.
-
-En los espacios al aire libre, las condiciones pueden variar y no hay indicaciones específicas suficientes para fijar riesgos, dificultad o temporada. Mantén un programa adaptable, define alternativas culturales dentro de la ciudad y usa la salida natural solo cuando las condiciones confirmadas lo permitan. La prudencia no resta valor didáctico: enseña que comprender un lugar también implica preparar la visita con responsabilidad.`,
+## [risks] La prudencia también enseña
+La información disponible no fija transportes, duración, costes, accesibilidad ni condiciones de actividades al aire libre. No convierte eso en un problema de aprendizaje: es una ocasión para preparar una visita responsable, con alternativas culturales dentro de la ciudad si el plan natural no encaja ese día.
+`,
   },
 } as const
 
@@ -124,12 +117,13 @@ const versioning = new SupabaseRealEditorialLibraryVersioningRepository(client)
 const drafts = new RealEditorialLibraryVersionDraftApplicationService(versioning, versioning, versioning)
 const decisions = new RealEditorialLibraryVersioningService(versioning)
 const entries = await new SupabaseRealEditorialPilotRepository(client).listLibraryEntries({ destination: 'Cuenca', origin: 'real_editorial_pilot' })
-const assessments = Object.fromEntries((['adventure', 'student'] as const).map(profile => [profile, assertContentNotTooThin({ profile, ...CONTENT[profile], evidence: EVIDENCE, sourceLimited: false })])) as Record<Profile, ReturnType<typeof assertContentNotTooThin>>
+const depth = Object.fromEntries((['adventure', 'student'] as const).map(profile => [profile, assertContentNotTooThin({ profile, ...CONTENT[profile], evidence: EVIDENCE, sourceLimited: false })])) as Record<Profile, ReturnType<typeof assertContentNotTooThin>>
+const readability = Object.fromEntries((['adventure', 'student'] as const).map(profile => [profile, assertReadableAndScannable({ profile, ...CONTENT[profile] })])) as Record<Profile, ReturnType<typeof assertReadableAndScannable>>
 assertProfilesDifferentiated(CONTENT.adventure, CONTENT.student)
 
 const approved = await Promise.all((['adventure', 'student'] as const).map(async profile => {
-  const versionId = await createDepthVersion(profile)
-  await approveDepthVersion(profile, versionId)
+  const versionId = await createReadableVersion(profile)
+  await approveReadableVersion(profile, versionId)
   const current = await versioning.getCurrentApprovedVersion(ENTRIES[profile])
   assertPublicSafeLibraryDocument(current.title, current.content)
   const entry = entries.find(candidate => candidate.entryId === ENTRIES[profile])
@@ -137,58 +131,52 @@ const approved = await Promise.all((['adventure', 'student'] as const).map(async
   return { profile, current, entry, projected: projectLibraryEntryToTrawelEditorialProfile({ entry, currentApproved: current }, target()) }
 }))
 const handoff = prepareTrawelEditorialDeliveryV2({ target: target(), sources: approved.map(item => ({ entry: item.entry, currentApproved: item.current })) as [LibraryTrawelApprovedSource, LibraryTrawelApprovedSource] })
-const visualState = emptyDestinationVisualContract(approved[0].entry.destination.canonicalId)
-const visualV2Capability = projectDestinationVisualsForTrawel(visualState)
-const ingressSecretAvailable = Boolean(process.env.TRAWEL_INGRESS_SECRET?.trim())
+const visual = emptyDestinationVisualContract(approved[0].entry.destination.canonicalId)
+const visualV2 = projectDestinationVisualsForTrawel(visual)
 
 console.log(JSON.stringify({
-  operation: 'cuenca_editorial_depth_and_profile_differentiation_062',
-  evidenceAvailable: { validClaims: EVIDENCE.validClaimCount, themes: EVIDENCE.thematicAreas.length, namedPlaces: EVIDENCE.namedPlaces.length },
-  policy: { publicSafe: 'PASS', contentTooThin: 'NO', profileDifferentiation: 'PASS', sourceLimited: 'NO' },
-  profiles: approved.map(item => ({ profile: item.profile, wordCount: assessments[item.profile].wordCount, sectionsWithContent: assessments[item.profile].sectionsWithContent, developedThemes: assessments[item.profile].developedThemes, rawInternalMarkersVisible: countInternalMarkers(item.current.content), markdownEscapedVisible: /\\(?:\*|_|`|\[|\]|#)/u.test(item.current.content) })),
+  operation: 'cuenca_readability_and_scannability_065',
+  gates: { publicSafe: 'PASS', contentTooThin: 'NO', profileDifferentiation: 'PASS', readability: 'PASS', scannability: 'PASS' },
+  profiles: approved.map(item => ({ profile: item.profile, wordCount: depth[item.profile].wordCount, paragraphs: readability[item.profile].paragraphCount, highlights: item.profile === 'adventure' ? item.projected.highlights?.length ?? 0 : 0, sectionsWithContent: depth[item.profile].sectionsWithContent, developedThemes: depth[item.profile].developedThemes, rawInternalMarkersVisible: internalMarkers(item.current.content), markdownEscapedVisible: /\\(?:\*|_|`|\[|\]|#)/u.test(item.current.content) })),
   approved: approved.map(item => ({ profile: item.profile, libraryEntryId: item.current.libraryEntryId, versionId: item.current.versionId, revisionId: item.current.revisionId, approvalDecisionId: item.current.approvalDecisionId, versionHash: item.current.versionHash, contentHash: item.current.contentHash })),
-  handoff: { ready: true, mappingId: handoff.mappingId, canonicalDestinationId: handoff.canonicalDestinationId, handoffKey: handoff.handoffKey, payloadFingerprint: handoff.payloadFingerprint, ingressSecretAvailable, delivery: ingressSecretAvailable ? 'NOT_SENT:OUT_OF_SCOPE' : 'NOT_SENT:TRAWEL_INGRESS_SECRET_MISSING' },
-  visualContract: { imageSlot1: visualState.imageSlot1.state, imageSlot2: visualState.imageSlot2.state, unchanged: true, v2Compatible: visualV2Capability.imageSlot1.state === 'EMPTY' && visualV2Capability.imageSlot2.state === 'EMPTY' },
-  cost: { tavily: 0, openai: 0, deepseek: 0, total: 0, phases: [{ phase: 'editorial_depth_reuse', provider: 'none', model: 'none', inputTokens: 0, outputTokens: 0, cost: 0 }] },
+  handoff: { ready: true, handoffKey: handoff.handoffKey, payloadFingerprint: handoff.payloadFingerprint },
+  visual: { imageSlot1: visual.imageSlot1.state, imageSlot2: visual.imageSlot2.state, unchanged: true, v2Compatible: visualV2.imageSlot1.state === 'EMPTY' && visualV2.imageSlot2.state === 'EMPTY' },
+  cost: { tavily: 0, openai: 0, deepseek: 0, total: 0, phases: [{ phase: 'editorial_rewrite_from_durable_evidence', provider: 'none', model: 'none', inputTokens: 0, outputTokens: 0, cost: 0 }] },
 }, null, 2))
 
-async function createDepthVersion(profile: Profile): Promise<string> {
+async function createReadableVersion(profile: Profile): Promise<string> {
   const current = await versioning.getCurrentApprovedVersion(ENTRIES[profile])
   const detail = current.versionId === null ? null : await versioning.getVersionDetail(current.versionId)
-  if (
-    detail?.state.effectiveState === 'approved'
-    && detail.currentRevision.title === CONTENT[profile].title
-    && detail.currentRevision.content.trimEnd() === CONTENT[profile].content.trimEnd()
-  ) return detail.version.versionId
+  if (detail?.state.effectiveState === 'approved' && detail.currentRevision.title === CONTENT[profile].title && detail.currentRevision.content.trimEnd() === CONTENT[profile].content.trimEnd()) return detail.version.versionId
   const expectedHeadHash = detail?.decisions.at(-1)?.decisionTargetHash
   if (!expectedHeadHash) throw new Error(`Falta la cabecera aprobada de ${profile}`)
-  const result = await drafts.createDraft({ libraryEntryId: ENTRIES[profile], expectedHeadHash, title: CONTENT[profile].title, content: CONTENT[profile].content, changeSummary: 'editorial_depth_and_profile_differentiation: reutiliza evidencia durable válida con cuerpo público rico y perfiles diferenciados.', actorId: MANUAL_LOCAL_ACTOR_ID, operationKey: key(`investighost:062:cuenca:${profile}:editorial_depth:v1`) })
-  if (result.status !== 'ok') throw new Error(`No se pudo crear la revisión enriquecida de ${profile}: ${result.code}`)
+  const result = await drafts.createDraft({ libraryEntryId: ENTRIES[profile], expectedHeadHash, title: CONTENT[profile].title, content: CONTENT[profile].content, changeSummary: 'readability_and_scannability: reorganiza hechos ya aprobados para lectura digital, jerarquía y recomendaciones claras.', actorId: MANUAL_LOCAL_ACTOR_ID, operationKey: key(`investighost:065:cuenca:${profile}:readability_scannability:v1`) })
+  if (result.status !== 'ok') throw new Error(`No se pudo crear la revisión legible de ${profile}: ${result.code}`)
   return result.version.versionId
 }
 
-async function approveDepthVersion(profile: Profile, versionId: string): Promise<void> {
+async function approveReadableVersion(profile: Profile, versionId: string): Promise<void> {
   let detail = await versioning.getVersionDetail(versionId)
   if (detail.state.effectiveState === 'approved') return
-  if (detail.state.effectiveState !== 'draft') throw new Error(`La revisión enriquecida de ${profile} no está en draft`)
+  if (detail.state.effectiveState !== 'draft') throw new Error(`La revisión legible de ${profile} no está en draft`)
   for (const item of (await versioning.getEffectiveVersionFindings(versionId, detail.currentRevision.id)).items) {
     if (!item.isBaseline) continue
     const state = await versioning.getVersionStateSnapshot(versionId)
-    const reconciled = await decisions.reconcileFindings({ versionId, revisionId: detail.currentRevision.id, expectedState: 'draft', expectedRevisionHash: detail.currentRevision.revisionHash, expectedTraceabilityHash: state.traceabilityHash, finding: { findingKey: item.findingKey, sourceFindingType: item.sourceFindingType, sourceFindingId: item.sourceFindingId, origin: item.origin, disposition: 'accepted_risk', claimRelation: item.claimRelation, supportStatus: item.supportStatus, subjectText: item.subjectText, diffAnchor: null, claimIds: item.claimIds, evidenceReferences: item.evidenceReferences, sourceIds: item.sourceIds, editorDeclaration: 'editorial_depth_and_profile_differentiation: se conserva trazabilidad heredada fuera del cuerpo público.', justification: 'La revisión amplía únicamente la explicación y organización de hechos ya respaldados; no incorpora investigación ni hechos nuevos.' }, createdByActorId: MANUAL_LOCAL_ACTOR_ID, operationKey: key(`investighost:062:cuenca:${profile}:reconcile:${item.findingKey}`) })
+    const reconciled = await decisions.reconcileFindings({ versionId, revisionId: detail.currentRevision.id, expectedState: 'draft', expectedRevisionHash: detail.currentRevision.revisionHash, expectedTraceabilityHash: state.traceabilityHash, finding: { findingKey: item.findingKey, sourceFindingType: item.sourceFindingType, sourceFindingId: item.sourceFindingId, origin: item.origin, disposition: 'accepted_risk', claimRelation: item.claimRelation, supportStatus: item.supportStatus, subjectText: item.subjectText, diffAnchor: null, claimIds: item.claimIds, evidenceReferences: item.evidenceReferences, sourceIds: item.sourceIds, editorDeclaration: 'readability_and_scannability: se conserva la trazabilidad fuera del texto público.', justification: 'La revisión reorganiza y condensa contenido ya aprobado; no añade hechos ni investigación.' }, createdByActorId: MANUAL_LOCAL_ACTOR_ID, operationKey: key(`investighost:065:cuenca:${profile}:reconcile:${item.findingKey}`) })
     if (reconciled.status !== 'ok') throw new Error(`No se pudo reconciliar ${profile}/${item.findingKey}`)
   }
   detail = await versioning.getVersionDetail(versionId)
-  const beforeSubmit = await versioning.getVersionStateSnapshot(versionId)
-  const submitted = await decisions.submitForReview({ versionId, revisionId: detail.currentRevision.id, expectedState: 'draft', expectedRevisionHash: detail.currentRevision.revisionHash, expectedTraceabilityHash: beforeSubmit.traceabilityHash, reason: 'editorial_depth_and_profile_differentiation: revisión factual, pública y de profundidad confirma uso completo de la evidencia durable disponible.', actorId: MANUAL_LOCAL_ACTOR_ID, operationKey: key(`investighost:062:cuenca:${profile}:submit:v1`) })
+  const state = await versioning.getVersionStateSnapshot(versionId)
+  const submitted = await decisions.submitForReview({ versionId, revisionId: detail.currentRevision.id, expectedState: 'draft', expectedRevisionHash: detail.currentRevision.revisionHash, expectedTraceabilityHash: state.traceabilityHash, reason: 'readability_and_scannability: validación pública, factual, de profundidad y de lectura digital superada.', actorId: MANUAL_LOCAL_ACTOR_ID, operationKey: key(`investighost:065:cuenca:${profile}:submit:v1`) })
   if (submitted.status !== 'ok') throw new Error(`No se pudo enviar ${profile} a revisión`)
   const review = await versioning.getVersionStateSnapshot(versionId)
   if (!review.aggregateHash) throw new Error(`Falta el hash de decisión para ${profile}`)
   const acceptedRiskFindingKeys = (await versioning.getEffectiveVersionFindings(versionId, detail.currentRevision.id)).items.map(item => item.findingKey).sort()
-  const decision = await decisions.decideVersion({ versionId, revisionId: detail.currentRevision.id, decisionType: 'approve', expectedPreviousState: 'ready_for_review', expectedDecisionTargetHash: review.aggregateHash, reason: 'editorial_depth_and_profile_differentiation aprobada: contenido público rico, prudente y diferenciado sin trazas internas visibles.', actorId: MANUAL_LOCAL_ACTOR_ID, affectedFindingKeys: [], changeInstructions: [], acceptedRiskFindingKeys, separationOfDutiesException: true, separationOfDutiesReason: 'Operador local autorizado aprueba la revisión tras validación factual, pública, de profundidad y diferenciación de perfiles.', operationKey: key(`investighost:062:cuenca:${profile}:approve:v1`) })
+  const decision = await decisions.decideVersion({ versionId, revisionId: detail.currentRevision.id, decisionType: 'approve', expectedPreviousState: 'ready_for_review', expectedDecisionTargetHash: review.aggregateHash, reason: 'readability_and_scannability aprobada: cuerpo público denso, escaneable y sin Markdown escapado visible.', actorId: MANUAL_LOCAL_ACTOR_ID, affectedFindingKeys: [], changeInstructions: [], acceptedRiskFindingKeys, separationOfDutiesException: true, separationOfDutiesReason: 'Operador local autorizado aprueba tras validar factualidad, seguridad pública, profundidad, diferenciación y lectura.', operationKey: key(`investighost:065:cuenca:${profile}:approve:v1`) })
   if (decision.status !== 'ok') throw new Error(`No se pudo aprobar ${profile}`)
 }
 
 function target() { return { sourceMappingId: 'zone:espana:cuenca', canonicalDestinationId: 'investighost:zone:espana:cuenca', entityType: 'zone' as const, entitySlug: 'cuenca', countrySlug: 'espana', zoneSlug: 'cuenca' } }
 function key(value: string): string { return createHash('sha256').update(value).digest('hex') }
-function countInternalMarkers(content: string): number { return [/(?:\(c\d+\)|\bg\d+\b|\b(?:expediente|dossier)\b|claimId|evidenceId|gapId)/giu].reduce((count, pattern) => count + (content.match(pattern)?.length ?? 0), 0) }
+function internalMarkers(content: string): number { return content.match(/(?:\(c\d+\)|\bg\d+\b|\b(?:expediente|dossier)\b|claimId|evidenceId|gapId)/giu)?.length ?? 0 }
 function readLocalSupabaseEnvironment(): { url: string; serviceRoleKey: string } { const output = execSync('npx supabase status -o env', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); const url = output.match(/^API_URL="?([^\r\n"]+)/m)?.[1]; const serviceRoleKey = output.match(/^SERVICE_ROLE_KEY="?([^\r\n"]+)/m)?.[1]; if (!url || !serviceRoleKey) throw new Error('Supabase local no expuso credenciales de servicio'); return { url, serviceRoleKey } }

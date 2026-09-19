@@ -172,6 +172,15 @@ describe('Trawel V2 structured projection and durable delivery', () => {
     }
   })
 
+  it('reproduces the human-reported escaped Casas Colgadas highlight and rejects it', () => {
+    const humanReportedEscape = content.adventure.replace(
+      '- Murallas y paisaje',
+      '- \\*\\*Casas Colgadas y Museo de Arte Abstracto Español\\*\\*: icono y arte.',
+    )
+    expect(() => projectLibraryEntryToTrawelEditorialProfile(source('adventure', humanReportedEscape), target))
+      .toThrow(/PUBLIC_SAFE_VISIBLE_MARKDOWN_ESCAPE/)
+  })
+
   it('preserves valid Markdown while rejecting only visibly escaped Markdown', () => {
     const validMarkdown = content.adventure.replace('Llegada prudente a la zona.', '**Llegada prudente** a la zona.')
     expect(projectLibraryEntryToTrawelEditorialProfile(source('adventure', validMarkdown), target).intro)

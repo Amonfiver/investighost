@@ -45,6 +45,18 @@ export interface StudentEducationalAssessment {
   reasons: string[]
 }
 
+export interface StudentCanonicalAssessment extends StudentEducationalAssessment {
+  studentNonTravel: boolean
+  studentInformationalValue: boolean
+  studentEducationalStructure: boolean
+  travelLanguage: {
+    visitPlanning: boolean
+    budgetTravel: boolean
+    reservation: boolean
+    presenceRequired: boolean
+  }
+}
+
 const requiredSections: Record<EditorialDepthProfile, readonly string[]> = {
   adventure: ['intro', 'overview', 'highlights', 'route', 'practical', 'risks'],
   student: ['intro', 'overview', 'budget', 'daily_life', 'study', 'practical', 'risks'],
@@ -189,7 +201,7 @@ export function assessStudentEducationalValue(input: Omit<EditorialDepthInput, '
   const datesUsed = ['1177', '1966', '1996'].filter(date => input.content.includes(date)).length
   const questionsIncluded = input.content.match(/¿/g)?.length ?? 0
   const reasons: string[] = []
-  const requiredLearningBlocks = ['history', 'heritage', 'art_culture', 'nature_science', 'observation', 'study']
+  const requiredLearningBlocks = ['history', 'heritage', 'art_culture', 'nature_science', 'daily_life', 'gastronomy', 'budget', 'practical', 'study']
 
   if (input.evidence.validClaimCount >= 8 && input.evidence.thematicAreas.length >= 5 && words < 850) {
     reasons.push('student:insufficient-usable-depth')
@@ -212,8 +224,44 @@ export function assertStudentEducationalValue(input: Omit<EditorialDepthInput, '
   return assessment
 }
 
+/**
+ * Canonical Student policy: it explains a destination for learning and never
+ * makes travel, booking or physical presence a precondition of understanding.
+ */
+export function assessStudentCanonicalProfile(input: Omit<EditorialDepthInput, 'profile'>): StudentCanonicalAssessment {
+  const educational = assessStudentEducationalValue(input)
+  const normalized = normalize(input.content)
+  const sections = new Set(parseSections(input.content).map(section => section.kind))
+  const travelLanguage = {
+    visitPlanning: /\b(?:durante|en)\s+(?:la\s+)?visita\b|\b(?:antes\s+de\s+ir|cuando\s+estes\s+alli|si\s+vienes|si\s+coincides|al\s+recorrer\s+la\s+ciudad|separa\s+el\s+recorrido)\b/u.test(normalized),
+    budgetTravel: /\b(?:presupuesto|coste|costes|precio|precios)\s+(?:para|de)\s+(?:la\s+)?(?:visita|viaje)\b/u.test(normalized),
+    reservation: /\b(?:lleva\s+un\s+cuaderno|confirma\s+horarios|reservas?|planifica(?:r|cion)?|reparte\s+actividades|prepara\s+una\s+salida|visita\s+de\s+grupo|alojamiento|transporte|horarios)\b/u.test(normalized),
+    presenceRequired: /\b(?:cuando\s+estes\s+alli|si\s+vienes|al\s+recorrer\s+la\s+ciudad|durante\s+la\s+visita|antes\s+de\s+ir)\b/u.test(normalized),
+  }
+  const canonicalBlocks = ['intro', 'overview', 'history', 'heritage', 'art_culture', 'nature_science', 'daily_life', 'gastronomy', 'budget', 'practical', 'study']
+  const evidenceAbundant = input.evidence.validClaimCount >= 8 && input.evidence.thematicAreas.length >= 5
+  const reasons = [...educational.reasons]
+  if (Object.values(travelLanguage).some(Boolean)) reasons.push('student:travel-language-visible')
+  if (canonicalBlocks.some(kind => !sections.has(kind))) reasons.push('student:canonical-learning-structure-missing')
+  if (evidenceAbundant && educational.wordCount < 1_000) reasons.push('student:informational-depth-insufficient')
+
+  const studentNonTravel = !Object.values(travelLanguage).some(Boolean)
+  const studentEducationalStructure = !reasons.some(reason => /(?:learning-structure|canonical-learning-structure|questions)/.test(reason))
+  const studentInformationalValue = educational.studentEducationalValue
+    && !reasons.some(reason => /(?:informational-depth|themes|places|dates)/.test(reason))
+  return { ...educational, reasons, studentNonTravel, studentInformationalValue, studentEducationalStructure, travelLanguage }
+}
+
+export function assertStudentCanonicalProfile(input: Omit<EditorialDepthInput, 'profile'>): StudentCanonicalAssessment {
+  const assessment = assessStudentCanonicalProfile(input)
+  if (!assessment.studentNonTravel) throw new EditorialDepthPolicyError('STUDENT_NON_TRAVEL', assessment.reasons.join(', '))
+  if (!assessment.studentInformationalValue) throw new EditorialDepthPolicyError('STUDENT_INFORMATIONAL_VALUE', assessment.reasons.join(', '))
+  if (!assessment.studentEducationalStructure) throw new EditorialDepthPolicyError('STUDENT_EDUCATIONAL_STRUCTURE', assessment.reasons.join(', '))
+  return assessment
+}
+
 export class EditorialDepthPolicyError extends Error {
-  constructor(readonly code: 'CONTENT_TOO_THIN' | 'PROFILE_DIFFERENTIATION' | 'READABILITY' | 'SCANNABILITY' | 'STUDENT_DEPTH' | 'STUDENT_EDUCATIONAL_VALUE', detail: string) {
+  constructor(readonly code: 'CONTENT_TOO_THIN' | 'PROFILE_DIFFERENTIATION' | 'READABILITY' | 'SCANNABILITY' | 'STUDENT_DEPTH' | 'STUDENT_EDUCATIONAL_VALUE' | 'STUDENT_NON_TRAVEL' | 'STUDENT_INFORMATIONAL_VALUE' | 'STUDENT_EDUCATIONAL_STRUCTURE', detail: string) {
     super(`${code}:${detail}`)
     this.name = 'EditorialDepthPolicyError'
   }

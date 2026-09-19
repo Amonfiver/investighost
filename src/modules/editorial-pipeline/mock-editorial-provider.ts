@@ -9,7 +9,7 @@ import type { EditorialDraftBundle, EditorialProfile, EditorialSection, Research
 
 const profileCategories: Record<EditorialProfile, ResearchFact['category'][]> = {
   adventure: ['nature', 'geography', 'history', 'logistics', 'safety', 'accessibility'],
-  student: ['cost', 'service', 'logistics', 'safety', 'accessibility', 'history'],
+  student: ['geography', 'history', 'culture', 'nature', 'other'],
 }
 
 export class MockEditorialGenerationProvider implements EditorialGenerationProvider {
@@ -27,11 +27,11 @@ export class MockEditorialGenerationProvider implements EditorialGenerationProvi
     const facts = selectFacts(input.context.facts, profileCategories[input.profile])
     const introduction = input.profile === 'adventure'
       ? `${input.context.destinationName} se plantea aquí como una exploración activa basada en evidencias: recorrido, preparación, condiciones y riesgos se distinguen antes de decidir cada tramo.`
-      : `${input.context.destinationName} se evalúa como lugar de estancia estudiantil desde decisiones comprobables: presupuesto, movilidad, servicios, estudio, seguridad y vida diaria.`
+      : `${input.context.destinationName} se presenta como un lugar para comprender: territorio, historia, patrimonio, cultura y ciencia forman una explicación conectada.`
     return {
       title: input.profile === 'adventure'
         ? `${input.context.destinationName}: rutas, preparación y riesgos`
-        : `${input.context.destinationName}: guía práctica para estudiantes`,
+        : `${input.context.destinationName}: guía educativa para comprender el destino`,
       introduction,
       sections: input.prompt.requiredSections.map(kind => buildSection(input.profile, kind, input.context, facts)),
     }
@@ -63,22 +63,22 @@ function buildSection(
   context: EditorialGenerationContext,
   preferredFacts: ResearchFact[],
 ): ProposedEditorialSection {
-  const facts = factsForKind(kind, preferredFacts, context.facts)
+  const facts = factsForKind(profile, kind, preferredFacts, context.facts)
   const evidence = facts.map(fact => fact.statement).join(' ')
   const places = context.places.map(place => place.name).join(', ') || 'los lugares respaldados por las fuentes'
   const activities = context.activities.map(activity => activity.name).join(', ') || 'las actividades respaldadas por los hechos'
   const profileLead = profile === 'adventure'
     ? 'La utilidad aventurera depende de preparar el recorrido y contrastar condiciones.'
-    : 'La utilidad estudiantil depende de separar datos estables de costes y servicios que requieren comprobación.'
+    : 'La utilidad educativa explica territorio, relieve, cronología, patrimonio, arquitectura, museos, artistas, tradiciones, gastronomía, geología, fósiles y conceptos científicos como una red de conocimiento autónoma.'
   const templates: Record<EditorialSection['kind'], { heading: string; detail: string }> = {
     overview: { heading: 'Contexto verificable', detail: `Punto de partida factual: ${evidence}` },
     highlights: { heading: 'Lugares y motivos para explorar', detail: `La selección prioriza ${places}. ${evidence}` },
     route: { heading: 'Recorrido, esfuerzo y preparación', detail: `Las opciones estructuradas incluyen ${activities}. ${evidence}` },
-    practical: { heading: 'Logística antes de decidir', detail: `Conviene verificar horarios, acceso y condiciones cambiantes. ${evidence}` },
-    risks: { heading: 'Riesgos y datos por confirmar', detail: `Las contradicciones o datos volátiles requieren revisión humana. ${evidence}` },
-    budget: { heading: 'Presupuesto y costes variables', detail: `Los costes se presentan solo cuando tienen evidencia y vigencia. ${evidence}` },
-    daily_life: { heading: 'Movilidad, servicios y vida diaria', detail: `La estancia cotidiana se valora con servicios y accesos verificables. ${evidence}` },
-    study: { heading: 'Estudio y trámites por comprobar', detail: `Antes de planificar estudios deben confirmarse centros, calendario y trámites. ${evidence}` },
+    practical: { heading: 'Relaciones para comprender el destino', detail: `Relaciona territorio, historia, patrimonio, cultura y ciencia. ${evidence}` },
+    risks: { heading: 'Matices de interpretación', detail: `Los temas se explican sin reducir el destino a un único periodo o disciplina. ${evidence}` },
+    budget: { heading: 'Datos y conceptos clave', detail: `Fechas, nombres y conceptos organizan una lectura del destino. ${evidence}` },
+    daily_life: { heading: 'Sociedad, tradiciones y vida cultural', detail: `Las prácticas culturales ayudan a explicar identidades y continuidades locales. ${evidence}` },
+    study: { heading: 'Preguntas para aprender', detail: `Las preguntas relacionan hechos, lugares y conceptos sin exigir presencia física. ${evidence}` },
     sources: { heading: 'Evidencias utilizadas', detail: `Las afirmaciones de esta sección proceden de hechos enlazados: ${evidence}` },
     other: { heading: 'Información complementaria', detail: evidence },
   }
@@ -92,7 +92,11 @@ function buildSection(
   }
 }
 
-function factsForKind(kind: EditorialSection['kind'], preferred: ResearchFact[], all: ResearchFact[]): ResearchFact[] {
+function factsForKind(profile: EditorialProfile, kind: EditorialSection['kind'], preferred: ResearchFact[], all: ResearchFact[]): ResearchFact[] {
+  if (profile === 'student') {
+    const safetyFacts = kind === 'risks' ? all.filter(fact => fact.category === 'safety') : []
+    return (safetyFacts.length > 0 ? safetyFacts : preferred).slice(0, 4)
+  }
   const categories: Partial<Record<EditorialSection['kind'], ResearchFact['category'][]>> = {
     route: ['geography', 'nature', 'logistics', 'accessibility'],
     practical: ['logistics', 'service', 'accessibility'],

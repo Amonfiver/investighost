@@ -44,11 +44,12 @@ export const editorialPromptSpecs: Record<EditorialProfile, EditorialPromptSpec>
   },
   student: {
     profile: 'student',
-    version: 'student-v1',
-    purpose: 'Evaluar una estancia de estudiante con decisiones cotidianas verificables.',
-    tone: 'Práctico, claro y sobrio; distinguir datos de cuestiones por confirmar.',
-    priorities: ['presupuesto', 'transporte', 'alojamiento', 'zonas', 'ambiente', 'estudio', 'servicios', 'seguridad', 'vida diaria', 'trámites'],
+    version: 'student-v2',
+    purpose: 'Explicar el destino para aprender y comprenderlo, sin presuponer viaje, estancia ni presencia física.',
+    tone: 'Informativo, educativo, claro, riguroso y accesible; relacionar territorio, historia, cultura y ciencia.',
+    priorities: ['geografía', 'paisaje', 'historia', 'patrimonio', 'arquitectura', 'arte', 'cultura', 'naturaleza', 'ciencia', 'tradiciones', 'gastronomía', 'conceptos clave'],
     requiredSections: ['overview', 'budget', 'daily_life', 'study', 'practical', 'risks', 'sources'],
+    /** V2 field names remain stable; their public headings carry the canonical educational meaning. */
     forbiddenExpressions: ['como modelo de ia', 'para todos los gustos', 'destino único e inolvidable'],
     minIntroductionCharacters: 80,
     minSectionCharacters: 60,

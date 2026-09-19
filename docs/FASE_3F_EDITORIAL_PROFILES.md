@@ -10,9 +10,17 @@ Estado: aprobada técnicamente
 | Perfil | Versión | Secciones obligatorias | Prioridad distintiva |
 |---|---|---|---|
 | Aventura | `adventure-v1` | contexto, destacados, ruta, práctica, riesgos, fuentes | exploración, naturaleza, esfuerzo, temporada, preparación y logística |
-| Estudiante | `student-v1` | contexto, presupuesto, vida diaria, estudio, práctica, riesgos, fuentes | costes, transporte, servicios, seguridad, estudio, trámites y estancia cotidiana |
+| Estudiante | `student-v2` | geografía, historia, patrimonio, arte/cultura, naturaleza/ciencia, tradiciones, gastronomía, datos clave, relaciones y preguntas | explicar el destino sin presuponer viaje, estancia ni presencia física |
 
 El proveedor no puede reordenar, omitir o duplicar secciones. Cada sección debe respetar longitud, vocabulario prohibido y trazabilidad a hechos/fuentes existentes.
+
+## Política canónica Student v2
+
+**Student explica el destino; no presupone viaje.** Debe servir del mismo modo a quien estudia desde casa, prepara material docente o quiere comprender un lugar. Su trabajo es conectar geografía, historia, patrimonio, arte, naturaleza, ciencia, sociedad, tradiciones y gastronomía cuando los hechos durables lo permiten.
+
+No usa planificación de visita, presupuesto turístico, transporte, reservas, horarios ni instrucciones que requieran presencia física. Las preguntas son conceptuales: ayudan a relacionar territorio, procesos históricos, expresiones culturales e instituciones científicas.
+
+La compatibilidad V2 se conserva sin convertir el texto público en una guía de viaje. Los identificadores internos de bloque `budget`, `daily_life`, `study`, `practical` y `risks` siguen disponibles para el contrato y la proyección; sus headings públicos se usan con significado educativo: datos clave, sociedad y cultura, preguntas de aprendizaje, relaciones temáticas y matices de interpretación. No se requiere una migración para ello.
 
 ## Generación neutral
 

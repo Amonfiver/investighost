@@ -4,6 +4,7 @@ import {
   assertContentNotTooThin,
   assertProfilesDifferentiated,
   assertReadableAndScannable,
+  assertStudentCanonicalProfile,
   assertStudentEducationalValue,
 } from '@modules/library-versioning/editorial-depth-policy'
 
@@ -118,10 +119,55 @@ Ciudad Encantada, torcas, Las Hoyas y el Cretácico inferior conectan naturaleza
 ## [observation] Observación
 La catedral, torre Mangana, arco de Bezudo, túnel de Alfonso VIII y Semana Santa añaden referencias para observar.
 
+## [gastronomy] Gastronomía
+Ajoarriero, morteruelo, pisto y resolí sitúan la gastronomía dentro de la cultura local.
+
 ## [study] Preguntas
 ¿Cómo se relaciona el paisaje con la ciudad? ¿Qué puede explicar 1996 sobre patrimonio? ¿Qué cambia entre arte y arquitectura? ¿Qué enseñan fósiles y museo?
 
 ${'Una explicación educativa conecta paisaje, historia, patrimonio, arte, cultura y ciencia sin convertir la visita en una lista. '.repeat(24)}`
     expect(() => assertStudentEducationalValue({ title: 'S', content: educational, evidence, sourceLimited: false })).not.toThrow()
+  })
+
+  it('makes Student informational and non-travel by canonical policy', () => {
+    const canonical = `## [intro] Introducción
+Cuenca se explica mediante la relación entre paisaje, historia, patrimonio, arte, ciencia y cultura.
+
+## [overview] Geografía y paisaje
+Las hoces y el relieve explican la relación entre ciudad y territorio.
+
+## [history] Historia
+La conquista de 1177 organiza una referencia histórica importante.
+
+## [heritage] Patrimonio
+Casas Colgadas y puente de San Pablo forman parte del patrimonio reconocido en 1996.
+
+## [art_culture] Arte y cultura
+El Museo de Arte Abstracto Español abrió en 1966 y conecta patrimonio y arte.
+
+## [nature_science] Naturaleza y ciencia
+Ciudad Encantada, Las Hoyas y el Cretácico inferior relacionan paisaje y paleontología.
+
+## [daily_life] Tradiciones
+La Semana Santa expresa una dimensión cultural de la ciudad.
+
+## [gastronomy] Gastronomía
+Ajoarriero y morteruelo sitúan la cocina dentro de la cultura local.
+
+## [budget] Datos clave
+1177, 1966 y 1996 son fechas para ordenar los temas principales.
+
+## [practical] Relaciones
+- El relieve ayuda a explicar la ciudad.
+- El patrimonio conecta historia y arquitectura.
+- La naturaleza se relaciona con la ciencia.
+
+## [study] Preguntas
+¿Cómo se relacionan las hoces y la ciudad? ¿Qué explica 1177? ¿Por qué arte y patrimonio conviven? ¿Qué enseña Las Hoyas?
+
+${'La explicación conecta geografía, historia, patrimonio, arte, naturaleza, ciencia, cultura y conceptos clave con hechos concretos. '.repeat(60)}`
+    expect(() => assertStudentCanonicalProfile({ title: 'S', content: canonical, evidence, sourceLimited: false })).not.toThrow()
+    expect(() => assertStudentCanonicalProfile({ title: 'S', content: canonical.replace('Cuenca se explica', 'Antes de ir, Cuenca se explica'), evidence, sourceLimited: false }))
+      .toThrow(/STUDENT_NON_TRAVEL/)
   })
 })

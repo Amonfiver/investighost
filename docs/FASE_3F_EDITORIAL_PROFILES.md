@@ -22,6 +22,12 @@ No usa planificación de visita, presupuesto turístico, transporte, reservas, h
 
 La compatibilidad V2 se conserva sin convertir el texto público en una guía de viaje. Los identificadores internos de bloque `budget`, `daily_life`, `study`, `practical` y `risks` siguen disponibles para el contrato y la proyección; sus headings públicos se usan con significado educativo: datos clave, sociedad y cultura, preguntas de aprendizaje, relaciones temáticas y matices de interpretación. No se requiere una migración para ello.
 
+## Política canónica Student v3
+
+**Student is an elegant encyclopedic profile. It explains the destination without assuming travel and without sounding like a school worksheet.** El texto presenta conocimiento cultural con claridad y densidad: geografía, historia, patrimonio, arte, naturaleza, ciencia, sociedad y gastronomía se articulan en headings naturales, sin numeración de temario ni instrucciones al lector.
+
+Las preguntas, cuando aportan valor, son breves y reflexivas bajo un heading natural como “Para comprender mejor”. El cierre sintetiza mediante una “Visión de conjunto”. Los campos V2 heredados no se muestran: conservan su función de compatibilidad y adoptan esos headings públicos elegantes.
+
 ## Generación neutral
 
 `EditorialGenerationProvider` recibe perfil, especificación y el mismo contexto factual. `EditorialGenerationService` valida propuestas, crea IDs deterministas, estado `ready`, versiones, uso y coste. El único adaptador de esta fase es `MockEditorialGenerationProvider`, sin red y marcado como simulación.

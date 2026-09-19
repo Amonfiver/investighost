@@ -57,6 +57,15 @@ export interface StudentCanonicalAssessment extends StudentEducationalAssessment
   }
 }
 
+export interface StudentEleganceAssessment extends StudentCanonicalAssessment {
+  studentEncyclopedicTone: boolean
+  studentNonSchoolish: boolean
+  studentSectionElegance: boolean
+  studentNoVisibleNumberedSyllabus: boolean
+  studentNoMetaeducationalLanguage: boolean
+  schoolishLanguage: { homeworkStyle: boolean; metaeducational: boolean; numberedSyllabus: boolean }
+}
+
 const requiredSections: Record<EditorialDepthProfile, readonly string[]> = {
   adventure: ['intro', 'overview', 'highlights', 'route', 'practical', 'risks'],
   student: ['intro', 'overview', 'budget', 'daily_life', 'study', 'practical', 'risks'],
@@ -260,8 +269,41 @@ export function assertStudentCanonicalProfile(input: Omit<EditorialDepthInput, '
   return assessment
 }
 
+/** Editorial finish for the public Student profile: elegant reference text, never a worksheet. */
+export function assessStudentElegance(input: Omit<EditorialDepthInput, 'profile'>): StudentEleganceAssessment {
+  const canonical = assessStudentCanonicalProfile(input)
+  const normalized = normalize(input.content)
+  const headings = [...input.content.matchAll(/^## \[[a-z_]+\]\s+([^\n]+)$/gmu)].map(match => match[1] ?? '')
+  const homeworkStyle = /\b(?:lleva\s+un\s+cuaderno|apunta\s+\w+\s+cosas|haz\s+(?:esta\s+)?actividad|reparte\s+tareas|para\s+aprender,?\s+haz)\b/u.test(normalized)
+  const metaeducational = /\b(?:su\s+valor\s+educativo\s+consiste|esta\s+guia\s+(?:propone|presenta)|no\s+hace\s+falta\s+saberlo|las\s+respuestas\s+pueden\s+ordenarse|preguntas\s+para\s+aprender)\b/u.test(normalized)
+  const numberedSyllabus = /^## \[[a-z_]+\]\s+\d+[.)]/gmu.test(input.content)
+  const elegantHeadings = headings.length >= 10
+    && headings.every(heading => !/^(?:matices\s+de\s+interpretacion|riesgos|limitaciones|consideraciones\s+editoriales|preguntas\s+para\s+aprender)$/iu.test(normalize(heading)))
+  const reasons = [...canonical.reasons]
+  if (homeworkStyle) reasons.push('student:homework-style-visible')
+  if (metaeducational) reasons.push('student:metaeducational-language-visible')
+  if (numberedSyllabus) reasons.push('student:numbered-syllabus-visible')
+  if (!elegantHeadings) reasons.push('student:section-elegance-missing')
+  const studentNoMetaeducationalLanguage = !metaeducational
+  const studentNoVisibleNumberedSyllabus = !numberedSyllabus
+  const studentNonSchoolish = !homeworkStyle && studentNoMetaeducationalLanguage && studentNoVisibleNumberedSyllabus
+  const studentSectionElegance = elegantHeadings && studentNoVisibleNumberedSyllabus
+  const studentEncyclopedicTone = canonical.studentInformationalValue && studentNonSchoolish && studentSectionElegance
+  return { ...canonical, reasons, studentEncyclopedicTone, studentNonSchoolish, studentSectionElegance, studentNoVisibleNumberedSyllabus, studentNoMetaeducationalLanguage, schoolishLanguage: { homeworkStyle, metaeducational, numberedSyllabus } }
+}
+
+export function assertStudentElegance(input: Omit<EditorialDepthInput, 'profile'>): StudentEleganceAssessment {
+  const assessment = assessStudentElegance(input)
+  if (!assessment.studentEncyclopedicTone) throw new EditorialDepthPolicyError('STUDENT_ENCYCLOPEDIC_TONE', assessment.reasons.join(', '))
+  if (!assessment.studentNonSchoolish) throw new EditorialDepthPolicyError('STUDENT_NON_SCHOOLISH', assessment.reasons.join(', '))
+  if (!assessment.studentSectionElegance) throw new EditorialDepthPolicyError('STUDENT_SECTION_ELEGANCE', assessment.reasons.join(', '))
+  if (!assessment.studentNoVisibleNumberedSyllabus) throw new EditorialDepthPolicyError('STUDENT_NO_VISIBLE_NUMBERED_SYLLABUS', assessment.reasons.join(', '))
+  if (!assessment.studentNoMetaeducationalLanguage) throw new EditorialDepthPolicyError('STUDENT_NO_METAEDUCATIONAL_LANGUAGE', assessment.reasons.join(', '))
+  return assessment
+}
+
 export class EditorialDepthPolicyError extends Error {
-  constructor(readonly code: 'CONTENT_TOO_THIN' | 'PROFILE_DIFFERENTIATION' | 'READABILITY' | 'SCANNABILITY' | 'STUDENT_DEPTH' | 'STUDENT_EDUCATIONAL_VALUE' | 'STUDENT_NON_TRAVEL' | 'STUDENT_INFORMATIONAL_VALUE' | 'STUDENT_EDUCATIONAL_STRUCTURE', detail: string) {
+  constructor(readonly code: 'CONTENT_TOO_THIN' | 'PROFILE_DIFFERENTIATION' | 'READABILITY' | 'SCANNABILITY' | 'STUDENT_DEPTH' | 'STUDENT_EDUCATIONAL_VALUE' | 'STUDENT_NON_TRAVEL' | 'STUDENT_INFORMATIONAL_VALUE' | 'STUDENT_EDUCATIONAL_STRUCTURE' | 'STUDENT_ENCYCLOPEDIC_TONE' | 'STUDENT_NON_SCHOOLISH' | 'STUDENT_SECTION_ELEGANCE' | 'STUDENT_NO_VISIBLE_NUMBERED_SYLLABUS' | 'STUDENT_NO_METAEDUCATIONAL_LANGUAGE', detail: string) {
     super(`${code}:${detail}`)
     this.name = 'EditorialDepthPolicyError'
   }

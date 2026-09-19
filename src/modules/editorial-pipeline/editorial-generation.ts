@@ -44,9 +44,9 @@ export const editorialPromptSpecs: Record<EditorialProfile, EditorialPromptSpec>
   },
   student: {
     profile: 'student',
-    version: 'student-v2',
-    purpose: 'Explicar el destino para aprender y comprenderlo, sin presuponer viaje, estancia ni presencia física.',
-    tone: 'Informativo, educativo, claro, riguroso y accesible; relacionar territorio, historia, cultura y ciencia.',
+    version: 'student-v3',
+    purpose: 'Explicar el destino como una enciclopedia elegante, sin presuponer viaje ni convertir el texto en una ficha escolar.',
+    tone: 'Enciclopédico, cultural, claro, riguroso y accesible; relacionar territorio, historia, cultura y ciencia con prosa editorial.',
     priorities: ['geografía', 'paisaje', 'historia', 'patrimonio', 'arquitectura', 'arte', 'cultura', 'naturaleza', 'ciencia', 'tradiciones', 'gastronomía', 'conceptos clave'],
     requiredSections: ['overview', 'budget', 'daily_life', 'study', 'practical', 'risks', 'sources'],
     /** V2 field names remain stable; their public headings carry the canonical educational meaning. */

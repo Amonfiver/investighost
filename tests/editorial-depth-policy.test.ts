@@ -5,6 +5,7 @@ import {
   assertProfilesDifferentiated,
   assertReadableAndScannable,
   assertStudentCanonicalProfile,
+  assertStudentElegance,
   assertStudentEducationalValue,
 } from '@modules/library-versioning/editorial-depth-policy'
 
@@ -169,5 +170,8 @@ ${'La explicación conecta geografía, historia, patrimonio, arte, naturaleza, c
     expect(() => assertStudentCanonicalProfile({ title: 'S', content: canonical, evidence, sourceLimited: false })).not.toThrow()
     expect(() => assertStudentCanonicalProfile({ title: 'S', content: canonical.replace('Cuenca se explica', 'Antes de ir, Cuenca se explica'), evidence, sourceLimited: false }))
       .toThrow(/STUDENT_NON_TRAVEL/)
+    expect(() => assertStudentElegance({ title: 'S', content: canonical, evidence, sourceLimited: false })).not.toThrow()
+    expect(() => assertStudentElegance({ title: 'S', content: canonical.replace('## [overview] Geografía y paisaje', '## [overview] 1. Geografía y paisaje') + '\n\nEsta guía propone una actividad.', evidence, sourceLimited: false }))
+      .toThrow(/STUDENT_ENCYCLOPEDIC_TONE/)
   })
 })

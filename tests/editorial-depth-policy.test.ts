@@ -4,6 +4,7 @@ import {
   assertContentNotTooThin,
   assertProfilesDifferentiated,
   assertReadableAndScannable,
+  assertStudentEducationalValue,
 } from '@modules/library-versioning/editorial-depth-policy'
 
 const evidence = {
@@ -95,5 +96,32 @@ describe('editorial depth policy', () => {
       profile: 'adventure', title: 'A',
       content: richAdventure.replace('- Las Hoyas y el museo paleontológico para enlazar paisaje y ciencia.\n', ''),
     })).toThrow(/SCANNABILITY/)
+  })
+
+  it('requires Student to develop named places, dates, learning blocks and real questions', () => {
+    expect(() => assertStudentEducationalValue({ title: 'S', content: richStudent, evidence, sourceLimited: false }))
+      .toThrow(/STUDENT_DEPTH/)
+    const educational = `${richStudent}
+
+## [history] Historia
+En 1177 la conquista ayuda a ordenar una parte de la historia de Cuenca.
+
+## [heritage] Patrimonio
+Casas Colgadas, puente de San Pablo y plaza Mayor permiten reconocer patrimonio.
+
+## [art_culture] Arte y cultura
+El Museo de Arte Abstracto Español abrió en 1966 y se relaciona con arte y cultura.
+
+## [nature_science] Naturaleza y ciencia
+Ciudad Encantada, torcas, Las Hoyas y el Cretácico inferior conectan naturaleza y paleontología.
+
+## [observation] Observación
+La catedral, torre Mangana, arco de Bezudo, túnel de Alfonso VIII y Semana Santa añaden referencias para observar.
+
+## [study] Preguntas
+¿Cómo se relaciona el paisaje con la ciudad? ¿Qué puede explicar 1996 sobre patrimonio? ¿Qué cambia entre arte y arquitectura? ¿Qué enseñan fósiles y museo?
+
+${'Una explicación educativa conecta paisaje, historia, patrimonio, arte, cultura y ciencia sin convertir la visita en una lista. '.repeat(24)}`
+    expect(() => assertStudentEducationalValue({ title: 'S', content: educational, evidence, sourceLimited: false })).not.toThrow()
   })
 })

@@ -34,6 +34,17 @@ export interface EditorialReadabilityAssessment {
   reasons: string[]
 }
 
+export interface StudentEducationalAssessment {
+  studentDepth: boolean
+  studentEducationalValue: boolean
+  wordCount: number
+  thematicCoverage: number
+  namedPlaceCoverage: number
+  datesUsed: number
+  questionsIncluded: number
+  reasons: string[]
+}
+
 const requiredSections: Record<EditorialDepthProfile, readonly string[]> = {
   adventure: ['intro', 'overview', 'highlights', 'route', 'practical', 'risks'],
   student: ['intro', 'overview', 'budget', 'daily_life', 'study', 'practical', 'risks'],
@@ -166,8 +177,43 @@ export function assertReadableAndScannable(input: Pick<EditorialDepthInput, 'pro
   return assessment
 }
 
+/** Student needs a real learning journey, not a renamed short tourist profile. */
+export function assessStudentEducationalValue(input: Omit<EditorialDepthInput, 'profile'>): StudentEducationalAssessment {
+  assertPublicSafeLibraryDocument(input.title, input.content)
+  const normalized = normalize(input.content)
+  const sections = new Set(parseSections(input.content).map(section => section.kind))
+  const words = wordCount(input.content)
+  const themeCoverage = input.evidence.thematicAreas.filter(theme => normalized.includes(normalize(theme))).length
+  const namedPlaceCoverage = input.evidence.namedPlaces.filter(place => normalize(place).split(' ')
+    .some(token => token.length > 3 && normalized.includes(token))).length
+  const datesUsed = ['1177', '1966', '1996'].filter(date => input.content.includes(date)).length
+  const questionsIncluded = input.content.match(/¿/g)?.length ?? 0
+  const reasons: string[] = []
+  const requiredLearningBlocks = ['history', 'heritage', 'art_culture', 'nature_science', 'observation', 'study']
+
+  if (input.evidence.validClaimCount >= 8 && input.evidence.thematicAreas.length >= 5 && words < 850) {
+    reasons.push('student:insufficient-usable-depth')
+  }
+  if (themeCoverage < Math.min(6, input.evidence.thematicAreas.length)) reasons.push('student:themes-underused')
+  if (namedPlaceCoverage < Math.min(9, input.evidence.namedPlaces.length)) reasons.push('student:places-underdeveloped')
+  if (datesUsed < 3) reasons.push('student:dates-underused')
+  if (questionsIncluded < 4) reasons.push('student:questions-underdeveloped')
+  if (requiredLearningBlocks.some(kind => !sections.has(kind))) reasons.push('student:learning-structure-missing')
+
+  const studentDepth = !reasons.some(reason => /(?:usable-depth|themes|places|dates|structure)/.test(reason))
+  const studentEducationalValue = studentDepth && questionsIncluded >= 4
+  return { studentDepth, studentEducationalValue, wordCount: words, thematicCoverage: themeCoverage, namedPlaceCoverage, datesUsed, questionsIncluded, reasons }
+}
+
+export function assertStudentEducationalValue(input: Omit<EditorialDepthInput, 'profile'>): StudentEducationalAssessment {
+  const assessment = assessStudentEducationalValue(input)
+  if (!assessment.studentDepth) throw new EditorialDepthPolicyError('STUDENT_DEPTH', assessment.reasons.join(', '))
+  if (!assessment.studentEducationalValue) throw new EditorialDepthPolicyError('STUDENT_EDUCATIONAL_VALUE', assessment.reasons.join(', '))
+  return assessment
+}
+
 export class EditorialDepthPolicyError extends Error {
-  constructor(readonly code: 'CONTENT_TOO_THIN' | 'PROFILE_DIFFERENTIATION' | 'READABILITY' | 'SCANNABILITY', detail: string) {
+  constructor(readonly code: 'CONTENT_TOO_THIN' | 'PROFILE_DIFFERENTIATION' | 'READABILITY' | 'SCANNABILITY' | 'STUDENT_DEPTH' | 'STUDENT_EDUCATIONAL_VALUE', detail: string) {
     super(`${code}:${detail}`)
     this.name = 'EditorialDepthPolicyError'
   }

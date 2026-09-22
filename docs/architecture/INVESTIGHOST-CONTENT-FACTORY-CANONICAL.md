@@ -93,6 +93,18 @@ transfer a Library, que actualmente sólo crea entradas a partir de un piloto ya
 aprobado. Los delegates de producción siguen fail-closed hasta que esa frontera
 compartida exista.
 
+084E abrió esa frontera sin crear otra Library: las migraciones
+`20260923130000_shared_library_batch_candidates_v1.sql` y
+`20260923140000_library_versioning_batch_candidate_origin_v1.sql` permiten un
+origen inmutable `real_editorial_batch_job` en
+`real_editorial_library_entries`. El servicio
+`BatchSharedLibraryTransition` crea dicho origen y aplica el mismo comando
+normal de versionado para obtener `libraryEntryId`, `versionId` y `revisionId`.
+No crea `currentApproved`, no publica y conserva el linaje
+`BATCH_JOB → execution → artifact → Library`. La rama de pilotos preserva su
+hash de origen y sus validaciones históricas. Falta conectar el executor real
+phase-addressable a esa transición antes de registrar delegates de producción.
+
 ### Visuales
 
 - `src/shared/destination-visual-media-contract.ts`: assets, packages, roles, modos y rights status.

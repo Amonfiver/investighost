@@ -1,6 +1,7 @@
 export * from './canonicalization'
 export * from './comparison-service'
 export * from './draft-application-service'
+export * from './batch-library-transition'
 export * from './repository'
 export * from './supabase-repository'
 export * from './public-safe-content'

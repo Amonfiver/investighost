@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { LibraryVersionSha256Schema, LibraryVersionUuidSchema } from './real-editorial-library-contracts'
 import { TrawelEditorialPublicSourceSchema } from './trawel-editorial-handoff-contracts'
 import { TrawelDestinationVisualContractSchema } from './destination-visual-contract'
+import { TrawelDestinationVisualMediaSchema } from './destination-visual-media-contract'
 
 /** Wire contract for Trawel's deployed internal-editorial-deliveries ingress. */
 export const TRAWEL_EDITORIAL_DELIVERY_V2_SCHEMA = 'v2' as const
@@ -70,7 +71,13 @@ export const TrawelEditorialDeliveryV2PayloadSchema = z.object({
   profiles: z.object({ adventure: TrawelEditorialProfileSchema, student: TrawelEditorialProfileSchema }).strict(),
   /** Optional V2 extension. Existing consumers receive the unchanged text-only payload. */
   destinationVisuals: TrawelDestinationVisualContractSchema.optional(),
-}).strict()
+  /** Canonical Visual Bridge V1 collection; it supersedes the two-slot extension for new media. */
+  destinationVisualMedia: TrawelDestinationVisualMediaSchema.optional(),
+}).strict().superRefine((payload, context) => {
+  if (payload.destinationVisuals !== undefined && payload.destinationVisualMedia !== undefined) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'No se pueden mezclar slots legacy y colección visual canónica' })
+  }
+})
 
 const DeliveryResultSchema = z.object({
   editorial_content_ids: z.array(LibraryVersionUuidSchema).max(2).optional(),

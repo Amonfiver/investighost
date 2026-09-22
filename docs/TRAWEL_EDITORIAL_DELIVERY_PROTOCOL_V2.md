@@ -111,6 +111,36 @@ referencia `referenceOnly`, pendiente o rechazada conserva sus datos internos en
 Investighost y no cruza como imagen pública. Trawel solo muestra los metadatos
 recibidos; no decide derechos, licencia, atribución ni sustituciones.
 
+## Visual Bridge V1 — colección editorial canónica
+
+Los dos slots permanecen como compatibilidad para payloads V2 ya existentes,
+pero no son la fuente de verdad para media nueva. Visual Bridge V1 modela una
+colección durable de assets asociada a un destino y un paquete editorial con
+selecciones explícitas por modo (`adventure`/`student`) y rol (`hero`,
+`highlight`, `gallery`). Un mismo archivo puede pertenecer a ambos modos sin
+duplicarse.
+
+Investighost es la autoridad de categoría editorial, lugar asociado, alt,
+caption, atribución, derechos, publicabilidad, prioridades y orden de
+selección. Trawel recibe solamente la proyección saneada: URL pública,
+metadata de atribución, categoría, modos y selecciones ordenadas. No recibe
+`sourceUrl`, identidad interna de storage, revisión de derechos, candidatos
+pendientes/rechazados ni razonamiento editorial.
+
+La regla es fail-closed: `UNKNOWN`, `PENDING`, `REFERENCE_ONLY` y `REJECTED`
+no son publicables. Solo `APPROVED` + `APPROVED_FOR_PUBLIC_USE` + permiso de
+uso + revisión de derechos + URL/alt/atribución puede formar parte de un
+paquete aprobado. Un paquete puede ser `PARTIAL` sin afectar la aprobación
+textual de Adventure o Student; `COMPLETE` es una medida de preparación visual,
+no un requisito para publicar texto.
+
+El campo opcional `destinationVisualMedia` está preparado internamente para el
+handoff y se incorpora a `handoffKey` y `payloadFingerprint`. No se envía a
+Trawel hasta que el receiver soporte la extensión. Su hash excluye timestamps y
+provenance privada, por lo que un replay del mismo conjunto público conserva la
+idempotencia. La futura capa de adquisición/storage deberá poblar el dominio;
+Visual Bridge V1 no busca, descarga ni publica imágenes.
+
 Pack A no convierte contenido narrativo libre en estructura editorial. Las
 secciones estructurales pendientes de Albarracín continúan rechazándose y
 requieren la revisión durable de Pack B antes de cualquier dry run real.

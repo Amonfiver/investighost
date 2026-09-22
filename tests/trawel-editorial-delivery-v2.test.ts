@@ -11,6 +11,7 @@ import {
   parseTrawelIngressConfig,
   projectLibraryEntryToTrawelEditorialProfile,
   PublicSafeContentError,
+  calculateDestinationVisualMediaPackageHash,
   type TrawelDeliveryReconciler,
   type TrawelIngressClient,
 } from '@modules/trawel-handoff'
@@ -66,6 +67,29 @@ function source(profile: 'adventure' | 'student', replacement = content[profile]
 }
 function payload() {
   return prepareTrawelEditorialDeliveryV2({ target, sources: [source('student'), source('adventure')] })
+}
+function visualMedia(caption = 'Una imagen pública sintética') {
+  const assetId = 'e2000000-0000-4000-8000-000000000017'
+  const draft = {
+    schema: 'investighost-destination-visual-media-v1' as const,
+    packageId: 'e2000000-0000-4000-8000-000000000018', destinationId: syntheticTrawelIds.destination,
+    state: 'DRAFT' as const, packageHash: null,
+    assets: [{
+      assetId, destinationId: syntheticTrawelIds.destination, lifecycle: 'APPROVED' as const,
+      rightsStatus: 'APPROVED_FOR_PUBLIC_USE' as const, usageAllowed: true,
+      rightsCheckedAt: '2026-09-22T10:00:00.000Z', publicUrl: 'https://media.example.test/cuenca/hero.jpg',
+      storageIdentity: 'images-approved/cuenca/hero.jpg', sourceUrl: 'https://origin.example.test/cuenca/hero',
+      sourceName: 'Archivo sintético', author: 'Autora sintética', license: 'CC BY 4.0',
+      attributionText: 'Autora sintética — Archivo sintético — CC BY 4.0', associatedPlace: 'Cuenca',
+      category: 'landmark' as const, modes: ['adventure', 'student'] as const, alt: 'Imagen sintética de Cuenca',
+      caption, width: 1600, height: 900, mimeType: 'image/jpeg', checksum: '9'.repeat(64), rejectionReason: null,
+    }],
+    selections: [
+      { assetId, mode: 'adventure' as const, role: 'hero' as const, priority: 0 },
+      { assetId, mode: 'student' as const, role: 'hero' as const, priority: 0 },
+    ],
+  }
+  return { ...draft, state: 'APPROVED' as const, packageHash: calculateDestinationVisualMediaPackageHash(draft) }
 }
 function response(value: ReturnType<typeof payload>, overrides: Partial<TrawelEditorialIngressResponse> = {}): TrawelEditorialIngressResponse {
   return {
@@ -211,6 +235,24 @@ describe('Trawel V2 structured projection and durable delivery', () => {
       imageSlot1: { state: 'EMPTY', imageUrl: null }, imageSlot2: { state: 'EMPTY', imageUrl: null },
     })
     expect(JSON.stringify(extended.profiles)).not.toContain('imageSlot')
+  })
+
+  it('projects only approved Visual Bridge V1 fields and incorporates stable public media into handoff identity', () => {
+    const first = prepareTrawelEditorialDeliveryV2({ target, sources: [source('adventure'), source('student')], destinationVisualMedia: visualMedia() })
+    const equal = prepareTrawelEditorialDeliveryV2({ target, sources: [source('adventure'), source('student')], destinationVisualMedia: visualMedia() })
+    const changed = prepareTrawelEditorialDeliveryV2({ target, sources: [source('adventure'), source('student')], destinationVisualMedia: visualMedia('Pie público actualizado') })
+    expect(first.handoffKey).toBe(equal.handoffKey)
+    expect(first.payloadFingerprint).toBe(equal.payloadFingerprint)
+    expect(changed.handoffKey).not.toBe(first.handoffKey)
+    expect(first.destinationVisualMedia).toMatchObject({ assets: [{ rightsStatus: 'APPROVED_FOR_PUBLIC_USE', url: 'https://media.example.test/cuenca/hero.jpg' }] })
+    expect(JSON.stringify(first.destinationVisualMedia)).not.toContain('origin.example.test')
+    expect(JSON.stringify(first.destinationVisualMedia)).not.toContain('storageIdentity')
+    expect(JSON.stringify(first.destinationVisualMedia)).not.toContain('rightsCheckedAt')
+    expect(() => prepareTrawelEditorialDeliveryV2({
+      target, sources: [source('adventure'), source('student')],
+      destinationVisuals: projectDestinationVisualsForTrawel(emptyDestinationVisualContract(syntheticTrawelIds.destination)),
+      destinationVisualMedia: visualMedia(),
+    })).toThrow(/no pueden convivir/)
   })
 
   it('persists an immutable snapshot and recovers an expired lease using its persisted clock', async () => {

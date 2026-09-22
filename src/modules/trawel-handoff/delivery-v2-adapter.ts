@@ -15,12 +15,20 @@ import {
   TrawelDestinationVisualContractSchema,
   type DestinationVisualContractSchema,
 } from '@shared/destination-visual-contract'
+import {
+  DestinationVisualMediaPackageSchema,
+  TrawelDestinationVisualMediaSchema,
+  projectDestinationVisualMediaForTrawel,
+} from '@shared/destination-visual-media-contract'
+import { assertDestinationVisualMediaPackageHash } from './visual-media-package'
 
 export interface PrepareTrawelEditorialDeliveryV2Command {
   target: TrawelEditorialDeliveryTarget
   sources: readonly [LibraryTrawelApprovedSource, LibraryTrawelApprovedSource]
   /** Optional destination metadata; it never becomes Adventure/Student body text. */
   destinationVisuals?: typeof DestinationVisualContractSchema._output
+  /** Canonical collection for Visual Bridge V1; only its public projection crosses the boundary. */
+  destinationVisualMedia?: typeof DestinationVisualMediaPackageSchema._output
 }
 
 export class TrawelEditorialDeliveryV2Error extends Error {
@@ -40,8 +48,17 @@ export function prepareTrawelEditorialDeliveryV2(candidate: PrepareTrawelEditori
   const destinationVisuals = candidate.destinationVisuals === undefined
     ? undefined
     : TrawelDestinationVisualContractSchema.parse(candidate.destinationVisuals)
+  const destinationVisualMedia = candidate.destinationVisualMedia === undefined
+    ? undefined
+    : projectVisualMedia(candidate.destinationVisualMedia)
+  if (destinationVisuals !== undefined && destinationVisualMedia !== undefined) {
+    throw new TrawelEditorialDeliveryV2Error('Los slots legacy y la colección visual no pueden convivir en un mismo handoff')
+  }
   if (destinationVisuals !== undefined && destinationVisuals.destinationId !== sources[0].entry.destination.canonicalId) {
     throw new TrawelEditorialDeliveryV2Error('Los slots visuales no pertenecen al destino del handoff')
+  }
+  if (destinationVisualMedia !== undefined && destinationVisualMedia.destinationId !== sources[0].entry.destination.canonicalId) {
+    throw new TrawelEditorialDeliveryV2Error('La colección visual no pertenece al destino del handoff')
   }
   const handoffKey = canonicalPayloadHash({
     schema: TRAWEL_EDITORIAL_DELIVERY_V2_IDENTITY_SCHEMA,
@@ -50,6 +67,7 @@ export function prepareTrawelEditorialDeliveryV2(candidate: PrepareTrawelEditori
     envelope,
     profiles: identityProfiles(profiles),
     ...(destinationVisuals === undefined ? {} : { destinationVisuals }),
+    ...(destinationVisualMedia === undefined ? {} : { destinationVisualMedia }),
   })
   const payloadFingerprint = fingerprint({
     schemaVersion: TRAWEL_EDITORIAL_DELIVERY_V2_SCHEMA,
@@ -59,6 +77,7 @@ export function prepareTrawelEditorialDeliveryV2(candidate: PrepareTrawelEditori
     ...envelope,
     profiles,
     ...(destinationVisuals === undefined ? {} : { destinationVisuals }),
+    ...(destinationVisualMedia === undefined ? {} : { destinationVisualMedia }),
   })
   return TrawelEditorialDeliveryV2PayloadSchema.parse({
     schemaVersion: TRAWEL_EDITORIAL_DELIVERY_V2_SCHEMA,
@@ -69,6 +88,7 @@ export function prepareTrawelEditorialDeliveryV2(candidate: PrepareTrawelEditori
     ...envelope,
     profiles,
     ...(destinationVisuals === undefined ? {} : { destinationVisuals }),
+    ...(destinationVisualMedia === undefined ? {} : { destinationVisualMedia }),
   })
 }
 
@@ -81,6 +101,7 @@ export function assertTrawelEditorialDeliveryV2Integrity(payload: TrawelEditoria
     envelope: envelopeFromPayload(parsed),
     profiles: identityProfiles(parsed.profiles),
     ...(parsed.destinationVisuals === undefined ? {} : { destinationVisuals: parsed.destinationVisuals }),
+    ...(parsed.destinationVisualMedia === undefined ? {} : { destinationVisualMedia: TrawelDestinationVisualMediaSchema.parse(parsed.destinationVisualMedia) }),
   })
   if (handoffKey !== parsed.handoffKey) throw new TrawelEditorialDeliveryV2Error('V2 handoffKey inválida')
   const payloadFingerprint = fingerprint({
@@ -91,6 +112,7 @@ export function assertTrawelEditorialDeliveryV2Integrity(payload: TrawelEditoria
     ...envelopeFromPayload(parsed),
     profiles: parsed.profiles,
     ...(parsed.destinationVisuals === undefined ? {} : { destinationVisuals: parsed.destinationVisuals }),
+    ...(parsed.destinationVisualMedia === undefined ? {} : { destinationVisualMedia: TrawelDestinationVisualMediaSchema.parse(parsed.destinationVisualMedia) }),
   })
   if (payloadFingerprint !== parsed.payloadFingerprint) throw new TrawelEditorialDeliveryV2Error('V2 payloadFingerprint inválido')
 }
@@ -151,4 +173,10 @@ function envelopeFromPayload(payload: TrawelEditorialDeliveryV2Payload) {
 
 function fingerprint(value: Record<string, unknown>): string {
   return canonicalPayloadHash({ schema: TRAWEL_EDITORIAL_DELIVERY_V2_FINGERPRINT_SCHEMA, ...value })
+}
+
+function projectVisualMedia(value: typeof DestinationVisualMediaPackageSchema._output) {
+  const parsed = DestinationVisualMediaPackageSchema.parse(value)
+  assertDestinationVisualMediaPackageHash(parsed)
+  return projectDestinationVisualMediaForTrawel(parsed)
 }

@@ -105,7 +105,13 @@ import {
   LibraryPageSchema,
 } from '@shared/library-contracts'
 import { getContributionImportRuntime, getContributionPersistenceStatus } from '@modules/contributions/runtime'
-import { getDestinationBatchRuntime, getDestinationBatchPersistenceStatus, getDestinationBatchWorkerRuntime } from '@modules/factory-batches'
+import {
+  configureDestinationBatchWorkerPhasePort,
+  getDestinationBatchRuntime,
+  getDestinationBatchPersistenceStatus,
+  getDestinationBatchWorkerRuntime,
+  ProductionBatchEditorialPhasePort,
+} from '@modules/factory-batches'
 import {
   getManualPersistenceStatus,
   getManualResearchRuntime,
@@ -130,6 +136,14 @@ import {
   SupabaseRealEditorialLibraryVersioningRepository,
 } from '@modules/library-versioning'
 import { readRealLlmRouting, withLiveProviderClients } from '@modules/real-pipeline'
+
+// Factory batches always compose the real owner-neutral port at main-process
+// startup. Provider credentials are still checked per phase and remain
+// fail-closed until the explicit batch capability is configured.
+configureDestinationBatchWorkerPhasePort(new ProductionBatchEditorialPhasePort({
+  client: createLocalSupabaseClientFromEnv().client,
+  providerCenter: getProviderCenterRuntime,
+}))
 
 ipcMain.handle('contributions:import-pending', async () => {
   return (await getContributionImportRuntime()).importPending()

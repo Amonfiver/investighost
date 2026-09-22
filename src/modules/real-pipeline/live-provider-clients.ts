@@ -22,7 +22,7 @@ export async function withLiveProviderClients<T>(providerCenter: ProviderCenterS
   const snapshot = providerCenter.snapshot()
   const ids = [...new Set(Object.values(routing.routes).map(route => route.providerId))]
   assertRoutesConfigured(snapshot, routing)
-  const permit = issueLiveProviderNetworkPermit({ ...gate, providerCenter: snapshot, intelligenceProviderIds: ids })
+  const permit = issueLiveProviderNetworkPermit({ ...gate, providerCenter: snapshot, intelligenceProviderIds: ids }, options.environment)
   return providerCenter.withCredential('tavily', tavilyCredential => withIntelligenceCredentials(providerCenter, ids, async credentials => {
     const tavily = new TavilyResearchTool(new TavilyFetchTransport({ credential: tavilyCredential, networkPermit: permit }), { timeoutMs: readRealTavilyTimeoutPolicy(options.environment).timeoutMs }, { simulation: false, requestJournal: options.tavilyRequestJournal })
     const stages = Object.fromEntries((Object.keys(routing.routes) as IntelligenceRoutingStage[]).map(stage => [stage, {

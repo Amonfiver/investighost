@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { ProviderCenterSnapshotSchema } from '@shared/provider-center-contracts'
 import { resolveRealEditorialFeatureFlag } from '@shared/real-editorial-pilot-contracts'
 import { resolveRealExecutionFeatureFlag } from './real-pilot-gate'
+import { resolveBatchJobExecutionFeatureFlag } from '@modules/factory-batches/batch-provider-authorization'
 
 const permitBrand = Symbol('investighost-live-provider-permit')
 const issuedPermits = new WeakSet<object>()
@@ -16,11 +17,27 @@ export const LiveProviderAccessInputSchema = z.object({
   preflightStatus: z.enum([
     'ready_for_live_connectivity_check',
     'ready_for_real_editorial_pilot',
+    'ready_for_real_batch_execution',
   ]),
+  executionOwner: z.object({
+    type: z.enum(['PILOT', 'BATCH_JOB']),
+    id: z.string().uuid(),
+    batchId: z.string().uuid().optional(),
+    destinationId: z.string().uuid().optional(),
+    policyId: z.string().trim().min(1).max(160).optional(),
+  }).optional(),
   taskAuthorized: z.boolean(),
   budgetReserved: z.boolean(),
   globalGuardAcquired: z.boolean(),
   intelligenceProviderIds: z.array(z.enum(['openai', 'deepseek'])).min(1).default(['openai']),
+}).superRefine((value, context) => {
+  if (value.preflightStatus === 'ready_for_real_batch_execution') {
+    if (value.executionOwner?.type !== 'BATCH_JOB' || !value.executionOwner.batchId || !value.executionOwner.destinationId || !value.executionOwner.policyId) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['executionOwner'], message: 'La ejecución batch exige owner, lote, destino y policy.' })
+    }
+  } else if (value.executionOwner?.type === 'BATCH_JOB') {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['executionOwner'], message: 'BATCH_JOB solo puede usar preflight batch.' })
+  }
 })
 
 export type LiveProviderAccessErrorCode =
@@ -42,7 +59,10 @@ export class LiveProviderAccessError extends Error {
   }
 }
 
-export function issueLiveProviderNetworkPermit(candidate: unknown): LiveProviderNetworkPermit {
+export function issueLiveProviderNetworkPermit(
+  candidate: unknown,
+  environment: NodeJS.ProcessEnv = process.env,
+): LiveProviderNetworkPermit {
   const parsed = LiveProviderAccessInputSchema.safeParse(candidate)
   if (!parsed.success) {
     throw new LiveProviderAccessError('PREFLIGHT_REQUIRED', 'El preflight real no autoriza acceso a proveedores')
@@ -50,7 +70,9 @@ export function issueLiveProviderNetworkPermit(candidate: unknown): LiveProvider
   const input = parsed.data
   const featureEnabled = input.preflightStatus === 'ready_for_real_editorial_pilot'
     ? resolveRealEditorialFeatureFlag(input.featureToken)
-    : resolveRealExecutionFeatureFlag(input.featureToken)
+    : input.preflightStatus === 'ready_for_real_batch_execution'
+      ? resolveBatchJobExecutionFeatureFlag(input.featureToken, environment)
+      : resolveRealExecutionFeatureFlag(input.featureToken)
   if (!featureEnabled) {
     throw new LiveProviderAccessError('REAL_FEATURE_DISABLED', 'La feature flag real permanece desactivada')
   }

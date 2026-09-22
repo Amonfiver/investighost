@@ -119,6 +119,21 @@ composición de runtime probada con providers reales configurados, el delegate
 visual y un E2E durable del worker. El runtime continúa fail-closed hasta que
 esa composición exista; no usar fixtures en producción.
 
+084I añadió la capability separada
+`INVESTIGHOST_REAL_BATCH_EXECUTION_TOKEN`. `LiveProviderAccessInput` distingue
+ahora `ready_for_real_batch_execution` de los preflights de piloto y exige un
+owner `BATCH_JOB` con job, lote, destino y policy; los tokens de piloto no se
+aceptan para batch ni a la inversa. `BatchExecutionContextMapper` transforma
+un job con geografía canónica en `GenericRealEditorialExecutionContext` usando
+la policy genérica `factory-batch-real-v1` y los límites durables del lote.
+El proceso principal registra automáticamente
+`ProductionBatchEditorialPhasePort`: compone el executor owner-neutral, la
+Library compartida y el adapter visual Wikimedia/staging. La capability y la
+configuración del Provider Center se comprueban antes de obtener clientes o
+hacer red; sin ellas falla cerrado. Aún falta un E2E durable de worker con
+Supabase local y provider doubles para declarar el camino hasta
+`READY_FOR_REVIEW` probado de extremo a extremo.
+
 ### Visuales
 
 - `src/shared/destination-visual-media-contract.ts`: assets, packages, roles, modos y rights status.

@@ -62,6 +62,7 @@ const electronAPI = {
   readDestinationBatch: (batchId: string): Promise<DestinationBatchReadModel> =>
     ipcRenderer.invoke('factory-batches:read', batchId),
   retryDestinationBatchJob: (jobId: string) => ipcRenderer.invoke('factory-batches:retry-job', jobId),
+  startDestinationBatch: (batchId: string) => ipcRenderer.invoke('factory-batches:start', batchId),
 
   // Flujo Manual canónico; el renderer nunca recibe credenciales de Supabase.
   getManualPersistenceStatus: () => ipcRenderer.invoke('manual:persistence-status'),

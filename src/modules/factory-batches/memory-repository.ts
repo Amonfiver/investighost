@@ -68,4 +68,53 @@ export class MemoryDestinationBatchRepository implements DestinationBatchReposit
       ?? this.existing.get(input.normalizedIdentity)
       ?? { hasApprovedContent: false, hasDeliveredContent: false })
   }
+
+  async claimNextJob(batchId: string, workerId: string, leaseMs: number, now: Date): Promise<DestinationBatchJob | null> {
+    const next = [...this.jobs.values()]
+      .filter(job => job.batchId === batchId && job.status === 'QUEUED')
+      .sort((left, right) => left.inputIndex - right.inputIndex)[0]
+    return next ? this.claim(next, workerId, leaseMs, now) : null
+  }
+
+  async claimJob(jobId: string, workerId: string, leaseMs: number, now: Date): Promise<DestinationBatchJob | null> {
+    const job = this.jobs.get(jobId)
+    if (!job || job.status !== 'QUEUED') return null
+    return this.claim(job, workerId, leaseMs, now)
+  }
+
+  async renewClaim(jobId: string, claimToken: string, leaseMs: number, now: Date): Promise<DestinationBatchJob | null> {
+    const job = this.jobs.get(jobId)
+    if (!job || job.claimToken !== claimToken || job.status !== 'PROCESSING') return null
+    const next = DestinationBatchJobSchema.parse({ ...job, claimExpiresAt: new Date(now.getTime() + leaseMs), updatedAt: now })
+    this.jobs.set(next.id, structuredClone(next))
+    return structuredClone(next)
+  }
+
+  async releaseClaim(job: DestinationBatchJob, claimToken: string): Promise<DestinationBatchJob> {
+    const current = this.jobs.get(job.id)
+    if (!current || current.claimToken !== claimToken) throw new Error('DESTINATION_BATCH_CLAIM_LOST')
+    const next = DestinationBatchJobSchema.parse({ ...job, claimedBy: undefined, claimToken: undefined, claimExpiresAt: undefined, updatedAt: new Date() })
+    this.jobs.set(next.id, structuredClone(next))
+    return structuredClone(next)
+  }
+
+  async recoverStaleClaims(now: Date): Promise<number> {
+    let recovered = 0
+    for (const job of this.jobs.values()) {
+      if (job.status !== 'PROCESSING' || !job.claimExpiresAt || job.claimExpiresAt > now) continue
+      const next = DestinationBatchJobSchema.parse({ ...job, status: 'QUEUED', claimedBy: undefined, claimToken: undefined, claimExpiresAt: undefined, lastFailure: 'STALE_PROCESSING_RECOVERED', retryable: true, updatedAt: now })
+      this.jobs.set(next.id, structuredClone(next)); recovered += 1
+    }
+    return recovered
+  }
+
+  async totalActualCost(batchId: string): Promise<number> {
+    return [...this.jobs.values()].filter(job => job.batchId === batchId).reduce((total, job) => total + job.actualCost, 0)
+  }
+
+  private async claim(job: DestinationBatchJob, workerId: string, leaseMs: number, now: Date): Promise<DestinationBatchJob> {
+    const next = DestinationBatchJobSchema.parse({ ...job, status: 'PROCESSING', attemptCount: job.attemptCount + 1, claimedBy: workerId, claimToken: crypto.randomUUID(), claimExpiresAt: new Date(now.getTime() + leaseMs), startedAt: job.startedAt ?? now, updatedAt: now })
+    this.jobs.set(next.id, structuredClone(next))
+    return structuredClone(next)
+  }
 }

@@ -91,6 +91,7 @@ declare global {
       listDestinationBatches: () => Promise<import('./shared/factory-batch-contracts').DestinationBatch[]>
       readDestinationBatch: (batchId: string) => Promise<import('./shared/factory-batch-contracts').DestinationBatchReadModel>
       retryDestinationBatchJob: (jobId: string) => Promise<import('./modules/factory-batches').DestinationBatchRetryResult>
+      startDestinationBatch: (batchId: string) => Promise<import('./modules/factory-batches').BatchWorkerRunResult[]>
 
       // Pipeline Manual canónico
       getManualPersistenceStatus: () => Promise<ManualPersistenceStatus>

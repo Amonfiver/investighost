@@ -60,6 +60,16 @@ export function DestinationBatchPanel(): JSX.Element {
     } catch (reason) { setError(errorText(reason)) } finally { setBusy(false) }
   }
 
+  const start = async () => {
+    if (!selected) return
+    setBusy(true); setError(null); setNotice(null)
+    try {
+      const results = await window.electronAPI.startDestinationBatch(selected.batch.id)
+      await load(selected.batch.id)
+      setNotice(results.some(result => result.budgetBlocked) ? 'El lote se pausó por su límite de coste.' : 'Ejecución de lote finalizada; revisa los estados por destino.')
+    } catch (reason) { setError(errorText(reason)) } finally { setBusy(false) }
+  }
+
   return (
     <section className="batch-import-layout" aria-label="Lotes de destinos">
       <div className="section-heading">
@@ -82,6 +92,7 @@ export function DestinationBatchPanel(): JSX.Element {
       </section>}
 
       {selected && <>
+        <div className="form-actions"><button className="button primary" disabled={busy || selected.countsByStatus.QUEUED === 0} onClick={() => { void start() }}>Iniciar producción</button></div>
         <div className="metric-grid compact">
           <Metric label="Recibidos" value={selected.batch.totalItems} note={`${selected.batch.validItems} filas válidas`} />
           <Metric label="Nuevos" value={selected.batch.newItems} note={`${selected.countsByStatus.QUEUED} en cola`} />
@@ -92,9 +103,10 @@ export function DestinationBatchPanel(): JSX.Element {
           {selected.jobs.map(job => <article className="batch-job-row" key={job.id}>
             <div className="destination-avatar">{job.originalName.slice(0, 2).toUpperCase()}</div>
             <div className="research-main"><strong>{job.originalName}</strong><small>{job.country}{job.region ? ` · ${job.region}` : ''}</small></div>
-            <div className="stage-copy"><strong>{job.currentPhase}</strong><small>{job.reusePolicy}</small></div>
+            <div className="stage-copy"><strong>{job.currentPhase}</strong><small>{job.attemptCount} intento{job.attemptCount === 1 ? '' : 's'} · {job.actualCost.toFixed(4)} EUR</small></div>
             <span className={`state-badge state-${job.status.toLowerCase()}`}>{label[job.status]}</span>
             {['FAILED', 'REDO_REQUIRED'].includes(job.status) && <button className="text-button" disabled={busy} onClick={() => { void retry(job.id) }}>Reintentar</button>}
+            {job.lastFailure && <small className="muted">{job.lastFailure}</small>}
           </article>)}
         </section>
         {selected.issues.length > 0 && <section className="alert warning"><strong>Filas no procesables</strong><span>{selected.issues.map(issue => `#${issue.inputIndex + 1}: ${issue.message}`).join(' · ')}</span></section>}

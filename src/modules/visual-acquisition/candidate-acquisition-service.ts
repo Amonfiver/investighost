@@ -20,6 +20,13 @@ export type CandidateAcquisitionResult = {
   package: typeof DestinationVisualMediaPackageSchemaType._output
 }
 
+export type LocalVisualReviewPreparation = {
+  selected: SelectedVisualCandidate[]
+  stagedCandidateIds: string[]
+  failures: Array<{ candidateId: string; code: string }>
+  package: typeof DestinationVisualMediaPackageSchemaType._output
+}
+
 /**
  * The only bridge from an internal eligible candidate to an approved Visual Bridge asset.
  * It has no handoff dependency and never invokes Trawel.
@@ -37,6 +44,38 @@ export class VisualCandidateAcquisitionService {
 
   async acquireDestination(destinationId: string, plan: VisualCandidateSelectionPlan): Promise<CandidateAcquisitionResult> {
     return this.acquire(await this.candidates.listByDestination(destinationId), plan)
+  }
+
+  /**
+   * Prepares a rights-safe, private review package. It intentionally never
+   * calls public storage: the HTTPS media URL belongs to the approved Trawel
+   * delivery bridge, not to Investighost's local factory runtime.
+   */
+  async prepareDestinationForHumanVisualReview(destinationId: string, plan: VisualCandidateSelectionPlan): Promise<LocalVisualReviewPreparation> {
+    const candidates = await this.candidates.listByDestination(destinationId)
+    const selected = selectVisualCandidates(candidates, plan)
+    const assets: VisualAsset[] = []
+    const preparedSelections: Array<{ selection: SelectedVisualCandidate; asset: VisualAsset }> = []
+    const failures: Array<{ candidateId: string; code: string }> = []
+    const stagedCandidateIds: string[] = []
+    for (const selection of selected) {
+      try {
+        const candidate = selection.candidate
+        if (candidate.description === null) throw new Error('ALT_REQUIRED_FOR_REVIEW_ASSET')
+        const stage = await this.processing.findStage(candidate.candidateId)
+        const downloaded = stage?.state === 'STAGED' ? await this.downloadedFromStage(stage) : await this.downloadAndStage(candidate)
+        const existing = await this.processing.findAssetByChecksum(candidate.destinationId, downloaded.checksum)
+        const asset = existing ?? await this.processing.upsertAsset(pendingReviewAsset(candidate, selection, downloaded, this.assetId()))
+        await this.processing.retainProvenance(asset.assetId, candidate.candidateId)
+        assets.push(asset); preparedSelections.push({ selection, asset }); stagedCandidateIds.push(candidate.candidateId)
+      } catch (error) {
+        const code = failureCode(error)
+        if (isPermanentFailure(code)) await this.processing.upsertStage(rejectedStage(selection.candidate.candidateId, code))
+        failures.push({ candidateId: selection.candidate.candidateId, code })
+      }
+    }
+    const packageValue = await this.buildAndSavePrivateReviewPackage(destinationId, assets, preparedSelections)
+    return { selected, stagedCandidateIds, failures, package: packageValue }
   }
 
   async acquire(candidates: readonly VisualCandidate[], plan: VisualCandidateSelectionPlan): Promise<CandidateAcquisitionResult> {
@@ -111,6 +150,15 @@ export class VisualCandidateAcquisitionService {
     const packageHash = state === 'APPROVED' ? calculateDestinationVisualMediaPackageHash({ ...base, packageHash: '0'.repeat(64) }) : null
     return this.processing.savePackage(destinationId, DestinationVisualMediaPackageSchema.parse({ ...base, packageHash }))
   }
+
+  private async buildAndSavePrivateReviewPackage(destinationId: string, assets: readonly VisualAsset[], prepared: ReadonlyArray<{ selection: SelectedVisualCandidate; asset: VisualAsset }>): Promise<typeof DestinationVisualMediaPackageSchemaType._output> {
+    const selections = prepared.flatMap(({ selection, asset }) => selection.modes.map(mode => ({ assetId: asset.assetId, mode, role: selection.role, priority: selection.priority })))
+    const state: typeof DestinationVisualMediaPackageSchemaType._output['state'] = assets.length === 0 ? 'DRAFT' : 'PARTIAL'
+    return this.processing.savePackage(destinationId, DestinationVisualMediaPackageSchema.parse({
+      schema: DESTINATION_VISUAL_MEDIA_CONTRACT, packageId: this.packageId(), destinationId, state, packageHash: null,
+      assets: distinctBy(assets, asset => asset.assetId), selections,
+    }))
+  }
 }
 
 function approvedAsset(candidate: VisualCandidate, selection: SelectedVisualCandidate, blob: VisualStoredBlob, downloaded: ValidatedVisualDownload, assetId: string, checkedAt: string): VisualAsset {
@@ -123,6 +171,16 @@ function approvedAsset(candidate: VisualCandidate, selection: SelectedVisualCand
     attributionText: candidate.attributionText, associatedPlace: null, category: candidate.requestedCategory, modes: selection.modes,
     alt, caption: candidate.description, width: downloaded.width, height: downloaded.height, mimeType: downloaded.mimeType,
     checksum: downloaded.checksum, rejectionReason: null,
+  }
+}
+function pendingReviewAsset(candidate: VisualCandidate, selection: SelectedVisualCandidate, downloaded: ValidatedVisualDownload, assetId: string): VisualAsset {
+  return {
+    assetId, destinationId: candidate.destinationId, lifecycle: 'PENDING', rightsStatus: 'PENDING', usageAllowed: null,
+    rightsCheckedAt: null, publicUrl: null, storageIdentity: `visual-staging-private/${candidate.destinationId}/${candidate.candidateId}/${downloaded.checksum}.${downloaded.extension}`,
+    sourceUrl: candidate.sourcePageUrl, sourceName: candidate.sourceName, author: candidate.creator, license: candidate.licenseShortName,
+    attributionText: candidate.attributionText, associatedPlace: null, category: candidate.requestedCategory, modes: selection.modes,
+    alt: candidate.description, caption: candidate.description, width: downloaded.width, height: downloaded.height,
+    mimeType: downloaded.mimeType, checksum: downloaded.checksum, rejectionReason: null,
   }
 }
 

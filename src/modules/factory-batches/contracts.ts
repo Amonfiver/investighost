@@ -26,6 +26,12 @@ export interface DestinationBatchRepository {
     canonicalDestinationId?: string
     normalizedIdentity: string
   }): Promise<ExistingDestinationMatch>
+  claimNextJob(batchId: string, workerId: string, leaseMs: number, now: Date): Promise<DestinationBatchJob | null>
+  claimJob(jobId: string, workerId: string, leaseMs: number, now: Date): Promise<DestinationBatchJob | null>
+  renewClaim(jobId: string, claimToken: string, leaseMs: number, now: Date): Promise<DestinationBatchJob | null>
+  releaseClaim(job: DestinationBatchJob, claimToken: string): Promise<DestinationBatchJob>
+  recoverStaleClaims(now: Date): Promise<number>
+  totalActualCost(batchId: string): Promise<number>
 }
 
 export interface DestinationBatchRetryResult {

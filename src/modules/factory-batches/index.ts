@@ -1,4 +1,6 @@
 export * from './contracts'
+export * from './editorial-batch-worker'
+export * from './editorial-phase-port'
 export * from './memory-repository'
 export * from './normalization'
 export * from './service'

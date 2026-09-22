@@ -105,7 +105,7 @@ import {
   LibraryPageSchema,
 } from '@shared/library-contracts'
 import { getContributionImportRuntime, getContributionPersistenceStatus } from '@modules/contributions/runtime'
-import { getDestinationBatchRuntime, getDestinationBatchPersistenceStatus } from '@modules/factory-batches'
+import { getDestinationBatchRuntime, getDestinationBatchPersistenceStatus, getDestinationBatchWorkerRuntime } from '@modules/factory-batches'
 import {
   getManualPersistenceStatus,
   getManualResearchRuntime,
@@ -160,6 +160,10 @@ ipcMain.handle('factory-batches:read', async (_event, batchId: unknown) => {
 
 ipcMain.handle('factory-batches:retry-job', async (_event, jobId: unknown) => {
   return (await getDestinationBatchRuntime()).retry(z.string().uuid().parse(jobId))
+})
+
+ipcMain.handle('factory-batches:start', async (_event, batchId: unknown) => {
+  return (await getDestinationBatchWorkerRuntime()).runBatch(z.string().uuid().parse(batchId))
 })
 
 // Pipeline Manual canónico. Toda persistencia y toda clave privilegiada permanecen en main.

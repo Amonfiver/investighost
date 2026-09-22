@@ -105,6 +105,10 @@ export const DestinationBatchJobSchema = z.object({
   retryable: z.boolean(),
   retryRequestedAt: TimestampSchema.optional(),
   actualCost: z.number().nonnegative(),
+  claimedBy: z.string().trim().min(1).max(160).optional(),
+  claimToken: z.string().uuid().optional(),
+  claimExpiresAt: TimestampSchema.optional(),
+  startedAt: TimestampSchema.optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })

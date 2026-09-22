@@ -113,6 +113,20 @@ describe('visual candidate selection and approved storage V1', () => {
     expect(fetchFn).not.toHaveBeenCalled()
   })
 
+  it('prepares a private human-review package without inventing an HTTPS public asset', async () => {
+    const values = [candidate(0, 'hero'), candidate(1, 'highlight'), candidate(2, 'highlight'), candidate(3, 'gallery')]
+    const fetchFn = vi.fn(async (url: string) => response(png(1800, 1000, Number(url.match(/-(\d)\.png$/)?.[1] ?? 0)))) as unknown as typeof fetch
+    const context = service(values, fetchFn)
+    for (const value of values) await context.candidateRepository.upsert(value)
+    const prepared = await context.acquisition.prepareDestinationForHumanVisualReview(destinationId, { modes: ['adventure'] })
+    expect(prepared.package.state).toBe('PARTIAL')
+    expect(prepared.package.assets).toHaveLength(1) // equal bytes retain one physical pending asset
+    expect(prepared.package.assets.every(asset => asset.lifecycle === 'PENDING' && asset.publicUrl === null && asset.rightsStatus === 'PENDING')).toBe(true)
+    expect(prepared.package.selections).toHaveLength(4)
+    expect(context.storage.stageUploads).toBe(4)
+    expect(context.storage.publicUploads).toBe(0)
+  })
+
   it('requires existing descriptive metadata before any public promotion', async () => {
     const noAlt = candidate(0, 'hero', { description: null })
     const fetchFn = vi.fn(async () => response(png())) as unknown as typeof fetch

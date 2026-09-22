@@ -38,13 +38,13 @@ La primera meta operativa es un lote de 10 destinos; la misma arquitectura debe 
 | Handoff textual V2 | DONE | Payload saneado, outbox durable, replay/idempotencia, retry y deliveries por perfil. | Acción por lote y pantalla de estado. |
 | Descubrimiento visual | DONE | Adapter Wikimedia Commons, candidatos durables, metadata, autor≠uploader y clasificación de licencias. | Ejecutarlo desde job de lote y exponerlo a revisión humana. |
 | Rights y selección visual | DONE | Fail-closed, quality gates, selección determinista hero/highlight/gallery, checksum y package contracts. | Puente de media aprobada hacia storage HTTPS de Trawel. |
-| Storage visual local | PARTIAL | Staging privado, SHA-256, dedupe y esquemas/buckets locales aplicados. | No usar su URL HTTP como media pública; adaptar promoción/entrega al receptor media de Trawel. |
+| Storage visual local | DONE FOR REVIEW | Staging privado, SHA-256, dedupe y package `PENDING/PARTIAL` para revisión humana sin URL pública. | No usar su URL HTTP como media pública; adaptar promoción/entrega al receptor media de Trawel. |
 | Revisión humana | PARTIAL | UI individual para Library/piloto: leer, aprobar, pedir cambios y reabrir. | Mesa de lote, visuales, redo selectivo, bulk approve y delivery. |
 | Importación de contribuciones | DONE / NO REUSE DIRECT | Batches, jobs, retry y repositorio Supabase para contribuciones remotas. | Sigue siendo un patrón separado, no la cola editorial. |
 | Importación JSON de destinos | DONE | JSON V1 hasta 50 filas, errores por fila, fingerprint estable e IPC/UI de importación. | El worker editorial del siguiente paso. |
 | Batch identity y dedupe | DONE | `editorial_destination_batches`, fingerprint de multiset, normalización, dedupe interno y lookup de Library/delivery/jobs activos. | Resolución humana de ambigüedad en la futura mesa. |
-| Cola editorial de lote | PARTIAL | `editorial_destination_batch_jobs` persiste fase, referencias de artefacto, intentos, error, retryable y coste; concurrencia objetivo 1. | Lease/worker que reclame y ejecute jobs. |
-| Retry y resume | PARTIAL | Reintento durable conserva la fase; read model permite reanudar desde artefactos referenciados. | Ejecución real de las fases. |
+| Cola editorial de lote | DONE | `EditorialBatchWorker` reclama un job con lease durable, procesa una sola concurrencia y persiste fase, artefactos, intentos, error y coste. | Conectar la composición autorizada de servicios reales antes del smoke pagado. |
+| Retry y resume | DONE | Reintento conserva la fase; fases completadas no se repiten y los leases stale vuelven a `QUEUED`. | Redo selectivo de producto en la mesa humana. |
 | Exportación JSON | MISSING | Existen contratos serializables y snapshots de handoff. | Exportador V1 de lote y UI. |
 
 ## Arquitectura vigente
@@ -66,7 +66,7 @@ El runtime real actual es **single-pilot first**: políticas fijadas a pilotos, 
 - Migraciones visuales 074–077 ya aplicadas localmente; buckets locales `visual-staging-private` (privado) e `images-approved` (público) existen para desarrollo.
 - El asset aprobado actual exige URL HTTPS. La ruta local de Supabase era HTTP, por lo que el E2E real de Cuenca no se ejecutó: fue una parada correcta, no un fallo de rights.
 
-La orientación correcta para V1 es mantener candidates, rights, selección y provenance en Investighost, y adaptar el paso de promoción/handoff para que Trawel almacene el byte aprobado y devuelva/registre su URL HTTPS estable. No se debe usar la URL HTTP local ni crear hosting alternativo en Investighost.
+La orientación correcta para V1 es mantener candidates, rights, selección y provenance en Investighost. `prepareDestinationForHumanVisualReview` deja bytes y metadata en staging privado con package `PARTIAL`; no atribuye `APPROVED_FOR_PUBLIC_USE` ni URL pública. El paso posterior de promoción/handoff permitirá que Trawel almacene el byte aprobado y devuelva/registre su URL HTTPS estable. No se debe usar la URL HTTP local ni crear hosting alternativo en Investighost.
 
 ## Qué conservar, adaptar y no usar del Visual Bridge 074–077
 
@@ -84,11 +84,10 @@ Un fallo nunca debe detener otros jobs. La concurrencia inicial recomendada es *
 
 ## Gaps que bloquean Factory V1, en orden
 
-1. **Worker editorial genérico.** Reclamar un job a la vez y conectar research/análisis/generación/review/Library, dejando el piloto fijo como fixture.
-2. **Lease y ejecución de cola.** Materializar claim, transición por fases, intentos, presupuesto acumulado, retry y resume real.
-3. **Flujo visual aprobado a Trawel media.** Acordar/implementar el payload de byte o referencia aprobada y respuesta de URL HTTPS, sin trasladar autoridad editorial a Trawel.
-4. **Mesa de revisión de lote.** Lista/estado/coste/warnings; vista Student, Adventure y visuales; approve y redo selectivo.
-5. **Exportador JSON V1 y entrega bulk.** Sólo `APPROVED`, dedupe de delivery, resultado por job y retry del fallido.
+1. **Composición real autorizada.** Conectar los servicios existentes de research/análisis/generación/review/Library/visuales al `DelegatingEditorialPhasePort`; el worker no puede crear un segundo pipeline ni iniciar proveedores sin esa autorización.
+2. **Flujo visual aprobado a Trawel media.** Acordar/implementar el payload de byte o referencia aprobada y respuesta de URL HTTPS, sin trasladar autoridad editorial a Trawel.
+3. **Mesa de revisión de lote.** Lista/estado/coste/warnings; vista Student, Adventure y visuales; approve y redo selectivo.
+4. **Exportador JSON V1 y entrega bulk.** Sólo `APPROVED`, dedupe de delivery, resultado por job y retry del fallido.
 
 ## Contratos mínimos pendientes
 
@@ -128,7 +127,7 @@ El ledger existente registra proveedor/modelo/uso/coste y aplica límites task/b
 | Día | Resultado de salida |
 |---|---|
 | 1 | Batch domain + import JSON + normalización/dedupe + jobs durables + lista mínima de estados. |
-| 2 | Worker editorial genérico con concurrencia 1, reuso de research/Library/cost ledger, aislamiento/retry/resume; preparar visual job y contrato de media con Trawel. |
+| 2 | Worker editorial genérico con concurrencia 1, reuso de artefactos/Library/cost ledger, aislamiento/retry/resume; la composición real queda bajo autorización explícita y no llama proveedores desde pruebas. |
 | 3 | Mesa de revisión de lote: Student/Adventure/visuales, warnings, redo selectivo, approval; export JSON V1 y bulk delivery sobre outbox V2. |
 | 4 | `REAL_BATCH_SMOKE_10`, correcciones estrictamente bloqueantes, replay/restart/cost checks y cierre operativo. |
 
@@ -152,4 +151,4 @@ PASS: jobs aislados, no duplicados, costes bajo límites, artefactos y Library t
 
 ## Próximo paso único
 
-Implementar el **worker editorial batch genérico**: reclamar un job `QUEUED`, ejecutar sus fases sin proveedores hasta autorización explícita y persistir transiciones/retry/resume por destino.
+Conectar el puente de media aprobada hacia Trawel y crear la mesa de revisión de lote; el worker batch genérico ya conserva claims, fases, coste, retry y resume sin ejecutar proveedores por defecto.

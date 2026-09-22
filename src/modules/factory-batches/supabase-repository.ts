@@ -111,6 +111,43 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
       ...(activeJobs.data?.[0] ? { existingJobId: String(activeJobs.data[0].id) } : {}),
     }
   }
+
+  async claimNextJob(batchId: string, workerId: string, leaseMs: number, now: Date): Promise<DestinationBatchJob | null> {
+    const { data, error } = await this.client.rpc('factory_claim_next_destination_batch_job', { p_batch_id: batchId, p_worker_id: workerId, p_lease_seconds: Math.max(1, Math.ceil(leaseMs / 1000)), p_now: now.toISOString() })
+    assertNoError(error, 'CLAIM_NEXT_JOB')
+    return data ? jobFromRow(data as Row) : null
+  }
+
+  async claimJob(jobId: string, workerId: string, leaseMs: number, now: Date): Promise<DestinationBatchJob | null> {
+    const { data, error } = await this.client.rpc('factory_claim_destination_batch_job', { p_job_id: jobId, p_worker_id: workerId, p_lease_seconds: Math.max(1, Math.ceil(leaseMs / 1000)), p_now: now.toISOString() })
+    assertNoError(error, 'CLAIM_JOB')
+    return data ? jobFromRow(data as Row) : null
+  }
+
+  async renewClaim(jobId: string, claimToken: string, leaseMs: number, now: Date): Promise<DestinationBatchJob | null> {
+    const { data, error } = await this.client.rpc('factory_renew_destination_batch_claim', { p_job_id: jobId, p_claim_token: claimToken, p_lease_seconds: Math.max(1, Math.ceil(leaseMs / 1000)), p_now: now.toISOString() })
+    assertNoError(error, 'RENEW_CLAIM')
+    return data ? jobFromRow(data as Row) : null
+  }
+
+  async releaseClaim(job: DestinationBatchJob, claimToken: string): Promise<DestinationBatchJob> {
+    const { data, error } = await this.client.from('editorial_destination_batch_jobs').update(jobToRow({ ...job, claimedBy: undefined, claimToken: undefined, claimExpiresAt: undefined })).eq('id', job.id).eq('claim_token', claimToken).select().maybeSingle()
+    assertNoError(error, 'RELEASE_CLAIM')
+    if (!data) throw new Error('DESTINATION_BATCH_CLAIM_LOST')
+    return jobFromRow(data as Row)
+  }
+
+  async recoverStaleClaims(now: Date): Promise<number> {
+    const { data, error } = await this.client.rpc('factory_recover_stale_destination_batch_claims', { p_now: now.toISOString() })
+    assertNoError(error, 'RECOVER_STALE_CLAIMS')
+    return Number(data ?? 0)
+  }
+
+  async totalActualCost(batchId: string): Promise<number> {
+    const { data, error } = await this.client.from('editorial_destination_batch_jobs').select('actual_cost').eq('batch_id', batchId)
+    assertNoError(error, 'TOTAL_ACTUAL_COST')
+    return (data ?? []).reduce((total, row) => total + Number((row as Row).actual_cost ?? 0), 0)
+  }
 }
 
 function batchToRow(batch: DestinationBatch): Row {
@@ -135,6 +172,7 @@ function jobToRow(job: DestinationBatchJob): Row {
     status: job.status, current_phase: job.currentPhase, completed_phases: job.completedPhases,
     artifact_refs: job.artifactRefs, attempt_count: job.attemptCount, last_failure: job.lastFailure ?? null,
     retryable: job.retryable, retry_requested_at: iso(job.retryRequestedAt), actual_cost: job.actualCost,
+    claimed_by: job.claimedBy ?? null, claim_token: job.claimToken ?? null, claim_expires_at: iso(job.claimExpiresAt), started_at: iso(job.startedAt),
     created_at: job.createdAt.toISOString(), updated_at: job.updatedAt.toISOString(),
   }
 }
@@ -169,6 +207,9 @@ function jobFromRow(row: Row): DestinationBatchJob {
     attemptCount: Number(row.attempt_count), lastFailure: row.last_failure ?? undefined, retryable: Boolean(row.retryable),
     retryRequestedAt: row.retry_requested_at ? new Date(String(row.retry_requested_at)) : undefined,
     actualCost: Number(row.actual_cost), createdAt: new Date(String(row.created_at)), updatedAt: new Date(String(row.updated_at)),
+    claimedBy: row.claimed_by ?? undefined, claimToken: row.claim_token ?? undefined,
+    claimExpiresAt: row.claim_expires_at ? new Date(String(row.claim_expires_at)) : undefined,
+    startedAt: row.started_at ? new Date(String(row.started_at)) : undefined,
   })
 }
 

@@ -312,7 +312,10 @@ function metadataFactory(): LedgeredCallMetadataFactory {
   }
 }
 
-async function pilot(openAIQueue: Array<OpenAIResponseEnvelope | Error>) {
+async function pilot(
+  openAIQueue: Array<OpenAIResponseEnvelope | Error>,
+  options: { stageRouted?: boolean } = {},
+) {
   const tavilyTransport = new QueueTavilyTransport(tavilyFixtures())
   const openAIClient = new QueueOpenAIClient(openAIQueue)
   const tavily = new TavilyResearchTool(tavilyTransport, {}, { now: () => new Date(timestamp) })
@@ -324,6 +327,15 @@ async function pilot(openAIQueue: Array<OpenAIResponseEnvelope | Error>) {
     cachedInputCostPerMillion: 0,
     outputCostPerMillion: 0,
   })
+  const intelligence = options.stageRouted
+    ? Object.assign(Object.create(openAI) as typeof openAI & {
+      routedByStage: boolean
+      routeFor: (stage: string) => { providerId: 'openai'; model: string; apiModel: string }
+    }, {
+      routedByStage: true,
+      routeFor: () => ({ providerId: 'openai' as const, model: 'structured-responses', apiModel: 'structured-responses' }),
+    })
+    : openAI
   const ledgerRepository = new MemoryCostLedgerRepository(
     { task: 0.2, batch: 0.2, daily: 0.2, currency: 'EUR' },
     {
@@ -343,7 +355,7 @@ async function pilot(openAIQueue: Array<OpenAIResponseEnvelope | Error>) {
   const calls = new LedgeredWorkflowCallExecutor(ledger, metadataFactory(), 0.2)
   const checkpoints = new MemoryRealWorkflowCheckpointStore()
   const workflow = new ControlledRealWorkflow(
-    { researchTool: tavily, intelligenceEngine: openAI },
+    { researchTool: tavily, intelligenceEngine: intelligence },
     checkpoints,
     calls,
     {
@@ -354,7 +366,7 @@ async function pilot(openAIQueue: Array<OpenAIResponseEnvelope | Error>) {
   )
   const full = new FullRealEditorialPipeline(
     workflow,
-    openAI,
+    intelligence,
     calls,
     { draftingCost: 0.05, reviewCost: 0.02 },
   )
@@ -379,6 +391,29 @@ function successfulOpenAIQueue(): OpenAIResponseEnvelope[] {
 }
 
 describe('piloto integral Morella sin red', () => {
+  it('permite checkpoints por perfil sin repetir investigación ni el otro perfil', async () => {
+    const runtime = await pilot([
+      openAIResponse(analysisRoundOne()),
+      openAIResponse(analysisRoundTwo()),
+      openAIResponse(draft('student', 1_800)),
+      openAIResponse(draft('adventure', 1_000)),
+      openAIResponse(review()),
+    ], { stageRouted: true })
+    const signal = new AbortController().signal
+    const research = await runtime.full.executeResearch(mission(), signal)
+    const analysis = runtime.full.executeAnalysis(mission(), research)
+    const student = await runtime.full.executeStudent(mission(), analysis, signal)
+    const adventure = await runtime.full.executeAdventure(mission(), analysis, signal)
+    const reviewed = await runtime.full.executeReview(mission(), analysis, [student, adventure], signal)
+
+    expect(student.profile).toBe('student')
+    expect(adventure.profile).toBe('adventure')
+    expect(reviewed.outcome).toBe('passed')
+    expect(runtime.tavilyTransport.calls).toEqual(['/search', '/extract', '/search', '/extract'])
+    expect(runtime.openAIClient.requests).toHaveLength(5)
+    expect(runtime.calls.snapshot().spentCost).toBeCloseTo(0.19, 8)
+  })
+
   it('completa dos rondas, dos borradores, revisión y ledger con 0,19 EUR simulados', async () => {
     const runtime = await pilot(successfulOpenAIQueue())
     const settings = defaultRealProfileSettings(new Date(timestamp))

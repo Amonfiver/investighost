@@ -30,6 +30,15 @@ export interface FullEditorialPipelineResult {
   externalEffects: false
 }
 
+/**
+ * The research process is deliberately a closed loop: each governed round
+ * contains retrieval and its evidence analysis, because that analysis decides
+ * whether a second focused retrieval round is allowed.  The public phase API
+ * keeps that invariant while making the result addressable by the outer
+ * durable executor.
+ */
+export type RealEditorialResearchPhaseResult = RealWorkflowOutcome
+
 export class FullRealEditorialPipeline {
   constructor(
     private readonly workflow: ControlledRealWorkflow,
@@ -43,54 +52,22 @@ export class FullRealEditorialPipeline {
     settings: RealProfileSettings,
     signal: AbortSignal,
   ): Promise<FullEditorialPipelineResult> {
-    const research = await this.workflow.execute(mission, signal)
-    if (research.state !== 'ready_for_drafting') {
-      throw new FullEditorialPipelineError(
-        'REVIEW_REQUIRED',
-        'La investigación requiere revisión humana antes de redactar',
-      )
-    }
-    this.intelligence.validateDraft?.(
-      mission,
-      research.masterKnowledge,
-      research.editorialConstraints,
-    )
+    const research = await this.executeResearch(mission, signal)
+    const analysis = this.executeAnalysis(mission, research)
     const enabledProfiles = mission.profiles.filter(profile => profile.enabled)
     const drafts = isStageRoutedIntelligence(this.intelligence)
-      ? await this.draftByProfile(
-        mission,
-        enabledProfiles,
-        research.masterKnowledge,
-        research.editorialConstraints,
-        signal,
-      )
+      ? await this.draftEnabledProfiles(mission, analysis, enabledProfiles, signal)
       : await this.calls.execute(
         `${mission.taskId}:drafting`,
         this.configuration.draftingCost,
         () => this.intelligence.draft(
           mission,
-          research.masterKnowledge,
+          analysis.masterKnowledge,
           signal,
-          research.editorialConstraints,
+          analysis.editorialConstraints,
         ),
       )
-    this.intelligence.validateReview?.(
-      mission,
-      research.masterKnowledge,
-      drafts,
-      research.editorialConstraints,
-    )
-    const review = await this.calls.execute(
-      `${mission.taskId}:final-review`,
-      this.configuration.reviewCost,
-      () => this.intelligence.review(
-        mission,
-        research.masterKnowledge,
-        drafts,
-        signal,
-        research.editorialConstraints,
-      ),
-    )
+    const review = await this.executeReview(mission, analysis, drafts, signal)
     const availableEvidenceWords = research.dossier.sources
       .reduce((total, source) => total + wordCount(source.content), 0)
     return {
@@ -104,30 +81,134 @@ export class FullRealEditorialPipeline {
     }
   }
 
-  private async draftByProfile(
+  /** Executes the governed research loop and persists through its workflow
+   * checkpoint store.  It is safe to replay: `ControlledRealWorkflow` resumes
+   * its durable checkpoint instead of reissuing completed provider calls. */
+  async executeResearch(
     mission: RealResearchMission,
+    signal: AbortSignal,
+  ): Promise<RealEditorialResearchPhaseResult> {
+    const research = await this.workflow.execute(mission, signal)
+    if (research.state !== 'ready_for_drafting') {
+      throw new FullEditorialPipelineError(
+        'REVIEW_REQUIRED',
+        'La investigación requiere revisión humana antes de redactar',
+      )
+    }
+    return research
+  }
+
+  /**
+   * Analysis is already executed inside every governed research round: it is
+   * what decides coverage and whether another query is permitted.  This phase
+   * boundary validates and exposes that durable result without inventing a
+   * second, ungoverned analysis call.
+   */
+  executeAnalysis(
+    mission: RealResearchMission,
+    research: RealEditorialResearchPhaseResult,
+  ): RealEditorialResearchPhaseResult {
+    this.intelligence.validateDraft?.(
+      mission,
+      research.masterKnowledge,
+      research.editorialConstraints,
+    )
+    return research
+  }
+
+  async executeStudent(
+    mission: RealResearchMission,
+    research: RealEditorialResearchPhaseResult,
+    signal: AbortSignal,
+  ): Promise<IntelligenceDraft> {
+    return this.draftProfile(mission, research, 'student', signal)
+  }
+
+  async executeAdventure(
+    mission: RealResearchMission,
+    research: RealEditorialResearchPhaseResult,
+    signal: AbortSignal,
+  ): Promise<IntelligenceDraft> {
+    return this.draftProfile(mission, research, 'adventure', signal)
+  }
+
+  async executeReview(
+    mission: RealResearchMission,
+    research: RealEditorialResearchPhaseResult,
+    drafts: IntelligenceDraft[],
+    signal: AbortSignal,
+  ): Promise<IntelligenceReview> {
+    this.intelligence.validateReview?.(
+      mission,
+      research.masterKnowledge,
+      drafts,
+      research.editorialConstraints,
+    )
+    return this.calls.execute(
+      `${mission.taskId}:final-review`,
+      this.configuration.reviewCost,
+      () => this.intelligence.review(
+        mission,
+        research.masterKnowledge,
+        drafts,
+        signal,
+        research.editorialConstraints,
+      ),
+    )
+  }
+
+  private async draftEnabledProfiles(
+    mission: RealResearchMission,
+    research: RealEditorialResearchPhaseResult,
     profiles: RealResearchMission['profiles'],
-    knowledge: Parameters<IntelligenceEngine['draft']>[1],
-    constraints: Parameters<IntelligenceEngine['draft']>[3],
     signal: AbortSignal,
   ): Promise<IntelligenceDraft[]> {
-    const draftingCostPerProfile = this.configuration.draftingCost / profiles.length
     const drafts: IntelligenceDraft[] = []
     for (const profile of profiles) {
-      const profileMission: RealResearchMission = { ...mission, profiles: [profile] }
-      const profileDrafts = await this.calls.execute(
-        `${mission.taskId}:draft_${profile.profile}`,
-        draftingCostPerProfile,
-        () => this.intelligence.draft(profileMission, knowledge, signal, constraints),
-      )
-      drafts.push(...profileDrafts)
+      drafts.push(await this.draftProfile(mission, research, profile.profile, signal))
     }
     return drafts
   }
+
+  private async draftProfile(
+    mission: RealResearchMission,
+    research: RealEditorialResearchPhaseResult,
+    profile: 'adventure' | 'student',
+    signal: AbortSignal,
+  ): Promise<IntelligenceDraft> {
+    if (!isStageRoutedIntelligence(this.intelligence)) {
+      throw new FullEditorialPipelineError(
+        'PHASE_ROUTING_REQUIRED',
+        'La redacción por perfil requiere un motor enrutable por etapa',
+      )
+    }
+    const requested = mission.profiles.find(candidate => candidate.profile === profile && candidate.enabled)
+    if (!requested) {
+      throw new FullEditorialPipelineError('PROFILE_DISABLED', `El perfil ${profile} no está habilitado`)
+    }
+    const profileMission: RealResearchMission = { ...mission, profiles: [requested] }
+    const drafts = await this.calls.execute(
+      `${mission.taskId}:draft_${profile}`,
+      this.configuration.draftingCost / mission.profiles.filter(candidate => candidate.enabled).length,
+      () => this.intelligence.draft(
+        profileMission,
+        research.masterKnowledge,
+        signal,
+        research.editorialConstraints,
+      ),
+    )
+    const draft = drafts.find(candidate => candidate.profile === profile)
+    if (!draft) throw new FullEditorialPipelineError('PROFILE_DRAFT_MISSING', `No se devolvió el borrador ${profile}`)
+    return draft
+  }
+
 }
 
 export class FullEditorialPipelineError extends Error {
-  constructor(readonly code: 'REVIEW_REQUIRED', message: string) {
+  constructor(
+    readonly code: 'REVIEW_REQUIRED' | 'PHASE_ROUTING_REQUIRED' | 'PROFILE_DISABLED' | 'PROFILE_DRAFT_MISSING',
+    message: string,
+  ) {
     super(message)
     this.name = 'FullEditorialPipelineError'
   }

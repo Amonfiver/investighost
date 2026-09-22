@@ -80,6 +80,19 @@ conciliación para `BATCH_JOB` y revirtió sus filas. Aún falta mover el execut
 real phase-addressable sobre esa persistencia y conectarlo al runtime del
 worker. Hasta entonces el runtime debe continuar fail-closed.
 
+La primera extracción de 084D hizo explícitas las fronteras del core de
+redacción: `FullRealEditorialPipeline` expone research, analysis, Student,
+Adventure y review; `execute()` conserva el wrapper de compatibilidad para los
+pilotos. Research mantiene intencionadamente su ciclo gobernado de
+research+analysis por rondas: el análisis determina si se autoriza una segunda
+consulta, por lo que no se duplica ni se convierte en una llamada independiente
+sin checkpoint. Student y Adventure se pueden ejecutar de forma independiente
+con motores enrutables por etapa y su replay conserva los operation keys. Esto
+**no cierra aún** el batch real: falta adaptar la persistencia de perfiles y el
+transfer a Library, que actualmente sólo crea entradas a partir de un piloto ya
+aprobado. Los delegates de producción siguen fail-closed hasta que esa frontera
+compartida exista.
+
 ### Visuales
 
 - `src/shared/destination-visual-media-contract.ts`: assets, packages, roles, modos y rights status.

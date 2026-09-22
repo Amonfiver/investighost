@@ -29,8 +29,8 @@ La primera meta operativa es un lote de 10 destinos; la misma arquitectura debe 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |
 |---|---|---|---|
 | Identidad geográfica | DONE | Resolución, snapshots y contratos durables; Cuenca tiene identidad canónica. | Reutilizada por el importador cuando el país se puede canonizar. |
-| Research real | PARTIAL | Tavily, sources, evidence, rondas, ledger, recuperación y pipeline real de piloto. | Orquestación genérica de lote y aislamiento de jobs. |
-| Analysis | PARTIAL | Routing DeepSeek, outputs durables, costes y recuperación de análisis. | Convertir la política de piloto en ejecución por destino. |
+| Research real | PARTIAL | Tavily, sources, evidence, rondas, ledger, recuperación y pipeline real de piloto. `generic-real-editorial-execution.ts` ya aporta contexto/mission/metadata sin enum de destino. | Adaptador durable de artifacts/ledger para `BATCH_JOB` y separación real de rondas Research/Analysis. |
+| Analysis | PARTIAL | Routing DeepSeek, outputs durables, costes y recuperación de análisis; metadata ya es owner-neutral. | Convertir la persistencia y checkpoints de piloto en ejecución por destino. |
 | Student | PARTIAL | Canon, bloques V2, gates y versiones aprobadas de referencia. | Generación/regeneración genérica desde un job de lote. |
 | Adventure | PARTIAL | Generación, gates, Library y revisiones aprobadas de referencia. | Generación/regeneración genérica desde un job de lote. |
 | Revisión automática | PARTIAL | Quality review, PUBLIC_SAFE y gates de estructura/editorial. | Política única de “ready for human review” y corrección automática acotada. |
@@ -59,6 +59,17 @@ La primera meta operativa es un lote de 10 destinos; la misma arquitectura debe 
 
 El runtime real actual es **single-pilot first**: políticas fijadas a pilotos, concurrencia `1`, regeneraciones/publicaciones bloqueadas en preflight y sin worker de batch editorial. Sus contratos de coste sí contienen ámbitos task/batch/day, por lo que se reutilizan al crear el lote verdadero.
 
+La extracción 084B abrió una frontera compartida en
+`src/modules/real-pipeline/generic-real-editorial-execution.ts`:
+`GenericEditorialDestination`, `GenericRealEditorialExecutionContext`, misión
+y metadata de ledger owner-neutral, además de una API por fase. El adaptador de
+piloto conserva el comportamiento de Morella, Albarracín y Cuenca. **No está
+terminada todavía la ejecución real de un `BATCH_JOB`:** los artifacts,
+checkpoints y reservas Supabase siguen con FK `pilot/run`, y el workflow actual
+itera research+analysis dentro de una ejecución monolítica. No registrar
+fixtures como delegates de runtime ni simular proveedores para salvar este
+gap.
+
 ### Visuales
 
 - `src/shared/destination-visual-media-contract.ts`: assets, packages, roles, modos y rights status.
@@ -84,7 +95,7 @@ Un fallo nunca debe detener otros jobs. La concurrencia inicial recomendada es *
 
 ## Gaps que bloquean Factory V1, en orden
 
-1. **Composición real autorizada.** Conectar los servicios existentes de research/análisis/generación/review/Library/visuales al `DelegatingEditorialPhasePort`; el worker no puede crear un segundo pipeline ni iniciar proveedores sin esa autorización.
+1. **Persistencia genérica de ejecución real.** Adaptar artifacts, checkpoints y el ledger durable de `pilot/run` a un owner `PILOT | BATCH_JOB`, y separar el workflow por rondas para que los delegates reales puedan completar un job arbitrario sin duplicar el pipeline.
 2. **Flujo visual aprobado a Trawel media.** Acordar/implementar el payload de byte o referencia aprobada y respuesta de URL HTTPS, sin trasladar autoridad editorial a Trawel.
 3. **Mesa de revisión de lote.** Lista/estado/coste/warnings; vista Student, Adventure y visuales; approve y redo selectivo.
 4. **Exportador JSON V1 y entrega bulk.** Sólo `APPROVED`, dedupe de delivery, resultado por job y retry del fallido.

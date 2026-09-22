@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import {
   RealEditorialPilotSnapshotSchema,
   realEditorialPolicyById,
@@ -14,7 +14,6 @@ import {
 } from '@shared/real-pipeline-contracts'
 import {
   defaultRealProfileSettings,
-  missionProfilesFromSettings,
 } from '@shared/real-profile-settings'
 import { CostLedgerService, type CostLedgerRepository } from './cost-ledger'
 import { FullRealEditorialPipeline } from './full-editorial-pipeline'
@@ -34,7 +33,11 @@ import type {
   ResearchTool,
   ResearchToolResult,
 } from './ports'
-import { createProviderCallPayloadFingerprint } from './provider-call-fingerprint'
+import {
+  createGenericLedgerMetadataFactory,
+  createGenericRealEditorialMission,
+  type GenericRealEditorialExecutionContext,
+} from './generic-real-editorial-execution'
 import {
   realEditorialPayloadHash,
   RealEditorialRepositoryError,
@@ -49,7 +52,6 @@ import type {
   TavilyRequestIdentity,
   TavilyRequestJournal,
 } from './tavily-research-tool'
-import { pricingEntryAt } from '@shared/provider-pricing-catalog'
 import type { IntelligenceRoutingStage, ResolvedIntelligenceRoute } from './llm-routing'
 
 export const REAL_EDITORIAL_OPERATION_BUDGETS = {
@@ -835,43 +837,8 @@ export function missionForPilot(
   pilot: RealEditorialPilotRecord,
   now = new Date(),
 ): RealResearchMission {
-  const settings = defaultRealProfileSettings(now)
   const policy = realEditorialPolicyById(pilot.policyId)
-  return {
-    requestId: pilot.id,
-    runId: pilot.currentRunId,
-    taskId: pilot.budget?.taskId ?? `real-editorial-task:${pilot.id}`,
-    destination: {
-      canonicalId: pilot.canonicalDestinationId,
-      name: policy.destination,
-      countryCode: policy.countryCode,
-      type: policy.destinationType,
-    },
-    language: 'es',
-    profiles: missionProfilesFromSettings(settings),
-    depth: 'deep',
-    round: 1,
-    objectives: [
-      'patrimonio e historia documentada',
-      'lugares y actividades verificables',
-      'acceso, duración, costes, temporada y riesgos',
-      'cultura, población y vida cotidiana',
-    ],
-    focusedQueries: [],
-    limits: {
-      maxRounds: 2,
-      maxFocusedQueriesPerRound: 3,
-      maxSources: 8,
-      maxCharactersPerSource: 100_000,
-      maxProviderCalls: 12,
-      maxInputTokens: 200_000,
-      maxOutputTokens: 50_000,
-      taskBudgetEur: 0.2,
-      batchBudgetEur: 0.2,
-      dailyBudgetEur: 0.2,
-    },
-    createdAt: now.toISOString(),
-  }
+  return createGenericRealEditorialMission(executionContextForPilot(pilot, policy), now)
 }
 
 async function initialMissionForExecution(
@@ -920,101 +887,55 @@ function metadataFactory(
 ): LedgeredCallMetadataFactory {
   if (!pilot.budget) throw new DurableRealEditorialError('BUDGET_REQUIRED', 'Falta el presupuesto editorial')
   const policy = realEditorialPolicyById(pilot.policyId)
-  const promptVersion = `${policy.normalizedDestination}-real-editorial-v1`
-  return {
-    create(operationId, attempt, estimatedCost, retryOfCallId, inheritedReservation) {
-      const costAdjustment = operationId.endsWith(':cost-adjustment')
-      const baseOperationId = costAdjustment
-        ? operationId.slice(0, -':cost-adjustment'.length)
-        : operationId
-      // Un ajuste es parte de la misma operación ya ejecutada: hereda proveedor,
-      // modelo y tarifa de aquella. En particular, un ajuste de Tavily no debe
-      // convertirse en una reserva de inteligencia.
-      const research = baseOperationId.endsWith(':research')
-      const route = research ? undefined : intelligenceRouteForOperation(intelligenceEngine, baseOperationId)
-      const inherited = costAdjustment ? inheritedReservation?.input : undefined
-      const providerId = inherited?.providerId ?? (research ? 'tavily' : route!.providerId)
-      const model = inherited?.model ?? (research ? 'search-and-extract' : route!.model)
-      const tariffId = inherited?.tariffId ?? (research
-        ? 'morella-v1-tavily-search'
-        : pricingEntryAt(providerId, model, new Date())?.id ?? 'configured-responses-tariff')
-      const operation = costAdjustment ? 'cost-adjustment' : baseOperationId.split(':').at(-1) ?? 'unknown'
-      const stage = `${baseOperationId.split(':').slice(-2).join('_')}${
-        costAdjustment ? '_cost-adjustment' : ''
-      }`
-      const payloadHash = createHash('sha256').update(JSON.stringify({
-        operationId,
-        pilotId: pilot.id,
-        runId: pilot.currentRunId,
-        policyId: pilot.policyId,
-      })).digest('hex')
-      return {
-        idempotencyKey: `${operationId}:attempt:${attempt}`,
-        executionId,
-        requestId: pilot.id,
-        runId: pilot.currentRunId,
-        taskId: pilot.budget?.taskId ?? '',
-        batchId: pilot.budget?.batchId ?? '',
-        stage,
-        operation,
-        providerId,
-        model,
-        attempt,
-        retryOfCallId,
-        estimatedCost,
-        currency: inherited?.currency ?? 'EUR',
-        tariffId,
-        promptVersion: inherited?.promptVersion ?? promptVersion,
-        schemaVersion: inherited?.schemaVersion ?? 'real-editorial-snapshot-v1',
-        inputHash: createProviderCallPayloadFingerprint({
-          executionId,
-          requestId: pilot.id,
-          runId: pilot.currentRunId,
-          taskId: pilot.budget?.taskId ?? '',
-          batchId: pilot.budget?.batchId ?? '',
-          budgetDate: pilot.budget?.budgetDate,
-          stage,
-          operation,
-          providerId,
-          model,
-          attempt,
-          retryOfCallId,
-          estimatedCost,
-          reservedCost: estimatedCost,
-          currency: inherited?.currency ?? 'EUR',
-          tariffId,
-          promptVersion: inherited?.promptVersion ?? promptVersion,
-          schemaVersion: inherited?.schemaVersion ?? 'real-editorial-snapshot-v1',
-          payloadHash,
-          maxInputTokens: 200_000,
-          maxOutputTokens: 50_000,
-          maxToolCalls: research ? 5 : 2,
-          maxCredits: research ? 4 : 0,
-          tools: research ? ['search', 'extract'] : ['structured-output'],
-        }),
-      }
-    },
-  }
+  return createGenericLedgerMetadataFactory({
+    ...executionContextForPilot(pilot, policy),
+    executionId,
+  }, intelligenceEngine)
 }
 
-function intelligenceRouteForOperation(
-  engine: IntelligenceEngine,
-  operationId: string,
-): ResolvedIntelligenceRoute {
-  const stage: IntelligenceRoutingStage = operationId.endsWith(':draft_adventure')
-    ? 'draft_adventure'
-    : operationId.endsWith(':draft_student')
-      ? 'draft_student'
-      : operationId.endsWith(':final-review')
-        ? 'review'
-        : 'analysis'
-  if ('routeFor' in engine && typeof engine.routeFor === 'function') {
-    return engine.routeFor(stage) as ResolvedIntelligenceRoute
-  }
+/** Compatibility adapter: pilots keep their historical storage and policy,
+ * while the shared execution layer receives the same owner-neutral context as
+ * a future batch job. */
+export function executionContextForPilot(
+  pilot: RealEditorialPilotRecord,
+  policy: ReturnType<typeof realEditorialPolicyById>,
+): GenericRealEditorialExecutionContext {
   return {
-    providerId: engine.id === 'deepseek' || engine.model === 'deepseek-flash' ? 'deepseek' : 'openai',
-    model: engine.model,
-    apiModel: engine.model,
+    owner: { type: 'PILOT', id: pilot.id },
+    executionId: `real-editorial:${pilot.currentRunId}`,
+    runId: pilot.currentRunId,
+    taskId: pilot.budget?.taskId ?? `real-editorial-task:${pilot.id}`,
+    batchId: pilot.budget?.batchId ?? '',
+    destination: {
+      destinationId: pilot.canonicalDestinationId,
+      name: policy.destination,
+      countryCode: policy.countryCode,
+      destinationType: policy.destinationType,
+    },
+    policy: {
+      language: 'es',
+      depth: 'deep',
+      objectives: [
+        'patrimonio e historia documentada',
+        'lugares y actividades verificables',
+        'acceso, duración, costes, temporada y riesgos',
+        'cultura, población y vida cotidiana',
+      ],
+      limits: {
+        maxRounds: 2,
+        maxFocusedQueriesPerRound: 3,
+        maxSources: 8,
+        maxCharactersPerSource: 100_000,
+        maxProviderCalls: 12,
+        maxInputTokens: 200_000,
+        maxOutputTokens: 50_000,
+        taskBudgetEur: 0.2,
+        batchBudgetEur: 0.2,
+        dailyBudgetEur: 0.2,
+      },
+      promptVersion: `${policy.normalizedDestination}-real-editorial-v1`,
+    },
+    budgetDate: pilot.budget?.budgetDate,
   }
 }
 

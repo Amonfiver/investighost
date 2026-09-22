@@ -164,6 +164,22 @@ La fase siguiente podrá seleccionar candidatos, descargar los que procedan y
 promoverlos a storage después de otra validación. Hasta entonces, no existe
 conversión automática desde candidato a asset aprobado.
 
+## Visual Storage V1 — staging y promoción aprobada
+
+Un candidato `ELIGIBLE` no se entrega ni se proyecta directamente. La promoción
+sigue una frontera durable: selección determinista → descarga privada →
+validación de MIME, magic bytes, tamaño, dimensiones y SHA-256 → dedupe global
+por checksum → objeto público aprobado → asset de Visual Bridge → paquete
+visual. El staging se guarda en `visual-staging-private`; solo
+`images-approved` contiene objetos públicos y solo tras el gate final de
+derechos, atribución y alt existente.
+
+La ruta pública usa `v1/by-checksum/<sha256>.<ext>`: el checksum identifica el
+objeto físico y evita duplicar bytes entre queries o candidatos. La provenance
+se retiene en PostgreSQL mediante la relación asset/candidate. Los fallos de
+derechos o validación son fail-closed; los candidatos se conservan y el texto
+editorial no queda bloqueado. Esta fase no modifica handoff, outbox ni Trawel.
+
 Pack A no convierte contenido narrativo libre en estructura editorial. Las
 secciones estructurales pendientes de Albarracín continúan rechazándose y
 requieren la revisión durable de Pack B antes de cualquier dry run real.

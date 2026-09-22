@@ -4,6 +4,7 @@ import { type VisualCandidate } from '@shared/visual-candidate-contracts'
 export interface VisualCandidateRepository {
   upsert(candidate: VisualCandidate): Promise<VisualCandidate>
   findByProviderAsset(destinationId: string, provider: VisualCandidate['provider'], providerAssetId: string): Promise<VisualCandidate | null>
+  listByDestination(destinationId: string): Promise<VisualCandidate[]>
 }
 
 /** Test double with the same `(destination, provider, providerAssetId)` idempotency boundary as Postgres. */
@@ -20,6 +21,9 @@ export class MemoryVisualCandidateRepository implements VisualCandidateRepositor
     const candidate = this.candidates.get(candidateKey(destinationId, provider, providerAssetId))
     return candidate === undefined ? null : structuredClone(candidate)
   }
+  async listByDestination(destinationId: string): Promise<VisualCandidate[]> {
+    return [...this.candidates.values()].filter(candidate => candidate.destinationId === destinationId).map(candidate => structuredClone(candidate))
+  }
 }
 
 export class SupabaseVisualCandidateRepository implements VisualCandidateRepository {
@@ -34,6 +38,12 @@ export class SupabaseVisualCandidateRepository implements VisualCandidateReposit
       .eq('canonical_destination_id', destinationId).eq('provider', provider).eq('provider_asset_id', providerAssetId).maybeSingle()
     if (error) throw new Error(`VISUAL_CANDIDATE_LOOKUP_FAILED:${error.message}`)
     return data === null ? null : candidateFromRow(data as Record<string, unknown>)
+  }
+  async listByDestination(destinationId: string): Promise<VisualCandidate[]> {
+    const { data, error } = await this.client.from('real_editorial_visual_candidates').select('*')
+      .eq('canonical_destination_id', destinationId).order('canonical_title', { ascending: true })
+    if (error) throw new Error(`VISUAL_CANDIDATE_LIST_FAILED:${error.message}`)
+    return (data ?? []).map(row => candidateFromRow(row as Record<string, unknown>))
   }
 }
 

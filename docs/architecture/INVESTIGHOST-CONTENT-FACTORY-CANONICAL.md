@@ -105,6 +105,20 @@ No crea `currentApproved`, no publica y conserva el linaje
 hash de origen y sus validaciones históricas. Falta conectar el executor real
 phase-addressable a esa transición antes de registrar delegates de producción.
 
+084G añadió `DurableGenericRealEditorialExecution`: un executor concreto
+owner-neutral que compone el workflow real gobernado, `FullRealEditorialPipeline`,
+el ledger genérico y los artifacts/checkpoints de `real_editorial_executions`.
+Sus fases `RESEARCH`, `ANALYSIS`, `STUDENT`, `ADVENTURE` y `REVIEW` reutilizan
+la misma lógica de providers, perfiles y revisión; para `BATCH_JOB` materializa
+Student y Adventure mediante `BatchSharedLibraryTransition`, sin crear
+`currentApproved`. El loop gobernado se conserva: `RESEARCH` completa sus
+rondas de retrieval+analysis y `ANALYSIS` expone su resultado durable sin abrir
+una segunda ruta de análisis. Esta clase no reemplaza todavía el adaptador de
+pilotos histórico ni se ha registrado como delegate de producción: falta una
+composición de runtime probada con providers reales configurados, el delegate
+visual y un E2E durable del worker. El runtime continúa fail-closed hasta que
+esa composición exista; no usar fixtures en producción.
+
 ### Visuales
 
 - `src/shared/destination-visual-media-contract.ts`: assets, packages, roles, modos y rights status.

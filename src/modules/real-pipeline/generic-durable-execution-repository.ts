@@ -34,6 +34,10 @@ export interface GenericDurableExecutionRecord {
   policy: Record<string, unknown>
 }
 
+export interface GenericDurableArtifactReference extends RealEditorialArtifact {
+  id: string
+}
+
 /**
  * Batch execution persistence intentionally reuses the append-only real
  * artifacts and provider ledger tables. It does not create a second research
@@ -41,7 +45,7 @@ export interface GenericDurableExecutionRecord {
  */
 export class SupabaseGenericDurableExecutionRepository {
   constructor(
-    private readonly client: SupabaseClient,
+    readonly client: SupabaseClient,
     private readonly id: () => string = randomUUID,
   ) {}
 
@@ -92,6 +96,18 @@ export class SupabaseGenericDurableExecutionRepository {
       .order('version', { ascending: false }).limit(1).maybeSingle()
     if (error) throw new GenericDurableExecutionError('PERSISTENCE_ERROR', 'No se pudo leer el artifact editorial', error)
     return data ? artifactFromRow(data) : undefined
+  }
+
+  async latestArtifactReference(
+    executionOwnerId: string,
+    kind: RealEditorialArtifactKind,
+    key: string,
+  ): Promise<GenericDurableArtifactReference | undefined> {
+    const { data, error } = await this.client.from('real_editorial_artifacts').select('*')
+      .eq('execution_owner_id', executionOwnerId).eq('artifact_kind', kind).eq('artifact_key', key)
+      .order('version', { ascending: false }).limit(1).maybeSingle()
+    if (error) throw new GenericDurableExecutionError('PERSISTENCE_ERROR', 'No se pudo leer la referencia durable', error)
+    return data ? { id: String(data.id), ...artifactFromRow(data) } : undefined
   }
 
   async appendArtifact(

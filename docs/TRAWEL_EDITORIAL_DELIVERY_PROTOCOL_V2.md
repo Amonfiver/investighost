@@ -141,6 +141,29 @@ provenance privada, por lo que un replay del mismo conjunto público conserva la
 idempotencia. La futura capa de adquisición/storage deberá poblar el dominio;
 Visual Bridge V1 no busca, descarga ni publica imágenes.
 
+## Visual Acquisition V1 — candidatos Wikimedia Commons
+
+La primera fase de adquisición usa la Action API oficial de Wikimedia Commons
+con `generator=search` limitado al namespace de ficheros e `imageinfo` para
+obtener URL original, MIME, dimensiones, tamaño y `extmetadata`. El adapter no
+scrapea HTML, no descarga bytes, no crea URLs públicas y no participa en el
+handoff.
+
+Un `visual candidate` es evidencia interna, no un asset de Visual Bridge ni un
+medio publicable. Se persiste de forma idempotente por destino, proveedor y
+`providerAssetId`; conserva autor real (`Artist`) separado del uploader, fuente,
+licencia, atribución reconstruible, metadata hash y clasificación de rights.
+Solo dominio público/CC0/CC BY verificables con autor, fuente y licencia
+completos pueden quedar `ELIGIBLE` para una fase posterior. ShareAlike,
+NoDerivatives, NonCommercial, licencia personalizada, metadata incompleta o
+derechos inciertos permanecen `REFERENCE_ONLY`; MIME o dimensiones inválidos se
+rechazan. Ningún estado de candidato cambia la validez textual de Adventure o
+Student.
+
+La fase siguiente podrá seleccionar candidatos, descargar los que procedan y
+promoverlos a storage después de otra validación. Hasta entonces, no existe
+conversión automática desde candidato a asset aprobado.
+
 Pack A no convierte contenido narrativo libre en estructura editorial. Las
 secciones estructurales pendientes de Albarracín continúan rechazándose y
 requieren la revisión durable de Pack B antes de cualquier dry run real.

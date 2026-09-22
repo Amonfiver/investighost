@@ -29,8 +29,8 @@ La primera meta operativa es un lote de 10 destinos; la misma arquitectura debe 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |
 |---|---|---|---|
 | Identidad geográfica | DONE | Resolución, snapshots y contratos durables; Cuenca tiene identidad canónica. | Reutilizada por el importador cuando el país se puede canonizar. |
-| Research real | PARTIAL | Tavily, sources, evidence, rondas, ledger, recuperación y pipeline real de piloto. `generic-real-editorial-execution.ts` ya aporta contexto/mission/metadata sin enum de destino. | Adaptador durable de artifacts/ledger para `BATCH_JOB` y separación real de rondas Research/Analysis. |
-| Analysis | PARTIAL | Routing DeepSeek, outputs durables, costes y recuperación de análisis; metadata ya es owner-neutral. | Convertir la persistencia y checkpoints de piloto en ejecución por destino. |
+| Research real | PARTIAL | Tavily, sources, evidence, rondas, ledger, recuperación y pipeline real de piloto. `generic-real-editorial-execution.ts` aporta contexto/mission/metadata sin enum; `real_editorial_executions` permite owner durable `BATCH_JOB`. | Ejecutar las rondas reales por fase sobre ese owner. |
+| Analysis | PARTIAL | Routing DeepSeek, outputs durables, costes y recuperación de análisis; metadata y artifacts soportan owner-neutral. | Separar el executor monolítico por fases sin duplicar providers. |
 | Student | PARTIAL | Canon, bloques V2, gates y versiones aprobadas de referencia. | Generación/regeneración genérica desde un job de lote. |
 | Adventure | PARTIAL | Generación, gates, Library y revisiones aprobadas de referencia. | Generación/regeneración genérica desde un job de lote. |
 | Revisión automática | PARTIAL | Quality review, PUBLIC_SAFE y gates de estructura/editorial. | Política única de “ready for human review” y corrección automática acotada. |
@@ -70,6 +70,16 @@ itera research+analysis dentro de una ejecución monolítica. No registrar
 fixtures como delegates de runtime ni simular proveedores para salvar este
 gap.
 
+084C añadió la migración `20260923120000_generic_real_editorial_execution_v1.sql`:
+`real_editorial_executions` identifica un owner `PILOT | BATCH_JOB`; los
+artifacts, reservations y provider calls existentes admiten ese owner mediante
+`execution_owner_id`, con checks que impiden mezclarlo con el scope histórico
+`pilot/run`. El adapter Supabase asociado reutiliza las mismas tablas y RPCs de
+ledger; un smoke transaccional local verificó artifact, reserva, inicio y
+conciliación para `BATCH_JOB` y revirtió sus filas. Aún falta mover el executor
+real phase-addressable sobre esa persistencia y conectarlo al runtime del
+worker. Hasta entonces el runtime debe continuar fail-closed.
+
 ### Visuales
 
 - `src/shared/destination-visual-media-contract.ts`: assets, packages, roles, modos y rights status.
@@ -95,7 +105,7 @@ Un fallo nunca debe detener otros jobs. La concurrencia inicial recomendada es *
 
 ## Gaps que bloquean Factory V1, en orden
 
-1. **Persistencia genérica de ejecución real.** Adaptar artifacts, checkpoints y el ledger durable de `pilot/run` a un owner `PILOT | BATCH_JOB`, y separar el workflow por rondas para que los delegates reales puedan completar un job arbitrario sin duplicar el pipeline.
+1. **Executor real phase-addressable.** Usar el owner durable `BATCH_JOB` ya disponible para separar research/análisis/drafts/review del executor monolítico y registrar los delegates reales sin duplicar proveedores o Library.
 2. **Flujo visual aprobado a Trawel media.** Acordar/implementar el payload de byte o referencia aprobada y respuesta de URL HTTPS, sin trasladar autoridad editorial a Trawel.
 3. **Mesa de revisión de lote.** Lista/estado/coste/warnings; vista Student, Adventure y visuales; approve y redo selectivo.
 4. **Exportador JSON V1 y entrega bulk.** Sólo `APPROVED`, dedupe de delivery, resultado por job y retry del fallido.

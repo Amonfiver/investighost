@@ -67,8 +67,9 @@ import {
   libraryPageNumber,
   type LibraryNavigationState,
 } from './library-navigation'
+import { DestinationBatchPanel } from './DestinationBatchPanel'
 
-type View = 'library' | 'new' | 'detail' | 'contributions' | 'providers' | 'real-config'
+type View = 'library' | 'new' | 'detail' | 'contributions' | 'batches' | 'providers' | 'real-config'
 type DetailTab = 'overview' | 'sources' | 'facts' | 'places' | 'activities' | 'drafts' | 'quality' | 'history'
 
 const stageLabels: Record<string, string> = {
@@ -276,6 +277,7 @@ export function App(): JSX.Element {
           <button className={view === 'library' ? 'nav-active' : ''} onClick={() => go('library')}>Biblioteca</button>
           <button className={view === 'new' ? 'nav-active' : ''} onClick={() => go('new')}>Nueva investigación</button>
           <button className={view === 'contributions' ? 'nav-active' : ''} onClick={() => go('contributions')}>Contribuciones</button>
+          <button className={view === 'batches' ? 'nav-active' : ''} onClick={() => go('batches')}>Lotes de destinos</button>
           <button className={view === 'providers' ? 'nav-active' : ''} onClick={() => go('providers')}>Proveedores</button>
           <button className={view === 'real-config' ? 'nav-active' : ''} onClick={() => go('real-config')}>Pipeline real</button>
         </nav>
@@ -343,6 +345,7 @@ export function App(): JSX.Element {
               />
           )}
           {view === 'contributions' && <ContributionImportPanel />}
+          {view === 'batches' && <DestinationBatchPanel />}
           {view === 'providers' && <ProviderCenterPanel />}
           {view === 'real-config' && (
             <RealProfileSettingsPanel
@@ -2682,6 +2685,7 @@ function viewTitle(view: View, selected: ResearchDestinationResult | null): stri
   if (view === 'new') return 'Nueva investigación'
   if (view === 'detail') return selected?.destination.name ?? 'Detalle de ejecución'
   if (view === 'contributions') return 'Contribuciones'
+  if (view === 'batches') return 'Lotes de destinos'
   if (view === 'providers') return 'Centro de proveedores'
   if (view === 'real-config') return 'Pipeline real'
   return 'Biblioteca editorial'

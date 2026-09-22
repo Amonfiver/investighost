@@ -1,0 +1,71 @@
+import {
+  DestinationBatchSchema,
+  DestinationBatchIssueSchema,
+  DestinationBatchJobSchema,
+  type DestinationBatch,
+  type DestinationBatchIssue,
+  type DestinationBatchJob,
+} from '@shared/factory-batch-contracts'
+import type { DestinationBatchRepository, ExistingDestinationMatch } from './contracts'
+
+export class MemoryDestinationBatchRepository implements DestinationBatchRepository {
+  readonly batches = new Map<string, DestinationBatch>()
+  readonly jobs = new Map<string, DestinationBatchJob>()
+  readonly issues = new Map<string, DestinationBatchIssue>()
+  readonly existing = new Map<string, ExistingDestinationMatch>()
+
+  seedExisting(identity: string, match: ExistingDestinationMatch): void {
+    this.existing.set(identity, structuredClone(match))
+  }
+
+  async findBatchByFingerprint(fingerprint: string): Promise<DestinationBatch | null> {
+    return structuredClone([...this.batches.values()].find(batch => batch.importFingerprint === fingerprint) ?? null)
+  }
+
+  async createBatch(batch: DestinationBatch): Promise<DestinationBatch> {
+    const existing = await this.findBatchByFingerprint(batch.importFingerprint)
+    if (existing) return existing
+    const parsed = DestinationBatchSchema.parse(batch)
+    this.batches.set(parsed.id, structuredClone(parsed))
+    return structuredClone(parsed)
+  }
+
+  async getBatch(batchId: string): Promise<DestinationBatch | null> { return structuredClone(this.batches.get(batchId) ?? null) }
+  async listBatches(): Promise<DestinationBatch[]> { return structuredClone([...this.batches.values()].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())) }
+
+  async insertJob(job: DestinationBatchJob): Promise<DestinationBatchJob> {
+    const duplicate = [...this.jobs.values()].find(item => item.batchId === job.batchId && item.normalizedIdentity === job.normalizedIdentity)
+    if (duplicate) return structuredClone(duplicate)
+    const parsed = DestinationBatchJobSchema.parse(job)
+    this.jobs.set(parsed.id, structuredClone(parsed))
+    return structuredClone(parsed)
+  }
+
+  async getJob(jobId: string): Promise<DestinationBatchJob | null> { return structuredClone(this.jobs.get(jobId) ?? null) }
+
+  async updateJob(job: DestinationBatchJob): Promise<DestinationBatchJob> {
+    if (!this.jobs.has(job.id)) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')
+    const parsed = DestinationBatchJobSchema.parse(job)
+    this.jobs.set(parsed.id, structuredClone(parsed))
+    return structuredClone(parsed)
+  }
+
+  async listJobs(batchId: string): Promise<DestinationBatchJob[]> {
+    return structuredClone([...this.jobs.values()].filter(job => job.batchId === batchId).sort((a, b) => a.inputIndex - b.inputIndex))
+  }
+
+  async insertIssue(issue: DestinationBatchIssue): Promise<void> {
+    const parsed = DestinationBatchIssueSchema.parse(issue)
+    this.issues.set(parsed.id, structuredClone(parsed))
+  }
+
+  async listIssues(batchId: string): Promise<DestinationBatchIssue[]> {
+    return structuredClone([...this.issues.values()].filter(issue => issue.batchId === batchId).sort((a, b) => a.inputIndex - b.inputIndex))
+  }
+
+  async findExistingDestination(input: { canonicalDestinationId?: string; normalizedIdentity: string }): Promise<ExistingDestinationMatch> {
+    return structuredClone(this.existing.get(input.canonicalDestinationId ?? input.normalizedIdentity)
+      ?? this.existing.get(input.normalizedIdentity)
+      ?? { hasApprovedContent: false, hasDeliveredContent: false })
+  }
+}

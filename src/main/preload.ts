@@ -11,6 +11,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { LibraryPageQueryInput } from '@shared/library-contracts'
 import type {
+  DestinationBatch,
+  DestinationBatchImportResult,
+  DestinationBatchReadModel,
+} from '@shared/factory-batch-contracts'
+import type {
   ProviderActivationInput,
   ProviderConfigureInput,
   ProviderDeleteInput,
@@ -48,6 +53,15 @@ const electronAPI = {
   importPendingContributions: () => ipcRenderer.invoke('contributions:import-pending'),
   listContributionImportJobs: () => ipcRenderer.invoke('contributions:list-jobs'),
   retryContributionImportJob: (jobId: string) => ipcRenderer.invoke('contributions:retry-job', jobId),
+
+  // Factory V1: entrada de lote; el JSON se valida y persiste exclusivamente en main.
+  getDestinationBatchPersistenceStatus: () => ipcRenderer.invoke('factory-batches:persistence-status'),
+  importDestinationBatchJson: (jsonText: string): Promise<DestinationBatchImportResult> =>
+    ipcRenderer.invoke('factory-batches:import-json', jsonText),
+  listDestinationBatches: (): Promise<DestinationBatch[]> => ipcRenderer.invoke('factory-batches:list'),
+  readDestinationBatch: (batchId: string): Promise<DestinationBatchReadModel> =>
+    ipcRenderer.invoke('factory-batches:read', batchId),
+  retryDestinationBatchJob: (jobId: string) => ipcRenderer.invoke('factory-batches:retry-job', jobId),
 
   // Flujo Manual canónico; el renderer nunca recibe credenciales de Supabase.
   getManualPersistenceStatus: () => ipcRenderer.invoke('manual:persistence-status'),

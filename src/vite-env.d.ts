@@ -86,6 +86,12 @@ declare global {
       listContributionImportJobs: () => Promise<ContributionImportJob[]>
       retryContributionImportJob: (jobId: string) => Promise<ContributionSyncSummary>
 
+      getDestinationBatchPersistenceStatus: () => Promise<{ connected: boolean; target: 'Supabase local'; url?: string; error?: string }>
+      importDestinationBatchJson: (jsonText: string) => Promise<import('./shared/factory-batch-contracts').DestinationBatchImportResult>
+      listDestinationBatches: () => Promise<import('./shared/factory-batch-contracts').DestinationBatch[]>
+      readDestinationBatch: (batchId: string) => Promise<import('./shared/factory-batch-contracts').DestinationBatchReadModel>
+      retryDestinationBatchJob: (jobId: string) => Promise<import('./modules/factory-batches').DestinationBatchRetryResult>
+
       // Pipeline Manual canónico
       getManualPersistenceStatus: () => Promise<ManualPersistenceStatus>
       getManualActor: () => Promise<string>

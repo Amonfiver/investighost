@@ -89,6 +89,15 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 .section-heading.compact { align-items: center; }
 
 .library-pagination { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 14px; padding: 12px 14px; background: white; border: 1px solid var(--line); border-radius: 11px; }
+.batch-import-layout { display: grid; gap: 18px; max-width: 1100px; }
+.batch-import-layout .form-card { display: grid; gap: 10px; }
+.batch-list { display: grid; gap: 7px; }
+.batch-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; padding: 11px 12px; text-align: left; background: white; border: 1px solid var(--line); border-radius: 9px; cursor: pointer; }
+.batch-row.selected { border-color: var(--green); background: #f4faf7; }
+.batch-row strong, .batch-row small { display: block; }
+.batch-row strong { font-size: 12px; }.batch-row small { margin-top: 2px; color: var(--muted); font-size: 10px; }.batch-row em { color: var(--muted); font-size: 9px; font-style: normal; font-weight: 700; }
+.batch-job-row { display: grid; grid-template-columns: 42px minmax(180px,2fr) minmax(130px,1fr) auto auto; align-items: center; gap: 12px; padding: 14px 17px; border-bottom: 1px solid #edf0ed; }
+.batch-job-row:last-child { border-bottom: 0; }
 .library-page-status strong, .library-page-status span { display: block; }
 .library-page-status strong { font-size: 13px; }
 .library-page-status span { margin-top: 2px; color: var(--muted); font-size: 10px; }

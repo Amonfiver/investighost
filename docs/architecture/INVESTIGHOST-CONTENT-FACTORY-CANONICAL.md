@@ -3,7 +3,7 @@
 > Antes de cualquier prompt estructural de Investighost, leer este documento primero. Reauditar únicamente componentes cuya implementación haya cambiado o no esté documentada.
 
 **Actualizado:** 2026-09-22
-**Referencia de código auditada:** `2af389ef88e4fe24b293d341b9285dd3e4d5bf16` en `feat/investighost-real-pipeline`.
+**Referencia de partida:** `d253f32739ff13b9b17f9d929a2664c022cce436` en `feat/investighost-real-pipeline`; los cambios estructurales posteriores se registran explícitamente en esta tabla.
 
 ## Objetivo de producto V1
 
@@ -28,7 +28,7 @@ La primera meta operativa es un lote de 10 destinos; la misma arquitectura debe 
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |
 |---|---|---|---|
-| Identidad geográfica | DONE | Resolución, snapshots y contratos durables; Cuenca tiene identidad canónica. | Integrarla en el importador de destinos. |
+| Identidad geográfica | DONE | Resolución, snapshots y contratos durables; Cuenca tiene identidad canónica. | Reutilizada por el importador cuando el país se puede canonizar. |
 | Research real | PARTIAL | Tavily, sources, evidence, rondas, ledger, recuperación y pipeline real de piloto. | Orquestación genérica de lote y aislamiento de jobs. |
 | Analysis | PARTIAL | Routing DeepSeek, outputs durables, costes y recuperación de análisis. | Convertir la política de piloto en ejecución por destino. |
 | Student | PARTIAL | Canon, bloques V2, gates y versiones aprobadas de referencia. | Generación/regeneración genérica desde un job de lote. |
@@ -40,8 +40,11 @@ La primera meta operativa es un lote de 10 destinos; la misma arquitectura debe 
 | Rights y selección visual | DONE | Fail-closed, quality gates, selección determinista hero/highlight/gallery, checksum y package contracts. | Puente de media aprobada hacia storage HTTPS de Trawel. |
 | Storage visual local | PARTIAL | Staging privado, SHA-256, dedupe y esquemas/buckets locales aplicados. | No usar su URL HTTP como media pública; adaptar promoción/entrega al receptor media de Trawel. |
 | Revisión humana | PARTIAL | UI individual para Library/piloto: leer, aprobar, pedir cambios y reabrir. | Mesa de lote, visuales, redo selectivo, bulk approve y delivery. |
-| Importación de contribuciones | DONE / NO REUSE DIRECT | Batches, jobs, retry y repositorio Supabase para contribuciones remotas. | Es un patrón, no un importador de destinos ni una cola editorial. |
-| Cola editorial de lote | MISSING | El real pipeline persiste un piloto y checkpoints; existe patrón de jobs de contribuciones. | Batch, job por destino, fases, lease, retry, resume y concurrencia. |
+| Importación de contribuciones | DONE / NO REUSE DIRECT | Batches, jobs, retry y repositorio Supabase para contribuciones remotas. | Sigue siendo un patrón separado, no la cola editorial. |
+| Importación JSON de destinos | DONE | JSON V1 hasta 50 filas, errores por fila, fingerprint estable e IPC/UI de importación. | El worker editorial del siguiente paso. |
+| Batch identity y dedupe | DONE | `editorial_destination_batches`, fingerprint de multiset, normalización, dedupe interno y lookup de Library/delivery/jobs activos. | Resolución humana de ambigüedad en la futura mesa. |
+| Cola editorial de lote | PARTIAL | `editorial_destination_batch_jobs` persiste fase, referencias de artefacto, intentos, error, retryable y coste; concurrencia objetivo 1. | Lease/worker que reclame y ejecute jobs. |
+| Retry y resume | PARTIAL | Reintento durable conserva la fase; read model permite reanudar desde artefactos referenciados. | Ejecución real de las fases. |
 | Exportación JSON | MISSING | Existen contratos serializables y snapshots de handoff. | Exportador V1 de lote y UI. |
 
 ## Arquitectura vigente
@@ -81,12 +84,11 @@ Un fallo nunca debe detener otros jobs. La concurrencia inicial recomendada es *
 
 ## Gaps que bloquean Factory V1, en orden
 
-1. **Modelo de lote de destinos e importador JSON.** Normalizar identidad, deduplicar dentro/fuera del lote y clasificar ambiguos/actualizables.
-2. **Cola editorial durable por destino.** Lease, fase, retry, resume, aislamiento de fallo, presupuesto acumulado y límite de concurrencia.
-3. **Adaptador de ejecución genérico.** Conectar research/análisis/generación/review/Library al job, dejando el piloto fijo como fixture, no como camino de producción.
-4. **Flujo visual aprobado a Trawel media.** Acordar/implementar el payload de byte o referencia aprobada y respuesta de URL HTTPS, sin trasladar autoridad editorial a Trawel.
-5. **Mesa de revisión de lote.** Lista/estado/coste/warnings; vista Student, Adventure y visuales; approve y redo selectivo.
-6. **Exportador JSON V1 y entrega bulk.** Sólo `APPROVED`, dedupe de delivery, resultado por job y retry del fallido.
+1. **Worker editorial genérico.** Reclamar un job a la vez y conectar research/análisis/generación/review/Library, dejando el piloto fijo como fixture.
+2. **Lease y ejecución de cola.** Materializar claim, transición por fases, intentos, presupuesto acumulado, retry y resume real.
+3. **Flujo visual aprobado a Trawel media.** Acordar/implementar el payload de byte o referencia aprobada y respuesta de URL HTTPS, sin trasladar autoridad editorial a Trawel.
+4. **Mesa de revisión de lote.** Lista/estado/coste/warnings; vista Student, Adventure y visuales; approve y redo selectivo.
+5. **Exportador JSON V1 y entrega bulk.** Sólo `APPROVED`, dedupe de delivery, resultado por job y retry del fallido.
 
 ## Contratos mínimos pendientes
 
@@ -150,4 +152,4 @@ PASS: jobs aislados, no duplicados, costes bajo límites, artefactos y Library t
 
 ## Próximo paso único
 
-Implementar el **modelo durable de lote de destinos**: importación JSON, normalización/deduplicación y jobs editoriales por destino. Es la base que permite conectar el resto sin reabrir módulos ya cerrados.
+Implementar el **worker editorial batch genérico**: reclamar un job `QUEUED`, ejecutar sus fases sin proveedores hasta autorización explícita y persistir transiciones/retry/resume por destino.

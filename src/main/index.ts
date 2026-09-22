@@ -105,6 +105,7 @@ import {
   LibraryPageSchema,
 } from '@shared/library-contracts'
 import { getContributionImportRuntime, getContributionPersistenceStatus } from '@modules/contributions/runtime'
+import { getDestinationBatchRuntime, getDestinationBatchPersistenceStatus } from '@modules/factory-batches'
 import {
   getManualPersistenceStatus,
   getManualResearchRuntime,
@@ -143,6 +144,23 @@ ipcMain.handle('contributions:retry-job', async (_event, jobId: unknown) => {
 })
 
 ipcMain.handle('contributions:persistence-status', () => getContributionPersistenceStatus())
+
+// Factory V1: importar y consultar lotes no ejecuta investigación ni proveedores.
+ipcMain.handle('factory-batches:persistence-status', () => getDestinationBatchPersistenceStatus())
+
+ipcMain.handle('factory-batches:import-json', async (_event, jsonText: unknown) => {
+  return (await getDestinationBatchRuntime()).importJson(z.string().max(2 * 1024 * 1024).parse(jsonText))
+})
+
+ipcMain.handle('factory-batches:list', async () => (await getDestinationBatchRuntime()).list())
+
+ipcMain.handle('factory-batches:read', async (_event, batchId: unknown) => {
+  return (await getDestinationBatchRuntime()).read(z.string().uuid().parse(batchId))
+})
+
+ipcMain.handle('factory-batches:retry-job', async (_event, jobId: unknown) => {
+  return (await getDestinationBatchRuntime()).retry(z.string().uuid().parse(jobId))
+})
 
 // Pipeline Manual canónico. Toda persistencia y toda clave privilegiada permanecen en main.
 ipcMain.handle('manual:persistence-status', () => getManualPersistenceStatus())

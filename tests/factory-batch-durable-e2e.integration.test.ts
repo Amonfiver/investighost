@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   DestinationBatchService,
   EditorialBatchWorker,
+  DestinationBatchHumanReviewService,
   ProductionBatchEditorialPhasePort,
   SupabaseDestinationBatchRepository,
 } from '@modules/factory-batches'
+import { SupabaseRealEditorialLibraryVersioningRepository } from '@modules/library-versioning'
 import { GeographicResolver } from '@modules/editorial-pipeline/geography'
 import { SupabaseGeographyCatalogRepository } from '@modules/editorial-pipeline/supabase-geography-repository'
 import { createLocalSupabaseClientFromEnv } from '@services/supabase'
@@ -318,6 +320,25 @@ integration('durable Supabase-local batch worker E2E', () => {
       .eq('execution_owner_id', (await client.from('real_editorial_executions').select('id').eq('owner_id', jobs[0]!.id).single()).data!.id)
     expect(count).toBe(0)
   })
+
+  it('moves a READY_FOR_REVIEW job through the canonical human Library approval without delivery', async () => {
+    const { client } = createLocalSupabaseClientFromEnv()
+    const { repository, jobs } = await importGranadaFixture(client, 'human-approval', ['Granada Approval'])
+    const research = new ResearchDouble()
+    const intelligence = new IntelligenceDouble()
+    await new EditorialBatchWorker(repository, productionPort(client, research, intelligence), { workerId: '084j-approval' }).runJob(jobs[0]!.id)
+    const approved = await new DestinationBatchHumanReviewService(repository, new SupabaseRealEditorialLibraryVersioningRepository(client)).approve(jobs[0]!.id)
+    expect(approved.status).toBe('APPROVED')
+    const review = await repository.readJobForReview(jobs[0]!.id)
+    expect(review?.student).toBeTruthy()
+    expect(review?.adventure).toBeTruthy()
+    const library = new SupabaseRealEditorialLibraryVersioningRepository(client)
+    expect((await library.getCurrentApproved(review!.student!.libraryEntryId))?.revisionId).toBe(review!.student!.revisionId)
+    expect((await library.getCurrentApproved(review!.adventure!.libraryEntryId))?.revisionId).toBe(review!.adventure!.revisionId)
+    const { count } = await client.from('real_editorial_trawel_deliveries').select('*', { count: 'exact', head: true })
+      .eq('investighost_canonical_destination_id', jobs[0]!.canonicalDestinationId!)
+    expect(count).toBe(0)
+  }, 15_000)
 })
 
 /**

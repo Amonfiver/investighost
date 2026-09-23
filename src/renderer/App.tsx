@@ -68,8 +68,10 @@ import {
   type LibraryNavigationState,
 } from './library-navigation'
 import { DestinationBatchPanel } from './DestinationBatchPanel'
+import { BatchReviewDesk } from './BatchReviewDesk'
+import { NewDestinationResearch } from './NewDestinationResearch'
 
-type View = 'library' | 'new' | 'detail' | 'contributions' | 'batches' | 'providers' | 'real-config'
+type View = 'library' | 'new' | 'detail' | 'contributions' | 'batches' | 'batch-review' | 'providers' | 'real-config'
 type DetailTab = 'overview' | 'sources' | 'facts' | 'places' | 'activities' | 'drafts' | 'quality' | 'history'
 
 const stageLabels: Record<string, string> = {
@@ -116,6 +118,7 @@ export function App(): JSX.Element {
   const [realLibraryLoading, setRealLibraryLoading] = useState(false)
   const [realLibraryError, setRealLibraryError] = useState<string | null>(null)
   const [realLibraryFocusId, setRealLibraryFocusId] = useState<string | null>(null)
+  const [batchReviewJobId, setBatchReviewJobId] = useState<string | null>(null)
 
   const loadRealLibrary = useCallback(async () => {
     setRealLibraryLoading(true)
@@ -178,32 +181,6 @@ export function App(): JSX.Element {
     setSelectedSummary(page?.items.find(item => item.requestId === incident.requestId) ?? summaryFromIncident(incident))
     setVersions([])
     setView('detail')
-  }
-
-  const completeStart = async (input: Omit<ManualResearchStart, 'actorId' | 'idempotencyKey'>) => {
-    setBusy(true)
-    setError(null)
-    try {
-      const outcome = await window.electronAPI.startManualResearch({
-        ...input,
-        actorId,
-        idempotencyKey: `manual:${crypto.randomUUID()}`,
-      })
-      if (outcome.status === 'failed') {
-        await showIncident(outcome.incident)
-        return
-      }
-      const { result } = outcome
-      setSelected(result)
-      setSelectedSummary(summaryFromResult(result))
-      setVersions(await window.electronAPI.listManualDraftVersions(result.request.id))
-      await libraryNavigator.resetAfterMutation()
-      setView('detail')
-    } catch (reason) {
-      setError(errorText(reason))
-    } finally {
-      setBusy(false)
-    }
   }
 
   const applyExecutionOutcome = async (operation: () => Promise<ManualResearchExecutionOutcome>) => {
@@ -329,9 +306,7 @@ export function App(): JSX.Element {
               onNext={() => { void libraryNavigator.next() }}
             />
           )}
-          {view === 'new' && status?.connected && actorId && (
-            <NewManualResearch actorId={actorId} busy={busy} onStart={completeStart} onCancel={() => go('library')} />
-          )}
+          {view === 'new' && status?.connected && <NewDestinationResearch onCreated={() => go('batches')} />}
           {view === 'detail' && (
             selected
               ? <ResearchWorkspace result={selected} versions={versions} busy={busy} actorId={actorId} applyResult={applyResult} onBack={() => go('library')} />
@@ -345,7 +320,8 @@ export function App(): JSX.Element {
               />
           )}
           {view === 'contributions' && <ContributionImportPanel />}
-          {view === 'batches' && <DestinationBatchPanel />}
+          {view === 'batches' && <DestinationBatchPanel onOpenReview={jobId => { setBatchReviewJobId(jobId); go('batch-review') }} />}
+          {view === 'batch-review' && batchReviewJobId && <BatchReviewDesk jobId={batchReviewJobId} onBack={() => go('batches')} />}
           {view === 'providers' && <ProviderCenterPanel />}
           {view === 'real-config' && (
             <RealProfileSettingsPanel
@@ -520,7 +496,7 @@ function Metric({ label, value, detail, tone = 'normal' }: { label: string; valu
   return <article className={`metric ${tone}`}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>
 }
 
-function NewManualResearch({ actorId, busy, onStart, onCancel }: {
+export function NewManualResearch({ actorId, busy, onStart, onCancel }: {
   actorId: string
   busy: boolean
   onStart: (input: Omit<ManualResearchStart, 'actorId' | 'idempotencyKey'>) => Promise<void>
@@ -2686,6 +2662,7 @@ function viewTitle(view: View, selected: ResearchDestinationResult | null): stri
   if (view === 'detail') return selected?.destination.name ?? 'Detalle de ejecución'
   if (view === 'contributions') return 'Contribuciones'
   if (view === 'batches') return 'Lotes de destinos'
+  if (view === 'batch-review') return 'Revisión humana'
   if (view === 'providers') return 'Centro de proveedores'
   if (view === 'real-config') return 'Pipeline real'
   return 'Biblioteca editorial'

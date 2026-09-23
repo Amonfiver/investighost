@@ -74,7 +74,7 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
       jobId: job.id, batchId: job.batchId,
       destination: { canonicalDestinationId: job.canonicalDestinationId ?? null, name: job.originalName, country: job.country, region: job.region ?? null },
       status: job.status, phase: job.currentPhase, student: null, adventure: null,
-      visualPackageId: job.artifactRefs.VISUALS ?? null, reviewArtifactId: job.artifactRefs.AUTO_REVIEW ?? null,
+      visualPackageId: job.artifactRefs.VISUALS ?? null, visualPackage: null, reviewArtifactId: job.artifactRefs.AUTO_REVIEW ?? null,
       reviewSummary: null, warnings: [], cost: job.actualCost, attempts: job.attemptCount, lastError: job.lastFailure ?? null,
     })
     const { data: execution, error: executionError } = await this.client.from('real_editorial_executions').select('id')
@@ -84,7 +84,7 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
     const revisionIds = [job.artifactRefs.STUDENT, job.artifactRefs.ADVENTURE].filter((id): id is string => Boolean(id))
     const { data: versions, error: versionError } = revisionIds.length === 0
       ? { data: [], error: null }
-      : await this.client.from('real_editorial_library_version_revisions').select('id,version_id').in('id', revisionIds)
+      : await this.client.from('real_editorial_library_version_revisions').select('id,version_id,title,content').in('id', revisionIds)
     assertNoError(versionError, 'READ_REVIEW_REVISIONS')
     const versionIds = (versions ?? []).map(row => String((row as Row).version_id))
     const { data: libraryVersions, error: libraryVersionError } = versionIds.length === 0
@@ -97,7 +97,8 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
       if (!revisionId) return null
       const revision = revisionById.get(revisionId)
       const version = revision ? versionById.get(String(revision.version_id)) : undefined
-      return version ? { libraryEntryId: String(version.library_entry_id), versionId: String(version.id), revisionId } : null
+      if (!revision || !version) return null
+      return { libraryEntryId: String(version.library_entry_id), versionId: String(version.id), revisionId, title: String(revision.title), content: String(revision.content) }
     }
     let reviewSummary: Record<string, unknown> | null = null
     let warnings: string[] = []
@@ -110,7 +111,19 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
         if (Array.isArray(reviewSummary.issues)) warnings = reviewSummary.issues.filter((issue): issue is string => typeof issue === 'string')
       }
     }
-    return DestinationBatchJobReviewReadModelSchema.parse({ ...empty, student: reference(job.artifactRefs.STUDENT), adventure: reference(job.artifactRefs.ADVENTURE), reviewSummary, warnings })
+    let visualPackage = null
+    if (job.artifactRefs.VISUALS) {
+      const [{ data: packageRow, error: packageError }, { data: assets, error: assetsError }, { data: selections, error: selectionsError }] = await Promise.all([
+        this.client.from('real_editorial_visual_packages').select('*').eq('id', job.artifactRefs.VISUALS).maybeSingle(),
+        this.client.from('real_editorial_visual_assets').select('*').eq('canonical_destination_id', job.canonicalDestinationId ?? ''),
+        this.client.from('real_editorial_visual_package_selections').select('*').eq('package_id', job.artifactRefs.VISUALS),
+      ])
+      assertNoError(packageError, 'READ_REVIEW_VISUAL_PACKAGE')
+      assertNoError(assetsError, 'READ_REVIEW_VISUAL_ASSETS')
+      assertNoError(selectionsError, 'READ_REVIEW_VISUAL_SELECTIONS')
+      if (packageRow) visualPackage = visualPackageFromRows(packageRow as Row, assets as Row[] ?? [], selections as Row[] ?? [])
+    }
+    return DestinationBatchJobReviewReadModelSchema.parse({ ...empty, student: reference(job.artifactRefs.STUDENT), adventure: reference(job.artifactRefs.ADVENTURE), visualPackage, reviewSummary, warnings })
   }
 
   async updateJob(job: DestinationBatchJob): Promise<DestinationBatchJob> {
@@ -272,4 +285,20 @@ function issueFromRow(row: Row): DestinationBatchIssue {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function visualPackageFromRows(packageRow: Row, assets: Row[], selections: Row[]) {
+  return {
+    schema: 'investighost-destination-visual-media-v1' as const,
+    packageId: String(packageRow.id), destinationId: String(packageRow.canonical_destination_id), state: String(packageRow.state),
+    packageHash: packageRow.package_hash === null ? null : String(packageRow.package_hash),
+    assets: assets.map(asset => ({
+      assetId: String(asset.id), destinationId: String(asset.canonical_destination_id), lifecycle: String(asset.lifecycle), rightsStatus: String(asset.rights_status),
+      usageAllowed: asset.usage_allowed === null ? null : Boolean(asset.usage_allowed), rightsCheckedAt: asset.rights_checked_at === null ? null : String(asset.rights_checked_at),
+      publicUrl: asset.public_url === null ? null : String(asset.public_url), storageIdentity: asset.storage_identity === null ? null : String(asset.storage_identity),
+      sourceUrl: asset.source_url === null ? null : String(asset.source_url), sourceName: asset.source_name === null ? null : String(asset.source_name), author: asset.author === null ? null : String(asset.author), license: asset.license === null ? null : String(asset.license), attributionText: asset.attribution_text === null ? null : String(asset.attribution_text), associatedPlace: asset.associated_place === null ? null : String(asset.associated_place),
+      category: String(asset.category), modes: asset.modes, alt: asset.alt === null ? null : String(asset.alt), caption: asset.caption === null ? null : String(asset.caption), width: asset.width === null ? null : Number(asset.width), height: asset.height === null ? null : Number(asset.height), mimeType: asset.mime_type === null ? null : String(asset.mime_type), checksum: asset.checksum === null ? null : String(asset.checksum), rejectionReason: asset.rejection_reason === null ? null : String(asset.rejection_reason),
+    })),
+    selections: selections.map(selection => ({ assetId: String(selection.asset_id), mode: String(selection.mode), role: String(selection.role), priority: Number(selection.priority) })),
+  }
 }

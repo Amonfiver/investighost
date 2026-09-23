@@ -51,7 +51,7 @@ export class MemoryDestinationBatchRepository implements DestinationBatchReposit
       jobId: job.id, batchId: job.batchId,
       destination: { canonicalDestinationId: job.canonicalDestinationId ?? null, name: job.originalName, country: job.country, region: job.region ?? null },
       status: job.status, phase: job.currentPhase, student: null, adventure: null,
-      visualPackageId: job.artifactRefs.VISUALS ?? null, reviewArtifactId: job.artifactRefs.AUTO_REVIEW ?? null,
+      visualPackageId: job.artifactRefs.VISUALS ?? null, visualPackage: null, reviewArtifactId: job.artifactRefs.AUTO_REVIEW ?? null,
       reviewSummary: null, warnings: [], cost: job.actualCost, attempts: job.attemptCount, lastError: job.lastFailure ?? null,
     })
   }

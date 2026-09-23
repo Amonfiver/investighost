@@ -1,0 +1,44 @@
+import { useEffect, useMemo, useState } from 'react'
+import type { DestinationBatchJobReviewReadModel } from '@shared/factory-batch-contracts'
+
+type Tab = 'summary' | 'student' | 'adventure' | 'visuals' | 'traceability'
+
+export function BatchReviewDesk({ jobId, onBack }: { jobId: string; onBack: () => void }): JSX.Element {
+  const [review, setReview] = useState<DestinationBatchJobReviewReadModel | null>(null)
+  const [tab, setTab] = useState<Tab>('summary')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const load = async () => { setBusy(true); setError(null); try { setReview(await window.electronAPI.readDestinationBatchJobReview(jobId)) } catch (reason) { setError(errorText(reason)) } finally { setBusy(false) } }
+  // The request is intentionally keyed solely by the durable job identity.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [jobId])
+  const canApprove = Boolean(review?.status === 'READY_FOR_REVIEW' && review.student && review.adventure && review.visualPackageId && review.reviewArtifactId)
+  const approve = async () => { setBusy(true); setError(null); try { await window.electronAPI.approveDestinationBatchJob(jobId); await load() } catch (reason) { setError(errorText(reason)) } finally { setBusy(false) } }
+  const adventureVisuals = useMemo(() => selectedVisuals(review, 'adventure'), [review])
+  return <section className="review-desk" aria-label="Mesa de revisión humana">
+    <button className="back-link" onClick={onBack}>← Volver al lote</button>
+    {error && <div className="alert error"><strong>No se pudo abrir la revisión.</strong><span>{error}</span></div>}
+    {!review ? <div className="empty-card"><span className="spinner" /><p>{busy ? 'Cargando revisión durable…' : 'No hay datos de revisión.'}</p></div> : <>
+      <header className="review-desk-header"><div><span className="card-kicker">HUMAN REVIEW DESK</span><h2>{review.destination.name}</h2><p>{review.destination.country}{review.destination.region ? ` · ${review.destination.region}` : ''} · Job {review.jobId}</p></div><div><span className={`state-badge state-${review.status.toLowerCase()}`}>{label(review.status)}</span><strong>{formatMoney(review.cost)}</strong></div></header>
+      <div className="review-tabs" role="tablist">{([['summary', 'Resumen'], ['student', 'Student'], ['adventure', 'Adventure'], ['visuals', 'Visuales'], ['traceability', 'Trazabilidad']] as const).map(([key, text]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{text}</button>)}</div>
+      {tab === 'summary' && <section className="review-grid"><Metric label="Estado" value={label(review.status)} /><Metric label="Auto-review" value={String(review.reviewSummary?.outcome ?? 'pendiente')} /><Metric label="Intentos" value={String(review.attempts)} /><Metric label="Visuales" value={review.visualPackage?.state ?? 'sin paquete'} />
+        {review.warnings.length > 0 && <div className="alert warning"><strong>Warnings</strong><span>{review.warnings.join(' · ')}</span></div>}
+        {review.lastError && <div className="alert error"><strong>Último error</strong><span>{review.lastError}</span></div>}
+        <div className="review-actions"><div><strong>Aprobación humana</strong><small>Aprueba Student y Adventure mediante Library. No crea delivery.</small></div><button className="button success" disabled={!canApprove || busy} title={canApprove ? 'Aprobar revisiones y destino' : 'Faltan Student, Adventure, visuales o auto-review'} onClick={() => { void approve() }}>Aprobar destino</button></div>
+      </section>}
+      {tab === 'student' && <DocumentReview title="Student · explicación editorial" document={review.student} />}
+      {tab === 'adventure' && <section className="adventure-review"><div className="section-heading"><div><span className="card-kicker">VISUAL-FIRST</span><h3>{review.adventure?.title ?? 'Adventure pendiente'}</h3><p>Hero, highlights y galería abren la experiencia; el copy acompaña la selección.</p></div></div><VisualStrip title="Hero" items={adventureVisuals.hero} /><VisualStrip title="Highlights" items={adventureVisuals.highlight} /><VisualStrip title="Galería" items={adventureVisuals.gallery} /><DocumentReview title="Copy de Adventure" document={review.adventure} /></section>}
+      {tab === 'visuals' && <section className="visual-review"><div className="section-heading"><div><span className="card-kicker">PAQUETE VISUAL</span><h3>{review.visualPackage?.state ?? 'Sin paquete'}</h3><p>Proveedor, origen y derechos se muestran por asset; la UI no depende de Wikimedia.</p></div></div><VisualStrip title="Hero" items={selectedVisuals(review, 'adventure').hero} /><VisualStrip title="Highlights" items={selectedVisuals(review, 'adventure').highlight} /><VisualStrip title="Galería" items={selectedVisuals(review, 'adventure').gallery} /></section>}
+      {tab === 'traceability' && <section className="traceability-card"><dl><div><dt>Lote</dt><dd>{review.batchId}</dd></div><div><dt>Job</dt><dd>{review.jobId}</dd></div><div><dt>Student revision</dt><dd>{review.student?.revisionId ?? '—'}</dd></div><div><dt>Adventure revision</dt><dd>{review.adventure?.revisionId ?? '—'}</dd></div><div><dt>Visual package</dt><dd>{review.visualPackageId ?? '—'}</dd></div><div><dt>Review artifact</dt><dd>{review.reviewArtifactId ?? '—'}</dd></div></dl></section>}
+    </>}
+  </section>
+}
+
+function DocumentReview({ title, document }: { title: string; document: DestinationBatchJobReviewReadModel['student'] }) { return <section className="document-review"><header><span className="card-kicker">LIBRARY CANDIDATE</span><h3>{title}</h3></header>{document ? <><h4>{document.title}</h4><article>{document.content}</article><small>Entry {document.libraryEntryId} · v {document.versionId} · r {document.revisionId}</small></> : <p>El perfil todavía no está disponible.</p>}</section> }
+function Metric({ label, value }: { label: string; value: string }) { return <article className="metric"><span>{label}</span><strong>{value}</strong></article> }
+function VisualStrip({ title, items }: { title: string; items: VisualItem[] }) { return <section className="visual-strip"><h4>{title}</h4>{items.length === 0 ? <p className="muted">No hay selección para este rol.</p> : <div>{items.map(item => <article key={`${item.asset.assetId}:${item.selection.priority}`}><>{item.asset.sourceUrl && <img src={item.asset.sourceUrl} alt={item.asset.alt ?? item.asset.caption ?? ''} />}</><strong>{item.asset.caption ?? item.asset.alt ?? item.asset.associatedPlace ?? 'Imagen sin título'}</strong><small>Rol {item.selection.role} · {item.asset.category} · provider {item.asset.sourceName ?? 'unknown'} · {item.asset.rightsStatus}</small><small>Autor {item.asset.author ?? 'no indicado'} · {item.asset.license ?? 'licencia pendiente'}</small></article>)}</div>}</section> }
+type VisualItem = { asset: NonNullable<DestinationBatchJobReviewReadModel['visualPackage']>['assets'][number]; selection: NonNullable<DestinationBatchJobReviewReadModel['visualPackage']>['selections'][number] }
+function selectedVisuals(review: DestinationBatchJobReviewReadModel | null, mode: 'adventure' | 'student'): Record<'hero' | 'highlight' | 'gallery', VisualItem[]> { const result: Record<'hero' | 'highlight' | 'gallery', VisualItem[]> = { hero: [], highlight: [], gallery: [] }; if (!review?.visualPackage) return result; const assets = new Map(review.visualPackage.assets.map(asset => [asset.assetId, asset])); for (const selection of review.visualPackage.selections.filter(item => item.mode === mode)) { const asset = assets.get(selection.assetId); if (asset) result[selection.role].push({ asset, selection }) } return result }
+function label(status: string) { return ({ QUEUED: 'En cola', PROCESSING: 'Procesando', READY_FOR_REVIEW: 'Lista para revisión', APPROVED: 'Aprobado', REDO_REQUIRED: 'Rehacer', DELIVERED: 'Entregado', FAILED: 'Fallido', BLOCKED_AMBIGUOUS: 'Ambiguo', REUSED: 'Reutilizable' } as Record<string, string>)[status] ?? status }
+function formatMoney(value: number) { return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value) }
+function errorText(reason: unknown) { return reason instanceof Error ? reason.message : String(reason) }

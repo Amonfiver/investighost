@@ -145,6 +145,16 @@ approval/delivery y la proyección de lectura por job. Por tanto
 `VISUAL_BATCH_DELEGATE = DONE`, `GRANADA_DURABLE_E2E = PASS` y
 `READY_FOR_REVIEW_PIPELINE = DONE`.
 
+085 añade la primera mesa humana operativa: Nueva investigación crea un batch
+de un único destino, Lotes abre el detalle por job y la mesa lee las revisiones
+pre-aprobación, el paquete visual y el auto-review. La aprobación humana usa
+las transacciones existentes de Library para Student y Adventure y sólo
+después cambia el job a `APPROVED`; no crea delivery. Adventure se presenta
+visual-first con hero, highlights y galería, sin acoplar la UI a un proveedor.
+El redo selectivo sigue pendiente: el executor durable reutiliza por diseño el
+artifact de perfil existente y aún no expone una operación canónica de nueva
+revisión/regeneración por perfil.
+
 ### Visuales
 
 - `src/shared/destination-visual-media-contract.ts`: assets, packages, roles, modos y rights status.

@@ -11,7 +11,7 @@ const label: Record<string, string> = {
   BLOCKED_AMBIGUOUS: 'Ambiguo', REUSED: 'Reutilizable',
 }
 
-export function DestinationBatchPanel(): JSX.Element {
+export function DestinationBatchPanel({ onOpenReview }: { onOpenReview?: (jobId: string) => void }): JSX.Element {
   const [batches, setBatches] = useState<DestinationBatch[]>([])
   const [selected, setSelected] = useState<DestinationBatchReadModel | null>(null)
   const [jsonText, setJsonText] = useState('')
@@ -106,6 +106,7 @@ export function DestinationBatchPanel(): JSX.Element {
             <div className="stage-copy"><strong>{job.currentPhase}</strong><small>{job.attemptCount} intento{job.attemptCount === 1 ? '' : 's'} · {job.actualCost.toFixed(4)} EUR</small></div>
             <span className={`state-badge state-${job.status.toLowerCase()}`}>{label[job.status]}</span>
             {['FAILED', 'REDO_REQUIRED'].includes(job.status) && <button className="text-button" disabled={busy} onClick={() => { void retry(job.id) }}>Reintentar</button>}
+            {job.status === 'READY_FOR_REVIEW' && <button className="text-button" disabled={busy} onClick={() => onOpenReview?.(job.id)}>Abrir revisión</button>}
             {job.lastFailure && <small className="muted">{job.lastFailure}</small>}
           </article>)}
         </section>

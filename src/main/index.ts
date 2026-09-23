@@ -110,7 +110,9 @@ import {
   getDestinationBatchRuntime,
   getDestinationBatchPersistenceStatus,
   getDestinationBatchWorkerRuntime,
+  DestinationBatchHumanReviewService,
   ProductionBatchEditorialPhasePort,
+  SupabaseDestinationBatchRepository,
 } from '@modules/factory-batches'
 import {
   getManualPersistenceStatus,
@@ -178,6 +180,18 @@ ipcMain.handle('factory-batches:retry-job', async (_event, jobId: unknown) => {
 
 ipcMain.handle('factory-batches:start', async (_event, batchId: unknown) => {
   return (await getDestinationBatchWorkerRuntime()).runBatch(z.string().uuid().parse(batchId))
+})
+
+ipcMain.handle('factory-batches:review-read', async (_event, jobId: unknown) => {
+  return (await getDestinationBatchRuntime()).readJobForReview(z.string().uuid().parse(jobId))
+})
+
+ipcMain.handle('factory-batches:approve', async (_event, jobId: unknown) => {
+  const client = createLocalSupabaseClientFromEnv().client
+  return new DestinationBatchHumanReviewService(
+    new SupabaseDestinationBatchRepository(client),
+    new SupabaseRealEditorialLibraryVersioningRepository(client),
+  ).approve(z.string().uuid().parse(jobId))
 })
 
 // Pipeline Manual canónico. Toda persistencia y toda clave privilegiada permanecen en main.

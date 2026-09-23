@@ -14,6 +14,7 @@ import type {
   DestinationBatch,
   DestinationBatchImportResult,
   DestinationBatchReadModel,
+  DestinationBatchJobReviewReadModel,
 } from '@shared/factory-batch-contracts'
 import type {
   ProviderActivationInput,
@@ -63,6 +64,8 @@ const electronAPI = {
     ipcRenderer.invoke('factory-batches:read', batchId),
   retryDestinationBatchJob: (jobId: string) => ipcRenderer.invoke('factory-batches:retry-job', jobId),
   startDestinationBatch: (batchId: string) => ipcRenderer.invoke('factory-batches:start', batchId),
+  readDestinationBatchJobReview: (jobId: string): Promise<DestinationBatchJobReviewReadModel> => ipcRenderer.invoke('factory-batches:review-read', jobId),
+  approveDestinationBatchJob: (jobId: string) => ipcRenderer.invoke('factory-batches:approve', jobId),
 
   // Flujo Manual canónico; el renderer nunca recibe credenciales de Supabase.
   getManualPersistenceStatus: () => ipcRenderer.invoke('manual:persistence-status'),

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DestinationVisualMediaPackageSchema } from './destination-visual-media-contract'
 
 const IdSchema = z.string().uuid()
 const TimestampSchema = z.date()
@@ -133,9 +134,10 @@ export const DestinationBatchJobReviewReadModelSchema = z.object({
   }),
   status: DestinationJobStatusSchema,
   phase: DestinationJobPhaseSchema,
-  student: z.object({ libraryEntryId: IdSchema, versionId: IdSchema, revisionId: IdSchema }).nullable(),
-  adventure: z.object({ libraryEntryId: IdSchema, versionId: IdSchema, revisionId: IdSchema }).nullable(),
+  student: z.object({ libraryEntryId: IdSchema, versionId: IdSchema, revisionId: IdSchema, title: NonEmptyText.max(500), content: z.string().min(1) }).nullable(),
+  adventure: z.object({ libraryEntryId: IdSchema, versionId: IdSchema, revisionId: IdSchema, title: NonEmptyText.max(500), content: z.string().min(1) }).nullable(),
   visualPackageId: IdSchema.nullable(),
+  visualPackage: DestinationVisualMediaPackageSchema.nullable(),
   reviewArtifactId: IdSchema.nullable(),
   reviewSummary: z.record(z.unknown()).nullable(),
   warnings: z.array(z.string()),

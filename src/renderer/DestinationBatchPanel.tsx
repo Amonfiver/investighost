@@ -4,15 +4,12 @@ import type {
   DestinationBatchImportResult,
   DestinationBatchReadModel,
 } from '@shared/factory-batch-contracts'
+import { formatBatchCreatedAt, formatCost, jobPhaseLabel, jobStatusLabel, singleJobStatusLabel, smokeFixtureLabel, sortBatchesByCreatedAt } from './factory-presentation'
 
-const label: Record<string, string> = {
-  QUEUED: 'En cola', PROCESSING: 'Procesando', READY_FOR_REVIEW: 'Lista para revisión',
-  APPROVED: 'Aprobado', REDO_REQUIRED: 'Rehacer', DELIVERED: 'Entregado', FAILED: 'Fallido',
-  BLOCKED_AMBIGUOUS: 'Ambiguo', REUSED: 'Reutilizable',
-}
+type ProductionBatchListItem = { batch: DestinationBatch; jobs: DestinationBatchReadModel['jobs'] }
 
 export function DestinationBatchPanel({ onOpenBatch }: { onOpenBatch: (batchId: string) => void }): JSX.Element {
-  const [batches, setBatches] = useState<DestinationBatch[]>([])
+  const [batches, setBatches] = useState<ProductionBatchListItem[]>([])
   const [selected, setSelected] = useState<DestinationBatchReadModel | null>(null)
   const [jsonText, setJsonText] = useState('')
   const [fileName, setFileName] = useState('')
@@ -21,7 +18,13 @@ export function DestinationBatchPanel({ onOpenBatch }: { onOpenBatch: (batchId: 
   const [notice, setNotice] = useState<string | null>(null)
 
   const refresh = async () => {
-    try { setBatches(await window.electronAPI.listDestinationBatches()) } catch (reason) { setError(errorText(reason)) }
+    try {
+      const listed = await window.electronAPI.listDestinationBatches()
+      const enriched = await Promise.all(listed.map(async batch => {
+        try { return { batch, jobs: (await window.electronAPI.readDestinationBatch(batch.id)).jobs } } catch { return { batch, jobs: [] } }
+      }))
+      setBatches(sortBatchesByCreatedAt(enriched.map(item => item.batch)).map(batch => enriched.find(item => item.batch.id === batch.id)!))
+    } catch (reason) { setError(errorText(reason)) }
   }
   useEffect(() => { void refresh() }, [])
 
@@ -86,8 +89,8 @@ export function DestinationBatchPanel({ onOpenBatch }: { onOpenBatch: (batchId: 
 
       {batches.length > 0 && <section className="panel-card batch-list-card">
         <div className="section-heading compact"><div><span className="card-kicker">LOTES DURABLES</span><h3>Importaciones</h3></div></div>
-        <div className="batch-list">{batches.map(batch => <button key={batch.id} className={selected?.batch.id === batch.id ? 'batch-row selected' : 'batch-row'} onClick={() => onOpenBatch(batch.id)} disabled={busy}>
-          <span><strong>{batch.name}</strong><small>{batch.totalItems} recibidos · {batch.newItems} nuevos · {batch.ambiguousItems} ambiguos</small></span><em>{batch.status}</em>
+        <div className="batch-list">{batches.map(({ batch, jobs }) => <button key={batch.id} className={selected?.batch.id === batch.id ? 'batch-row selected' : 'batch-row'} onClick={() => onOpenBatch(batch.id)} disabled={busy}>
+          <span><strong>{batch.name}</strong><small>{formatBatchCreatedAt(batch.createdAt)} · {batch.totalItems} destinos · {batch.newItems} nuevos</small></span><span className="batch-row-meta">{smokeFixtureLabel(batch) && <span className="state-badge state-reused">{smokeFixtureLabel(batch)}</span>}{singleJobStatusLabel(jobs) ? <span className={`state-badge state-${jobs[0]!.status.toLowerCase()}`}>{singleJobStatusLabel(jobs)}</span> : <em>{jobStatusLabel(batch.status)}</em>}</span>
         </button>)}</div>
       </section>}
 
@@ -103,8 +106,8 @@ export function DestinationBatchPanel({ onOpenBatch }: { onOpenBatch: (batchId: 
           {selected.jobs.map(job => <article className="batch-job-row" key={job.id}>
             <div className="destination-avatar">{job.originalName.slice(0, 2).toUpperCase()}</div>
             <div className="research-main"><strong>{job.originalName}</strong><small>{job.country}{job.region ? ` · ${job.region}` : ''}</small></div>
-            <div className="stage-copy"><strong>{job.currentPhase}</strong><small>{job.attemptCount} intento{job.attemptCount === 1 ? '' : 's'} · {job.actualCost.toFixed(4)} EUR</small></div>
-            <span className={`state-badge state-${job.status.toLowerCase()}`}>{label[job.status]}</span>
+            <div className="stage-copy"><strong>{jobPhaseLabel(job.currentPhase, job.redoScope)}</strong><small>{job.attemptCount} intento{job.attemptCount === 1 ? '' : 's'} · {formatCost(job.actualCost)}</small></div>
+            <span className={`state-badge state-${job.status.toLowerCase()}`}>{jobStatusLabel(job.status, job.redoScope)}</span>
             {['FAILED', 'REDO_REQUIRED'].includes(job.status) && <button className="text-button" disabled={busy} onClick={() => { void retry(job.id) }}>Reintentar</button>}
             {job.lastFailure && <small className="muted">{job.lastFailure}</small>}
           </article>)}

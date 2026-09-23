@@ -3,9 +3,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { importBatchFile } from '../src/renderer/batch-file-import'
 import {
   hiddenTechnicalViews,
+  formatBatchCreatedAt,
   jobPhaseLabel,
   jobStatusLabel,
   primaryNavigationLabels,
+  smokeFixtureLabel,
+  singleJobStatusLabel,
+  sortBatchesByCreatedAt,
   userFacingJobFailure,
 } from '../src/renderer/factory-presentation'
 
@@ -67,5 +71,22 @@ describe('simplified factory UI boundaries', () => {
       .toBe('No se pudo rehacer Adventure. El modo de ejecución disponible no está autorizado.')
     const app = await readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8')
     expect(app).toContain('El destino volverá a revisión cuando termine.')
+  })
+
+  it('sorts production batches by durable creation time and presents smoke and single-job context', async () => {
+    const sorted = sortBatchesByCreatedAt([{ id: 'old', createdAt: new Date(2026, 8, 23, 22, 40) }, { id: 'new', createdAt: new Date(2026, 8, 23, 23, 41) }])
+    expect(sorted.map(batch => batch.id)).toEqual(['new', 'old'])
+    expect(formatBatchCreatedAt(new Date(2026, 8, 23, 23, 41))).toBe('23/09/2026 · 23:41')
+    expect(singleJobStatusLabel([{ status: 'PROCESSING', redoScope: 'ADVENTURE' }] as never)).toBe('Rehaciendo Adventure')
+    expect(singleJobStatusLabel([{ status: 'READY_FOR_REVIEW' }, { status: 'QUEUED' }] as never)).toBeNull()
+    expect(smokeFixtureLabel({ smokeFixture: true })).toBe('Prueba local')
+    expect(smokeFixtureLabel({ smokeFixture: false })).toBeNull()
+    const panel = await readFile(new URL('../src/renderer/DestinationBatchPanel.tsx', import.meta.url), 'utf8')
+    expect(panel).toContain('smokeFixtureLabel(batch)')
+    expect(panel).toContain('formatBatchCreatedAt(batch.createdAt)')
+    expect(panel).toContain('onOpenBatch(batch.id)')
+    const operations = await readFile(new URL('../src/renderer/BatchOperationViews.tsx', import.meta.url), 'utf8')
+    expect(operations).toContain('onOpenJob(job)')
+    expect(operations).toContain('onOpenReview')
   })
 })

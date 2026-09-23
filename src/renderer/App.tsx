@@ -256,10 +256,8 @@ export function App(): JSX.Element {
         <nav aria-label="Navegación principal">
           <button className={view === 'library' ? 'nav-active' : ''} onClick={() => go('library')}>Biblioteca</button>
           <button className={view === 'new' ? 'nav-active' : ''} onClick={() => go('new')}>Nueva investigación</button>
-          <button className={view === 'contributions' ? 'nav-active' : ''} onClick={() => go('contributions')}>Contribuciones</button>
-          <button className={view === 'batches' ? 'nav-active' : ''} onClick={() => go('batches')}>Lotes de destinos</button>
+          <button className={view === 'batches' ? 'nav-active' : ''} onClick={() => go('batches')}>Producción</button>
           <button className={view === 'providers' ? 'nav-active' : ''} onClick={() => go('providers')}>Proveedores</button>
-          <button className={view === 'real-config' ? 'nav-active' : ''} onClick={() => go('real-config')}>Pipeline real</button>
         </nav>
         <div className="environment-card">
           <span className={`connection-dot ${status?.connected ? 'online' : ''}`} aria-hidden="true" />
@@ -278,7 +276,6 @@ export function App(): JSX.Element {
           </div>
           <div className="topbar-actions">
             <span className="safety-pill">Local · Manual · Simulado</span>
-            <button className="button primary" onClick={() => go('new')} disabled={!status?.connected || busy}>Nueva investigación</button>
           </div>
         </header>
 

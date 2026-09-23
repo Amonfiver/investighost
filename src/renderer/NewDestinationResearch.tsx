@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { DestinationBatchImportResult } from '@shared/factory-batch-contracts'
-import { validateBatchFile } from './factory-presentation'
+import { importBatchFile } from './batch-file-import'
 
 /** The single-destination entry point intentionally creates a batch of one. */
 export function NewDestinationResearch({ onCreated }: { onCreated: (batchId: string) => void }): JSX.Element {
@@ -24,7 +24,7 @@ export function NewDestinationResearch({ onCreated }: { onCreated: (batchId: str
       onCreated(result.batch.id)
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) } finally { setBusy(false) }
   }
-  const importJson = async (file: File | undefined) => { if (!file) return; const invalid = validateBatchFile(file); if (invalid) { setError(invalid); return } setBusy(true); setError(null); try { setImported(await window.electronAPI.importDestinationBatchJson(await file.text())) } catch { setError('Este archivo no contiene un lote compatible.') } finally { setBusy(false) } }
+  const importJson = async (file: File | undefined) => { if (!file) return; setBusy(true); setError(null); try { const outcome = await importBatchFile(file, window.electronAPI.importDestinationBatchJson); if (outcome.ok) setImported(outcome.result); else setError(outcome.error) } finally { setBusy(false) } }
   const startImported = async () => { if (!imported) return; setBusy(true); try { await window.electronAPI.startDestinationBatch(imported.batch.id); onCreated(imported.batch.id) } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) } finally { setBusy(false) } }
   return <section className="new-layout" aria-label="Nueva investigación de destino">
     <div className="section-heading"><div><span className="card-kicker">INVESTIGHOST</span><h2>¿Qué quieres investigar?</h2></div></div>

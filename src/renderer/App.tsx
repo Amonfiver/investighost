@@ -71,6 +71,7 @@ import { DestinationBatchPanel } from './DestinationBatchPanel'
 import { BatchReviewDesk } from './BatchReviewDesk'
 import { NewDestinationResearch } from './NewDestinationResearch'
 import { BatchDetail, BatchJobDetail } from './BatchOperationViews'
+import { primaryNavigationLabels } from './factory-presentation'
 
 type View = 'library' | 'new' | 'detail' | 'contributions' | 'batches' | 'batch-detail' | 'batch-job' | 'batch-review' | 'providers' | 'real-config'
 type DetailTab = 'overview' | 'sources' | 'facts' | 'places' | 'activities' | 'drafts' | 'quality' | 'history'
@@ -254,10 +255,10 @@ export function App(): JSX.Element {
           <div><strong>Investighost</strong><small>Pipeline Manual</small></div>
         </div>
         <nav aria-label="Navegación principal">
-          <button className={view === 'library' ? 'nav-active' : ''} onClick={() => go('library')}>Biblioteca</button>
-          <button className={view === 'new' ? 'nav-active' : ''} onClick={() => go('new')}>Nueva investigación</button>
-          <button className={view === 'batches' ? 'nav-active' : ''} onClick={() => go('batches')}>Producción</button>
-          <button className={view === 'providers' ? 'nav-active' : ''} onClick={() => go('providers')}>Proveedores</button>
+          <button className={view === 'library' ? 'nav-active' : ''} onClick={() => go('library')}>{primaryNavigationLabels.library}</button>
+          <button className={view === 'new' ? 'nav-active' : ''} onClick={() => go('new')}>{primaryNavigationLabels.new}</button>
+          <button className={view === 'batches' ? 'nav-active' : ''} onClick={() => go('batches')}>{primaryNavigationLabels.batches}</button>
+          <button className={view === 'providers' ? 'nav-active' : ''} onClick={() => go('providers')}>{primaryNavigationLabels.providers}</button>
         </nav>
         <div className="environment-card">
           <span className={`connection-dot ${status?.connected ? 'online' : ''}`} aria-hidden="true" />

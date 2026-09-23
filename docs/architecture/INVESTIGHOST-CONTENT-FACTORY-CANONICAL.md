@@ -161,6 +161,17 @@ job abre su detalle operativo y los jobs `READY_FOR_REVIEW` enlazan a la mesa
 humana sin efectos de ejecución. `BATCH_NAVIGATION_UI = DONE` y
 `UNIFIED_NEW_INVESTIGATION_ENTRY = DONE`.
 
+085B simplifica esa superficie sin cambiar el dominio: el menú diario muestra
+Nueva investigación, Producción, Biblioteca y Proveedores; Contribuciones y
+Pipeline real siguen disponibles como rutas internas, pero quedan fuera de la
+navegación principal. Nueva investigación denomina el archivo como lote,
+mantiene los presupuestos en opciones avanzadas y restringe el selector a
+`.json`. La frontera de importación conserva la validación durable de JSON y
+esquema antes de cualquier escritura, y muestra errores de usuario sin crear
+lotes parciales. Estados, fases y costes se traducen sólo en presentación.
+`USER_FACING_NAVIGATION_V1 = DONE`, `USER_FRIENDLY_STATUS_LABELS = DONE` y
+`STRICT_BATCH_FILE_VALIDATION = DONE`.
+
 ### Visuales
 
 - `src/shared/destination-visual-media-contract.ts`: assets, packages, roles, modos y rights status.

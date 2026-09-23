@@ -67,6 +67,13 @@ describe('DestinationBatchService', () => {
       .rejects.toMatchObject({ code: 'MAX_DESTINATIONS' } satisfies Partial<DestinationBatchImportError>)
   })
 
+  it('rejects an invalid import envelope before creating a durable batch', async () => {
+    const { service } = setup()
+    await expect(service.importJson(JSON.stringify({ batch: { name: 'sin destinos' } })))
+      .rejects.toMatchObject({ code: 'INVALID_ENVELOPE' } satisfies Partial<DestinationBatchImportError>)
+    await expect(service.list()).resolves.toEqual([])
+  })
+
   it('replays the same normalized import without duplicating jobs, even if row order changes', async () => {
     const { service, repository } = setup()
     const first = await service.importJson(fixture())

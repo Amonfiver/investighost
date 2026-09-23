@@ -123,6 +123,7 @@ export function App(): JSX.Element {
   const [batchReviewJobId, setBatchReviewJobId] = useState<string | null>(null)
   const [batchDetailId, setBatchDetailId] = useState<string | null>(null)
   const [batchJob, setBatchJob] = useState<import('@shared/factory-batch-contracts').DestinationBatchJob | null>(null)
+  const [factoryNotice, setFactoryNotice] = useState<string | null>(null)
 
   const loadRealLibrary = useCallback(async () => {
     setRealLibraryLoading(true)
@@ -282,6 +283,7 @@ export function App(): JSX.Element {
 
         <main className="content" aria-busy={busy || (view === 'library' && libraryNavigation.loading)}>
           {error && <div className="alert error" role="alert"><strong>No se pudo completar la operación.</strong><span>{error}</span></div>}
+          {factoryNotice && <div className="alert success" role="status"><span>{factoryNotice}</span><button className="text-button" onClick={() => setFactoryNotice(null)}>Cerrar</button></div>}
           {!status?.connected && status?.error && (
             <div className="alert warning" role="status">
               <strong>Supabase local no está disponible.</strong>
@@ -324,7 +326,12 @@ export function App(): JSX.Element {
           {view === 'batches' && <DestinationBatchPanel onOpenBatch={batchId => { setBatchDetailId(batchId); go('batch-detail') }} />}
           {view === 'batch-detail' && batchDetailId && <BatchDetail batchId={batchDetailId} onBack={() => go('batches')} onOpenJob={job => { setBatchJob(job); go('batch-job') }} />}
           {view === 'batch-job' && batchJob && <BatchJobDetail job={batchJob} onBack={() => go('batch-detail')} onOpenReview={() => { setBatchReviewJobId(batchJob.id); go('batch-review') }} />}
-          {view === 'batch-review' && batchReviewJobId && <BatchReviewDesk jobId={batchReviewJobId} onBack={() => go('batches')} />}
+          {view === 'batch-review' && batchReviewJobId && <BatchReviewDesk jobId={batchReviewJobId} onBack={() => go('batches')} onRedoAccepted={(job, scope) => {
+            setFactoryNotice(redoAcceptedMessage(scope))
+            setBatchJob(job)
+            setBatchDetailId(job.batchId)
+            go('batch-detail')
+          }} />}
           {view === 'providers' && <ProviderCenterPanel />}
           {view === 'real-config' && (
             <RealProfileSettingsPanel
@@ -336,6 +343,12 @@ export function App(): JSX.Element {
       </div>
     </div>
   )
+}
+
+function redoAcceptedMessage(scope: import('@shared/factory-batch-contracts').DestinationBatchRedoScope): string {
+  const profile = ({ STUDENT: 'Student', ADVENTURE: 'Adventure', VISUALS: 'Imágenes', EDITORIAL: 'contenido editorial' } as const)[scope]
+  const preserved = ({ STUDENT: 'investigación, análisis, Adventure e imágenes', ADVENTURE: 'investigación, análisis, Student e imágenes', VISUALS: 'investigación, análisis, Student y Adventure', EDITORIAL: 'investigación, análisis e imágenes' } as const)[scope]
+  return `${profile} se volverá a crear. Conservamos ${preserved}. El destino volverá a revisión cuando termine.`
 }
 
 export function Library({ navigation, realEntries, realLoading, realError, focusedRealEntryId, connected, busy, onOpen, onNew, onFirst, onPrevious, onRefresh, onNext }: {

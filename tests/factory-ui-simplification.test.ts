@@ -6,6 +6,7 @@ import {
   jobPhaseLabel,
   jobStatusLabel,
   primaryNavigationLabels,
+  userFacingJobFailure,
 } from '../src/renderer/factory-presentation'
 
 const batchFile = (name: string, type: string, content: string) => ({ name, type, text: async () => content }) as File
@@ -57,5 +58,14 @@ describe('simplified factory UI boundaries', () => {
     expect(desk).toContain("EDITORIAL: 'Contenido editorial'")
     expect(desk).toContain('Confirmar rehacer')
     expect(desk).toContain('Cancelar')
+  })
+
+  it('gives a human redo status and hides authorization internals from the primary failure message', async () => {
+    expect(jobStatusLabel('REDO_REQUIRED', 'ADVENTURE')).toBe('Rehaciendo Adventure')
+    expect(jobPhaseLabel('AUTO_REVIEW', 'ADVENTURE')).toBe('Rehaciendo Adventure')
+    expect(userFacingJobFailure('BATCH_PROVIDER_AUTHORIZATION_REQUIRED: falta la capability', 'ADVENTURE'))
+      .toBe('No se pudo rehacer Adventure. El modo de ejecución disponible no está autorizado.')
+    const app = await readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8')
+    expect(app).toContain('El destino volverá a revisión cuando termine.')
   })
 })

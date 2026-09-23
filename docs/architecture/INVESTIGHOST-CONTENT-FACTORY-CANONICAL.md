@@ -197,6 +197,23 @@ pueden tumbar la proyección aprobada. Los metadatos nulos que son legítimos en
 el read model de versionado para una línea de Library, y
 `PREAPPROVAL = PRODUCTION_AND_REVIEW_DESK`.
 
+085C-R2 incorpora una ayuda exclusiva de desarrollo para el smoke humano de
+redo. Sólo una aplicación Electron no empaquetada, arrancada con
+`INVESTIGHOST_FACTORY_SMOKE_MODE=true`, puede usar doubles deterministas y
+sin red; además, el lote debe tener la marca durable interna `smoke_fixture`.
+La composición normal continúa requiriendo la capability batch y no puede
+usar ese camino para un job sin marca. El read model de revisión expone la
+última operación de redo y su motivo para trazabilidad, mientras Producción
+presenta feedback y fases humanas de rehacer. `SMOKE_MODE !=
+PRODUCTION_AUTHORIZATION`.
+
+Para un smoke local se siembra un fixture marcado con
+`RUN_SUPABASE_INTEGRATION=true` y `KEEP_FACTORY_REDO_SMOKE=true` ejecutando el
+caso `selectively redoes 'Student'` del E2E durable; después se arranca la
+aplicación de desarrollo con `INVESTIGHOST_FACTORY_SMOKE_MODE=true`. Ninguna
+de esas variables se usa en una aplicación empaquetada ni habilita un lote
+normal.
+
 ### Visuales
 
 - `src/shared/destination-visual-media-contract.ts`: assets, packages, roles, modos y rights status.

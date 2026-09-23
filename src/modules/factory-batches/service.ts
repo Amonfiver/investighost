@@ -84,7 +84,7 @@ export class DestinationBatchService {
       existingItems: summary.existing, reusableItems: summary.reusable, ambiguousItems: summary.ambiguous,
       duplicateItems: summary.duplicateInput, invalidItems: summary.invalid, failedItems: 0,
       maxCostPerDestination: input.batch.maxCostPerDestination ?? null,
-      maxCostPerBatch: input.batch.maxCostPerBatch ?? null, importedAt: now, createdAt: now, updatedAt: now,
+      maxCostPerBatch: input.batch.maxCostPerBatch ?? null, smokeFixture: false, importedAt: now, createdAt: now, updatedAt: now,
     })
     const created = await this.repository.createBatch(batch)
     if (created.id !== batch.id) return this.result(created, true)

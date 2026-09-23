@@ -15,7 +15,7 @@ export class MemoryDestinationBatchRepository implements DestinationBatchReposit
   readonly jobs = new Map<string, DestinationBatchJob>()
   readonly issues = new Map<string, DestinationBatchIssue>()
   readonly existing = new Map<string, ExistingDestinationMatch>()
-  readonly redoOperations = new Map<string, { jobId: string; scope: DestinationBatchRedoScope; status: 'REQUESTED' | 'COMPLETED' | 'FAILED'; previousArtifactRefs: Record<string, string> }>()
+  readonly redoOperations = new Map<string, { jobId: string; scope: DestinationBatchRedoScope; reason?: string; requestedBy: string; requestedAt: Date; status: 'REQUESTED' | 'COMPLETED' | 'FAILED'; completedAt?: Date; previousArtifactRefs: Record<string, string> }>()
 
   seedExisting(identity: string, match: ExistingDestinationMatch): void {
     this.existing.set(identity, structuredClone(match))
@@ -49,12 +49,14 @@ export class MemoryDestinationBatchRepository implements DestinationBatchReposit
   async readJobForReview(jobId: string) {
     const job = await this.getJob(jobId)
     if (!job) return null
+    const redo = [...this.redoOperations.entries()].filter(([, operation]) => operation.jobId === job.id).at(-1)
     return DestinationBatchJobReviewReadModelSchema.parse({
       jobId: job.id, batchId: job.batchId,
       destination: { canonicalDestinationId: job.canonicalDestinationId ?? null, name: job.originalName, country: job.country, region: job.region ?? null },
       status: job.status, phase: job.currentPhase, student: null, adventure: null,
       visualPackageId: job.artifactRefs.VISUALS ?? null, visualPackage: null, reviewArtifactId: job.artifactRefs.AUTO_REVIEW ?? null,
       reviewSummary: null, warnings: [], cost: job.actualCost, attempts: job.attemptCount, lastError: job.lastFailure ?? null,
+      redo: redo ? { operationId: redo[0], scope: redo[1].scope, reason: redo[1].reason ?? null, requestedBy: redo[1].requestedBy, requestedAt: redo[1].requestedAt, status: redo[1].status, completedAt: redo[1].completedAt ?? null } : null,
     })
   }
 
@@ -133,7 +135,7 @@ export class MemoryDestinationBatchRepository implements DestinationBatchReposit
     if (job.status === 'REDO_REQUIRED' || job.status === 'PROCESSING') return structuredClone(job)
     if (job.status !== 'READY_FOR_REVIEW') throw new Error('BATCH_REDO_NOT_ALLOWED')
     const operationId = crypto.randomUUID()
-    this.redoOperations.set(operationId, { jobId: job.id, scope: input.scope, status: 'REQUESTED', previousArtifactRefs: structuredClone(job.artifactRefs) })
+    this.redoOperations.set(operationId, { jobId: job.id, scope: input.scope, reason: input.reason, requestedBy: input.requestedBy, requestedAt: input.now, status: 'REQUESTED', previousArtifactRefs: structuredClone(job.artifactRefs) })
     const refs = { ...job.artifactRefs }
     for (const key of invalidatedRefs(input.scope)) delete refs[key]
     const next = DestinationBatchJobSchema.parse({ ...job, status: 'REDO_REQUIRED', currentPhase: firstPhase(input.scope), completedPhases: retainedPhases(input.scope), artifactRefs: refs, retryable: true, redoOperationId: operationId, redoScope: input.scope, lastFailure: undefined, updatedAt: input.now })
@@ -144,7 +146,7 @@ export class MemoryDestinationBatchRepository implements DestinationBatchReposit
   async completeRedo(operationId: string, outcome: 'COMPLETED' | 'FAILED', now: Date): Promise<void> {
     void now
     const operation = this.redoOperations.get(operationId)
-    if (operation) operation.status = outcome
+    if (operation) { operation.status = outcome; operation.completedAt = now }
   }
 
   async approveReadyJob(jobId: string, now: Date): Promise<DestinationBatchJob> {

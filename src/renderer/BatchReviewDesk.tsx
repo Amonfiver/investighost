@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { DestinationBatchJobReviewReadModel } from '@shared/factory-batch-contracts'
+import type { DestinationBatchJob, DestinationBatchJobReviewReadModel } from '@shared/factory-batch-contracts'
 import type { DestinationBatchRedoScope } from '@shared/factory-batch-contracts'
 
 type Tab = 'summary' | 'student' | 'adventure' | 'visuals' | 'traceability'
 
-export function BatchReviewDesk({ jobId, onBack }: { jobId: string; onBack: () => void }): JSX.Element {
+export function BatchReviewDesk({ jobId, onBack, onRedoAccepted }: { jobId: string; onBack: () => void; onRedoAccepted: (job: DestinationBatchJob, scope: DestinationBatchRedoScope) => void }): JSX.Element {
   const [review, setReview] = useState<DestinationBatchJobReviewReadModel | null>(null)
   const [tab, setTab] = useState<Tab>('summary')
   const [busy, setBusy] = useState(false)
@@ -17,11 +17,11 @@ export function BatchReviewDesk({ jobId, onBack }: { jobId: string; onBack: () =
   useEffect(() => { void load() }, [jobId])
   const canApprove = Boolean(review?.status === 'READY_FOR_REVIEW' && review.student && review.adventure && review.visualPackageId && review.reviewArtifactId)
   const approve = async () => { setBusy(true); setError(null); try { await window.electronAPI.approveDestinationBatchJob(jobId); await load() } catch (reason) { setError(errorText(reason)) } finally { setBusy(false) } }
-  const requestRedo = async () => { if (!redoScope) return; setBusy(true); setError(null); try { await window.electronAPI.requestDestinationBatchRedo({ jobId, scope: redoScope, ...(redoReason.trim() ? { reason: redoReason.trim() } : {}) }); onBack() } catch (reason) { setError(errorText(reason)) } finally { setBusy(false) } }
+  const requestRedo = async () => { if (!redoScope) return; setBusy(true); setError(null); try { const job = await window.electronAPI.requestDestinationBatchRedo({ jobId, scope: redoScope, ...(redoReason.trim() ? { reason: redoReason.trim() } : {}) }); onRedoAccepted(job, redoScope) } catch (reason) { setError(errorText(reason)) } finally { setBusy(false) } }
   const adventureVisuals = useMemo(() => selectedVisuals(review, 'adventure'), [review])
   return <section className="review-desk" aria-label="Mesa de revisión humana">
     <button className="back-link" onClick={onBack}>← Volver al lote</button>
-    {error && <div className="alert error"><strong>No se pudo abrir la revisión.</strong><span>{error}</span></div>}
+    {error && <div className="alert error"><strong>No se pudo solicitar el rehacer.</strong><span>{error}</span></div>}
     {!review ? <div className="empty-card"><span className="spinner" /><p>{busy ? 'Cargando revisión durable…' : 'No hay datos de revisión.'}</p></div> : <>
       <header className="review-desk-header"><div><span className="card-kicker">HUMAN REVIEW DESK</span><h2>{review.destination.name}</h2><p>{review.destination.country}{review.destination.region ? ` · ${review.destination.region}` : ''} · Job {review.jobId}</p></div><div><span className={`state-badge state-${review.status.toLowerCase()}`}>{label(review.status)}</span><strong>{formatMoney(review.cost)}</strong></div></header>
       <div className="review-tabs" role="tablist">{([['summary', 'Resumen'], ['student', 'Student'], ['adventure', 'Adventure'], ['visuals', 'Visuales'], ['traceability', 'Trazabilidad']] as const).map(([key, text]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{text}</button>)}</div>
@@ -34,7 +34,7 @@ export function BatchReviewDesk({ jobId, onBack }: { jobId: string; onBack: () =
       {tab === 'student' && <DocumentReview title="Student · explicación editorial" document={review.student} />}
       {tab === 'adventure' && <section className="adventure-review"><div className="section-heading"><div><span className="card-kicker">VISUAL-FIRST</span><h3>{review.adventure?.title ?? 'Adventure pendiente'}</h3><p>Hero, highlights y galería abren la experiencia; el copy acompaña la selección.</p></div></div><VisualStrip title="Hero" items={adventureVisuals.hero} /><VisualStrip title="Highlights" items={adventureVisuals.highlight} /><VisualStrip title="Galería" items={adventureVisuals.gallery} /><DocumentReview title="Copy de Adventure" document={review.adventure} /></section>}
       {tab === 'visuals' && <section className="visual-review"><div className="section-heading"><div><span className="card-kicker">PAQUETE VISUAL</span><h3>{review.visualPackage?.state ?? 'Sin paquete'}</h3><p>Proveedor, origen y derechos se muestran por asset; la UI no depende de Wikimedia.</p></div></div><VisualStrip title="Hero" items={selectedVisuals(review, 'adventure').hero} /><VisualStrip title="Highlights" items={selectedVisuals(review, 'adventure').highlight} /><VisualStrip title="Galería" items={selectedVisuals(review, 'adventure').gallery} /></section>}
-      {tab === 'traceability' && <section className="traceability-card"><dl><div><dt>Lote</dt><dd>{review.batchId}</dd></div><div><dt>Job</dt><dd>{review.jobId}</dd></div><div><dt>Student revision</dt><dd>{review.student?.revisionId ?? '—'}</dd></div><div><dt>Adventure revision</dt><dd>{review.adventure?.revisionId ?? '—'}</dd></div><div><dt>Visual package</dt><dd>{review.visualPackageId ?? '—'}</dd></div><div><dt>Review artifact</dt><dd>{review.reviewArtifactId ?? '—'}</dd></div></dl></section>}
+      {tab === 'traceability' && <section className="traceability-card"><dl><div><dt>Lote</dt><dd>{review.batchId}</dd></div><div><dt>Job</dt><dd>{review.jobId}</dd></div><div><dt>Student revision</dt><dd>{review.student?.revisionId ?? '—'}</dd></div><div><dt>Adventure revision</dt><dd>{review.adventure?.revisionId ?? '—'}</dd></div><div><dt>Visual package</dt><dd>{review.visualPackageId ?? '—'}</dd></div><div><dt>Review artifact</dt><dd>{review.reviewArtifactId ?? '—'}</dd></div>{review.redo && <><div><dt>Último rehacer</dt><dd>{redoLabel(review.redo.scope)} · {review.redo.status}</dd></div><div><dt>Motivo</dt><dd>{review.redo.reason ?? 'No indicado'}</dd></div></>}</dl></section>}
     </>}
   </section>
 }

@@ -78,6 +78,8 @@ export const DestinationBatchSchema = z.object({
   failedItems: z.number().int().nonnegative(),
   maxCostPerDestination: z.number().nonnegative().nullable(),
   maxCostPerBatch: z.number().nonnegative().nullable(),
+  /** Set only by the local E2E seed; never inferred from a visible name. */
+  smokeFixture: z.boolean().optional(),
   importedAt: TimestampSchema,
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
@@ -147,6 +149,15 @@ export const DestinationBatchJobReviewReadModelSchema = z.object({
   cost: z.number().nonnegative(),
   attempts: z.number().int().nonnegative(),
   lastError: z.string().max(2000).nullable(),
+  redo: z.object({
+    operationId: IdSchema,
+    scope: DestinationBatchRedoScopeSchema,
+    reason: z.string().max(1000).nullable(),
+    requestedBy: z.string().min(1).max(160),
+    requestedAt: TimestampSchema,
+    status: z.enum(['REQUESTED', 'COMPLETED', 'FAILED']),
+    completedAt: TimestampSchema.nullable(),
+  }).nullable(),
 })
 
 export const DestinationBatchImportResultSchema = z.object({

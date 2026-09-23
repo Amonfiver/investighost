@@ -6,6 +6,7 @@ import {
   EditorialBatchWorker,
   DestinationBatchHumanReviewService,
   DestinationBatchRedoService,
+  createFactoryBatchPhasePort,
   ProductionBatchEditorialPhasePort,
   SupabaseDestinationBatchRepository,
 } from '@modules/factory-batches'
@@ -153,8 +154,13 @@ async function importGranadaFixture(
     batch: { name: `084J Granada ${label} ${randomUUID()}`, maxCostPerDestination: budgets.maxCostPerDestination ?? 0.2, maxCostPerBatch: budgets.maxCostPerBatch ?? 1 },
     destinations: names.map(name => ({ name, country: 'ES', region: 'Andalucía' })),
   }))
+  if (process.env.KEEP_FACTORY_REDO_SMOKE === 'true') {
+    const { error: markerError } = await client.from('editorial_destination_batches')
+      .update({ smoke_fixture: true }).eq('id', imported.batch.id)
+    expect(markerError).toBeNull()
+  }
   for (const [index, job] of imported.jobs.entries()) created.push({ batchId: imported.batch.id, jobId: job.id, destinationId: destinations[index]!.id })
-  return { repository, service, batch: imported.batch, jobs: imported.jobs, destinations }
+  return { repository, service, batch: (await repository.getBatch(imported.batch.id))!, jobs: imported.jobs, destinations }
 }
 
 function productionPort(
@@ -288,8 +294,8 @@ integration('durable Supabase-local batch worker E2E', () => {
     else expect(completed.job!.artifactRefs.VISUALS).toBe(before.VISUALS)
     expect(completed.job!.artifactRefs.AUTO_REVIEW).not.toBe(before.AUTO_REVIEW)
     expect([research.calls, intelligence.analysisCalls, intelligence.draftsByProfile.get('student'), intelligence.draftsByProfile.get('adventure'), intelligence.reviewCalls]).toEqual([1, 1, studentDrafts, adventureDrafts, 2])
-    const { data: operations } = await client.from('editorial_destination_batch_redo_operations').select('scope,status,previous_artifact_refs').eq('job_id', jobs[0]!.id)
-    expect(operations).toEqual([expect.objectContaining({ scope, status: 'COMPLETED', previous_artifact_refs: expect.objectContaining(before) })])
+    const { data: operations } = await client.from('editorial_destination_batch_redo_operations').select('scope,status,reason,previous_artifact_refs').eq('job_id', jobs[0]!.id)
+    expect(operations).toEqual([expect.objectContaining({ scope, status: 'COMPLETED', reason: 'ajustar explicación', previous_artifact_refs: expect.objectContaining(before) })])
     const { data: execution, error: executionError } = await client.from('real_editorial_executions').select('id').eq('owner_id', jobs[0]!.id).single()
     expect(executionError).toBeNull()
     const { data: preapprovalRows, error: preapprovalError } = await client.from('real_editorial_library_entries').select('id')
@@ -302,6 +308,31 @@ integration('durable Supabase-local batch worker E2E', () => {
     if (scope === 'STUDENT' && process.env.KEEP_FACTORY_REDO_SMOKE === 'true') {
       console.info(`[factory redo smoke] batch=${batch.id} job=${jobs[0]!.id} destination=${destinationName}`)
     }
+  }, 20_000)
+
+  it('runs an explicitly marked local smoke redo with deterministic boundaries while normal jobs remain fail-closed', async () => {
+    const { client } = createLocalSupabaseClientFromEnv()
+    const { repository, batch, jobs } = await importGranadaFixture(client, 'manual-smoke', [`Granada Smoke ${randomUUID().slice(0, 8)}`])
+    const research = new ResearchDouble()
+    const intelligence = new IntelligenceDouble()
+    await new EditorialBatchWorker(repository, productionPort(client, research, intelligence), { workerId: '085cr2-seed' }).runJob(jobs[0]!.id)
+    const { error: markerError } = await client.from('editorial_destination_batches').update({ smoke_fixture: true }).eq('id', batch.id)
+    expect(markerError).toBeNull()
+    const marked = await repository.getBatch(batch.id)
+    if (!marked) throw new Error('SMOKE_BATCH_MISSING')
+    const smokeEnvironment = { INVESTIGHOST_FACTORY_SMOKE_MODE: 'true' }
+    const smokePort = createFactoryBatchPhasePort({ client, providerCenter: async () => providerCenterFixture(), environment: smokeEnvironment, isDevelopment: true })
+    await expect(smokePort.run({ batch: { ...marked, smokeFixture: false }, job: jobs[0]!, phase: 'RESEARCH' })).rejects.toThrow('BATCH_PROVIDER_AUTHORIZATION_REQUIRED')
+    const before = (await repository.getJob(jobs[0]!.id))!.artifactRefs
+    await new DestinationBatchRedoService(repository).request({ jobId: jobs[0]!.id, scope: 'ADVENTURE', reason: 'Quiero una versión más visual y menos genérica.' })
+    const result = await new EditorialBatchWorker(repository, smokePort, { workerId: '085cr2-smoke' }).runJob(jobs[0]!.id)
+    expect(result.job).toMatchObject({ status: 'READY_FOR_REVIEW' })
+    expect(result.job!.artifactRefs.STUDENT).toBe(before.STUDENT)
+    expect(result.job!.artifactRefs.VISUALS).toBe(before.VISUALS)
+    expect(result.job!.artifactRefs.ADVENTURE).not.toBe(before.ADVENTURE)
+    expect(result.job!.artifactRefs.AUTO_REVIEW).not.toBe(before.AUTO_REVIEW)
+    const review = await repository.readJobForReview(jobs[0]!.id)
+    expect(review?.redo).toMatchObject({ scope: 'ADVENTURE', status: 'COMPLETED', reason: 'Quiero una versión más visual y menos genérica.' })
   }, 20_000)
 
   it('retries Adventure from durable state without repeating research, analysis, Student or Library drafts', async () => {

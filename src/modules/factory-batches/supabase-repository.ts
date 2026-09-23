@@ -76,12 +76,23 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
       destination: { canonicalDestinationId: job.canonicalDestinationId ?? null, name: job.originalName, country: job.country, region: job.region ?? null },
       status: job.status, phase: job.currentPhase, student: null, adventure: null,
       visualPackageId: job.artifactRefs.VISUALS ?? null, visualPackage: null, reviewArtifactId: job.artifactRefs.AUTO_REVIEW ?? null,
-      reviewSummary: null, warnings: [], cost: job.actualCost, attempts: job.attemptCount, lastError: job.lastFailure ?? null,
+      reviewSummary: null, warnings: [], cost: job.actualCost, attempts: job.attemptCount, lastError: job.lastFailure ?? null, redo: null,
     })
+    const { data: redoRow, error: redoError } = await this.client.from('editorial_destination_batch_redo_operations')
+      .select('id,scope,reason,requested_by,requested_at,status,completed_at').eq('job_id', job.id)
+      .order('requested_at', { ascending: false }).limit(1).maybeSingle()
+    assertNoError(redoError, 'READ_REVIEW_REDO')
+    const redo = redoRow ? {
+      operationId: String((redoRow as Row).id), scope: String((redoRow as Row).scope),
+      reason: (redoRow as Row).reason === null ? null : String((redoRow as Row).reason),
+      requestedBy: String((redoRow as Row).requested_by), requestedAt: new Date(String((redoRow as Row).requested_at)),
+      status: String((redoRow as Row).status), completedAt: (redoRow as Row).completed_at === null ? null : new Date(String((redoRow as Row).completed_at)),
+    } : null
+    const withRedo = { ...empty, redo }
     const { data: execution, error: executionError } = await this.client.from('real_editorial_executions').select('id')
       .eq('owner_type', 'BATCH_JOB').eq('owner_id', job.id).maybeSingle()
     assertNoError(executionError, 'READ_REVIEW_EXECUTION')
-    if (!execution) return empty
+    if (!execution) return DestinationBatchJobReviewReadModelSchema.parse(withRedo)
     const revisionIds = [job.artifactRefs.STUDENT, job.artifactRefs.ADVENTURE].filter((id): id is string => Boolean(id))
     const { data: versions, error: versionError } = revisionIds.length === 0
       ? { data: [], error: null }
@@ -124,7 +135,7 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
       assertNoError(selectionsError, 'READ_REVIEW_VISUAL_SELECTIONS')
       if (packageRow) visualPackage = visualPackageFromRows(packageRow as Row, assets as Row[] ?? [], selections as Row[] ?? [])
     }
-    return DestinationBatchJobReviewReadModelSchema.parse({ ...empty, student: reference(job.artifactRefs.STUDENT), adventure: reference(job.artifactRefs.ADVENTURE), visualPackage, reviewSummary, warnings })
+    return DestinationBatchJobReviewReadModelSchema.parse({ ...withRedo, student: reference(job.artifactRefs.STUDENT), adventure: reference(job.artifactRefs.ADVENTURE), visualPackage, reviewSummary, warnings })
   }
 
   async updateJob(job: DestinationBatchJob): Promise<DestinationBatchJob> {
@@ -245,7 +256,7 @@ function batchToRow(batch: DestinationBatch): Row {
     new_items: batch.newItems, existing_items: batch.existingItems, reusable_items: batch.reusableItems,
     ambiguous_items: batch.ambiguousItems, duplicate_items: batch.duplicateItems, invalid_items: batch.invalidItems,
     failed_items: batch.failedItems, max_cost_per_destination: batch.maxCostPerDestination,
-    max_cost_per_batch: batch.maxCostPerBatch, imported_at: batch.importedAt.toISOString(),
+    max_cost_per_batch: batch.maxCostPerBatch, smoke_fixture: batch.smokeFixture ?? false, imported_at: batch.importedAt.toISOString(),
     created_at: batch.createdAt.toISOString(), updated_at: batch.updatedAt.toISOString(),
   }
 }
@@ -280,7 +291,7 @@ function batchFromRow(row: Row): DestinationBatch {
     newItems: Number(row.new_items), existingItems: Number(row.existing_items), reusableItems: Number(row.reusable_items),
     ambiguousItems: Number(row.ambiguous_items), duplicateItems: Number(row.duplicate_items), invalidItems: Number(row.invalid_items),
     failedItems: Number(row.failed_items), maxCostPerDestination: row.max_cost_per_destination === null ? null : Number(row.max_cost_per_destination),
-    maxCostPerBatch: row.max_cost_per_batch === null ? null : Number(row.max_cost_per_batch), importedAt: new Date(String(row.imported_at)),
+    maxCostPerBatch: row.max_cost_per_batch === null ? null : Number(row.max_cost_per_batch), smokeFixture: Boolean(row.smoke_fixture), importedAt: new Date(String(row.imported_at)),
     createdAt: new Date(String(row.created_at)), updatedAt: new Date(String(row.updated_at)),
   })
 }

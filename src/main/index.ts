@@ -112,7 +112,7 @@ import {
   getDestinationBatchWorkerRuntime,
   DestinationBatchHumanReviewService,
   DestinationBatchRedoService,
-  ProductionBatchEditorialPhasePort,
+  createFactoryBatchPhasePort,
   SupabaseDestinationBatchRepository,
 } from '@modules/factory-batches'
 import {
@@ -140,12 +140,12 @@ import {
 } from '@modules/library-versioning'
 import { readRealLlmRouting, withLiveProviderClients } from '@modules/real-pipeline'
 
-// Factory batches always compose the real owner-neutral port at main-process
-// startup. Provider credentials are still checked per phase and remain
-// fail-closed until the explicit batch capability is configured.
-configureDestinationBatchWorkerPhasePort(new ProductionBatchEditorialPhasePort({
+// The normal path remains fail-closed. The local smoke wrapper is selected
+// only for an unpackaged app, an explicit flag and a DB-marked fixture.
+configureDestinationBatchWorkerPhasePort(createFactoryBatchPhasePort({
   client: createLocalSupabaseClientFromEnv().client,
   providerCenter: getProviderCenterRuntime,
+  isDevelopment: isDev,
 }))
 
 ipcMain.handle('contributions:import-pending', async () => {

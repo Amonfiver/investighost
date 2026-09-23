@@ -70,8 +70,9 @@ import {
 import { DestinationBatchPanel } from './DestinationBatchPanel'
 import { BatchReviewDesk } from './BatchReviewDesk'
 import { NewDestinationResearch } from './NewDestinationResearch'
+import { BatchDetail, BatchJobDetail } from './BatchOperationViews'
 
-type View = 'library' | 'new' | 'detail' | 'contributions' | 'batches' | 'batch-review' | 'providers' | 'real-config'
+type View = 'library' | 'new' | 'detail' | 'contributions' | 'batches' | 'batch-detail' | 'batch-job' | 'batch-review' | 'providers' | 'real-config'
 type DetailTab = 'overview' | 'sources' | 'facts' | 'places' | 'activities' | 'drafts' | 'quality' | 'history'
 
 const stageLabels: Record<string, string> = {
@@ -119,6 +120,8 @@ export function App(): JSX.Element {
   const [realLibraryError, setRealLibraryError] = useState<string | null>(null)
   const [realLibraryFocusId, setRealLibraryFocusId] = useState<string | null>(null)
   const [batchReviewJobId, setBatchReviewJobId] = useState<string | null>(null)
+  const [batchDetailId, setBatchDetailId] = useState<string | null>(null)
+  const [batchJob, setBatchJob] = useState<import('@shared/factory-batch-contracts').DestinationBatchJob | null>(null)
 
   const loadRealLibrary = useCallback(async () => {
     setRealLibraryLoading(true)
@@ -320,7 +323,9 @@ export function App(): JSX.Element {
               />
           )}
           {view === 'contributions' && <ContributionImportPanel />}
-          {view === 'batches' && <DestinationBatchPanel onOpenReview={jobId => { setBatchReviewJobId(jobId); go('batch-review') }} />}
+          {view === 'batches' && <DestinationBatchPanel onOpenBatch={batchId => { setBatchDetailId(batchId); go('batch-detail') }} />}
+          {view === 'batch-detail' && batchDetailId && <BatchDetail batchId={batchDetailId} onBack={() => go('batches')} onOpenJob={job => { setBatchJob(job); go('batch-job') }} />}
+          {view === 'batch-job' && batchJob && <BatchJobDetail job={batchJob} onBack={() => go('batch-detail')} onOpenReview={() => { setBatchReviewJobId(batchJob.id); go('batch-review') }} />}
           {view === 'batch-review' && batchReviewJobId && <BatchReviewDesk jobId={batchReviewJobId} onBack={() => go('batches')} />}
           {view === 'providers' && <ProviderCenterPanel />}
           {view === 'real-config' && (
@@ -2663,6 +2668,8 @@ function viewTitle(view: View, selected: ResearchDestinationResult | null): stri
   if (view === 'contributions') return 'Contribuciones'
   if (view === 'batches') return 'Lotes de destinos'
   if (view === 'batch-review') return 'Revisión humana'
+  if (view === 'batch-detail') return 'Detalle de lote'
+  if (view === 'batch-job') return 'Detalle de destino'
   if (view === 'providers') return 'Centro de proveedores'
   if (view === 'real-config') return 'Pipeline real'
   return 'Biblioteca editorial'

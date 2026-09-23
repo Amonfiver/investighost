@@ -155,6 +155,12 @@ El redo selectivo sigue pendiente: el executor durable reutiliza por diseño el
 artifact de perfil existente y aún no expone una operación canónica de nueva
 revisión/regeneración por perfil.
 
+085A completó el flujo de navegación de producción: Nueva investigación reúne
+destino individual y lote JSON; Producción/Lotes abre detalle de lote, cada
+job abre su detalle operativo y los jobs `READY_FOR_REVIEW` enlazan a la mesa
+humana sin efectos de ejecución. `BATCH_NAVIGATION_UI = DONE` y
+`UNIFIED_NEW_INVESTIGATION_ENTRY = DONE`.
+
 ### Visuales
 
 - `src/shared/destination-visual-media-contract.ts`: assets, packages, roles, modos y rights status.

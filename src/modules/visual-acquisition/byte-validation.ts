@@ -23,11 +23,12 @@ export type VisualDownloadFailureCode =
   | 'DOWNLOAD_TIMEOUT' | 'DOWNLOAD_FAILED' | 'INVALID_CONTENT_TYPE' | 'INVALID_MAGIC_BYTES'
   | 'TOO_LARGE' | 'CORRUPT_IMAGE' | 'DIMENSIONS_TOO_SMALL' | 'REDIRECT_NOT_ALLOWED'
 
-type FetchLike = (input: string, init: RequestInit) => Promise<Pick<Response, 'ok' | 'status' | 'headers' | 'arrayBuffer' | 'redirected'>>
+/** Injectable only at the external byte-download boundary. */
+export type VisualDownloadFetch = (input: string, init: RequestInit) => Promise<Pick<Response, 'ok' | 'status' | 'headers' | 'arrayBuffer' | 'redirected'>>
 
 export class VisualCandidateDownloader {
   constructor(
-    private readonly fetchFn: FetchLike = fetch,
+    private readonly fetchFn: VisualDownloadFetch = fetch,
     private readonly now: () => Date = () => new Date(),
     private readonly timeoutMs = 15_000,
     private readonly maxBytes = VISUAL_MEDIA_MAX_BYTES,
@@ -38,7 +39,7 @@ export class VisualCandidateDownloader {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.timeoutMs)
     try {
-      let response: Awaited<ReturnType<FetchLike>>
+      let response: Awaited<ReturnType<VisualDownloadFetch>>
       try {
         response = await this.fetchFn(candidate.originalMediaUrl, {
           method: 'GET', signal: controller.signal, redirect: 'error', headers: { Accept: 'image/jpeg,image/png,image/webp' },

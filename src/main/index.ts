@@ -819,6 +819,7 @@ async function createCuencaCorrectedVersion(
   profile: 'adventure' | 'student',
 ) {
   const summary = await repository.getVersioningSummary(libraryEntryId)
+  if (!summary.currentApproved) throw new Error('CUENCA_CURRENT_APPROVED_REQUIRED')
   return drafts.createDraft({
     libraryEntryId,
     expectedHeadHash: summary.currentApproved.versionHash,

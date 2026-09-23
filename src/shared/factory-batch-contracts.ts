@@ -120,6 +120,30 @@ export const DestinationBatchReadModelSchema = z.object({
   countsByStatus: z.record(DestinationJobStatusSchema, z.number().int().nonnegative()),
 })
 
+/** Read-only handoff for the future Human Review Desk.  It deliberately
+ * exposes durable references, never an approval or delivery action. */
+export const DestinationBatchJobReviewReadModelSchema = z.object({
+  jobId: IdSchema,
+  batchId: IdSchema,
+  destination: z.object({
+    canonicalDestinationId: IdSchema.nullable(),
+    name: NonEmptyText.max(160),
+    country: NonEmptyText.max(120),
+    region: z.string().max(120).nullable(),
+  }),
+  status: DestinationJobStatusSchema,
+  phase: DestinationJobPhaseSchema,
+  student: z.object({ libraryEntryId: IdSchema, versionId: IdSchema, revisionId: IdSchema }).nullable(),
+  adventure: z.object({ libraryEntryId: IdSchema, versionId: IdSchema, revisionId: IdSchema }).nullable(),
+  visualPackageId: IdSchema.nullable(),
+  reviewArtifactId: IdSchema.nullable(),
+  reviewSummary: z.record(z.unknown()).nullable(),
+  warnings: z.array(z.string()),
+  cost: z.number().nonnegative(),
+  attempts: z.number().int().nonnegative(),
+  lastError: z.string().max(2000).nullable(),
+})
+
 export const DestinationBatchImportResultSchema = z.object({
   batch: DestinationBatchSchema,
   jobs: z.array(DestinationBatchJobSchema),
@@ -142,6 +166,7 @@ export type DestinationBatch = z.infer<typeof DestinationBatchSchema>
 export type DestinationBatchJob = z.infer<typeof DestinationBatchJobSchema>
 export type DestinationBatchIssue = z.infer<typeof DestinationBatchIssueSchema>
 export type DestinationBatchReadModel = z.infer<typeof DestinationBatchReadModelSchema>
+export type DestinationBatchJobReviewReadModel = z.infer<typeof DestinationBatchJobReviewReadModelSchema>
 export type DestinationBatchImportResult = z.infer<typeof DestinationBatchImportResultSchema>
 export type DestinationBatchDestination = z.infer<typeof DestinationBatchDestinationSchema>
 export type DestinationJobPhase = z.infer<typeof DestinationJobPhaseSchema>

@@ -223,7 +223,12 @@ export class SupabaseGenericExecutionLedgerRepository implements CostLedgerRepos
       p_schema_version: input.schemaVersion,
       p_input_hash: input.inputHash,
     })
-    if (error || typeof data !== 'string') throw new CostLedgerError('TASK_BUDGET_EXCEEDED', 'El ledger durable rechazó la reserva batch')
+    if (error || typeof data !== 'string') {
+      throw new CostLedgerError(
+        'TASK_BUDGET_EXCEEDED',
+        `El ledger durable rechazó la reserva batch${error?.message ? `: ${error.message}` : ''}`,
+      )
+    }
     const stored = await this.readReservation(data)
     if (!stored) throw new CostLedgerError('RESERVATION_NOT_FOUND', 'La reserva batch no quedó persistida')
     return stored

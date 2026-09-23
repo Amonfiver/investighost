@@ -2,6 +2,7 @@ import type {
   DestinationBatch,
   DestinationBatchIssue,
   DestinationBatchJob,
+  DestinationBatchJobReviewReadModel,
   DestinationJobPhase,
 } from '@shared/factory-batch-contracts'
 
@@ -18,6 +19,7 @@ export interface DestinationBatchRepository {
   listBatches(): Promise<DestinationBatch[]>
   insertJob(job: DestinationBatchJob): Promise<DestinationBatchJob>
   getJob(jobId: string): Promise<DestinationBatchJob | null>
+  readJobForReview(jobId: string): Promise<DestinationBatchJobReviewReadModel | null>
   updateJob(job: DestinationBatchJob): Promise<DestinationBatchJob>
   listJobs(batchId: string): Promise<DestinationBatchJob[]>
   insertIssue(issue: DestinationBatchIssue): Promise<void>

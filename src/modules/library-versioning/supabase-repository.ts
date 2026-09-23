@@ -87,7 +87,11 @@ RealEditorialLibraryDraftOperationReceiptRepository {
   async getCurrentApproved(
     libraryEntryId: string,
   ): Promise<CurrentApprovedLibraryContent | null> {
-    return this.getCurrentApprovedVersion(libraryEntryId)
+    return this.readRpc(
+      'real_editorial_library_current_approved_detail',
+      { p_library_entry_id: parseUuid(libraryEntryId) },
+      CurrentApprovedLibraryContentSchema.nullable(),
+    )
   }
 
   getVersioningSummary(libraryEntryId: string): Promise<LibraryEntryVersioningSummary> {

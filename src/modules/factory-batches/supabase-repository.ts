@@ -2,10 +2,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   DestinationBatchIssueSchema,
   DestinationBatchJobSchema,
+  DestinationBatchJobReviewReadModelSchema,
   DestinationBatchSchema,
   type DestinationBatch,
   type DestinationBatchIssue,
   type DestinationBatchJob,
+  type DestinationBatchJobReviewReadModel,
 } from '@shared/factory-batch-contracts'
 import type { DestinationBatchRepository, ExistingDestinationMatch } from './contracts'
 
@@ -65,6 +67,52 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
     return data ? jobFromRow(data as Row) : null
   }
 
+  async readJobForReview(jobId: string): Promise<DestinationBatchJobReviewReadModel | null> {
+    const job = await this.getJob(jobId)
+    if (!job) return null
+    const empty = DestinationBatchJobReviewReadModelSchema.parse({
+      jobId: job.id, batchId: job.batchId,
+      destination: { canonicalDestinationId: job.canonicalDestinationId ?? null, name: job.originalName, country: job.country, region: job.region ?? null },
+      status: job.status, phase: job.currentPhase, student: null, adventure: null,
+      visualPackageId: job.artifactRefs.VISUALS ?? null, reviewArtifactId: job.artifactRefs.AUTO_REVIEW ?? null,
+      reviewSummary: null, warnings: [], cost: job.actualCost, attempts: job.attemptCount, lastError: job.lastFailure ?? null,
+    })
+    const { data: execution, error: executionError } = await this.client.from('real_editorial_executions').select('id')
+      .eq('owner_type', 'BATCH_JOB').eq('owner_id', job.id).maybeSingle()
+    assertNoError(executionError, 'READ_REVIEW_EXECUTION')
+    if (!execution) return empty
+    const revisionIds = [job.artifactRefs.STUDENT, job.artifactRefs.ADVENTURE].filter((id): id is string => Boolean(id))
+    const { data: versions, error: versionError } = revisionIds.length === 0
+      ? { data: [], error: null }
+      : await this.client.from('real_editorial_library_version_revisions').select('id,version_id').in('id', revisionIds)
+    assertNoError(versionError, 'READ_REVIEW_REVISIONS')
+    const versionIds = (versions ?? []).map(row => String((row as Row).version_id))
+    const { data: libraryVersions, error: libraryVersionError } = versionIds.length === 0
+      ? { data: [], error: null }
+      : await this.client.from('real_editorial_library_versions').select('id,library_entry_id').in('id', versionIds)
+    assertNoError(libraryVersionError, 'READ_REVIEW_LIBRARY_VERSIONS')
+    const versionById = new Map((libraryVersions ?? []).map(row => [String((row as Row).id), row as Row]))
+    const revisionById = new Map((versions ?? []).map(row => [String((row as Row).id), row as Row]))
+    const reference = (revisionId: string | undefined) => {
+      if (!revisionId) return null
+      const revision = revisionById.get(revisionId)
+      const version = revision ? versionById.get(String(revision.version_id)) : undefined
+      return version ? { libraryEntryId: String(version.library_entry_id), versionId: String(version.id), revisionId } : null
+    }
+    let reviewSummary: Record<string, unknown> | null = null
+    let warnings: string[] = []
+    if (job.artifactRefs.AUTO_REVIEW) {
+      const { data: review, error: reviewError } = await this.client.from('real_editorial_artifacts').select('payload')
+        .eq('id', job.artifactRefs.AUTO_REVIEW).maybeSingle()
+      assertNoError(reviewError, 'READ_REVIEW_ARTIFACT')
+      if (review && isRecord((review as Row).payload)) {
+        reviewSummary = (review as Row).payload as Record<string, unknown>
+        if (Array.isArray(reviewSummary.issues)) warnings = reviewSummary.issues.filter((issue): issue is string => typeof issue === 'string')
+      }
+    }
+    return DestinationBatchJobReviewReadModelSchema.parse({ ...empty, student: reference(job.artifactRefs.STUDENT), adventure: reference(job.artifactRefs.ADVENTURE), reviewSummary, warnings })
+  }
+
   async updateJob(job: DestinationBatchJob): Promise<DestinationBatchJob> {
     const { data, error } = await this.client.from('editorial_destination_batch_jobs')
       .update(jobToRow(job)).eq('id', job.id).select().single()
@@ -115,19 +163,21 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
   async claimNextJob(batchId: string, workerId: string, leaseMs: number, now: Date): Promise<DestinationBatchJob | null> {
     const { data, error } = await this.client.rpc('factory_claim_next_destination_batch_job', { p_batch_id: batchId, p_worker_id: workerId, p_lease_seconds: Math.max(1, Math.ceil(leaseMs / 1000)), p_now: now.toISOString() })
     assertNoError(error, 'CLAIM_NEXT_JOB')
-    return data ? jobFromRow(data as Row) : null
+    // A PostgreSQL function returning a composite `NULL` is represented by
+    // PostgREST as an object whose fields are all null. Treat it as no claim.
+    return data && (data as Row).id ? jobFromRow(data as Row) : null
   }
 
   async claimJob(jobId: string, workerId: string, leaseMs: number, now: Date): Promise<DestinationBatchJob | null> {
     const { data, error } = await this.client.rpc('factory_claim_destination_batch_job', { p_job_id: jobId, p_worker_id: workerId, p_lease_seconds: Math.max(1, Math.ceil(leaseMs / 1000)), p_now: now.toISOString() })
     assertNoError(error, 'CLAIM_JOB')
-    return data ? jobFromRow(data as Row) : null
+    return data && (data as Row).id ? jobFromRow(data as Row) : null
   }
 
   async renewClaim(jobId: string, claimToken: string, leaseMs: number, now: Date): Promise<DestinationBatchJob | null> {
     const { data, error } = await this.client.rpc('factory_renew_destination_batch_claim', { p_job_id: jobId, p_claim_token: claimToken, p_lease_seconds: Math.max(1, Math.ceil(leaseMs / 1000)), p_now: now.toISOString() })
     assertNoError(error, 'RENEW_CLAIM')
-    return data ? jobFromRow(data as Row) : null
+    return data && (data as Row).id ? jobFromRow(data as Row) : null
   }
 
   async releaseClaim(job: DestinationBatchJob, claimToken: string): Promise<DestinationBatchJob> {
@@ -218,4 +268,8 @@ function issueFromRow(row: Row): DestinationBatchIssue {
     id: row.id, batchId: row.batch_id, inputIndex: Number(row.input_index), kind: row.kind,
     message: row.message, normalizedIdentity: row.normalized_identity ?? undefined, createdAt: new Date(String(row.created_at)),
   })
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

@@ -8,11 +8,13 @@ import {
   DestinationBatchIssueSchema,
   DestinationBatchJobSchema,
   DestinationBatchReadModelSchema,
+  DestinationBatchJobReviewReadModelSchema,
   DestinationBatchSchema,
   type DestinationBatch,
   type DestinationBatchImportResult,
   type DestinationBatchJob,
   type DestinationBatchReadModel,
+  type DestinationBatchJobReviewReadModel,
 } from '@shared/factory-batch-contracts'
 import type { DestinationBatchRepository, DestinationBatchRetryResult, ExistingDestinationMatch } from './contracts'
 import { importFingerprint, normalizeDestinationInput, normalizeDisplayText } from './normalization'
@@ -101,6 +103,12 @@ export class DestinationBatchService {
   }
 
   async list(): Promise<DestinationBatch[]> { return this.repository.listBatches() }
+
+  async readJobForReview(jobId: string): Promise<DestinationBatchJobReviewReadModel> {
+    const model = await this.repository.readJobForReview(jobId)
+    if (!model) throw new DestinationBatchImportError('JOB_NOT_FOUND', 'El trabajo no existe')
+    return DestinationBatchJobReviewReadModelSchema.parse(model)
+  }
 
   async retry(jobId: string): Promise<DestinationBatchRetryResult> {
     const job = await this.repository.getJob(jobId)

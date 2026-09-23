@@ -81,8 +81,8 @@ console.log(JSON.stringify({
   humanBarrier: {
     adventureApproved: afterAdventure.state.isCurrentApproved,
     studentApproved: afterStudent.state.isCurrentApproved,
-    currentApprovedChanged: afterAdventure.currentApproved.source !== 'origin_v1'
-      || afterStudent.currentApproved.source !== 'origin_v1',
+    currentApprovedChanged: afterAdventure.currentApproved!.source !== 'origin_v1'
+      || afterStudent.currentApproved!.source !== 'origin_v1',
     mappingCreated: false,
     dryRunExecuted: false,
     deliveryExecuted: false,
@@ -100,7 +100,7 @@ function assertAdventureR1(detail: Awaited<ReturnType<typeof repository.getVersi
     || detail.currentRevision.revisionNumber !== 1
     || detail.state.effectiveState !== 'draft'
     || detail.decisions.length !== 0
-    || detail.currentApproved.source !== 'origin_v1'
+    || detail.currentApproved?.source !== 'origin_v1'
     || detail.originV1.originVersionHash !== ALBARRACIN_ADVENTURE_R2.expectedOriginVersionHash
     || detail.originV1.sources.length !== 8
     || detail.originV1.gaps.length !== 7
@@ -123,7 +123,7 @@ function assertAdventureR2(
     || after.state.effectiveState !== 'draft'
     || after.decisions.length !== 0
     || after.state.isCurrentApproved
-    || after.currentApproved.source !== 'origin_v1'
+    || after.currentApproved?.source !== 'origin_v1'
     || after.originV1.content !== before.originV1.content
     || after.originV1.sources.length !== 8
     || after.originV1.gaps.length !== 7
@@ -141,7 +141,7 @@ function assertStudentR1(detail: Awaited<ReturnType<typeof repository.getVersion
     || detail.currentRevision.revisionNumber !== 1
     || detail.decisions.length !== 0
     || detail.state.isCurrentApproved
-    || detail.currentApproved.source !== 'origin_v1'
+    || detail.currentApproved?.source !== 'origin_v1'
   ) throw new Error('Student r1 no satisface el estado de integridad esperado')
 }
 

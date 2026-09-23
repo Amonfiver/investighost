@@ -199,6 +199,12 @@ function assertApprovedSourceIntegrity(source: LibraryTrawelApprovedSource): voi
     )
   }
   const origin = currentApproved.originV1
+  if (!origin.finalReviewArtifact || !origin.terminalDecisionId) {
+    throw new TrawelEditorialHandoffContractError(
+      'SOURCE_ORIGIN_MISMATCH',
+      'El origen pre-aprobación no puede entregarse a Trawel',
+    )
+  }
   const expectedOriginContentHash = libraryContentHash({
     profile: origin.profile,
     language: origin.language,
@@ -259,7 +265,7 @@ function buildDraftRowWithoutFingerprint(
       revisionHash: current.revisionHash,
       originVersionHash: current.originV1.originVersionHash,
       approval: current.source === 'origin_v1'
-        ? { kind: 'terminal', decisionId: current.originV1.terminalDecisionId }
+        ? { kind: 'terminal', decisionId: requireTerminalApproval(current.originV1.terminalDecisionId) }
         : { kind: 'library_version', decisionId: requireDerivedApproval(current.approvalDecisionId) },
       approvedAt: current.approvedAt,
     },
@@ -292,6 +298,11 @@ function buildDraftRowWithoutFingerprint(
     review_state: 'approved_in_investighost',
     published_at: null,
   }
+}
+
+function requireTerminalApproval(decisionId: string | null): string {
+  if (!decisionId) throw new TrawelEditorialHandoffContractError('SOURCE_ORIGIN_MISMATCH', 'La aprobación terminal de origen es obligatoria')
+  return decisionId
 }
 
 function projectPublicSources(

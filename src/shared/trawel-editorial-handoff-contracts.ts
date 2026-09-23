@@ -93,7 +93,10 @@ export const LibraryTrawelApprovedSourceSchema = z.object({
     mismatches.push([['currentApproved', 'originV1', 'sourceArtifact'],
       'El artefacto de origen no coincide con la entrada'])
   }
-  if (
+  if (!origin.finalReviewArtifact || !origin.terminalDecisionId || !origin.transfer) {
+    mismatches.push([['currentApproved', 'originV1'],
+      'Un origen pre-aprobación no puede usarse para entrega'])
+  } else if (
     origin.finalReviewArtifact.artifactId !== entry.finalReviewArtifact.artifactId
     || origin.finalReviewArtifact.hash !== entry.finalReviewArtifact.hash
     || origin.terminalDecisionId !== entry.terminalDecisionId
@@ -101,7 +104,7 @@ export const LibraryTrawelApprovedSourceSchema = z.object({
     mismatches.push([['currentApproved', 'originV1', 'finalReviewArtifact'],
       'La aprobación v1 no coincide con la entrada'])
   }
-  if (origin.transfer.transferId !== entry.transferId) {
+  if (origin.transfer && origin.transfer.transferId !== entry.transferId) {
     mismatches.push([['currentApproved', 'originV1', 'transfer', 'transferId'],
       'La transferencia de origen no coincide con la entrada'])
   }

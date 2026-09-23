@@ -2,6 +2,7 @@ import {
   DestinationBatchSchema,
   DestinationBatchIssueSchema,
   DestinationBatchJobSchema,
+  DestinationBatchJobReviewReadModelSchema,
   type DestinationBatch,
   type DestinationBatchIssue,
   type DestinationBatchJob,
@@ -42,6 +43,18 @@ export class MemoryDestinationBatchRepository implements DestinationBatchReposit
   }
 
   async getJob(jobId: string): Promise<DestinationBatchJob | null> { return structuredClone(this.jobs.get(jobId) ?? null) }
+
+  async readJobForReview(jobId: string) {
+    const job = await this.getJob(jobId)
+    if (!job) return null
+    return DestinationBatchJobReviewReadModelSchema.parse({
+      jobId: job.id, batchId: job.batchId,
+      destination: { canonicalDestinationId: job.canonicalDestinationId ?? null, name: job.originalName, country: job.country, region: job.region ?? null },
+      status: job.status, phase: job.currentPhase, student: null, adventure: null,
+      visualPackageId: job.artifactRefs.VISUALS ?? null, reviewArtifactId: job.artifactRefs.AUTO_REVIEW ?? null,
+      reviewSummary: null, warnings: [], cost: job.actualCost, attempts: job.attemptCount, lastError: job.lastFailure ?? null,
+    })
+  }
 
   async updateJob(job: DestinationBatchJob): Promise<DestinationBatchJob> {
     if (!this.jobs.has(job.id)) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')

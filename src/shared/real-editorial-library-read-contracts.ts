@@ -56,10 +56,14 @@ export const LibraryOriginV1ReferenceSchema = z.object({
   contentHash: LibraryVersionSha256Schema,
   originVersionHash: LibraryVersionSha256Schema,
   sourceArtifact: LibraryOriginArtifactReferenceSchema,
-  finalReviewArtifact: LibraryOriginArtifactReferenceSchema,
-  terminalDecisionId: LibraryVersionUuidSchema,
-  transfer: LibraryOriginTransferReferenceSchema,
-  reviewOutcome: z.literal('passed_with_warnings'),
+  // Batch-originated candidates reach the shared Library before a terminal
+  // review or transfer exists. Those fields remain required for legacy pilot
+  // origins at the database boundary, but are intentionally absent here until
+  // a human approves the batch candidate.
+  finalReviewArtifact: LibraryOriginArtifactReferenceSchema.nullable(),
+  terminalDecisionId: LibraryVersionUuidSchema.nullable(),
+  transfer: LibraryOriginTransferReferenceSchema.nullable(),
+  reviewOutcome: z.literal('passed_with_warnings').nullable(),
   reviewPayload: JsonObjectSchema,
   warnings: JsonArraySchema,
   gaps: JsonArraySchema,
@@ -67,9 +71,9 @@ export const LibraryOriginV1ReferenceSchema = z.object({
   claims: JsonArraySchema,
   evidence: JsonArraySchema,
   sources: JsonArraySchema,
-  approvalActorId: LibraryVersionUuidSchema,
-  transferActorId: LibraryVersionUuidSchema,
-  approvedAt: IsoTimestampSchema,
+  approvalActorId: LibraryVersionUuidSchema.nullable(),
+  transferActorId: LibraryVersionUuidSchema.nullable(),
+  approvedAt: IsoTimestampSchema.nullable(),
   createdAt: IsoTimestampSchema,
   publicationState: z.literal('unpublished'),
 }).strict()
@@ -253,12 +257,12 @@ export const LibraryEntryVersioningSummarySchema = z.object({
   originalVersion: LibraryOriginV1ReferenceSchema,
   derivedVersionCount: z.number().int().nonnegative(),
   openVersion: LibraryVersionListItemSchema.nullable(),
-  currentApproved: CurrentApprovedLibraryContentSchema,
+  currentApproved: CurrentApprovedLibraryContentSchema.nullable(),
   latestVersion: LibraryVersionListItemSchema.nullable(),
   latestEffectiveState: z.union([LibraryVersionStateSchema, z.literal('origin_approved')]),
   publication: z.object({
     entryState: z.literal('unpublished'),
-    currentApprovedState: z.literal('unpublished'),
+    currentApprovedState: z.literal('unpublished').nullable(),
     publicationCount: z.literal(0),
     trawelConnected: z.literal(false),
     automaticEnabled: z.literal(false),
@@ -297,7 +301,7 @@ export const LibraryVersionDetailSchema = z.object({
     reason: z.string().trim().min(1).max(2_000).nullable(),
     actorRoleSnapshot: z.string().trim().min(1).max(120),
   }).strict().nullable(),
-  currentApproved: CurrentApprovedLibraryContentSchema,
+  currentApproved: CurrentApprovedLibraryContentSchema.nullable(),
   flags: LibraryVersionActionFlagsSchema,
   publicationState: z.literal('unpublished'),
 }).strict()

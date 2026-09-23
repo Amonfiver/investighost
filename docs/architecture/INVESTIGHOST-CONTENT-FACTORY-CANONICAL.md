@@ -2,7 +2,7 @@
 
 > Antes de cualquier prompt estructural de Investighost, leer este documento primero. Reauditar únicamente componentes cuya implementación haya cambiado o no esté documentada.
 
-**Actualizado:** 2026-09-22
+**Actualizado:** 2026-09-23
 **Referencia de partida:** `d253f32739ff13b9b17f9d929a2664c022cce436` en `feat/investighost-real-pipeline`; los cambios estructurales posteriores se registran explícitamente en esta tabla.
 
 ## Objetivo de producto V1
@@ -130,9 +130,20 @@ El proceso principal registra automáticamente
 `ProductionBatchEditorialPhasePort`: compone el executor owner-neutral, la
 Library compartida y el adapter visual Wikimedia/staging. La capability y la
 configuración del Provider Center se comprueban antes de obtener clientes o
-hacer red; sin ellas falla cerrado. Aún falta un E2E durable de worker con
-Supabase local y provider doubles para declarar el camino hasta
-`READY_FOR_REVIEW` probado de extremo a extremo.
+hacer red; sin ellas falla cerrado.
+
+084J verificó el camino durable completo en Supabase local con Granada y sin
+red externa: el worker real y la composición de producción recorren
+`IDENTITY → RESEARCH → ANALYSIS → STUDENT → ADVENTURE → VISUALS → AUTO_REVIEW
+→ READY_FOR_REVIEW`. Los únicos doubles están en los bordes Tavily/inteligencia
+y Wikimedia/bytes; repositories, ledger, executor owner-neutral, Library,
+staging visual y review son los de producción. El harness comprueba retry desde
+Adventure, reanudación desde Student en una nueva instancia, aislamiento con
+concurrencia 1, presupuesto antes del provider, idempotencia, ausencia de
+approval/delivery y la proyección de lectura por job. Por tanto
+`BATCH_RUNTIME_COMPOSITION = DONE`, `BATCH_REAL_DELEGATES = DONE`,
+`VISUAL_BATCH_DELEGATE = DONE`, `GRANADA_DURABLE_E2E = PASS` y
+`READY_FOR_REVIEW_PIPELINE = DONE`.
 
 ### Visuales
 
@@ -226,4 +237,5 @@ PASS: jobs aislados, no duplicados, costes bajo límites, artefactos y Library t
 
 ## Próximo paso único
 
-Conectar el puente de media aprobada hacia Trawel y crear la mesa de revisión de lote; el worker batch genérico ya conserva claims, fases, coste, retry y resume sin ejecutar proveedores por defecto.
+`HUMAN_REVIEW_DESK_V1`: usar la proyección por job para revisar Student,
+Adventure, visuales y warnings antes de cualquier aprobación o entrega.

@@ -56,8 +56,8 @@ async function createAndValidateCandidate(candidate: AlbarracinPackBCandidate) {
   if (draft.version.effectiveState !== 'draft' || draft.stateSnapshot.effectiveState !== 'draft') {
     throw new Error(`${candidate.profile}: el candidate no permaneció en draft`)
   }
-  if (draft.entrySummary.currentApproved.versionHash !== candidate.expectedOriginVersionHash
-    || draft.entrySummary.currentApproved.source !== 'origin_v1') {
+  if (draft.entrySummary.currentApproved?.versionHash !== candidate.expectedOriginVersionHash
+    || draft.entrySummary.currentApproved?.source !== 'origin_v1') {
     throw new Error(`${candidate.profile}: current approved cambió durante la creación`)
   }
 
@@ -78,8 +78,8 @@ async function createAndValidateCandidate(candidate: AlbarracinPackBCandidate) {
 
   const after = await repository.getVersioningSummary(candidate.libraryEntryId)
   assertOrigin(after, candidate)
-  if (after.currentApproved.versionHash !== before.currentApproved.versionHash
-    || after.currentApproved.source !== before.currentApproved.source) {
+  if (after.currentApproved?.versionHash !== before.currentApproved?.versionHash
+    || after.currentApproved?.source !== before.currentApproved?.source) {
     throw new Error(`${candidate.profile}: current approved cambió tras el candidate`)
   }
   assertFindings(findings.items, after.originalVersion)

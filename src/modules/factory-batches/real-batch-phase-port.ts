@@ -9,8 +9,10 @@ import {
 } from '@modules/library-versioning'
 import {
   DurableGenericRealEditorialExecution,
+  issueLiveProviderNetworkPermit,
   SupabaseGenericDurableExecutionRepository,
   withLiveProviderClients,
+  type RealPipelineProviderSelection,
 } from '@modules/real-pipeline'
 import type { ProviderCenterService } from '@modules/real-pipeline/provider-center'
 import {
@@ -20,6 +22,8 @@ import {
   VisualCandidateAcquisitionService,
   VisualCandidateDiscoveryService,
   VisualCandidateDownloader,
+  type VisualDownloadFetch,
+  type WikimediaCommonsFetch,
   WikimediaCommonsDiscoveryAdapter,
 } from '@modules/visual-acquisition'
 import type { BatchEditorialPhaseContext, BatchEditorialPhasePort, BatchEditorialPhaseResult } from './editorial-phase-port'
@@ -30,6 +34,11 @@ export interface ProductionBatchPhasePortDependencies {
   client: SupabaseClient
   providerCenter: () => Promise<ProviderCenterService>
   environment?: NodeJS.ProcessEnv
+  /** Test-only network boundaries. They are rejected outside NODE_ENV=test and
+   * still run the production port, authorization, repositories and executor. */
+  testProviderSelection?: RealPipelineProviderSelection
+  testWikimediaFetch?: WikimediaCommonsFetch
+  testImageFetch?: VisualDownloadFetch
 }
 
 /**
@@ -43,8 +52,15 @@ export class ProductionBatchEditorialPhasePort implements BatchEditorialPhasePor
   private readonly environment: NodeJS.ProcessEnv
 
   constructor(private readonly dependencies: ProductionBatchPhasePortDependencies) {
+    if ((dependencies.testProviderSelection || dependencies.testWikimediaFetch || dependencies.testImageFetch)
+      && (dependencies.environment ?? process.env).NODE_ENV !== 'test') {
+      throw new Error('BATCH_TEST_DOUBLE_FORBIDDEN_OUTSIDE_TEST')
+    }
     this.contextMapper = new BatchExecutionContextMapper(new SupabaseGeographyCatalogRepository(dependencies.client))
-    this.visual = new BatchVisualReviewDelegate(dependencies.client)
+    this.visual = new BatchVisualReviewDelegate(dependencies.client, {
+      fetchFn: dependencies.testWikimediaFetch,
+      imageFetchFn: dependencies.testImageFetch,
+    })
     this.environment = dependencies.environment ?? process.env
   }
 
@@ -56,9 +72,7 @@ export class ProductionBatchEditorialPhasePort implements BatchEditorialPhasePor
       throw new Error('BATCH_PROVIDER_AUTHORIZATION_REQUIRED: falta la capability explícita de ejecución batch')
     }
     if (input.phase === 'VISUALS') return this.visual.prepare(context.destination)
-    return withLiveProviderClients(
-      await this.dependencies.providerCenter(),
-      {
+    const gate = {
         featureToken: authorization.featureToken,
         preflightStatus: 'ready_for_real_batch_execution',
         executionOwner: {
@@ -66,11 +80,11 @@ export class ProductionBatchEditorialPhasePort implements BatchEditorialPhasePor
           destinationId: context.destination.destinationId, policyId: context.policy.promptVersion,
         },
         taskAuthorized: true, budgetReserved: true, globalGuardAcquired: true,
-      },
-      async providers => {
+      } as const
+    const execute = async (providers: RealPipelineProviderSelection) => {
         const execution = new DurableGenericRealEditorialExecution({
           repository: new SupabaseGenericDurableExecutionRepository(this.dependencies.client),
-          providers: { researchTool: providers.tavily, intelligenceEngine: providers.intelligence },
+          providers,
           library: createBatchLibraryTransition(this.dependencies.client),
           actorId: MANUAL_LOCAL_ACTOR_ID,
         })
@@ -81,7 +95,20 @@ export class ProductionBatchEditorialPhasePort implements BatchEditorialPhasePor
         if (input.phase === 'ADVENTURE') return execution.executeAdventure(context, signal)
         if (input.phase === 'AUTO_REVIEW') return execution.executeReview(context, signal)
         throw new Error(`BATCH_PHASE_UNSUPPORTED:${input.phase}`)
-      },
+    }
+    if (this.dependencies.testProviderSelection) {
+      const center = await this.dependencies.providerCenter()
+      issueLiveProviderNetworkPermit({
+        ...gate,
+        providerCenter: center.snapshot(),
+        intelligenceProviderIds: [this.dependencies.testProviderSelection.intelligenceEngine.id === 'deepseek' ? 'deepseek' : 'openai'],
+      }, this.environment)
+      return execute(this.dependencies.testProviderSelection)
+    }
+    return withLiveProviderClients(
+      await this.dependencies.providerCenter(),
+      gate,
+      clients => execute({ researchTool: clients.tavily, intelligenceEngine: clients.intelligence }),
       { environment: this.environment },
     )
   }
@@ -99,13 +126,13 @@ class BatchVisualReviewDelegate {
   private readonly discovery: VisualCandidateDiscoveryService
   private readonly acquisition: VisualCandidateAcquisitionService
 
-  constructor(client: SupabaseClient) {
+  constructor(client: SupabaseClient, options: { fetchFn?: WikimediaCommonsFetch; imageFetchFn?: VisualDownloadFetch } = {}) {
     const candidates = new SupabaseVisualCandidateRepository(client)
-    this.discovery = new VisualCandidateDiscoveryService(new WikimediaCommonsDiscoveryAdapter(), candidates)
+    this.discovery = new VisualCandidateDiscoveryService(new WikimediaCommonsDiscoveryAdapter({ fetchFn: options.fetchFn }), candidates)
     this.acquisition = new VisualCandidateAcquisitionService(
       candidates,
       new SupabaseVisualProcessingRepository(client),
-      new VisualCandidateDownloader(),
+      new VisualCandidateDownloader(options.imageFetchFn),
       new SupabaseVisualMediaStorage(client),
     )
   }

@@ -47,4 +47,15 @@ describe('simplified factory UI boundaries', () => {
     expect(app).toContain("view === 'contributions'")
     expect(app).toContain("view === 'real-config'")
   })
+
+  it('exposes the human redo selector and confirmation without a technical scope in the UI', async () => {
+    const desk = await readFile(new URL('../src/renderer/BatchReviewDesk.tsx', import.meta.url), 'utf8')
+    expect(desk).toContain('>Rehacer<')
+    expect(desk).toContain("STUDENT: 'Student'")
+    expect(desk).toContain("ADVENTURE: 'Adventure'")
+    expect(desk).toContain("VISUALS: 'Imágenes'")
+    expect(desk).toContain("EDITORIAL: 'Contenido editorial'")
+    expect(desk).toContain('Confirmar rehacer')
+    expect(desk).toContain('Cancelar')
+  })
 })

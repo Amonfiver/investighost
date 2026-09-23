@@ -4,6 +4,7 @@ import type {
   DestinationBatchJob,
   DestinationBatchJobReviewReadModel,
   DestinationJobPhase,
+  DestinationBatchRedoScope,
 } from '@shared/factory-batch-contracts'
 
 export interface ExistingDestinationMatch {
@@ -34,6 +35,9 @@ export interface DestinationBatchRepository {
   releaseClaim(job: DestinationBatchJob, claimToken: string): Promise<DestinationBatchJob>
   recoverStaleClaims(now: Date): Promise<number>
   totalActualCost(batchId: string): Promise<number>
+  requestRedo(input: { jobId: string; scope: DestinationBatchRedoScope; requestedBy: string; reason?: string; now: Date }): Promise<DestinationBatchJob>
+  completeRedo(operationId: string, outcome: 'COMPLETED' | 'FAILED', now: Date): Promise<void>
+  approveReadyJob(jobId: string, now: Date): Promise<DestinationBatchJob>
 }
 
 export interface DestinationBatchRetryResult {

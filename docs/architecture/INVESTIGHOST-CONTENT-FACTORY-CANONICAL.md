@@ -172,6 +172,19 @@ lotes parciales. Estados, fases y costes se traducen sólo en presentación.
 `USER_FACING_NAVIGATION_V1 = DONE`, `USER_FRIENDLY_STATUS_LABELS = DONE` y
 `STRICT_BATCH_FILE_VALIDATION = DONE`.
 
+085C añade el comando durable `requestRedo(jobId, scope)` sobre el mismo
+worker batch y la misma ejecución owner-neutral. `STUDENT`, `ADVENTURE`,
+`VISUALS` y `EDITORIAL` guardan la solicitud humana y sus referencias previas,
+invalidan sólo checkpoints/refs del alcance y conservan investigación, análisis,
+ledger, revisiones y paquetes históricos. Cada regeneración usa una identidad
+de tarea propia para el ledger y checkpoints propios, sin repetir Research ni
+Analysis. La transición `READY_FOR_REVIEW → REDO_REQUIRED → PROCESSING →
+READY_FOR_REVIEW` es idempotente; aprobación y redo compiten sobre la misma
+transición condicional. No hay aprobación ni delivery automáticos.
+`SELECTIVE_REDO_V1 = DONE`, `REDO_STUDENT = DONE`, `REDO_ADVENTURE = DONE`,
+`REDO_VISUALS = DONE`, `REDO_EDITORIAL = DONE` y
+`APPROVE_REDO_EXCLUSION = DONE`.
+
 ### Visuales
 
 - `src/shared/destination-visual-media-contract.ts`: assets, packages, roles, modos y rights status.

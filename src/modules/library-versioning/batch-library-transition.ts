@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { IntelligenceDraft } from '@modules/real-pipeline/ports'
 import type { CreateLibraryVersionDraftResult } from '@shared/real-editorial-library-draft-application-contracts'
+import type { SaveLibraryVersionDraftResult } from '@shared/real-editorial-library-draft-application-contracts'
 import type { RealEditorialLibraryVersionDraftApplicationService } from './draft-application-service'
 
 export type BatchLibraryProfile = 'student' | 'adventure'
@@ -25,6 +26,7 @@ export interface BatchLibraryCandidateOrigin {
   libraryEntryId: string
   originHash: string
   reused: boolean
+  openDraft?: { versionId: string; revisionId: string; revisionHash: string }
 }
 
 export interface BatchLibraryDraftReference {
@@ -49,11 +51,26 @@ export interface BatchLibraryCandidateGateway {
 export class BatchSharedLibraryTransition {
   constructor(
     private readonly candidates: BatchLibraryCandidateGateway,
-    private readonly drafts: Pick<RealEditorialLibraryVersionDraftApplicationService, 'createDraft'>,
+    private readonly drafts: Pick<RealEditorialLibraryVersionDraftApplicationService, 'createDraft' | 'saveDraft'>,
   ) {}
 
   async materialize(input: BatchLibraryCandidateInput): Promise<BatchLibraryDraftReference> {
     const origin = await this.candidates.createCandidate(input)
+    const operationKey = stableHash({
+      operation: 'batch-library-create-draft-v1',
+      executionOwnerId: input.executionOwnerId,
+      profile: input.draft.profile,
+      sourceArtifactId: input.sourceArtifact.id,
+      sourceArtifactHash: input.sourceArtifact.payloadHash,
+    })
+    if (origin.openDraft) {
+      const saved = await this.drafts.saveDraft({
+        versionId: origin.openDraft.versionId, expectedPreviousRevisionHash: origin.openDraft.revisionHash,
+        title: input.draft.title, content: input.draft.content, changeSummary: `Borrador rehecho por batch para ${input.draft.profile}.`,
+        actorId: input.actorId, operationKey,
+      })
+      return savedDraftReference(origin, saved)
+    }
     const result = await this.drafts.createDraft({
       libraryEntryId: origin.libraryEntryId,
       expectedHeadHash: origin.originHash,
@@ -61,12 +78,7 @@ export class BatchSharedLibraryTransition {
       content: input.draft.content,
       changeSummary: `Borrador generado por batch para ${input.draft.profile}.`,
       actorId: input.actorId,
-      operationKey: stableHash({
-        operation: 'batch-library-create-draft-v1',
-        executionOwnerId: input.executionOwnerId,
-        profile: input.draft.profile,
-        sourceArtifactHash: input.sourceArtifact.payloadHash,
-      }),
+      operationKey,
     })
     return draftReference(origin, result)
   }
@@ -81,7 +93,6 @@ export class SupabaseBatchLibraryCandidateGateway implements BatchLibraryCandida
       schema: 'investighost-library-batch-entry-v1',
       executionOwnerId: input.executionOwnerId,
       profile: input.draft.profile,
-      sourceArtifactHash: input.sourceArtifact.payloadHash,
     })
     const { data, error } = await this.client.rpc('real_editorial_library_create_batch_candidate', {
       p_execution_owner_id: input.executionOwnerId,
@@ -98,8 +109,19 @@ export class SupabaseBatchLibraryCandidateGateway implements BatchLibraryCandida
         error?.message ?? 'La Library no devolvió una transición batch válida.',
       )
     }
-    return { libraryEntryId: data.libraryEntryId, originHash: data.originHash, reused: data.reused }
+    const origin = { libraryEntryId: data.libraryEntryId, originHash: data.originHash, reused: data.reused }
+    if (!data.reused) return origin
+    const { data: versions, error: versionsError } = await this.client.rpc('real_editorial_library_list_versions', { p_library_entry_id: data.libraryEntryId })
+    if (versionsError || !Array.isArray(versions)) return origin
+    const open = versions.find(value => isRecord(value) && value.effectiveState === 'draft')
+    if (!isRecord(open) || typeof open.versionId !== 'string' || typeof open.currentRevisionId !== 'string' || typeof open.currentRevisionHash !== 'string') return origin
+    return { ...origin, openDraft: { versionId: open.versionId, revisionId: open.currentRevisionId, revisionHash: open.currentRevisionHash } }
   }
+}
+
+function savedDraftReference(origin: BatchLibraryCandidateOrigin, result: SaveLibraryVersionDraftResult): BatchLibraryDraftReference {
+  if (result.status !== 'ok') throw new BatchSharedLibraryTransitionError('BATCH_LIBRARY_DRAFT_FAILED', `${result.code}: ${result.message}`)
+  return { libraryEntryId: origin.libraryEntryId, versionId: result.receipt.versionId, revisionId: result.savedRevision.id, versionHash: result.versionDetail.version.versionHash, revisionHash: result.savedRevision.revisionHash, entryReused: true, versionReplayed: result.operationReplayed }
 }
 
 export class BatchSharedLibraryTransitionError extends Error {

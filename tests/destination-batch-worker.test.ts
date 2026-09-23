@@ -4,6 +4,7 @@ import {
   BatchWorkerPhaseError,
   DestinationBatchService,
   EditorialBatchWorker,
+  DestinationBatchRedoService,
   MemoryDestinationBatchRepository,
   type BatchEditorialPhaseContext,
   type BatchEditorialPhasePort,
@@ -27,7 +28,7 @@ class FixturePhasePort implements BatchEditorialPhasePort {
       throw new BatchWorkerPhaseError('INSUFFICIENT_EVIDENCE', 'TERMINAL', 'fixture terminal evidence failure')
     }
     return {
-      artifactRef: `${context.job.id}:${context.phase}:v1`,
+      artifactRef: `${context.job.id}:${context.phase}:v${attempt}`,
       actualCost: this.phaseCost,
       ...(context.phase === 'VISUALS' ? { visualReviewState: 'READY_FOR_HUMAN_VISUAL_REVIEW' as const } : {}),
     }
@@ -129,5 +130,57 @@ describe('EditorialBatchWorker', () => {
     expect(port.calls).toHaveLength(calls)
     expect(await repository.getJob(target.id)).toMatchObject({ status: 'READY_FOR_REVIEW' })
     expect(await repository.totalActualCost(batch.id)).toBeCloseTo(0.7)
+  })
+
+  it.each([
+    ['STUDENT', ['STUDENT', 'AUTO_REVIEW'], ['ADVENTURE', 'VISUALS']],
+    ['ADVENTURE', ['ADVENTURE', 'AUTO_REVIEW'], ['STUDENT', 'VISUALS']],
+    ['VISUALS', ['VISUALS', 'AUTO_REVIEW'], ['STUDENT', 'ADVENTURE']],
+    ['EDITORIAL', ['STUDENT', 'ADVENTURE', 'AUTO_REVIEW'], ['VISUALS']],
+  ] as const)('durably redoes %s without repeating retained phases', async (scope, regenerated, retained) => {
+    const { repository, jobs } = await fixture()
+    const port = new FixturePhasePort()
+    const worker = new EditorialBatchWorker(repository, port, { workerId: `redo-${scope}` })
+    const target = jobs.find(job => job.originalName === 'Éxito')!
+    const initial = await worker.runJob(target.id)
+    const before = initial.job!.artifactRefs
+    const requested = await new DestinationBatchRedoService(repository).request({ jobId: target.id, scope, reason: 'revisión humana' })
+    expect(requested).toMatchObject({ status: 'REDO_REQUIRED', redoScope: scope })
+    const completed = await worker.runJob(target.id)
+    expect(completed.job).toMatchObject({ status: 'READY_FOR_REVIEW', redoOperationId: undefined, redoScope: undefined })
+    expect(port.calls.filter(call => call === 'Éxito:RESEARCH')).toHaveLength(1)
+    expect(port.calls.filter(call => call === 'Éxito:ANALYSIS')).toHaveLength(1)
+    for (const phase of regenerated) expect(completed.job!.artifactRefs[phase]).not.toBe(before[phase])
+    for (const phase of retained) expect(completed.job!.artifactRefs[phase]).toBe(before[phase])
+    expect([...repository.redoOperations.values()]).toEqual([expect.objectContaining({ scope, status: 'COMPLETED', previousArtifactRefs: before })])
+  })
+
+  it('coalesces a double redo request into one operation and one regeneration', async () => {
+    const { repository, jobs } = await fixture()
+    const port = new FixturePhasePort()
+    const worker = new EditorialBatchWorker(repository, port, { workerId: 'redo-double-click' })
+    const target = jobs.find(job => job.originalName === 'Éxito')!
+    await worker.runJob(target.id)
+    const redo = new DestinationBatchRedoService(repository)
+    const [first, second] = await Promise.all([redo.request({ jobId: target.id, scope: 'ADVENTURE' }), redo.request({ jobId: target.id, scope: 'ADVENTURE' })])
+    expect(first.redoOperationId).toBe(second.redoOperationId)
+    await worker.runJob(target.id)
+    expect(repository.redoOperations.size).toBe(1)
+    expect(port.calls.filter(call => call === 'Éxito:ADVENTURE')).toHaveLength(2)
+    expect(port.calls.filter(call => call === 'Éxito:RESEARCH')).toHaveLength(1)
+  })
+
+  it('allows either approval or redo to win the READY_FOR_REVIEW transition, never both', async () => {
+    const { repository, jobs } = await fixture()
+    const worker = new EditorialBatchWorker(repository, new FixturePhasePort(), { workerId: 'redo-approval-race' })
+    const target = jobs.find(job => job.originalName === 'Éxito')!
+    await worker.runJob(target.id)
+    const redo = new DestinationBatchRedoService(repository)
+    const results = await Promise.allSettled([
+      redo.request({ jobId: target.id, scope: 'STUDENT' }),
+      repository.approveReadyJob(target.id, new Date()),
+    ])
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+    expect((await repository.getJob(target.id))?.status).toMatch(/^(REDO_REQUIRED|APPROVED)$/)
   })
 })

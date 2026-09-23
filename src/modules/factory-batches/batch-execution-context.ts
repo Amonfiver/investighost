@@ -48,7 +48,7 @@ export class BatchExecutionContextMapper {
       owner: { type: 'BATCH_JOB', id: job.id },
       executionId: `factory-batch:${job.id}`,
       runId: job.id,
-      taskId: `factory-batch:${job.id}`,
+      taskId: job.redoOperationId ? `factory-batch:${job.id}:redo:${job.redoOperationId}` : `factory-batch:${job.id}`,
       batchId: batch.id,
       destination: {
         destinationId: destination.entity.id,
@@ -59,6 +59,8 @@ export class BatchExecutionContextMapper {
       },
       policy: createBatchJobRealEditorialPolicy(batch),
       budgetDate: new Date().toISOString().slice(0, 10),
+      ...(job.redoOperationId && job.redoScope ? { redo: { operationId: job.redoOperationId, scope: job.redoScope } } : {}),
+      profileArtifactKeys: { ...(job.artifactRefs.STUDENT_ARTIFACT_KEY ? { student: job.artifactRefs.STUDENT_ARTIFACT_KEY } : {}), ...(job.artifactRefs.ADVENTURE_ARTIFACT_KEY ? { adventure: job.artifactRefs.ADVENTURE_ARTIFACT_KEY } : {}) },
     }
   }
 

@@ -5,6 +5,7 @@ import {
   DestinationBatchService,
   EditorialBatchWorker,
   DestinationBatchHumanReviewService,
+  DestinationBatchRedoService,
   ProductionBatchEditorialPhasePort,
   SupabaseDestinationBatchRepository,
 } from '@modules/factory-batches'
@@ -170,6 +171,10 @@ function productionPort(
 
 integration('durable Supabase-local batch worker E2E', () => {
   afterEach(async () => {
+    if (process.env.KEEP_FACTORY_REDO_SMOKE === 'true') {
+      created.splice(0)
+      return
+    }
     const { client } = createLocalSupabaseClientFromEnv()
     const stagingPaths: string[] = []
     for (const fixture of created.splice(0)) {
@@ -255,6 +260,30 @@ integration('durable Supabase-local batch worker E2E', () => {
     expect(replay.processed).toBe(false)
     expect([research.calls, intelligence.analysisCalls, intelligence.draftCalls, intelligence.reviewCalls]).toEqual([1, 1, 2, 1])
   })
+
+  it('selectively redoes Student with the production port without repeating research, analysis, Adventure or visuals', async () => {
+    const { client } = createLocalSupabaseClientFromEnv()
+    const { repository, batch, jobs } = await importGranadaFixture(client, 'redo-student', ['Granada Redo Student'])
+    const research = new ResearchDouble()
+    const intelligence = new IntelligenceDouble()
+    const worker = new EditorialBatchWorker(repository, productionPort(client, research, intelligence), { workerId: '085c-redo-student' })
+    const initial = await worker.runJob(jobs[0]!.id)
+    const before = initial.job!.artifactRefs
+    const requested = await new DestinationBatchRedoService(repository).request({ jobId: jobs[0]!.id, scope: 'STUDENT', reason: 'ajustar explicación' })
+    expect(requested).toMatchObject({ status: 'REDO_REQUIRED', redoScope: 'STUDENT' })
+    const completed = await worker.runJob(jobs[0]!.id)
+    if (completed.job?.status !== 'READY_FOR_REVIEW') throw new Error(`REDO_STUDENT_UNEXPECTED:${completed.job?.lastFailure ?? 'missing failure'}`)
+    expect(completed.job!.artifactRefs.STUDENT).not.toBe(before.STUDENT)
+    expect(completed.job!.artifactRefs.AUTO_REVIEW).not.toBe(before.AUTO_REVIEW)
+    expect(completed.job!.artifactRefs.ADVENTURE).toBe(before.ADVENTURE)
+    expect(completed.job!.artifactRefs.VISUALS).toBe(before.VISUALS)
+    expect([research.calls, intelligence.analysisCalls, intelligence.draftsByProfile.get('student'), intelligence.draftsByProfile.get('adventure'), intelligence.reviewCalls]).toEqual([1, 1, 2, 1, 2])
+    const { data: operations } = await client.from('editorial_destination_batch_redo_operations').select('scope,status,previous_artifact_refs').eq('job_id', jobs[0]!.id)
+    expect(operations).toEqual([expect.objectContaining({ scope: 'STUDENT', status: 'COMPLETED', previous_artifact_refs: expect.objectContaining({ STUDENT: before.STUDENT }) })])
+    if (process.env.KEEP_FACTORY_REDO_SMOKE === 'true') {
+      console.info(`[factory redo smoke] batch=${batch.id} job=${jobs[0]!.id} destination=Granada Redo Student`)
+    }
+  }, 15_000)
 
   it('retries Adventure from durable state without repeating research, analysis, Student or Library drafts', async () => {
     const { client } = createLocalSupabaseClientFromEnv()
@@ -369,6 +398,7 @@ delete from public.real_editorial_visual_packages where canonical_destination_id
 delete from public.real_editorial_visual_assets where canonical_destination_id in(select destination_id from fixture_jobs);
 delete from public.real_editorial_visual_candidates where canonical_destination_id in(select destination_id from fixture_jobs);
 delete from public.editorial_destination_batch_issues where batch_id in(select id from public.editorial_destination_batches where name like '084J Granada%');
+delete from public.editorial_destination_batch_redo_operations where job_id in(select job_id from fixture_jobs);
 delete from public.editorial_destination_batch_jobs where id in(select job_id from fixture_jobs);
 delete from public.editorial_destination_batches where name like '084J Granada%';
 delete from public.geographic_entities where source_name='084j-fixture';

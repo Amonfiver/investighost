@@ -73,19 +73,20 @@ export class DurableGenericRealEditorialExecution {
 
   async executeReview(context: GenericRealEditorialExecutionContext, signal: AbortSignal): Promise<GenericEditorialPhaseResult> {
     const runtime = await this.runtime(context)
-    const existing = await runtime.repository.latestArtifactReference(runtime.execution.id, 'final_review', 'final')
+    const reviewKey = this.reviewKey(context)
+    const existing = await runtime.repository.latestArtifactReference(runtime.execution.id, 'final_review', reviewKey)
     if (existing) return { artifactRef: existing.id, actualCost: 0 }
     const research = await this.loadResearch(runtime, signal)
-    const student = await this.requireArtifact(runtime, 'draft_student', 'student')
-    const adventure = await this.requireArtifact(runtime, 'draft_adventure', 'adventure')
+    const student = await this.requireArtifact(runtime, 'draft_student', this.profileKey(context, 'student'))
+    const adventure = await this.requireArtifact(runtime, 'draft_adventure', this.profileKey(context, 'adventure'))
     const review = await runtime.pipeline.executeReview(
       runtime.mission,
       research,
       [student.payload as IntelligenceDraft, adventure.payload as IntelligenceDraft],
       signal,
     )
-    await runtime.repository.appendArtifact(runtime.execution.id, 'final_review', 'final', 1, review)
-    const stored = await this.requireArtifact(runtime, 'final_review', 'final')
+    await runtime.repository.appendArtifact(runtime.execution.id, 'final_review', reviewKey, 1, review)
+    const stored = await this.requireArtifact(runtime, 'final_review', reviewKey)
     return { artifactRef: stored.id, actualCost: runtime.calls.snapshot().spentCost, warnings: review.issues }
   }
 
@@ -96,18 +97,20 @@ export class DurableGenericRealEditorialExecution {
   ): Promise<GenericEditorialPhaseResult> {
     const runtime = await this.runtime(context)
     const kind = profile === 'student' ? 'draft_student' : 'draft_adventure'
-    let artifact = await runtime.repository.latestArtifactReference(runtime.execution.id, kind, profile)
+    const artifactKey = this.profileKey(context, profile)
+    let artifact = await runtime.repository.latestArtifactReference(runtime.execution.id, kind, artifactKey)
     let actualCost = 0
-    if (!artifact) {
+    const regenerates = this.regeneratesProfile(context, profile)
+    if (!artifact || regenerates) {
       const research = await this.loadResearch(runtime, signal)
       const draft = profile === 'student'
         ? await runtime.pipeline.executeStudent(runtime.mission, research, signal)
         : await runtime.pipeline.executeAdventure(runtime.mission, research, signal)
-      await runtime.repository.appendArtifact(runtime.execution.id, kind, profile, 1, draft)
-      artifact = await this.requireArtifact(runtime, kind, profile)
+      await runtime.repository.appendArtifact(runtime.execution.id, kind, artifactKey, (artifact?.version ?? 0) + 1, draft)
+      artifact = await this.requireArtifact(runtime, kind, artifactKey)
       actualCost = runtime.calls.snapshot().spentCost
     }
-    if (context.owner.type !== 'BATCH_JOB') return { artifactRef: artifact.id, actualCost }
+    if (context.owner.type !== 'BATCH_JOB') return { artifactRef: artifact.id, artifactKey, actualCost }
     const library = this.dependencies.library
     const actorId = this.dependencies.actorId
     if (!library || !actorId) throw new DurableGenericExecutionError('LIBRARY_TRANSITION_UNAVAILABLE', 'La transición compartida de Library no está configurada')
@@ -118,8 +121,9 @@ export class DurableGenericRealEditorialExecution {
       draft: artifact.payload as IntelligenceDraft,
       actorId,
     })
-    await runtime.repository.appendArtifact(runtime.execution.id, 'checkpoint', `library/${profile}`, 1, reference)
-    return { artifactRef: reference.revisionId, actualCost }
+    const libraryCheckpointKey = regenerates ? `library/${profile}/redo/${context.redo!.operationId}` : `library/${profile}`
+    await runtime.repository.appendArtifact(runtime.execution.id, 'checkpoint', libraryCheckpointKey, 1, reference)
+    return { artifactRef: reference.revisionId, artifactKey, actualCost }
   }
 
   private async runtime(context: GenericRealEditorialExecutionContext) {
@@ -130,10 +134,13 @@ export class DurableGenericRealEditorialExecution {
       dailyLimitCost: context.policy.limits.dailyBudgetEur,
     })
     const missionArtifact = await repository.latestArtifact(execution.id, 'mission', 'initial')
-    const mission = missionArtifact
+    const storedMission = missionArtifact
       ? missionArtifact.payload as ReturnType<typeof createGenericRealEditorialMission>
       : createGenericRealEditorialMission(context, this.now())
-    if (!missionArtifact) await repository.appendArtifact(execution.id, 'mission', 'initial', 1, mission)
+    if (!missionArtifact) await repository.appendArtifact(execution.id, 'mission', 'initial', 1, storedMission)
+    // A redo preserves the durable execution and its research artifacts, but
+    // must own a fresh task identity for new provider reservations.
+    const mission = context.redo ? { ...storedMission, runId: context.runId, taskId: context.taskId } : storedMission
     const ledger = new CostLedgerService(new SupabaseGenericExecutionLedgerRepository(
       repository.client,
       execution.id,
@@ -146,7 +153,7 @@ export class DurableGenericRealEditorialExecution {
     )
     const workflow = new ControlledRealWorkflow(
       this.dependencies.providers,
-      repository.checkpointStore(execution.id),
+      repository.checkpointStore(execution.id, context.redo ? `workflow/redo/${context.redo.operationId}` : 'workflow'),
       calls,
       {
         researchCostPerRound: REAL_EDITORIAL_OPERATION_BUDGETS.researchPerRound,
@@ -177,6 +184,17 @@ export class DurableGenericRealEditorialExecution {
     if (!recovered) throw new DurableGenericExecutionError('RESEARCH_ARTIFACT_REQUIRED', 'La investigación no dejó un artifact durable')
     return recovered.payload as RealWorkflowOutcome
   }
+
+  private profileKey(context: GenericRealEditorialExecutionContext, profile: 'student' | 'adventure'): string {
+    void context
+    return profile
+  }
+
+  private regeneratesProfile(context: GenericRealEditorialExecutionContext, profile: 'student' | 'adventure'): boolean {
+    return Boolean(context.redo && (context.redo.scope === 'EDITORIAL' || (context.redo.scope === 'STUDENT' && profile === 'student') || (context.redo.scope === 'ADVENTURE' && profile === 'adventure')))
+  }
+
+  private reviewKey(context: GenericRealEditorialExecutionContext): string { return context.redo ? `redo/${context.redo.operationId}` : 'final' }
 
   private async requireArtifact(
     runtime: Awaited<ReturnType<DurableGenericRealEditorialExecution['runtime']>>,

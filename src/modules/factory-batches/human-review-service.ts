@@ -28,7 +28,7 @@ export class DestinationBatchHumanReviewService {
       throw new Error('BATCH_REVIEW_APPROVAL_GATE: faltan revisiones, visuales o auto-review requeridos')
     }
     await Promise.all([this.approveRevision(review.student), this.approveRevision(review.adventure)])
-    return this.batches.updateJob({ ...job, status: 'APPROVED', retryable: false, lastFailure: undefined, updatedAt: new Date() })
+    return this.batches.approveReadyJob(job.id, new Date())
   }
 
   private async approveRevision(reference: { libraryEntryId: string; versionId: string; revisionId: string }) {

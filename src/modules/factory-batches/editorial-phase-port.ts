@@ -15,6 +15,9 @@ export interface BatchEditorialPhaseContext {
 export interface BatchEditorialPhaseResult {
   /** Durable identifier owned by the delegated module, never a duplicate blob. */
   artifactRef?: string
+  /** Internal durable draft key, needed when a later redo reviews a previous
+   * regenerated sibling profile. Never rendered as a user-facing identifier. */
+  artifactKey?: string
   /** Cost already recorded by the delegated real-pipeline ledger for this phase. */
   actualCost?: number
   /** Visual work is reviewable locally; it is not a public Trawel media URL. */

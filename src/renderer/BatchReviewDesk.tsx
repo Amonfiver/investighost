@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { DestinationBatchJobReviewReadModel } from '@shared/factory-batch-contracts'
+import type { DestinationBatchRedoScope } from '@shared/factory-batch-contracts'
 
 type Tab = 'summary' | 'student' | 'adventure' | 'visuals' | 'traceability'
 
@@ -8,12 +9,15 @@ export function BatchReviewDesk({ jobId, onBack }: { jobId: string; onBack: () =
   const [tab, setTab] = useState<Tab>('summary')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [redoScope, setRedoScope] = useState<DestinationBatchRedoScope | null>(null)
+  const [redoReason, setRedoReason] = useState('')
   const load = async () => { setBusy(true); setError(null); try { setReview(await window.electronAPI.readDestinationBatchJobReview(jobId)) } catch (reason) { setError(errorText(reason)) } finally { setBusy(false) } }
   // The request is intentionally keyed solely by the durable job identity.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void load() }, [jobId])
   const canApprove = Boolean(review?.status === 'READY_FOR_REVIEW' && review.student && review.adventure && review.visualPackageId && review.reviewArtifactId)
   const approve = async () => { setBusy(true); setError(null); try { await window.electronAPI.approveDestinationBatchJob(jobId); await load() } catch (reason) { setError(errorText(reason)) } finally { setBusy(false) } }
+  const requestRedo = async () => { if (!redoScope) return; setBusy(true); setError(null); try { await window.electronAPI.requestDestinationBatchRedo({ jobId, scope: redoScope, ...(redoReason.trim() ? { reason: redoReason.trim() } : {}) }); onBack() } catch (reason) { setError(errorText(reason)) } finally { setBusy(false) } }
   const adventureVisuals = useMemo(() => selectedVisuals(review, 'adventure'), [review])
   return <section className="review-desk" aria-label="Mesa de revisión humana">
     <button className="back-link" onClick={onBack}>← Volver al lote</button>
@@ -24,7 +28,8 @@ export function BatchReviewDesk({ jobId, onBack }: { jobId: string; onBack: () =
       {tab === 'summary' && <section className="review-grid"><Metric label="Estado" value={label(review.status)} /><Metric label="Auto-review" value={String(review.reviewSummary?.outcome ?? 'pendiente')} /><Metric label="Intentos" value={String(review.attempts)} /><Metric label="Visuales" value={review.visualPackage?.state ?? 'sin paquete'} />
         {review.warnings.length > 0 && <div className="alert warning"><strong>Warnings</strong><span>{review.warnings.join(' · ')}</span></div>}
         {review.lastError && <div className="alert error"><strong>Último error</strong><span>{review.lastError}</span></div>}
-        <div className="review-actions"><div><strong>Aprobación humana</strong><small>Aprueba Student y Adventure mediante Library. No crea delivery.</small></div><button className="button success" disabled={!canApprove || busy} title={canApprove ? 'Aprobar revisiones y destino' : 'Faltan Student, Adventure, visuales o auto-review'} onClick={() => { void approve() }}>Aprobar destino</button></div>
+        <div className="review-actions"><div><strong>Aprobación humana</strong><small>Aprueba Student y Adventure mediante Library. No crea delivery.</small></div><button className="button secondary" disabled={review.status !== 'READY_FOR_REVIEW' || busy} onClick={() => setRedoScope(redoScope ?? 'STUDENT')}>Rehacer</button><button className="button success" disabled={!canApprove || busy || Boolean(redoScope)} title={canApprove ? 'Aprobar revisiones y destino' : 'Faltan Student, Adventure, visuales o auto-review'} onClick={() => { void approve() }}>Aprobar destino</button></div>
+        {redoScope && <section className="form-card" aria-label="Confirmar rehacer"><h3>Rehacer {redoLabel(redoScope)}</h3><p>Se conservarán: {preserved(redoScope)}. Se volverá a crear: {regenerated(redoScope)} y la revisión automática.</p><label className="field"><span>Motivo (opcional)</span><input value={redoReason} maxLength={1000} onChange={event => setRedoReason(event.target.value)} placeholder="Qué debe mejorar" /></label><div className="review-tabs">{(['STUDENT', 'ADVENTURE', 'VISUALS', 'EDITORIAL'] as const).map(scope => <button key={scope} className={redoScope === scope ? 'active' : ''} onClick={() => setRedoScope(scope)}>{redoLabel(scope)}</button>)}</div><div className="form-actions"><button className="button ghost" disabled={busy} onClick={() => setRedoScope(null)}>Cancelar</button><button className="button secondary" disabled={busy} onClick={() => { void requestRedo() }}>Rehacer {redoLabel(redoScope)}</button></div></section>}
       </section>}
       {tab === 'student' && <DocumentReview title="Student · explicación editorial" document={review.student} />}
       {tab === 'adventure' && <section className="adventure-review"><div className="section-heading"><div><span className="card-kicker">VISUAL-FIRST</span><h3>{review.adventure?.title ?? 'Adventure pendiente'}</h3><p>Hero, highlights y galería abren la experiencia; el copy acompaña la selección.</p></div></div><VisualStrip title="Hero" items={adventureVisuals.hero} /><VisualStrip title="Highlights" items={adventureVisuals.highlight} /><VisualStrip title="Galería" items={adventureVisuals.gallery} /><DocumentReview title="Copy de Adventure" document={review.adventure} /></section>}
@@ -42,3 +47,6 @@ function selectedVisuals(review: DestinationBatchJobReviewReadModel | null, mode
 function label(status: string) { return ({ QUEUED: 'En cola', PROCESSING: 'Procesando', READY_FOR_REVIEW: 'Lista para revisión', APPROVED: 'Aprobado', REDO_REQUIRED: 'Rehacer', DELIVERED: 'Entregado', FAILED: 'Fallido', BLOCKED_AMBIGUOUS: 'Ambiguo', REUSED: 'Reutilizable' } as Record<string, string>)[status] ?? status }
 function formatMoney(value: number) { return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value) }
 function errorText(reason: unknown) { return reason instanceof Error ? reason.message : String(reason) }
+function redoLabel(scope: DestinationBatchRedoScope) { return ({ STUDENT: 'Student', ADVENTURE: 'Adventure', VISUALS: 'Imágenes', EDITORIAL: 'Contenido editorial' } as Record<DestinationBatchRedoScope, string>)[scope] }
+function preserved(scope: DestinationBatchRedoScope) { return ({ STUDENT: 'investigación, análisis, Adventure e imágenes', ADVENTURE: 'investigación, análisis, Student e imágenes', VISUALS: 'investigación, análisis, Student y Adventure', EDITORIAL: 'investigación, análisis e imágenes' } as Record<DestinationBatchRedoScope, string>)[scope] }
+function regenerated(scope: DestinationBatchRedoScope) { return ({ STUDENT: 'Student', ADVENTURE: 'Adventure', VISUALS: 'Imágenes', EDITORIAL: 'Student y Adventure' } as Record<DestinationBatchRedoScope, string>)[scope] }

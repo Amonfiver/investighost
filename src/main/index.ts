@@ -111,6 +111,7 @@ import {
   getDestinationBatchPersistenceStatus,
   getDestinationBatchWorkerRuntime,
   DestinationBatchHumanReviewService,
+  DestinationBatchRedoService,
   ProductionBatchEditorialPhasePort,
   SupabaseDestinationBatchRepository,
 } from '@modules/factory-batches'
@@ -192,6 +193,16 @@ ipcMain.handle('factory-batches:approve', async (_event, jobId: unknown) => {
     new SupabaseDestinationBatchRepository(client),
     new SupabaseRealEditorialLibraryVersioningRepository(client),
   ).approve(z.string().uuid().parse(jobId))
+})
+
+ipcMain.handle('factory-batches:request-redo', async (_event, input: unknown) => {
+  const request = z.object({ jobId: z.string().uuid(), scope: z.enum(['STUDENT', 'ADVENTURE', 'VISUALS', 'EDITORIAL']), reason: z.string().max(1000).optional() }).parse(input)
+  const client = createLocalSupabaseClientFromEnv().client
+  const job = await new DestinationBatchRedoService(new SupabaseDestinationBatchRepository(client)).request(request)
+  // Keep the UI request responsive; the existing worker owns failures, retries,
+  // budgets and lease recovery for the same durable job.
+  void getDestinationBatchWorkerRuntime().then(worker => worker.runJob(job.id)).catch(() => undefined)
+  return job
 })
 
 // Pipeline Manual canónico. Toda persistencia y toda clave privilegiada permanecen en main.

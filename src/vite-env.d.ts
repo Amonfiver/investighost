@@ -94,6 +94,7 @@ declare global {
       startDestinationBatch: (batchId: string) => Promise<import('./modules/factory-batches').BatchWorkerRunResult[]>
       readDestinationBatchJobReview: (jobId: string) => Promise<import('./shared/factory-batch-contracts').DestinationBatchJobReviewReadModel>
       approveDestinationBatchJob: (jobId: string) => Promise<import('./shared/factory-batch-contracts').DestinationBatchJob>
+      requestDestinationBatchRedo: (input: { jobId: string; scope: import('./shared/factory-batch-contracts').DestinationBatchRedoScope; reason?: string }) => Promise<import('./shared/factory-batch-contracts').DestinationBatchJob>
 
       // Pipeline Manual canónico
       getManualPersistenceStatus: () => Promise<ManualPersistenceStatus>

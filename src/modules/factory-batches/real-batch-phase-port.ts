@@ -71,7 +71,7 @@ export class ProductionBatchEditorialPhasePort implements BatchEditorialPhasePor
     if (!authorization.enabled || !authorization.featureToken) {
       throw new Error('BATCH_PROVIDER_AUTHORIZATION_REQUIRED: falta la capability explícita de ejecución batch')
     }
-    if (input.phase === 'VISUALS') return this.visual.prepare(context.destination)
+    if (input.phase === 'VISUALS') return this.visual.prepare(context.destination, input.job.redoScope === 'VISUALS' ? input.job.redoOperationId : undefined)
     const gate = {
         featureToken: authorization.featureToken,
         preflightStatus: 'ready_for_real_batch_execution',
@@ -137,7 +137,7 @@ class BatchVisualReviewDelegate {
     )
   }
 
-  async prepare(destination: { destinationId: string; name: string; countryCode: string; region?: string }): Promise<BatchEditorialPhaseResult> {
+  async prepare(destination: { destinationId: string; name: string; countryCode: string; region?: string }, redoOperationId?: string): Promise<BatchEditorialPhaseResult> {
     const countryOrRegion = destination.region ?? destination.countryCode
     for (const query of [
       { category: 'landmark' as const, role: 'hero' as const },
@@ -151,7 +151,7 @@ class BatchVisualReviewDelegate {
     }
     const prepared = await this.acquisition.prepareDestinationForHumanVisualReview(destination.destinationId, {
       modes: ['adventure', 'student'], highlightLimit: 4, galleryLimit: 6,
-    })
+    }, redoOperationId ? `visual-acquisition-v1/redo/${redoOperationId}` : undefined)
     return {
       artifactRef: prepared.package.packageId,
       visualReviewState: prepared.package.state === 'DRAFT' ? 'EMPTY' : 'PARTIAL',

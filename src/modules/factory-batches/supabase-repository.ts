@@ -8,6 +8,7 @@ import {
   type DestinationBatchIssue,
   type DestinationBatchJob,
   type DestinationBatchJobReviewReadModel,
+  type DestinationBatchRedoScope,
 } from '@shared/factory-batch-contracts'
 import type { DestinationBatchRepository, ExistingDestinationMatch } from './contracts'
 
@@ -211,6 +212,30 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
     assertNoError(error, 'TOTAL_ACTUAL_COST')
     return (data ?? []).reduce((total, row) => total + Number((row as Row).actual_cost ?? 0), 0)
   }
+
+  async requestRedo(input: { jobId: string; scope: DestinationBatchRedoScope; requestedBy: string; reason?: string; now: Date }): Promise<DestinationBatchJob> {
+    const { data, error } = await this.client.rpc('factory_request_destination_batch_redo', {
+      p_job_id: input.jobId, p_scope: input.scope, p_requested_by: input.requestedBy, p_reason: input.reason ?? null, p_now: input.now.toISOString(),
+    })
+    assertNoError(error, 'REQUEST_REDO')
+    if (!data || !(data as Row).id) throw new Error('FACTORY_BATCH_REDO_NO_JOB')
+    return jobFromRow(data as Row)
+  }
+
+  async completeRedo(operationId: string, outcome: 'COMPLETED' | 'FAILED', now: Date): Promise<void> {
+    const { error } = await this.client.from('editorial_destination_batch_redo_operations')
+      .update({ status: outcome, completed_at: now.toISOString() }).eq('id', operationId)
+    assertNoError(error, 'COMPLETE_REDO')
+  }
+
+  async approveReadyJob(jobId: string, now: Date): Promise<DestinationBatchJob> {
+    const { data, error } = await this.client.from('editorial_destination_batch_jobs')
+      .update({ status: 'APPROVED', retryable: false, last_failure: null, updated_at: now.toISOString() })
+      .eq('id', jobId).eq('status', 'READY_FOR_REVIEW').select().maybeSingle()
+    assertNoError(error, 'APPROVE_READY_JOB')
+    if (!data) throw new Error('BATCH_REVIEW_STATE_CHANGED')
+    return jobFromRow(data as Row)
+  }
 }
 
 function batchToRow(batch: DestinationBatch): Row {
@@ -236,6 +261,7 @@ function jobToRow(job: DestinationBatchJob): Row {
     artifact_refs: job.artifactRefs, attempt_count: job.attemptCount, last_failure: job.lastFailure ?? null,
     retryable: job.retryable, retry_requested_at: iso(job.retryRequestedAt), actual_cost: job.actualCost,
     claimed_by: job.claimedBy ?? null, claim_token: job.claimToken ?? null, claim_expires_at: iso(job.claimExpiresAt), started_at: iso(job.startedAt),
+    redo_operation_id: job.redoOperationId ?? null, redo_scope: job.redoScope ?? null,
     created_at: job.createdAt.toISOString(), updated_at: job.updatedAt.toISOString(),
   }
 }
@@ -273,6 +299,7 @@ function jobFromRow(row: Row): DestinationBatchJob {
     claimedBy: row.claimed_by ?? undefined, claimToken: row.claim_token ?? undefined,
     claimExpiresAt: row.claim_expires_at ? new Date(String(row.claim_expires_at)) : undefined,
     startedAt: row.started_at ? new Date(String(row.started_at)) : undefined,
+    redoOperationId: row.redo_operation_id ?? undefined, redoScope: row.redo_scope ?? undefined,
   })
 }
 

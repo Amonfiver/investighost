@@ -66,7 +66,7 @@ export class EditorialBatchWorker {
   async runJob(jobId: string): Promise<BatchWorkerRunResult> {
     await this.repository.recoverStaleClaims(this.now())
     const existing = await this.repository.getJob(jobId)
-    if (!existing || existing.status !== 'QUEUED') return { job: existing, processed: false }
+    if (!existing || !['QUEUED', 'REDO_REQUIRED'].includes(existing.status)) return { job: existing, processed: false }
     const batch = await this.requireBatch(existing.batchId)
     if (await this.batchBudgetReached(batch)) return { job: existing, processed: false, budgetBlocked: true }
     const claimed = await this.repository.claimJob(jobId, this.workerId, this.leaseMs, this.now())
@@ -96,6 +96,8 @@ export class EditorialBatchWorker {
         }
         const refs = { ...job.artifactRefs }
         if (result.artifactRef) refs[phase] = result.artifactRef
+        if (result.artifactKey && phase === 'STUDENT') refs.STUDENT_ARTIFACT_KEY = result.artifactKey
+        if (result.artifactKey && phase === 'ADVENTURE') refs.ADVENTURE_ARTIFACT_KEY = result.artifactKey
         if (phase === 'VISUALS' && result.visualReviewState) refs.visualReviewState = result.visualReviewState
         const completedPhases = [...job.completedPhases, phase] as DestinationJobPhase[]
         const nextPhase = workerPhases[workerPhases.indexOf(phase) + 1] ?? 'AUTO_REVIEW'
@@ -105,10 +107,13 @@ export class EditorialBatchWorker {
         })
         job = await this.repository.updateJob(job)
       }
-      return this.repository.releaseClaim(DestinationBatchJobSchema.parse({
+      const completedRedoOperation = job.redoOperationId
+      const released = await this.repository.releaseClaim(DestinationBatchJobSchema.parse({
         ...job, status: 'READY_FOR_REVIEW', currentPhase: 'AUTO_REVIEW', retryable: false,
-        lastFailure: undefined, updatedAt: this.now(),
+        redoOperationId: undefined, redoScope: undefined, lastFailure: undefined, updatedAt: this.now(),
       }), token)
+      if (completedRedoOperation) await this.repository.completeRedo(completedRedoOperation, 'COMPLETED', this.now())
+      return released
     } catch (error) {
       if (error instanceof BatchBudgetStopError) {
         return this.repository.releaseClaim(DestinationBatchJobSchema.parse({
@@ -116,10 +121,13 @@ export class EditorialBatchWorker {
         }), token)
       }
       const classified = classifyBatchWorkerError(error)
-      return this.repository.releaseClaim(DestinationBatchJobSchema.parse({
+      const failedRedoOperation = job.redoOperationId
+      const released = await this.repository.releaseClaim(DestinationBatchJobSchema.parse({
         ...job, status: 'FAILED', retryable: classified.classification === 'TRANSIENT',
         lastFailure: `${classified.code}: ${classified.message}`.slice(0, 2000), updatedAt: this.now(),
       }), token)
+      if (failedRedoOperation) await this.repository.completeRedo(failedRedoOperation, 'FAILED', this.now())
+      return released
     }
   }
 

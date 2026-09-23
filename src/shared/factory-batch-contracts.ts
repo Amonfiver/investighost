@@ -38,6 +38,7 @@ export const DestinationJobPhaseSchema = z.enum([
   'IDENTITY', 'RESEARCH', 'ANALYSIS', 'STUDENT', 'ADVENTURE', 'VISUALS',
   'AUTO_REVIEW', 'DELIVERY',
 ])
+export const DestinationBatchRedoScopeSchema = z.enum(['STUDENT', 'ADVENTURE', 'VISUALS', 'EDITORIAL'])
 
 export const DestinationIdentityStateSchema = z.enum([
   'NEW', 'EXISTS', 'EXISTS_DELIVERED', 'EXISTS_WITH_APPROVED_CONTENT', 'AMBIGUOUS',
@@ -110,6 +111,8 @@ export const DestinationBatchJobSchema = z.object({
   claimToken: z.string().uuid().optional(),
   claimExpiresAt: TimestampSchema.optional(),
   startedAt: TimestampSchema.optional(),
+  redoOperationId: IdSchema.optional(),
+  redoScope: DestinationBatchRedoScopeSchema.optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })
@@ -172,3 +175,4 @@ export type DestinationBatchJobReviewReadModel = z.infer<typeof DestinationBatch
 export type DestinationBatchImportResult = z.infer<typeof DestinationBatchImportResultSchema>
 export type DestinationBatchDestination = z.infer<typeof DestinationBatchDestinationSchema>
 export type DestinationJobPhase = z.infer<typeof DestinationJobPhaseSchema>
+export type DestinationBatchRedoScope = z.infer<typeof DestinationBatchRedoScopeSchema>

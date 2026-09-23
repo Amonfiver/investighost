@@ -14,7 +14,7 @@ export interface VisualProcessingRepository {
   findAssetByChecksum(destinationId: string, checksum: string): Promise<VisualAsset | null>
   upsertAsset(asset: VisualAsset): Promise<VisualAsset>
   retainProvenance(assetId: string, candidateId: string): Promise<void>
-  savePackage(destinationId: string, packageValue: typeof DestinationVisualMediaPackageSchemaType._output): Promise<typeof DestinationVisualMediaPackageSchemaType._output>
+  savePackage(destinationId: string, packageValue: typeof DestinationVisualMediaPackageSchemaType._output, workflowKey?: string): Promise<typeof DestinationVisualMediaPackageSchemaType._output>
 }
 
 export class MemoryVisualProcessingRepository implements VisualProcessingRepository {
@@ -38,10 +38,11 @@ export class MemoryVisualProcessingRepository implements VisualProcessingReposit
     return clone(saved)
   }
   async retainProvenance(assetId: string, candidateId: string): Promise<void> { this.provenance.add(`${assetId}:${candidateId}`) }
-  async savePackage(destinationId: string, packageValue: typeof DestinationVisualMediaPackageSchemaType._output): Promise<typeof DestinationVisualMediaPackageSchemaType._output> {
-    const existing = this.packages.get(destinationId)
+  async savePackage(destinationId: string, packageValue: typeof DestinationVisualMediaPackageSchemaType._output, workflowKey = 'visual-acquisition-v1'): Promise<typeof DestinationVisualMediaPackageSchemaType._output> {
+    const key = `${destinationId}:${workflowKey}`
+    const existing = this.packages.get(key)
     const saved = existing === undefined ? packageValue : { ...packageValue, packageId: existing.packageId }
-    this.packages.set(destinationId, clone(saved))
+    this.packages.set(key, clone(saved))
     return clone(saved)
   }
 }
@@ -90,12 +91,12 @@ export class SupabaseVisualProcessingRepository implements VisualProcessingRepos
     const { error } = await this.client.from('real_editorial_visual_asset_candidates').upsert({ asset_id: assetId, candidate_id: candidateId }, { onConflict: 'asset_id,candidate_id' })
     if (error) throw new Error(`VISUAL_PROVENANCE_UPSERT_FAILED:${error.message}`)
   }
-  async savePackage(destinationId: string, packageValue: typeof DestinationVisualMediaPackageSchemaType._output): Promise<typeof DestinationVisualMediaPackageSchemaType._output> {
+  async savePackage(destinationId: string, packageValue: typeof DestinationVisualMediaPackageSchemaType._output, workflowKey = 'visual-acquisition-v1'): Promise<typeof DestinationVisualMediaPackageSchemaType._output> {
     const { data: current, error: lookupError } = await this.client.from('real_editorial_visual_packages').select('id')
-      .eq('canonical_destination_id', destinationId).eq('workflow_key', 'visual-acquisition-v1').maybeSingle()
+      .eq('canonical_destination_id', destinationId).eq('workflow_key', workflowKey).maybeSingle()
     if (lookupError) throw new Error(`VISUAL_PACKAGE_LOOKUP_FAILED:${lookupError.message}`)
     const packageId = current === null ? packageValue.packageId : text((current as Record<string, unknown>).id)
-    const row = { id: packageId, canonical_destination_id: destinationId, workflow_key: 'visual-acquisition-v1', state: packageValue.state, package_hash: packageValue.packageHash, rejection_reason: null, approved_at: packageValue.state === 'APPROVED' ? new Date().toISOString() : null }
+    const row = { id: packageId, canonical_destination_id: destinationId, workflow_key: workflowKey, state: packageValue.state, package_hash: packageValue.packageHash, rejection_reason: null, approved_at: packageValue.state === 'APPROVED' ? new Date().toISOString() : null }
     const packageQuery = current === null
       ? this.client.from('real_editorial_visual_packages').insert(row)
       : this.client.from('real_editorial_visual_packages').update(row).eq('id', packageId)

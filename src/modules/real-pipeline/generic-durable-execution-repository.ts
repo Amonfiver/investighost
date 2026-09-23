@@ -124,7 +124,7 @@ export class SupabaseGenericDurableExecutionRepository {
     if (existing.error) throw new GenericDurableExecutionError('PERSISTENCE_ERROR', 'No se pudo comprobar el artifact editorial', existing.error)
     if (existing.data) {
       if (existing.data.payload_hash !== payloadHash) {
-        throw new GenericDurableExecutionError('IDEMPOTENCY_CONFLICT', 'El artifact durable ya existe con otro payload')
+        throw new GenericDurableExecutionError('IDEMPOTENCY_CONFLICT', `El artifact durable ${kind}/${key}/v${version} ya existe con otro payload`)
       }
       return
     }
@@ -145,8 +145,8 @@ export class SupabaseGenericDurableExecutionRepository {
     if (error) throw new GenericDurableExecutionError('PERSISTENCE_ERROR', 'No se pudo actualizar la fase editorial', error)
   }
 
-  checkpointStore(executionOwnerId: string): RealWorkflowCheckpointStore {
-    return new GenericDurableWorkflowCheckpointStore(this, executionOwnerId)
+  checkpointStore(executionOwnerId: string, artifactKey = 'workflow'): RealWorkflowCheckpointStore {
+    return new GenericDurableWorkflowCheckpointStore(this, executionOwnerId, artifactKey)
   }
 }
 
@@ -154,10 +154,11 @@ export class GenericDurableWorkflowCheckpointStore implements RealWorkflowCheckp
   constructor(
     private readonly repository: Pick<SupabaseGenericDurableExecutionRepository, 'latestArtifact' | 'appendArtifact'>,
     private readonly executionOwnerId: string,
+    private readonly artifactKey = 'workflow',
   ) {}
 
   async load(taskId: string): Promise<RealWorkflowCheckpoint | undefined> {
-    const artifact = await this.repository.latestArtifact(this.executionOwnerId, 'checkpoint', 'workflow')
+    const artifact = await this.repository.latestArtifact(this.executionOwnerId, 'checkpoint', this.artifactKey)
     if (!artifact) return undefined
     const checkpoint = artifact.payload as RealWorkflowCheckpoint
     if (checkpoint.version !== 'real-workflow-v1' || checkpoint.taskId !== taskId) {
@@ -167,11 +168,11 @@ export class GenericDurableWorkflowCheckpointStore implements RealWorkflowCheckp
   }
 
   async save(checkpoint: RealWorkflowCheckpoint): Promise<void> {
-    const latest = await this.repository.latestArtifact(this.executionOwnerId, 'checkpoint', 'workflow')
+    const latest = await this.repository.latestArtifact(this.executionOwnerId, 'checkpoint', this.artifactKey)
     await this.repository.appendArtifact(
       this.executionOwnerId,
       'checkpoint',
-      'workflow',
+      this.artifactKey,
       (latest?.version ?? 0) + 1,
       checkpoint,
     )

@@ -47,6 +47,10 @@ export interface GenericRealEditorialExecutionContext {
   destination: GenericEditorialDestination
   policy: GenericRealEditorialPolicy
   budgetDate?: string
+  /** Present only for a durable batch redo. Its operation id namespaces new
+   * candidate artifacts while retaining the same research/analysis execution. */
+  redo?: { operationId: string; scope: 'STUDENT' | 'ADVENTURE' | 'VISUALS' | 'EDITORIAL' }
+  profileArtifactKeys?: { student?: string; adventure?: string }
 }
 
 export type GenericEditorialExecutionPhase =
@@ -58,6 +62,7 @@ export type GenericEditorialExecutionPhase =
 
 export interface GenericEditorialPhaseResult {
   artifactRef: string
+  artifactKey?: string
   actualCost?: number
   warnings?: string[]
 }

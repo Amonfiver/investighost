@@ -51,7 +51,7 @@ export class VisualCandidateAcquisitionService {
    * calls public storage: the HTTPS media URL belongs to the approved Trawel
    * delivery bridge, not to Investighost's local factory runtime.
    */
-  async prepareDestinationForHumanVisualReview(destinationId: string, plan: VisualCandidateSelectionPlan): Promise<LocalVisualReviewPreparation> {
+  async prepareDestinationForHumanVisualReview(destinationId: string, plan: VisualCandidateSelectionPlan, workflowKey = 'visual-acquisition-v1'): Promise<LocalVisualReviewPreparation> {
     const candidates = await this.candidates.listByDestination(destinationId)
     const selected = selectVisualCandidates(candidates, plan)
     const assets: VisualAsset[] = []
@@ -74,7 +74,7 @@ export class VisualCandidateAcquisitionService {
         failures.push({ candidateId: selection.candidate.candidateId, code })
       }
     }
-    const packageValue = await this.buildAndSavePrivateReviewPackage(destinationId, assets, preparedSelections)
+    const packageValue = await this.buildAndSavePrivateReviewPackage(destinationId, assets, preparedSelections, workflowKey)
     return { selected, stagedCandidateIds, failures, package: packageValue }
   }
 
@@ -151,13 +151,13 @@ export class VisualCandidateAcquisitionService {
     return this.processing.savePackage(destinationId, DestinationVisualMediaPackageSchema.parse({ ...base, packageHash }))
   }
 
-  private async buildAndSavePrivateReviewPackage(destinationId: string, assets: readonly VisualAsset[], prepared: ReadonlyArray<{ selection: SelectedVisualCandidate; asset: VisualAsset }>): Promise<typeof DestinationVisualMediaPackageSchemaType._output> {
+  private async buildAndSavePrivateReviewPackage(destinationId: string, assets: readonly VisualAsset[], prepared: ReadonlyArray<{ selection: SelectedVisualCandidate; asset: VisualAsset }>, workflowKey: string): Promise<typeof DestinationVisualMediaPackageSchemaType._output> {
     const selections = prepared.flatMap(({ selection, asset }) => selection.modes.map(mode => ({ assetId: asset.assetId, mode, role: selection.role, priority: selection.priority })))
     const state: typeof DestinationVisualMediaPackageSchemaType._output['state'] = assets.length === 0 ? 'DRAFT' : 'PARTIAL'
     return this.processing.savePackage(destinationId, DestinationVisualMediaPackageSchema.parse({
       schema: DESTINATION_VISUAL_MEDIA_CONTRACT, packageId: this.packageId(), destinationId, state, packageHash: null,
       assets: distinctBy(assets, asset => asset.assetId), selections,
-    }))
+    }), workflowKey)
   }
 }
 

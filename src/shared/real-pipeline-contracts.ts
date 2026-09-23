@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { RedoGenerationGuidanceSchema } from './redo-guidance-contracts'
 
 const IdentifierSchema = z.string().trim().min(1).max(160)
 const NonEmptyTextSchema = z.string().trim().min(1)
@@ -77,6 +78,9 @@ export const RealResearchMissionSchema = z.object({
   focusedQueries: z.array(IdentifierSchema.max(500)).max(20),
   limits: RealPipelineLimitsSchema,
   createdAt: IsoTimestampSchema,
+  redoGuidance: RedoGenerationGuidanceSchema.optional(),
+  redoReason: z.string().max(1000).optional(),
+  previousRevision: z.object({ revisionId: IdentifierSchema, content: z.string().max(100_000) }).strict().optional(),
 }).superRefine((value, context) => {
   const activeProfiles = value.profiles.filter(profile => profile.enabled)
   if (activeProfiles.length === 0) {

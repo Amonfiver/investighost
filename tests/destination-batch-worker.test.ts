@@ -9,6 +9,7 @@ import {
   type BatchEditorialPhaseContext,
   type BatchEditorialPhasePort,
 } from '@modules/factory-batches'
+import { defaultRedoGuidance } from '@shared/redo-guidance-contracts'
 
 const phases = ['IDENTITY', 'RESEARCH', 'ANALYSIS', 'STUDENT', 'ADVENTURE', 'VISUALS', 'AUTO_REVIEW'] as const
 
@@ -144,7 +145,8 @@ describe('EditorialBatchWorker', () => {
     const target = jobs.find(job => job.originalName === 'Éxito')!
     const initial = await worker.runJob(target.id)
     const before = initial.job!.artifactRefs
-    const requested = await new DestinationBatchRedoService(repository).request({ jobId: target.id, scope, reason: 'revisión humana' })
+    const guidance = defaultRedoGuidance(scope)
+    const requested = await new DestinationBatchRedoService(repository).request({ jobId: target.id, scope, guidance, reason: 'revisión humana' })
     expect(requested).toMatchObject({ status: 'REDO_REQUIRED', redoScope: scope })
     const completed = await worker.runJob(target.id)
     expect(completed.job).toMatchObject({ status: 'READY_FOR_REVIEW', redoOperationId: undefined, redoScope: undefined })
@@ -152,7 +154,7 @@ describe('EditorialBatchWorker', () => {
     expect(port.calls.filter(call => call === 'Éxito:ANALYSIS')).toHaveLength(1)
     for (const phase of regenerated) expect(completed.job!.artifactRefs[phase]).not.toBe(before[phase])
     for (const phase of retained) expect(completed.job!.artifactRefs[phase]).toBe(before[phase])
-    expect([...repository.redoOperations.values()]).toEqual([expect.objectContaining({ scope, status: 'COMPLETED', previousArtifactRefs: before })])
+    expect([...repository.redoOperations.values()]).toEqual([expect.objectContaining({ scope, guidance, reason: 'revisión humana', status: 'COMPLETED', previousArtifactRefs: before })])
   })
 
   it('coalesces a double redo request into one operation and one regeneration', async () => {
@@ -162,12 +164,30 @@ describe('EditorialBatchWorker', () => {
     const target = jobs.find(job => job.originalName === 'Éxito')!
     await worker.runJob(target.id)
     const redo = new DestinationBatchRedoService(repository)
-    const [first, second] = await Promise.all([redo.request({ jobId: target.id, scope: 'ADVENTURE' }), redo.request({ jobId: target.id, scope: 'ADVENTURE' })])
+    const guidance = defaultRedoGuidance('ADVENTURE')
+    const [first, second] = await Promise.all([
+      redo.request({ jobId: target.id, scope: 'ADVENTURE', guidance, reason: 'más visual' }),
+      redo.request({ jobId: target.id, scope: 'ADVENTURE', guidance, reason: 'más visual' }),
+    ])
     expect(first.redoOperationId).toBe(second.redoOperationId)
     await worker.runJob(target.id)
     expect(repository.redoOperations.size).toBe(1)
     expect(port.calls.filter(call => call === 'Éxito:ADVENTURE')).toHaveLength(2)
     expect(port.calls.filter(call => call === 'Éxito:RESEARCH')).toHaveLength(1)
+  })
+
+  it('keeps legacy redo requests without guidance readable and creates a later operation for new guidance', async () => {
+    const { repository, jobs } = await fixture()
+    const worker = new EditorialBatchWorker(repository, new FixturePhasePort(), { workerId: 'redo-guidance-legacy' })
+    const target = jobs.find(job => job.originalName === 'Éxito')!
+    await worker.runJob(target.id)
+    const redo = new DestinationBatchRedoService(repository)
+    await redo.request({ jobId: target.id, scope: 'ADVENTURE', reason: 'sin controles heredado' })
+    await worker.runJob(target.id)
+    expect([...repository.redoOperations.values()]).toEqual([expect.objectContaining({ guidance: undefined, reason: 'sin controles heredado', status: 'COMPLETED' })])
+    const next = await redo.request({ jobId: target.id, scope: 'ADVENTURE', guidance: defaultRedoGuidance('ADVENTURE') })
+    expect(next.redoOperationId).toBeTruthy()
+    expect(repository.redoOperations.size).toBe(2)
   })
 
   it('allows either approval or redo to win the READY_FOR_REVIEW transition, never both', async () => {

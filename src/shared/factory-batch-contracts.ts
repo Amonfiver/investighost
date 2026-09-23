@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { RedoGenerationGuidanceSchema } from './redo-guidance-contracts'
 import { DestinationVisualMediaPackageSchema } from './destination-visual-media-contract'
 
 const IdSchema = z.string().uuid()
@@ -115,6 +116,9 @@ export const DestinationBatchJobSchema = z.object({
   startedAt: TimestampSchema.optional(),
   redoOperationId: IdSchema.optional(),
   redoScope: DestinationBatchRedoScopeSchema.optional(),
+  redoGuidance: RedoGenerationGuidanceSchema.optional(),
+  redoReason: z.string().max(1000).optional(),
+  redoPreviousArtifactRefs: z.record(z.string()).optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })
@@ -153,6 +157,8 @@ export const DestinationBatchJobReviewReadModelSchema = z.object({
     operationId: IdSchema,
     scope: DestinationBatchRedoScopeSchema,
     reason: z.string().max(1000).nullable(),
+    guidance: RedoGenerationGuidanceSchema.nullable(),
+    previousArtifactRefs: z.record(z.string()),
     requestedBy: z.string().min(1).max(160),
     requestedAt: TimestampSchema,
     status: z.enum(['REQUESTED', 'COMPLETED', 'FAILED']),

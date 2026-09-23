@@ -9,13 +9,14 @@ import {
   type DestinationBatchRedoScope,
 } from '@shared/factory-batch-contracts'
 import type { DestinationBatchRepository, ExistingDestinationMatch } from './contracts'
+import type { RedoGenerationGuidance } from '@shared/redo-guidance-contracts'
 
 export class MemoryDestinationBatchRepository implements DestinationBatchRepository {
   readonly batches = new Map<string, DestinationBatch>()
   readonly jobs = new Map<string, DestinationBatchJob>()
   readonly issues = new Map<string, DestinationBatchIssue>()
   readonly existing = new Map<string, ExistingDestinationMatch>()
-  readonly redoOperations = new Map<string, { jobId: string; scope: DestinationBatchRedoScope; reason?: string; requestedBy: string; requestedAt: Date; status: 'REQUESTED' | 'COMPLETED' | 'FAILED'; completedAt?: Date; previousArtifactRefs: Record<string, string> }>()
+  readonly redoOperations = new Map<string, { jobId: string; scope: DestinationBatchRedoScope; guidance?: RedoGenerationGuidance; reason?: string; requestedBy: string; requestedAt: Date; status: 'REQUESTED' | 'COMPLETED' | 'FAILED'; completedAt?: Date; previousArtifactRefs: Record<string, string> }>()
 
   seedExisting(identity: string, match: ExistingDestinationMatch): void {
     this.existing.set(identity, structuredClone(match))
@@ -56,7 +57,7 @@ export class MemoryDestinationBatchRepository implements DestinationBatchReposit
       status: job.status, phase: job.currentPhase, student: null, adventure: null,
       visualPackageId: job.artifactRefs.VISUALS ?? null, visualPackage: null, reviewArtifactId: job.artifactRefs.AUTO_REVIEW ?? null,
       reviewSummary: null, warnings: [], cost: job.actualCost, attempts: job.attemptCount, lastError: job.lastFailure ?? null,
-      redo: redo ? { operationId: redo[0], scope: redo[1].scope, reason: redo[1].reason ?? null, requestedBy: redo[1].requestedBy, requestedAt: redo[1].requestedAt, status: redo[1].status, completedAt: redo[1].completedAt ?? null } : null,
+      redo: redo ? { operationId: redo[0], scope: redo[1].scope, reason: redo[1].reason ?? null, guidance: redo[1].guidance ?? null, previousArtifactRefs: redo[1].previousArtifactRefs, requestedBy: redo[1].requestedBy, requestedAt: redo[1].requestedAt, status: redo[1].status, completedAt: redo[1].completedAt ?? null } : null,
     })
   }
 
@@ -129,16 +130,16 @@ export class MemoryDestinationBatchRepository implements DestinationBatchReposit
     return [...this.jobs.values()].filter(job => job.batchId === batchId).reduce((total, job) => total + job.actualCost, 0)
   }
 
-  async requestRedo(input: { jobId: string; scope: DestinationBatchRedoScope; requestedBy: string; reason?: string; now: Date }): Promise<DestinationBatchJob> {
+  async requestRedo(input: { jobId: string; scope: DestinationBatchRedoScope; guidance?: RedoGenerationGuidance; requestedBy: string; reason?: string; now: Date }): Promise<DestinationBatchJob> {
     const job = this.jobs.get(input.jobId)
     if (!job) throw new Error('BATCH_REDO_JOB_NOT_FOUND')
     if (job.status === 'REDO_REQUIRED' || job.status === 'PROCESSING') return structuredClone(job)
     if (job.status !== 'READY_FOR_REVIEW') throw new Error('BATCH_REDO_NOT_ALLOWED')
     const operationId = crypto.randomUUID()
-    this.redoOperations.set(operationId, { jobId: job.id, scope: input.scope, reason: input.reason, requestedBy: input.requestedBy, requestedAt: input.now, status: 'REQUESTED', previousArtifactRefs: structuredClone(job.artifactRefs) })
+    this.redoOperations.set(operationId, { jobId: job.id, scope: input.scope, guidance: input.guidance, reason: input.reason, requestedBy: input.requestedBy, requestedAt: input.now, status: 'REQUESTED', previousArtifactRefs: structuredClone(job.artifactRefs) })
     const refs = { ...job.artifactRefs }
     for (const key of invalidatedRefs(input.scope)) delete refs[key]
-    const next = DestinationBatchJobSchema.parse({ ...job, status: 'REDO_REQUIRED', currentPhase: firstPhase(input.scope), completedPhases: retainedPhases(input.scope), artifactRefs: refs, retryable: true, redoOperationId: operationId, redoScope: input.scope, lastFailure: undefined, updatedAt: input.now })
+    const next = DestinationBatchJobSchema.parse({ ...job, status: 'REDO_REQUIRED', currentPhase: firstPhase(input.scope), completedPhases: retainedPhases(input.scope), artifactRefs: refs, retryable: true, redoOperationId: operationId, redoScope: input.scope, redoGuidance: input.guidance, redoReason: input.reason, redoPreviousArtifactRefs: structuredClone(job.artifactRefs), lastFailure: undefined, updatedAt: input.now })
     this.jobs.set(next.id, structuredClone(next))
     return structuredClone(next)
   }

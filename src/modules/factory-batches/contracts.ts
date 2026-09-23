@@ -6,6 +6,7 @@ import type {
   DestinationJobPhase,
   DestinationBatchRedoScope,
 } from '@shared/factory-batch-contracts'
+import type { RedoGenerationGuidance } from '@shared/redo-guidance-contracts'
 
 export interface ExistingDestinationMatch {
   hasApprovedContent: boolean
@@ -35,7 +36,7 @@ export interface DestinationBatchRepository {
   releaseClaim(job: DestinationBatchJob, claimToken: string): Promise<DestinationBatchJob>
   recoverStaleClaims(now: Date): Promise<number>
   totalActualCost(batchId: string): Promise<number>
-  requestRedo(input: { jobId: string; scope: DestinationBatchRedoScope; requestedBy: string; reason?: string; now: Date }): Promise<DestinationBatchJob>
+  requestRedo(input: { jobId: string; scope: DestinationBatchRedoScope; guidance?: RedoGenerationGuidance; requestedBy: string; reason?: string; now: Date }): Promise<DestinationBatchJob>
   completeRedo(operationId: string, outcome: 'COMPLETED' | 'FAILED', now: Date): Promise<void>
   approveReadyJob(jobId: string, now: Date): Promise<DestinationBatchJob>
 }

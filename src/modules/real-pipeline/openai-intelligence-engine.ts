@@ -30,6 +30,7 @@ import {
   type OpenAIResponsePayloadIssue,
   type OpenAIResponseRequest,
 } from './openai-responses-payload'
+import { redoGenerationStrategy } from '@shared/redo-guidance-contracts'
 
 export type { OpenAIResponseRequest } from './openai-responses-payload'
 
@@ -557,6 +558,13 @@ function draftPayload(
   profile: RealResearchMission['profiles'][number],
   constraints?: RealEditorialCoverageConstraints,
 ): Record<string, unknown> {
+  const humanRedoGuidance = mission.redoGuidance ? {
+    scope: mission.redoGuidance.scope,
+    controls: mission.redoGuidance.controls,
+    reviewerComment: mission.redoReason ?? null,
+    previousRevision: mission.previousRevision ?? null,
+    strategy: redoGenerationStrategy(mission.redoGuidance, profile.profile),
+  } : null
   return {
     profile: profile.profile,
     targetWords: profile.targetWords,
@@ -567,11 +575,14 @@ function draftPayload(
     },
     masterKnowledge: knowledge,
     editorialConstraints: constraints,
+    humanRedoGuidance,
     instruction: roleInstruction(
       profile.profile,
       profile.targetWords,
       profile.depth ?? mission.depth,
-    ) + coverageSafetyInstruction(constraints),
+    ) + coverageSafetyInstruction(constraints) + (humanRedoGuidance
+      ? ` HUMAN_REDO_GUIDANCE: ${humanRedoGuidance.strategy.instruction} Atiende los controles y el comentario humano; no inventes información.`
+      : ''),
   }
 }
 

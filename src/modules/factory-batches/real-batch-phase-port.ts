@@ -29,6 +29,7 @@ import {
 import type { BatchEditorialPhaseContext, BatchEditorialPhasePort, BatchEditorialPhaseResult } from './editorial-phase-port'
 import { BatchExecutionContextMapper } from './batch-execution-context'
 import { readBatchJobProviderAuthorization } from './batch-provider-authorization'
+import type { RedoGenerationGuidance } from '@shared/redo-guidance-contracts'
 
 export interface ProductionBatchPhasePortDependencies {
   client: SupabaseClient
@@ -71,7 +72,7 @@ export class ProductionBatchEditorialPhasePort implements BatchEditorialPhasePor
     if (!authorization.enabled || !authorization.featureToken) {
       throw new Error('BATCH_PROVIDER_AUTHORIZATION_REQUIRED: falta la capability explícita de ejecución batch')
     }
-    if (input.phase === 'VISUALS') return this.visual.prepare(context.destination, input.job.redoScope === 'VISUALS' ? input.job.redoOperationId : undefined)
+    if (input.phase === 'VISUALS') return this.visual.prepare(context.destination, input.job.redoScope === 'VISUALS' ? input.job.redoOperationId : undefined, input.job.redoGuidance, input.job.redoPreviousArtifactRefs?.VISUALS)
     const gate = {
         featureToken: authorization.featureToken,
         preflightStatus: 'ready_for_real_batch_execution',
@@ -137,20 +138,15 @@ class BatchVisualReviewDelegate {
     )
   }
 
-  async prepare(destination: { destinationId: string; name: string; countryCode: string; region?: string }, redoOperationId?: string): Promise<BatchEditorialPhaseResult> {
+  async prepare(destination: { destinationId: string; name: string; countryCode: string; region?: string }, redoOperationId?: string, guidance?: RedoGenerationGuidance, previousPackageId?: string): Promise<BatchEditorialPhaseResult> {
     const countryOrRegion = destination.region ?? destination.countryCode
-    for (const query of [
-      { category: 'landmark' as const, role: 'hero' as const },
-      { category: 'landmark' as const, role: 'highlight' as const },
-      { category: 'landscape' as const, role: 'highlight' as const },
-      { category: 'culture' as const, role: 'gallery' as const },
-      { category: 'atmosphere' as const, role: 'gallery' as const },
-      { category: 'detail' as const, role: 'gallery' as const },
-    ]) {
+    for (const query of visualQueries(guidance)) {
       await this.discovery.discover({ destinationId: destination.destinationId, destinationName: destination.name, countryOrRegion, ...query, limit: 20 })
     }
+    const avoidPrevious = guidance?.scope === 'VISUALS' && guidance.controls.avoidPreviousSimilarity !== 'OFF'
+    const excluded = avoidPrevious && previousPackageId ? await this.acquisition.previousCandidateIds(previousPackageId) : []
     const prepared = await this.acquisition.prepareDestinationForHumanVisualReview(destination.destinationId, {
-      modes: ['adventure', 'student'], highlightLimit: 4, galleryLimit: 6,
+      modes: ['adventure', 'student'], highlightLimit: 4, galleryLimit: 6, excludeCandidateIds: excluded, ...visualSelectionGuidance(guidance),
     }, redoOperationId ? `visual-acquisition-v1/redo/${redoOperationId}` : undefined)
     return {
       artifactRef: prepared.package.packageId,
@@ -158,4 +154,26 @@ class BatchVisualReviewDelegate {
       warnings: prepared.failures.map(failure => `${failure.candidateId}:${failure.code}`),
     }
   }
+}
+
+function visualQueries(guidance?: RedoGenerationGuidance) {
+  const normal = [
+    { category: 'landmark' as const, role: 'hero' as const }, { category: 'landmark' as const, role: 'highlight' as const },
+    { category: 'landscape' as const, role: 'highlight' as const }, { category: 'culture' as const, role: 'gallery' as const },
+    { category: 'atmosphere' as const, role: 'gallery' as const }, { category: 'detail' as const, role: 'gallery' as const },
+  ]
+  if (guidance?.scope !== 'VISUALS') return normal
+  const preferred = guidance.controls.heritage === 'PRIORITIZE' ? 'culture' : guidance.controls.landscape === 'PRIORITIZE' ? 'landscape' : guidance.controls.localLife === 'PRIORITIZE' ? 'atmosphere' : null
+  return preferred ? [...normal.filter(query => query.category === preferred), ...normal.filter(query => query.category !== preferred)] : normal
+}
+
+function visualSelectionGuidance(guidance?: RedoGenerationGuidance) {
+  if (guidance?.scope !== 'VISUALS') return {}
+  const categories: string[] = []
+  if (guidance.controls.heritage === 'PRIORITIZE') categories.push('culture', 'landmark')
+  if (guidance.controls.landscape === 'PRIORITIZE') categories.push('landscape')
+  if (guidance.controls.localLife === 'PRIORITIZE') categories.push('atmosphere')
+  if (guidance.controls.representativeness === 'MORE_REPRESENTATIVE') categories.push('landmark', 'culture')
+  if (guidance.controls.impact !== 'BALANCED') categories.push('landmark', 'landscape')
+  return { preferredCategories: [...new Set(categories)], diversifyCategories: guidance.controls.variety !== 'NORMAL' }
 }

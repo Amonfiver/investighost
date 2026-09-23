@@ -64,6 +64,18 @@ describe('simplified factory UI boundaries', () => {
     expect(desk).toContain('Cancelar')
   })
 
+  it('shows only scope-specific editorial controls, optional guidance and a traceability summary', async () => {
+    const desk = await readFile(new URL('../src/renderer/BatchReviewDesk.tsx', import.meta.url), 'utf8')
+    expect(desk).toContain('GuidedRedoControls')
+    expect(desk).toContain('Calidad')
+    expect(desk).toContain('Impacto visual')
+    expect(desk).toContain('Rigor académico')
+    expect(desk).toContain('Evitar imágenes similares')
+    expect(desk).toContain('Comentario opcional')
+    expect(desk).toContain('Resumen de la nueva generación')
+    expect(desk).toContain('Revisión anterior')
+  })
+
   it('gives a human redo status and hides authorization internals from the primary failure message', async () => {
     expect(jobStatusLabel('REDO_REQUIRED', 'ADVENTURE')).toBe('Rehaciendo Adventure')
     expect(jobPhaseLabel('AUTO_REVIEW', 'ADVENTURE')).toBe('Rehaciendo Adventure')

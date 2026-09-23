@@ -19,6 +19,7 @@ import {
 import type { IntelligenceDraft, RealPipelineProviderSelection } from './ports'
 import { REAL_EDITORIAL_OPERATION_BUDGETS } from './durable-real-editorial-pipeline'
 import type { BatchSharedLibraryTransition } from '@modules/library-versioning/batch-library-transition'
+import { redoGenerationStrategy, redoVariation } from '@shared/redo-guidance-contracts'
 
 export interface DurableGenericRealEditorialExecutionDependencies {
   repository: SupabaseGenericDurableExecutionRepository
@@ -85,9 +86,11 @@ export class DurableGenericRealEditorialExecution {
       [student.payload as IntelligenceDraft, adventure.payload as IntelligenceDraft],
       signal,
     )
-    await runtime.repository.appendArtifact(runtime.execution.id, 'final_review', reviewKey, 1, review)
+    const redoWarnings = await this.redoWarnings(runtime, context)
+    const reviewed = redoWarnings.length > 0 ? { ...review, issues: [...review.issues, ...redoWarnings] } : review
+    await runtime.repository.appendArtifact(runtime.execution.id, 'final_review', reviewKey, 1, reviewed)
     const stored = await this.requireArtifact(runtime, 'final_review', reviewKey)
-    return { artifactRef: stored.id, actualCost: runtime.calls.snapshot().spentCost, warnings: review.issues }
+    return { artifactRef: stored.id, actualCost: runtime.calls.snapshot().spentCost, warnings: reviewed.issues }
   }
 
   private async executeProfile(
@@ -103,9 +106,15 @@ export class DurableGenericRealEditorialExecution {
     const regenerates = this.regeneratesProfile(context, profile)
     if (!artifact || regenerates) {
       const research = await this.loadResearch(runtime, signal)
+      const mission = regenerates ? this.guidedMission(runtime.mission, context, profile, artifact?.payload as IntelligenceDraft | undefined) : runtime.mission
       const draft = profile === 'student'
-        ? await runtime.pipeline.executeStudent(runtime.mission, research, signal)
-        : await runtime.pipeline.executeAdventure(runtime.mission, research, signal)
+        ? await runtime.pipeline.executeStudent(mission, research, signal)
+        : await runtime.pipeline.executeAdventure(mission, research, signal)
+      if (context.redo) await runtime.repository.appendArtifact(runtime.execution.id, 'checkpoint', `redo-guidance/${context.redo.operationId}/${profile}`, 1, {
+        guidance: context.redo.guidance ?? null, reason: context.redo.reason ?? null,
+        previousRevisionId: context.redo.previousArtifactRefs?.[profile.toUpperCase()] ?? null,
+        warning: this.similarityWarning(context, artifact?.payload as IntelligenceDraft | undefined, draft),
+      })
       await runtime.repository.appendArtifact(runtime.execution.id, kind, artifactKey, (artifact?.version ?? 0) + 1, draft)
       artifact = await this.requireArtifact(runtime, kind, artifactKey)
       actualCost = runtime.calls.snapshot().spentCost
@@ -195,6 +204,42 @@ export class DurableGenericRealEditorialExecution {
   }
 
   private reviewKey(context: GenericRealEditorialExecutionContext): string { return context.redo ? `redo/${context.redo.operationId}` : 'final' }
+
+  private guidedMission(
+    mission: Awaited<ReturnType<DurableGenericRealEditorialExecution['runtime']>>['mission'],
+    context: GenericRealEditorialExecutionContext,
+    profile: 'student' | 'adventure',
+    previous: IntelligenceDraft | undefined,
+  ) {
+    if (!context.redo?.guidance) return mission
+    return {
+      ...mission,
+      redoGuidance: context.redo.guidance,
+      redoReason: context.redo.reason,
+      ...(previous ? { previousRevision: { revisionId: context.redo.previousArtifactRefs?.[profile.toUpperCase()] ?? 'previous-draft', content: previous.content } } : {}),
+      objectives: [...mission.objectives, redoGenerationStrategy(context.redo.guidance, profile).instruction],
+    }
+  }
+
+  private similarityWarning(context: GenericRealEditorialExecutionContext, previous: IntelligenceDraft | undefined, next: IntelligenceDraft): string | null {
+    if (!previous || !context.redo?.guidance || redoVariation(context.redo.guidance) !== 'VERY_DIFFERENT') return null
+    const words = (value: string) => new Set(value.toLocaleLowerCase('es').match(/[\p{L}\p{N}]{4,}/gu) ?? [])
+    const left = words(previous.content); const right = words(next.content)
+    const overlap = [...left].filter(word => right.has(word)).length / Math.max(1, Math.min(left.size, right.size))
+    return overlap >= 0.85 ? 'REDO_OUTPUT_TOO_SIMILAR_TO_PREVIOUS' : null
+  }
+
+  private async redoWarnings(runtime: Awaited<ReturnType<DurableGenericRealEditorialExecution['runtime']>>, context: GenericRealEditorialExecutionContext): Promise<string[]> {
+    if (!context.redo) return []
+    const profiles = context.redo.scope === 'EDITORIAL' ? ['student', 'adventure'] : context.redo.scope === 'STUDENT' ? ['student'] : context.redo.scope === 'ADVENTURE' ? ['adventure'] : []
+    const warnings: string[] = []
+    for (const profile of profiles) {
+      const artifact = await runtime.repository.latestArtifact(runtime.execution.id, 'checkpoint', `redo-guidance/${context.redo.operationId}/${profile}`)
+      const warning = (artifact?.payload as { warning?: unknown } | undefined)?.warning
+      if (typeof warning === 'string') warnings.push(warning)
+    }
+    return warnings
+  }
 
   private async requireArtifact(
     runtime: Awaited<ReturnType<DurableGenericRealEditorialExecution['runtime']>>,

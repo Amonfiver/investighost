@@ -324,7 +324,8 @@ integration('durable Supabase-local batch worker E2E', () => {
     const smokePort = createFactoryBatchPhasePort({ client, providerCenter: async () => providerCenterFixture(), environment: smokeEnvironment, isDevelopment: true })
     await expect(smokePort.run({ batch: { ...marked, smokeFixture: false }, job: jobs[0]!, phase: 'RESEARCH' })).rejects.toThrow('BATCH_PROVIDER_AUTHORIZATION_REQUIRED')
     const before = (await repository.getJob(jobs[0]!.id))!.artifactRefs
-    await new DestinationBatchRedoService(repository).request({ jobId: jobs[0]!.id, scope: 'ADVENTURE', reason: 'Quiero una versión más visual y menos genérica.' })
+    const guidance = { scope: 'ADVENTURE' as const, controls: { quality: 'MAXIMUM' as const, visualImpact: 'VERY_VISUAL' as const, adventureIntensity: 'MORE_ADVENTUROUS' as const, originality: 'REINVENT_APPROACH' as const, detail: 'BALANCED' as const, variationFromPrevious: 'VERY_DIFFERENT' as const } }
+    await new DestinationBatchRedoService(repository).request({ jobId: jobs[0]!.id, scope: 'ADVENTURE', guidance, reason: 'Quiero una versión más visual y menos genérica.' })
     const result = await new EditorialBatchWorker(repository, smokePort, { workerId: '085cr2-smoke' }).runJob(jobs[0]!.id)
     expect(result.job).toMatchObject({ status: 'READY_FOR_REVIEW' })
     expect(result.job!.artifactRefs.STUDENT).toBe(before.STUDENT)
@@ -332,7 +333,8 @@ integration('durable Supabase-local batch worker E2E', () => {
     expect(result.job!.artifactRefs.ADVENTURE).not.toBe(before.ADVENTURE)
     expect(result.job!.artifactRefs.AUTO_REVIEW).not.toBe(before.AUTO_REVIEW)
     const review = await repository.readJobForReview(jobs[0]!.id)
-    expect(review?.redo).toMatchObject({ scope: 'ADVENTURE', status: 'COMPLETED', reason: 'Quiero una versión más visual y menos genérica.' })
+    expect(review?.redo).toMatchObject({ scope: 'ADVENTURE', status: 'COMPLETED', guidance, reason: 'Quiero una versión más visual y menos genérica.' })
+    expect(review?.warnings).toContain('REDO_OUTPUT_TOO_SIMILAR_TO_PREVIOUS')
   }, 20_000)
 
   it('retries Adventure from durable state without repeating research, analysis, Student or Library drafts', async () => {

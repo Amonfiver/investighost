@@ -110,7 +110,7 @@ export class EditorialBatchWorker {
       const completedRedoOperation = job.redoOperationId
       const released = await this.repository.releaseClaim(DestinationBatchJobSchema.parse({
         ...job, status: 'READY_FOR_REVIEW', currentPhase: 'AUTO_REVIEW', retryable: false,
-        redoOperationId: undefined, redoScope: undefined, lastFailure: undefined, updatedAt: this.now(),
+        redoOperationId: undefined, redoScope: undefined, redoGuidance: undefined, redoReason: undefined, redoPreviousArtifactRefs: undefined, lastFailure: undefined, updatedAt: this.now(),
       }), token)
       if (completedRedoOperation) await this.repository.completeRedo(completedRedoOperation, 'COMPLETED', this.now())
       return released

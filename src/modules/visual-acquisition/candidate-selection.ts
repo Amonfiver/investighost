@@ -12,6 +12,9 @@ export type VisualCandidateSelectionPlan = {
   modes: Array<typeof VisualAssetModeSchema._output>
   highlightLimit?: number
   galleryLimit?: number
+  excludeCandidateIds?: readonly string[]
+  preferredCategories?: readonly string[]
+  diversifyCategories?: boolean
 }
 
 /** Selection is intentionally small and stable: it only ranks candidates already eligible under the rights policy. */
@@ -21,13 +24,15 @@ export function selectVisualCandidates(
 ): SelectedVisualCandidate[] {
   const modes = [...new Set(plan.modes)].sort()
   if (modes.length === 0) throw new Error('VISUAL_SELECTION_REQUIRES_A_MODE')
-  const selectedIds = new Set<string>()
+  const selectedIds = new Set<string>(plan.excludeCandidateIds ?? [])
+  const selectedCategories = new Set<string>()
   const select = (role: SelectedVisualCandidate['role'], limit: number): SelectedVisualCandidate[] => candidates
     .filter(candidate => candidate.requestedRole === role && isFinalRightsEligible(candidate) && !selectedIds.has(candidate.candidateId))
-    .sort(compareCandidatesForRole(role))
+    .sort(compareCandidatesForRole(role, plan, selectedCategories))
     .slice(0, limit)
     .map((candidate, priority) => {
       selectedIds.add(candidate.candidateId)
+      selectedCategories.add(candidate.requestedCategory)
       return { candidate, role, priority, modes }
     })
 
@@ -48,14 +53,23 @@ export function isFinalRightsEligible(candidate: VisualCandidate): boolean {
     && candidate.originalMediaUrl !== null
 }
 
-function compareCandidatesForRole(role: SelectedVisualCandidate['role']) {
+function compareCandidatesForRole(role: SelectedVisualCandidate['role'], plan: VisualCandidateSelectionPlan, selectedCategories: ReadonlySet<string>) {
   return (left: VisualCandidate, right: VisualCandidate): number => {
+    const preference = categoryPreference(right, plan, selectedCategories) - categoryPreference(left, plan, selectedCategories)
+    if (preference !== 0) return preference
     const quality = roleQuality(right, role) - roleQuality(left, role)
     if (quality !== 0) return quality
     const metadata = metadataQuality(right) - metadataQuality(left)
     if (metadata !== 0) return metadata
     return left.canonicalTitle.localeCompare(right.canonicalTitle) || left.providerAssetId.localeCompare(right.providerAssetId)
   }
+}
+
+function categoryPreference(candidate: VisualCandidate, plan: VisualCandidateSelectionPlan, selectedCategories: ReadonlySet<string>): number {
+  const preferred = plan.preferredCategories?.indexOf(candidate.requestedCategory) ?? -1
+  const preferredScore = preferred === -1 ? 0 : 1_000 - preferred
+  const varietyScore = plan.diversifyCategories && !selectedCategories.has(candidate.requestedCategory) ? 100 : 0
+  return preferredScore + varietyScore
 }
 
 function roleQuality(candidate: VisualCandidate, role: SelectedVisualCandidate['role']): number {

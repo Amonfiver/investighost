@@ -59,7 +59,7 @@ export class BatchExecutionContextMapper {
       },
       policy: createBatchJobRealEditorialPolicy(batch),
       budgetDate: new Date().toISOString().slice(0, 10),
-      ...(job.redoOperationId && job.redoScope ? { redo: { operationId: job.redoOperationId, scope: job.redoScope } } : {}),
+      ...(job.redoOperationId && job.redoScope ? { redo: { operationId: job.redoOperationId, scope: job.redoScope, guidance: job.redoGuidance, reason: job.redoReason, previousArtifactRefs: job.redoPreviousArtifactRefs } } : {}),
       profileArtifactKeys: { ...(job.artifactRefs.STUDENT_ARTIFACT_KEY ? { student: job.artifactRefs.STUDENT_ARTIFACT_KEY } : {}), ...(job.artifactRefs.ADVENTURE_ARTIFACT_KEY ? { adventure: job.artifactRefs.ADVENTURE_ARTIFACT_KEY } : {}) },
     }
   }

@@ -13,6 +13,7 @@ import type { IntelligenceEngine } from './ports'
 import type { LedgeredCallMetadataFactory } from './ledgered-call-executor'
 import { createProviderCallPayloadFingerprint } from './provider-call-fingerprint'
 import type { IntelligenceRoutingStage, ResolvedIntelligenceRoute } from './llm-routing'
+import type { RedoGenerationGuidance } from '@shared/redo-guidance-contracts'
 
 /**
  * The pilot originally embedded destination, policy and ledger ownership in a
@@ -49,7 +50,7 @@ export interface GenericRealEditorialExecutionContext {
   budgetDate?: string
   /** Present only for a durable batch redo. Its operation id namespaces new
    * candidate artifacts while retaining the same research/analysis execution. */
-  redo?: { operationId: string; scope: 'STUDENT' | 'ADVENTURE' | 'VISUALS' | 'EDITORIAL' }
+  redo?: { operationId: string; scope: 'STUDENT' | 'ADVENTURE' | 'VISUALS' | 'EDITORIAL'; guidance?: RedoGenerationGuidance; reason?: string; previousArtifactRefs?: Record<string, string> }
   profileArtifactKeys?: { student?: string; adventure?: string }
 }
 

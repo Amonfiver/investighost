@@ -58,6 +58,24 @@ describe('visual candidate selection and approved storage V1', () => {
     expect(new Set(selections.map(selection => selection.candidate.candidateId)).size).toBe(selections.length)
   })
 
+  it('excludes prior package candidates when a guided visual redo requests strong difference', () => {
+    const selections = selectVisualCandidates([
+      candidate(0, 'hero', { width: 2200, height: 1200 }), candidate(1, 'hero', { width: 1600, height: 900 }),
+      candidate(2, 'highlight'), candidate(3, 'gallery'),
+    ], { modes: ['adventure'], excludeCandidateIds: [ids[0]!] })
+    expect(selections.map(selection => selection.candidate.candidateId)).not.toContain(ids[0])
+    expect(selections[0]?.candidate.candidateId).toBe(ids[1])
+  })
+
+  it('uses visual redo preferences for ranking while preserving the rights gate', () => {
+    const selections = selectVisualCandidates([
+      candidate(0, 'highlight', { requestedCategory: 'landmark', width: 2_400 }),
+      candidate(1, 'highlight', { requestedCategory: 'culture', width: 1_800 }),
+    ], { modes: ['adventure'], highlightLimit: 1, preferredCategories: ['culture'], diversifyCategories: true })
+    expect(selections).toHaveLength(1)
+    expect(selections[0]?.candidate.requestedCategory).toBe('culture')
+  })
+
   it('stages, validates, hashes, promotes and packages approved assets without any handoff', async () => {
     const values = [candidate(0, 'hero'), candidate(1, 'highlight'), candidate(2, 'highlight'), candidate(3, 'gallery')]
     const fetchFn = vi.fn(async (url: string) => response(png(1800, 1000, Number(url.match(/-(\d)\.png$/)?.[1] ?? 0)))) as unknown as typeof fetch

@@ -214,6 +214,21 @@ aplicación de desarrollo con `INVESTIGHOST_FACTORY_SMOKE_MODE=true`. Ninguna
 de esas variables se usa en una aplicación empaquetada ni habilita un lote
 normal.
 
+085C-R4 formaliza que `REDO_MUST_NOT_BE_BLIND_RERUN = TRUE`. Toda solicitud
+de redo puede persistir guidance estructurado por alcance, comentario y la
+referencia de la revisión previa. Student, Adventure y Editorial reciben ese
+contexto como `HUMAN_REDO_GUIDANCE` en el boundary real del generador, con una
+política de variación centralizada que mantiene invariantes factuales; la
+salida casi idéntica con variación muy distinta queda advertida en auto-review.
+Visuales usa sus controles en descubrimiento, ranking, variedad y exclusión de
+candidatos del paquete previo sin relajar derechos ni procedencia. Los
+controles y la referencia anterior se proyectan en Trazabilidad sin exponer
+parámetros de provider. `REDO_EDITORIAL_CONTROLS = REQUIRED`,
+`REDO_REASON_AS_GENERATION_GUIDANCE = REQUIRED`,
+`REDO_PREVIOUS_VERSION_CONTEXT = REQUIRED`, `REDO_VARIATION_POLICY = REQUIRED`,
+`REDO_CONTROLS_PERSISTED = REQUIRED` y
+`REDO_CONTROLS_VISIBLE_IN_TRACEABILITY = REQUIRED`.
+
 ### Visuales
 
 - `src/shared/destination-visual-media-contract.ts`: assets, packages, roles, modos y rights status.

@@ -273,6 +273,37 @@ describe('OpenAI IntelligenceEngine estructurado y sin red', () => {
     expect(client.requests[1].input[1].content).toContain('profesor cercano')
   })
 
+  it('entrega guidance estructurado, comentario y versión anterior al boundary de generación', async () => {
+    const client = new FakeResponsesClient([response(draftOutput('adventure', 1_000))])
+    await engine(client).draft(mission({
+      profiles: [{ profile: 'adventure', enabled: true, targetWords: 1_000 }],
+      redoGuidance: { scope: 'ADVENTURE', controls: { quality: 'MAXIMUM', visualImpact: 'VERY_VISUAL', adventureIntensity: 'MORE_ADVENTUROUS', originality: 'REINVENT_APPROACH', detail: 'BALANCED', variationFromPrevious: 'VERY_DIFFERENT' } },
+      redoReason: 'Quiero una versión más visual y menos genérica.',
+      previousRevision: { revisionId: 'revision-adventure-previous', content: 'Versión anterior de Adventure.' },
+    }), masterKnowledge(), new AbortController().signal)
+    const payload = client.requests[0]!.input[1].content
+    expect(payload).toContain('HUMAN_REDO_GUIDANCE')
+    expect(payload).toContain('VERY_VISUAL')
+    expect(payload).toContain('Quiero una versión más visual y menos genérica.')
+    expect(payload).toContain('Versión anterior de Adventure.')
+    expect(payload).toContain('no una paráfrasis')
+  })
+
+  it('aplica rigor Student sin contaminar el prompt con logística de viaje', async () => {
+    const client = new FakeResponsesClient([response(draftOutput('student', 1_800))])
+    await engine(client).draft(mission({
+      profiles: [{ profile: 'student', enabled: true, targetWords: 1_800 }],
+      redoGuidance: { scope: 'STUDENT', controls: { academicRigor: 'MAXIMUM', depth: 'DEEP', clarity: 'VERY_CLEAR', historicalCulturalContext: 'DEEP_CONTEXT', detail: 'MORE_DETAILED', formality: 'ACADEMIC', variationFromPrevious: 'CLEAR' } },
+      redoReason: 'Profundiza el contexto histórico y cultural.',
+      previousRevision: { revisionId: 'revision-student-previous', content: 'Versión anterior de Student.' },
+    }), masterKnowledge(), new AbortController().signal)
+    const payload = client.requests[0]!.input[1].content
+    expect(payload).toContain('"academicRigor":"MAXIMUM"')
+    expect(payload).toContain('Profundiza el contexto histórico y cultural.')
+    expect(payload).toContain('Versión anterior de Student.')
+    expect(payload).toContain('no introduzcas logística de viaje')
+  })
+
   it('inyecta en borrador y revisión las restricciones de cobertura aceptadas', async () => {
     const constraints = editorialConstraints()
     const draftClient = new FakeResponsesClient([

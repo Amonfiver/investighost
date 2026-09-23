@@ -10,6 +10,7 @@ import {
   type DestinationBatchJobReviewReadModel,
   type DestinationBatchRedoScope,
 } from '@shared/factory-batch-contracts'
+import { RedoGenerationGuidanceSchema, type RedoGenerationGuidance } from '@shared/redo-guidance-contracts'
 import type { DestinationBatchRepository, ExistingDestinationMatch } from './contracts'
 
 type Row = Record<string, unknown>
@@ -79,12 +80,14 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
       reviewSummary: null, warnings: [], cost: job.actualCost, attempts: job.attemptCount, lastError: job.lastFailure ?? null, redo: null,
     })
     const { data: redoRow, error: redoError } = await this.client.from('editorial_destination_batch_redo_operations')
-      .select('id,scope,reason,requested_by,requested_at,status,completed_at').eq('job_id', job.id)
+      .select('id,scope,reason,guidance,previous_artifact_refs,requested_by,requested_at,status,completed_at').eq('job_id', job.id)
       .order('requested_at', { ascending: false }).limit(1).maybeSingle()
     assertNoError(redoError, 'READ_REVIEW_REDO')
     const redo = redoRow ? {
       operationId: String((redoRow as Row).id), scope: String((redoRow as Row).scope),
       reason: (redoRow as Row).reason === null ? null : String((redoRow as Row).reason),
+      guidance: (redoRow as Row).guidance === null ? null : RedoGenerationGuidanceSchema.parse((redoRow as Row).guidance),
+      previousArtifactRefs: ((redoRow as Row).previous_artifact_refs ?? {}) as Record<string, string>,
       requestedBy: String((redoRow as Row).requested_by), requestedAt: new Date(String((redoRow as Row).requested_at)),
       status: String((redoRow as Row).status), completedAt: (redoRow as Row).completed_at === null ? null : new Date(String((redoRow as Row).completed_at)),
     } : null
@@ -224,9 +227,9 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
     return (data ?? []).reduce((total, row) => total + Number((row as Row).actual_cost ?? 0), 0)
   }
 
-  async requestRedo(input: { jobId: string; scope: DestinationBatchRedoScope; requestedBy: string; reason?: string; now: Date }): Promise<DestinationBatchJob> {
+  async requestRedo(input: { jobId: string; scope: DestinationBatchRedoScope; guidance?: RedoGenerationGuidance; requestedBy: string; reason?: string; now: Date }): Promise<DestinationBatchJob> {
     const { data, error } = await this.client.rpc('factory_request_destination_batch_redo', {
-      p_job_id: input.jobId, p_scope: input.scope, p_requested_by: input.requestedBy, p_reason: input.reason ?? null, p_now: input.now.toISOString(),
+      p_job_id: input.jobId, p_scope: input.scope, p_requested_by: input.requestedBy, p_reason: input.reason ?? null, p_guidance: input.guidance ?? null, p_now: input.now.toISOString(),
     })
     assertNoError(error, 'REQUEST_REDO')
     if (!data || !(data as Row).id) throw new Error('FACTORY_BATCH_REDO_NO_JOB')
@@ -272,7 +275,7 @@ function jobToRow(job: DestinationBatchJob): Row {
     artifact_refs: job.artifactRefs, attempt_count: job.attemptCount, last_failure: job.lastFailure ?? null,
     retryable: job.retryable, retry_requested_at: iso(job.retryRequestedAt), actual_cost: job.actualCost,
     claimed_by: job.claimedBy ?? null, claim_token: job.claimToken ?? null, claim_expires_at: iso(job.claimExpiresAt), started_at: iso(job.startedAt),
-    redo_operation_id: job.redoOperationId ?? null, redo_scope: job.redoScope ?? null,
+    redo_operation_id: job.redoOperationId ?? null, redo_scope: job.redoScope ?? null, redo_guidance: job.redoGuidance ?? null, redo_reason: job.redoReason ?? null, redo_previous_artifact_refs: job.redoPreviousArtifactRefs ?? null,
     created_at: job.createdAt.toISOString(), updated_at: job.updatedAt.toISOString(),
   }
 }
@@ -311,6 +314,8 @@ function jobFromRow(row: Row): DestinationBatchJob {
     claimExpiresAt: row.claim_expires_at ? new Date(String(row.claim_expires_at)) : undefined,
     startedAt: row.started_at ? new Date(String(row.started_at)) : undefined,
     redoOperationId: row.redo_operation_id ?? undefined, redoScope: row.redo_scope ?? undefined,
+    redoGuidance: row.redo_guidance ? RedoGenerationGuidanceSchema.parse(row.redo_guidance) : undefined,
+    redoReason: row.redo_reason ?? undefined, redoPreviousArtifactRefs: row.redo_previous_artifact_refs ?? undefined,
   })
 }
 

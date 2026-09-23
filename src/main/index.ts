@@ -139,6 +139,7 @@ import {
   SupabaseRealEditorialLibraryVersioningRepository,
 } from '@modules/library-versioning'
 import { readRealLlmRouting, withLiveProviderClients } from '@modules/real-pipeline'
+import { RedoGenerationGuidanceSchema } from '@shared/redo-guidance-contracts'
 
 // The normal path remains fail-closed. The local smoke wrapper is selected
 // only for an unpackaged app, an explicit flag and a DB-marked fixture.
@@ -196,7 +197,7 @@ ipcMain.handle('factory-batches:approve', async (_event, jobId: unknown) => {
 })
 
 ipcMain.handle('factory-batches:request-redo', async (_event, input: unknown) => {
-  const request = z.object({ jobId: z.string().uuid(), scope: z.enum(['STUDENT', 'ADVENTURE', 'VISUALS', 'EDITORIAL']), reason: z.string().max(1000).optional() }).parse(input)
+  const request = z.object({ jobId: z.string().uuid(), scope: z.enum(['STUDENT', 'ADVENTURE', 'VISUALS', 'EDITORIAL']), guidance: RedoGenerationGuidanceSchema.optional(), reason: z.string().max(1000).optional() }).parse(input)
   const client = createLocalSupabaseClientFromEnv().client
   const job = await new DestinationBatchRedoService(new SupabaseDestinationBatchRepository(client)).request(request)
   // Keep the UI request responsive; the existing worker owns failures, retries,

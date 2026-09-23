@@ -66,7 +66,7 @@ const electronAPI = {
   startDestinationBatch: (batchId: string) => ipcRenderer.invoke('factory-batches:start', batchId),
   readDestinationBatchJobReview: (jobId: string): Promise<DestinationBatchJobReviewReadModel> => ipcRenderer.invoke('factory-batches:review-read', jobId),
   approveDestinationBatchJob: (jobId: string) => ipcRenderer.invoke('factory-batches:approve', jobId),
-  requestDestinationBatchRedo: (input: { jobId: string; scope: import('../shared/factory-batch-contracts').DestinationBatchRedoScope; reason?: string }) => ipcRenderer.invoke('factory-batches:request-redo', input),
+  requestDestinationBatchRedo: (input: { jobId: string; scope: import('../shared/factory-batch-contracts').DestinationBatchRedoScope; guidance?: import('../shared/redo-guidance-contracts').RedoGenerationGuidance; reason?: string }) => ipcRenderer.invoke('factory-batches:request-redo', input),
 
   // Flujo Manual canónico; el renderer nunca recibe credenciales de Supabase.
   getManualPersistenceStatus: () => ipcRenderer.invoke('manual:persistence-status'),

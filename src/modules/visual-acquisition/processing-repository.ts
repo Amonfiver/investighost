@@ -14,6 +14,7 @@ export interface VisualProcessingRepository {
   findAssetByChecksum(destinationId: string, checksum: string): Promise<VisualAsset | null>
   upsertAsset(asset: VisualAsset): Promise<VisualAsset>
   retainProvenance(assetId: string, candidateId: string): Promise<void>
+  candidateIdsForPackage(packageId: string): Promise<string[]>
   savePackage(destinationId: string, packageValue: typeof DestinationVisualMediaPackageSchemaType._output, workflowKey?: string): Promise<typeof DestinationVisualMediaPackageSchemaType._output>
 }
 
@@ -38,6 +39,12 @@ export class MemoryVisualProcessingRepository implements VisualProcessingReposit
     return clone(saved)
   }
   async retainProvenance(assetId: string, candidateId: string): Promise<void> { this.provenance.add(`${assetId}:${candidateId}`) }
+  async candidateIdsForPackage(packageId: string): Promise<string[]> {
+    const packageValue = [...this.packages.values()].find(value => value.packageId === packageId)
+    if (!packageValue) return []
+    const assetIds = new Set(packageValue.selections.map(selection => selection.assetId))
+    return [...this.provenance].flatMap(value => { const [assetId, candidateId] = value.split(':'); return assetIds.has(assetId) ? [candidateId!] : [] })
+  }
   async savePackage(destinationId: string, packageValue: typeof DestinationVisualMediaPackageSchemaType._output, workflowKey = 'visual-acquisition-v1'): Promise<typeof DestinationVisualMediaPackageSchemaType._output> {
     const key = `${destinationId}:${workflowKey}`
     const existing = this.packages.get(key)
@@ -90,6 +97,15 @@ export class SupabaseVisualProcessingRepository implements VisualProcessingRepos
   async retainProvenance(assetId: string, candidateId: string): Promise<void> {
     const { error } = await this.client.from('real_editorial_visual_asset_candidates').upsert({ asset_id: assetId, candidate_id: candidateId }, { onConflict: 'asset_id,candidate_id' })
     if (error) throw new Error(`VISUAL_PROVENANCE_UPSERT_FAILED:${error.message}`)
+  }
+  async candidateIdsForPackage(packageId: string): Promise<string[]> {
+    const { data: selections, error: selectionsError } = await this.client.from('real_editorial_visual_package_selections').select('asset_id').eq('package_id', packageId)
+    if (selectionsError) throw new Error(`VISUAL_SELECTION_LOOKUP_FAILED:${selectionsError.message}`)
+    const assetIds = (selections ?? []).map(row => text((row as Record<string, unknown>).asset_id))
+    if (assetIds.length === 0) return []
+    const { data, error } = await this.client.from('real_editorial_visual_asset_candidates').select('candidate_id').in('asset_id', assetIds)
+    if (error) throw new Error(`VISUAL_PROVENANCE_LOOKUP_FAILED:${error.message}`)
+    return (data ?? []).map(row => text((row as Record<string, unknown>).candidate_id))
   }
   async savePackage(destinationId: string, packageValue: typeof DestinationVisualMediaPackageSchemaType._output, workflowKey = 'visual-acquisition-v1'): Promise<typeof DestinationVisualMediaPackageSchemaType._output> {
     const { data: current, error: lookupError } = await this.client.from('real_editorial_visual_packages').select('id')

@@ -46,6 +46,8 @@ export class VisualCandidateAcquisitionService {
     return this.acquire(await this.candidates.listByDestination(destinationId), plan)
   }
 
+  async previousCandidateIds(packageId: string): Promise<string[]> { return this.processing.candidateIdsForPackage(packageId) }
+
   /**
    * Prepares a rights-safe, private review package. It intentionally never
    * calls public storage: the HTTPS media URL belongs to the approved Trawel

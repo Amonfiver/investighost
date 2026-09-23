@@ -10,6 +10,7 @@ import {
   SupabaseDestinationBatchRepository,
 } from '@modules/factory-batches'
 import { SupabaseRealEditorialLibraryVersioningRepository } from '@modules/library-versioning'
+import { SupabaseRealEditorialPilotRepository } from '@modules/real-pipeline/real-editorial-repository'
 import { GeographicResolver } from '@modules/editorial-pipeline/geography'
 import { SupabaseGeographyCatalogRepository } from '@modules/editorial-pipeline/supabase-geography-repository'
 import { createLocalSupabaseClientFromEnv } from '@services/supabase'
@@ -268,7 +269,8 @@ integration('durable Supabase-local batch worker E2E', () => {
     { label: 'Editorial', scope: 'EDITORIAL', studentDrafts: 2, adventureDrafts: 2 },
   ] as const)('selectively redoes $label with the production port and preserves unrelated phases', async ({ label, scope, studentDrafts, adventureDrafts }) => {
     const { client } = createLocalSupabaseClientFromEnv()
-    const { repository, batch, jobs } = await importGranadaFixture(client, `redo-${scope.toLowerCase()}`, [`Granada Redo ${label}`])
+    const destinationName = `Granada Redo ${label} ${randomUUID().slice(0, 8)}`
+    const { repository, batch, jobs } = await importGranadaFixture(client, `redo-${scope.toLowerCase()}`, [destinationName])
     const research = new ResearchDouble()
     const intelligence = new IntelligenceDouble()
     const worker = new EditorialBatchWorker(repository, productionPort(client, research, intelligence), { workerId: `085c-redo-${scope.toLowerCase()}` })
@@ -288,8 +290,17 @@ integration('durable Supabase-local batch worker E2E', () => {
     expect([research.calls, intelligence.analysisCalls, intelligence.draftsByProfile.get('student'), intelligence.draftsByProfile.get('adventure'), intelligence.reviewCalls]).toEqual([1, 1, studentDrafts, adventureDrafts, 2])
     const { data: operations } = await client.from('editorial_destination_batch_redo_operations').select('scope,status,previous_artifact_refs').eq('job_id', jobs[0]!.id)
     expect(operations).toEqual([expect.objectContaining({ scope, status: 'COMPLETED', previous_artifact_refs: expect.objectContaining(before) })])
+    const { data: execution, error: executionError } = await client.from('real_editorial_executions').select('id').eq('owner_id', jobs[0]!.id).single()
+    expect(executionError).toBeNull()
+    const { data: preapprovalRows, error: preapprovalError } = await client.from('real_editorial_library_entries').select('id')
+      .eq('execution_owner_id', execution!.id).eq('status', 'candidate')
+    expect(preapprovalError).toBeNull()
+    expect(preapprovalRows).toHaveLength(2)
+    const approvedLibrary = await new SupabaseRealEditorialPilotRepository(client).listLibraryEntries()
+    expect(approvedLibrary.every(entry => entry.origin === 'real_editorial_pilot' && entry.editorialState === 'approved')).toBe(true)
+    expect(approvedLibrary.some(entry => (preapprovalRows ?? []).some(row => row.id === entry.entryId))).toBe(false)
     if (scope === 'STUDENT' && process.env.KEEP_FACTORY_REDO_SMOKE === 'true') {
-      console.info(`[factory redo smoke] batch=${batch.id} job=${jobs[0]!.id} destination=Granada Redo Student`)
+      console.info(`[factory redo smoke] batch=${batch.id} job=${jobs[0]!.id} destination=${destinationName}`)
     }
   }, 20_000)
 

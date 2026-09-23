@@ -185,6 +185,18 @@ transición condicional. No hay aprobación ni delivery automáticos.
 `REDO_VISUALS = DONE`, `REDO_EDITORIAL = DONE` y
 `APPROVE_REDO_EXCLUSION = DONE`.
 
+085C-R fija la frontera de lectura de Biblioteca: el reader legado de
+contenido aprobado consulta únicamente entradas `real_editorial_pilot` con
+`approved_unpublished / approved / ready_for_library / unpublished` antes de
+validar su contrato estricto. Los candidates y revisiones pre-aprobación de
+`BATCH_JOB`, incluidos los de redo, se leen exclusivamente desde Producción,
+Review Desk y los read models de versionado; no se convierten en aprobación ni
+pueden tumbar la proyección aprobada. Los metadatos nulos que son legítimos en
+`currentApproved.originV1` permanecen explícitos en ese contrato distinto.
+`LIBRARY_VISIBLE = APPROVED_LEGACY_PROJECTION`; `currentApproved` sigue siendo
+el read model de versionado para una línea de Library, y
+`PREAPPROVAL = PRODUCTION_AND_REVIEW_DESK`.
+
 ### Visuales
 
 - `src/shared/destination-visual-media-contract.ts`: assets, packages, roles, modos y rights status.

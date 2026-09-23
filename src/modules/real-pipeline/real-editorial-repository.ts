@@ -832,6 +832,14 @@ export class SupabaseRealEditorialPilotRepository implements RealEditorialPilotR
   ): Promise<RealEditorialLibraryEntry[]> {
     const input = RealEditorialLibraryQuerySchema.parse(candidate)
     let query = this.client.from('real_editorial_library_entries').select('*')
+      // This legacy Library projection has a deliberately strict approved-row
+      // contract. Batch candidates and their pre-approval revisions are read
+      // by Production/Review Desk through Library Versioning, never here.
+      .eq('status', 'approved_unpublished')
+      .eq('editorial_state', 'approved')
+      .eq('library_state', 'ready_for_library')
+      .eq('publication_state', 'unpublished')
+      .eq('origin', 'real_editorial_pilot')
       .order('created_at', { ascending: false }).order('id', { ascending: false })
     if (input.destination) query = query.ilike('destination_name', `%${input.destination}%`)
     if (input.profile) query = query.eq('profile', input.profile)

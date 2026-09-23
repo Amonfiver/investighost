@@ -261,29 +261,37 @@ integration('durable Supabase-local batch worker E2E', () => {
     expect([research.calls, intelligence.analysisCalls, intelligence.draftCalls, intelligence.reviewCalls]).toEqual([1, 1, 2, 1])
   })
 
-  it('selectively redoes Student with the production port without repeating research, analysis, Adventure or visuals', async () => {
+  it.each([
+    { label: 'Student', scope: 'STUDENT', studentDrafts: 2, adventureDrafts: 1 },
+    { label: 'Adventure', scope: 'ADVENTURE', studentDrafts: 1, adventureDrafts: 2 },
+    { label: 'Visuals', scope: 'VISUALS', studentDrafts: 1, adventureDrafts: 1 },
+    { label: 'Editorial', scope: 'EDITORIAL', studentDrafts: 2, adventureDrafts: 2 },
+  ] as const)('selectively redoes $label with the production port and preserves unrelated phases', async ({ label, scope, studentDrafts, adventureDrafts }) => {
     const { client } = createLocalSupabaseClientFromEnv()
-    const { repository, batch, jobs } = await importGranadaFixture(client, 'redo-student', ['Granada Redo Student'])
+    const { repository, batch, jobs } = await importGranadaFixture(client, `redo-${scope.toLowerCase()}`, [`Granada Redo ${label}`])
     const research = new ResearchDouble()
     const intelligence = new IntelligenceDouble()
-    const worker = new EditorialBatchWorker(repository, productionPort(client, research, intelligence), { workerId: '085c-redo-student' })
+    const worker = new EditorialBatchWorker(repository, productionPort(client, research, intelligence), { workerId: `085c-redo-${scope.toLowerCase()}` })
     const initial = await worker.runJob(jobs[0]!.id)
     const before = initial.job!.artifactRefs
-    const requested = await new DestinationBatchRedoService(repository).request({ jobId: jobs[0]!.id, scope: 'STUDENT', reason: 'ajustar explicación' })
-    expect(requested).toMatchObject({ status: 'REDO_REQUIRED', redoScope: 'STUDENT' })
+    const requested = await new DestinationBatchRedoService(repository).request({ jobId: jobs[0]!.id, scope, reason: 'ajustar explicación' })
+    expect(requested).toMatchObject({ status: 'REDO_REQUIRED', redoScope: scope })
     const completed = await worker.runJob(jobs[0]!.id)
-    if (completed.job?.status !== 'READY_FOR_REVIEW') throw new Error(`REDO_STUDENT_UNEXPECTED:${completed.job?.lastFailure ?? 'missing failure'}`)
-    expect(completed.job!.artifactRefs.STUDENT).not.toBe(before.STUDENT)
+    if (completed.job?.status !== 'READY_FOR_REVIEW') throw new Error(`REDO_${scope}_UNEXPECTED:${completed.job?.lastFailure ?? 'missing failure'}`)
+    if (scope === 'STUDENT' || scope === 'EDITORIAL') expect(completed.job!.artifactRefs.STUDENT).not.toBe(before.STUDENT)
+    else expect(completed.job!.artifactRefs.STUDENT).toBe(before.STUDENT)
+    if (scope === 'ADVENTURE' || scope === 'EDITORIAL') expect(completed.job!.artifactRefs.ADVENTURE).not.toBe(before.ADVENTURE)
+    else expect(completed.job!.artifactRefs.ADVENTURE).toBe(before.ADVENTURE)
+    if (scope === 'VISUALS') expect(completed.job!.artifactRefs.VISUALS).not.toBe(before.VISUALS)
+    else expect(completed.job!.artifactRefs.VISUALS).toBe(before.VISUALS)
     expect(completed.job!.artifactRefs.AUTO_REVIEW).not.toBe(before.AUTO_REVIEW)
-    expect(completed.job!.artifactRefs.ADVENTURE).toBe(before.ADVENTURE)
-    expect(completed.job!.artifactRefs.VISUALS).toBe(before.VISUALS)
-    expect([research.calls, intelligence.analysisCalls, intelligence.draftsByProfile.get('student'), intelligence.draftsByProfile.get('adventure'), intelligence.reviewCalls]).toEqual([1, 1, 2, 1, 2])
+    expect([research.calls, intelligence.analysisCalls, intelligence.draftsByProfile.get('student'), intelligence.draftsByProfile.get('adventure'), intelligence.reviewCalls]).toEqual([1, 1, studentDrafts, adventureDrafts, 2])
     const { data: operations } = await client.from('editorial_destination_batch_redo_operations').select('scope,status,previous_artifact_refs').eq('job_id', jobs[0]!.id)
-    expect(operations).toEqual([expect.objectContaining({ scope: 'STUDENT', status: 'COMPLETED', previous_artifact_refs: expect.objectContaining({ STUDENT: before.STUDENT }) })])
-    if (process.env.KEEP_FACTORY_REDO_SMOKE === 'true') {
+    expect(operations).toEqual([expect.objectContaining({ scope, status: 'COMPLETED', previous_artifact_refs: expect.objectContaining(before) })])
+    if (scope === 'STUDENT' && process.env.KEEP_FACTORY_REDO_SMOKE === 'true') {
       console.info(`[factory redo smoke] batch=${batch.id} job=${jobs[0]!.id} destination=Granada Redo Student`)
     }
-  }, 15_000)
+  }, 20_000)
 
   it('retries Adventure from durable state without repeating research, analysis, Student or Library drafts', async () => {
     const { client } = createLocalSupabaseClientFromEnv()

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { DestinationBatchJob, DestinationBatchJobReviewReadModel } from '@shared/factory-batch-contracts'
 import type { DestinationBatchRedoScope } from '@shared/factory-batch-contracts'
 import { defaultRedoGuidance, type RedoGenerationGuidance } from '@shared/redo-guidance-contracts'
+import { BATCH_LIVE_REFRESH_INTERVAL_MS, isActiveBatchJob, jobStatusLabel } from './factory-presentation'
 
 type Tab = 'summary' | 'student' | 'adventure' | 'visuals' | 'traceability'
 
@@ -17,6 +18,13 @@ export function BatchReviewDesk({ jobId, onBack, onRedoAccepted }: { jobId: stri
   // The request is intentionally keyed solely by the durable job identity.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void load() }, [jobId])
+  const reviewIsActive = review ? isActiveBatchJob(review) : false
+  const redoActive = Boolean(review?.redo && reviewIsActive)
+  useEffect(() => {
+    if (!reviewIsActive) return
+    const timer = window.setInterval(() => { void window.electronAPI.readDestinationBatchJobReview(jobId).then(setReview).catch(() => undefined) }, BATCH_LIVE_REFRESH_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [jobId, reviewIsActive])
   const canApprove = Boolean(review?.status === 'READY_FOR_REVIEW' && review.student && review.adventure && review.visualPackageId && review.reviewArtifactId)
   const approve = async () => { setBusy(true); setError(null); try { await window.electronAPI.approveDestinationBatchJob(jobId); await load() } catch (reason) { setError(errorText(reason)) } finally { setBusy(false) } }
   const chooseRedoScope = (scope: DestinationBatchRedoScope) => { setRedoScope(scope); setRedoGuidance(defaultRedoGuidance(scope)) }
@@ -27,11 +35,12 @@ export function BatchReviewDesk({ jobId, onBack, onRedoAccepted }: { jobId: stri
     {error && <div className="alert error"><strong>No se pudo solicitar el rehacer.</strong><span>{error}</span></div>}
     {!review ? <div className="empty-card"><span className="spinner" /><p>{busy ? 'Cargando revisión durable…' : 'No hay datos de revisión.'}</p></div> : <>
       <header className="review-desk-header"><div><span className="card-kicker">REVISIÓN EDITORIAL</span><h2>{review.destination.name}</h2><p>{review.destination.country}{review.destination.region ? ` · ${review.destination.region}` : ''} · Job {review.jobId}</p></div><div><span className={`state-badge state-${review.status.toLowerCase()}`}>{label(review.status)}</span><strong>{formatMoney(review.cost)}</strong></div></header>
+      {redoActive && <div className="live-job-status" role="status"><span className="spinner" /><div><strong>{jobStatusLabel(review.status, review.redo?.scope)}</strong><small>Investighost está trabajando.</small></div></div>}
       <div className="review-tabs" role="tablist">{([['summary', 'Resumen'], ['student', 'Student'], ['adventure', 'Adventure'], ['visuals', 'Visuales'], ['traceability', 'Trazabilidad']] as const).map(([key, text]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{text}</button>)}</div>
       {tab === 'summary' && <section className="review-grid"><Metric label="Estado" value={label(review.status)} /><Metric label="Auto-review" value={reviewOutcomeLabel(review.reviewSummary?.outcome)} /><Metric label="Intentos" value={String(review.attempts)} /><Metric label="Visuales" value={visualPackageLabel(review.visualPackage?.state)} />
         {review.warnings.length > 0 && <div className="alert warning"><strong>Warnings</strong><span>{review.warnings.join(' · ')}</span></div>}
         {review.lastError && <div className="alert error"><strong>Último error</strong><span>{review.lastError}</span></div>}
-        <div className="review-actions"><div><strong>Aprobación humana</strong><small>Aprueba Student y Adventure mediante Library. No crea delivery.</small></div><button className="button secondary" disabled={review.status !== 'READY_FOR_REVIEW' || busy} onClick={() => chooseRedoScope(redoScope ?? 'STUDENT')}>Rehacer</button><button className="button success" disabled={!canApprove || busy || Boolean(redoScope)} title={canApprove ? 'Aprobar revisiones y destino' : 'Faltan Student, Adventure, visuales o auto-review'} onClick={() => { void approve() }}>Aprobar destino</button></div>
+        <div className="review-actions"><div><strong>Aprobación humana</strong><small>Aprueba Student y Adventure mediante Library. No crea delivery.</small></div><button className="button secondary" disabled={review.status !== 'READY_FOR_REVIEW' || busy || redoActive} onClick={() => chooseRedoScope(redoScope ?? 'STUDENT')}>Rehacer</button><button className="button success" disabled={!canApprove || busy || Boolean(redoScope) || redoActive} title={canApprove ? 'Aprobar revisiones y destino' : 'Faltan Student, Adventure, visuales o auto-review'} onClick={() => { void approve() }}>Aprobar destino</button></div>
         {redoScope && redoGuidance && <section className="form-card guided-redo" aria-label="Confirmar rehacer guiado"><header><span className="card-kicker">NUEVA GENERACIÓN GUIADA</span><h3>Rehacer {redoLabel(redoScope)}</h3><p>Se conservarán: {preserved(redoScope)}. Se volverá a crear: {regenerated(redoScope)} y la revisión automática.</p></header><div className="guided-redo-scopes" role="tablist">{(['STUDENT', 'ADVENTURE', 'VISUALS', 'EDITORIAL'] as const).map(scope => <button key={scope} className={redoScope === scope ? 'active' : ''} onClick={() => chooseRedoScope(scope)}>{redoLabel(scope)}</button>)}</div><GuidedRedoControls guidance={redoGuidance} onChange={setRedoGuidance} /><label className="field"><span>Comentario opcional</span><input value={redoReason} maxLength={1000} onChange={event => setRedoReason(event.target.value)} placeholder="Qué debe mejorar" /></label><section className="guided-redo-summary"><strong>Resumen</strong><GuidanceSummary guidance={redoGuidance} />{redoReason.trim() && <p>Comentario: {redoReason.trim()}</p>}</section><footer className="guided-redo-actions"><button className="button ghost" disabled={busy} onClick={() => { setRedoScope(null); setRedoGuidance(null) }}>Cancelar</button><button className="button secondary" disabled={busy} onClick={() => { void requestRedo() }}>Rehacer {redoLabel(redoScope)}</button></footer></section>}
       </section>}
       {tab === 'student' && <DocumentReview title="Student · explicación editorial" document={review.student} />}

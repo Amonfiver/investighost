@@ -2,14 +2,18 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect, it, vi } from 'vitest'
 import { importBatchFile } from '../src/renderer/batch-file-import'
 import {
+  BATCH_LIVE_REFRESH_INTERVAL_MS,
   hiddenTechnicalViews,
   formatBatchCreatedAt,
+  isActiveBatchJob,
+  isActiveRedo,
   jobPhaseLabel,
   jobStatusLabel,
   primaryNavigationLabels,
   smokeFixtureLabel,
   singleJobStatusLabel,
   sortBatchesByCreatedAt,
+  technicalJobFailureDetail,
   userFacingJobFailure,
 } from '../src/renderer/factory-presentation'
 
@@ -82,7 +86,7 @@ describe('simplified factory UI boundaries', () => {
       readFile(new URL('../src/renderer/BatchReviewDesk.tsx', import.meta.url), 'utf8'),
       readFile(new URL('../src/renderer/App.css', import.meta.url), 'utf8'),
     ])
-    expect(operations).toContain("job.status === 'READY_FOR_REVIEW' ? 'Lista para revisión'")
+    expect(operations).toContain("liveJob.status === 'READY_FOR_REVIEW' ? 'Lista para revisión'")
     expect(operations).toContain('destination-job-metrics')
     expect(operations).toContain('job-review-action')
     expect(css).toContain('.destination-job-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }')
@@ -107,6 +111,36 @@ describe('simplified factory UI boundaries', () => {
       .toBe('No se pudo rehacer Adventure. El modo de ejecución disponible no está autorizado.')
     const app = await readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8')
     expect(app).toContain('El destino volverá a revisión cuando termine.')
+  })
+
+  it('refreshes only active jobs, presents live redo activity and locks incompatible actions', async () => {
+    expect(BATCH_LIVE_REFRESH_INTERVAL_MS).toBe(1_500)
+    expect(isActiveBatchJob({ status: 'REDO_REQUIRED' } as never)).toBe(true)
+    expect(isActiveBatchJob({ status: 'PROCESSING' } as never)).toBe(true)
+    expect(isActiveBatchJob({ status: 'READY_FOR_REVIEW' } as never)).toBe(false)
+    expect(isActiveBatchJob({ status: 'FAILED' } as never)).toBe(false)
+    expect(isActiveRedo({ status: 'PROCESSING', redoScope: 'ADVENTURE' } as never)).toBe(true)
+    expect(isActiveRedo({ status: 'PROCESSING', redoScope: null } as never)).toBe(false)
+
+    const [operations, desk, app] = await Promise.all([
+      readFile(new URL('../src/renderer/BatchOperationViews.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('../src/renderer/BatchReviewDesk.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
+    ])
+    expect(operations).toContain('BATCH_LIVE_REFRESH_INTERVAL_MS')
+    expect(operations).toContain('live-job-status')
+    expect(operations).toContain('Investighost está trabajando.')
+    expect(desk).toContain('readDestinationBatchJobReview(jobId)')
+    expect(desk).toContain("disabled={review.status !== 'READY_FOR_REVIEW' || busy || redoActive}")
+    expect(desk).toContain('disabled={!canApprove || busy || Boolean(redoScope) || redoActive}')
+    expect(app).toContain("go('batch-job')")
+  })
+
+  it('translates durable budget failures once while preserving a concise technical detail', () => {
+    const failure = 'REAL_EDITORIAL_BUDGET_EXCEEDED: REAL_EDITORIAL_BUDGET_EXCEEDED: remaining budget is insufficient'
+    expect(userFacingJobFailure(failure, 'ADVENTURE'))
+      .toBe('No se pudo rehacer Adventure porque el presupuesto disponible para esta operación no es suficiente.')
+    expect(technicalJobFailureDetail(failure)).toBe('REAL_EDITORIAL_BUDGET_EXCEEDED')
   })
 
   it('sorts production batches by durable creation time and presents smoke and single-job context', async () => {

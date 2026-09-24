@@ -214,6 +214,16 @@ aplicación de desarrollo con `INVESTIGHOST_FACTORY_SMOKE_MODE=true`. Ninguna
 de esas variables se usa en una aplicación empaquetada ni habilita un lote
 normal.
 
+085C-R6 mantiene el read model de Producción y el detalle de destino vivo
+sólo mientras un job está en `REDO_REQUIRED` o `PROCESSING`: refresca cada
+1,5 segundos y se detiene en un estado terminal, mostrando estado, intentos,
+coste e incidencia durable sin navegación manual. Durante ese intervalo las
+acciones incompatibles permanecen bloqueadas. El seed retenido por
+`KEEP_FACTORY_REDO_SMOKE=true` usa un presupuesto finito de fixture (2 EUR por
+destino y 4 EUR por lote) únicamente cuando el seed no recibe límites
+explícitos; conserva ledger y gates, no afecta a lotes normales y no genera
+gasto ni llamadas de providers reales.
+
 085C-R4 formaliza que `REDO_MUST_NOT_BE_BLIND_RERUN = TRUE`. Toda solicitud
 de redo puede persistir guidance estructurado por alcance, comentario y la
 referencia de la revisión previa. Student, Adventure y Editorial reciben ese

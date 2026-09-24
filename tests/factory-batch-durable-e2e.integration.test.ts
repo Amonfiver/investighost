@@ -28,6 +28,7 @@ import type { RealResearchMission, RealResearchSource } from '@shared/real-pipel
 const integration = process.env.RUN_SUPABASE_INTEGRATION === 'true' ? describe : describe.skip
 const created: Array<{ batchId: string; jobId: string; destinationId: string }> = []
 const testToken = 'batch_execution_test_capability_084j'
+const smokeFixtureBudgets = { maxCostPerDestination: 2, maxCostPerBatch: 4 }
 
 class ResearchDouble implements ResearchTool {
   readonly id = 'tavily'
@@ -141,6 +142,7 @@ async function importGranadaFixture(
   names: readonly string[] = ['Granada'],
   budgets: { maxCostPerDestination?: number; maxCostPerBatch?: number } = {},
 ) {
+  const retainedSmokeFixture = process.env.KEEP_FACTORY_REDO_SMOKE === 'true' && budgets.maxCostPerDestination === undefined && budgets.maxCostPerBatch === undefined
   const destinations = names.map(name => ({ id: randomUUID(), name }))
   const { error } = await client.from('geographic_entities').insert(destinations.map(destination => ({
     id: destination.id, parent_id: '70000000-0000-4000-8000-000000000001', entity_type: 'locality', name: destination.name,
@@ -151,7 +153,7 @@ async function importGranadaFixture(
   const repository = new SupabaseDestinationBatchRepository(client)
   const service = new DestinationBatchService(repository, new GeographicResolver(new SupabaseGeographyCatalogRepository(client), 'geonames-2026-07-20'))
   const imported = await service.importJson(JSON.stringify({
-    batch: { name: `084J Granada ${label} ${randomUUID()}`, maxCostPerDestination: budgets.maxCostPerDestination ?? 0.2, maxCostPerBatch: budgets.maxCostPerBatch ?? 1 },
+    batch: { name: `084J Granada ${label} ${randomUUID()}`, maxCostPerDestination: retainedSmokeFixture ? smokeFixtureBudgets.maxCostPerDestination : budgets.maxCostPerDestination ?? 0.2, maxCostPerBatch: retainedSmokeFixture ? smokeFixtureBudgets.maxCostPerBatch : budgets.maxCostPerBatch ?? 1 },
     destinations: names.map(name => ({ name, country: 'ES', region: 'Andalucía' })),
   }))
   if (process.env.KEEP_FACTORY_REDO_SMOKE === 'true') {
@@ -313,6 +315,7 @@ integration('durable Supabase-local batch worker E2E', () => {
   it('runs an explicitly marked local smoke redo with deterministic boundaries while normal jobs remain fail-closed', async () => {
     const { client } = createLocalSupabaseClientFromEnv()
     const { repository, batch, jobs } = await importGranadaFixture(client, 'manual-smoke', [`Granada Smoke ${randomUUID().slice(0, 8)}`])
+    if (process.env.KEEP_FACTORY_REDO_SMOKE === 'true') expect(batch).toMatchObject({ smokeFixture: true, ...smokeFixtureBudgets })
     const research = new ResearchDouble()
     const intelligence = new IntelligenceDouble()
     await new EditorialBatchWorker(repository, productionPort(client, research, intelligence), { workerId: '085cr2-seed' }).runJob(jobs[0]!.id)
@@ -391,7 +394,7 @@ integration('durable Supabase-local batch worker E2E', () => {
 
   it('rejects insufficient durable budget before calling the research provider or creating spend', async () => {
     const { client } = createLocalSupabaseClientFromEnv()
-    const { repository, jobs } = await importGranadaFixture(client, 'budget', ['Granada Budget'], { maxCostPerDestination: 0.0001 })
+    const { repository, jobs } = await importGranadaFixture(client, 'budget', [`Granada Budget ${randomUUID().slice(0, 8)}`], { maxCostPerDestination: 0.0001 })
     const research = new ResearchDouble()
     const intelligence = new IntelligenceDouble()
     const result = await new EditorialBatchWorker(repository, productionPort(client, research, intelligence), { workerId: '084j-budget' }).runJob(jobs[0]!.id)

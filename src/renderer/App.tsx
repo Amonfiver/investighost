@@ -330,7 +330,7 @@ export function App(): JSX.Element {
             setFactoryNotice(redoAcceptedMessage(scope))
             setBatchJob(job)
             setBatchDetailId(job.batchId)
-            go('batch-detail')
+            go('batch-job')
           }} />}
           {view === 'providers' && <ProviderCenterPanel />}
           {view === 'real-config' && (

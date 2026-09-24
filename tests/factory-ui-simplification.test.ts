@@ -72,8 +72,32 @@ describe('simplified factory UI boundaries', () => {
     expect(desk).toContain('Rigor académico')
     expect(desk).toContain('Evitar imágenes similares')
     expect(desk).toContain('Comentario opcional')
-    expect(desk).toContain('Resumen de la nueva generación')
+    expect(desk).toContain('<strong>Resumen</strong>')
     expect(desk).toContain('Revisión anterior')
+  })
+
+  it('keeps the destination detail and guided redo panel responsive without changing redo controls', async () => {
+    const [operations, desk, css] = await Promise.all([
+      readFile(new URL('../src/renderer/BatchOperationViews.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('../src/renderer/BatchReviewDesk.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('../src/renderer/App.css', import.meta.url), 'utf8'),
+    ])
+    expect(operations).toContain("job.status === 'READY_FOR_REVIEW' ? 'Lista para revisión'")
+    expect(operations).toContain('destination-job-metrics')
+    expect(operations).toContain('job-review-action')
+    expect(css).toContain('.destination-job-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }')
+    expect(css).toContain('.metric > strong { overflow-wrap: anywhere; }')
+    expect(css).toContain('.job-review-action .button { width: fit-content;')
+    expect(css).toContain('.guided-redo { grid-column: 1 / -1; width: min(100%, 1000px);')
+    expect(css).toContain('.guided-redo-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));')
+    expect(css).toContain('@container (max-width: 680px)')
+    expect(css).toContain('.guided-redo-controls { grid-template-columns: 1fr; }')
+    expect(css).toContain('grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));')
+    expect(desk).toContain('REVISIÓN EDITORIAL')
+    expect(desk).toContain("passed: 'Superada'")
+    expect(desk).toContain("PARTIAL: 'Parcial'")
+    expect(desk).toContain('guidanceSections')
+    expect(desk).toContain('guided-redo-summary-lines')
   })
 
   it('gives a human redo status and hides authorization internals from the primary failure message', async () => {

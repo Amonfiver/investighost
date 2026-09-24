@@ -97,7 +97,8 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 .batch-row strong, .batch-row small { display: block; }
 .batch-row strong { font-size: 12px; }.batch-row small { margin-top: 2px; color: var(--muted); font-size: 10px; }.batch-row em { color: var(--muted); font-size: 9px; font-style: normal; font-weight: 700; }
 .batch-row-meta { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
-.guided-redo { display: grid; gap: 12px; }.guided-redo-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }.guided-redo-controls fieldset { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 9px; }.guided-redo-controls legend { color: var(--muted); font-size: 10px; font-weight: 700; }.guided-redo-controls .review-tabs { flex-wrap: wrap; padding: 4px; }.guided-redo-summary { padding: 11px; border-radius: 9px; background: var(--green-soft); }.guided-redo-summary ul { margin: 7px 0 0; padding-left: 18px; font-size: 11px; }
+.destination-job-detail { max-width: 900px; }.destination-job-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }.metric > strong { overflow-wrap: anywhere; }.metric-phase > strong { font-size: clamp(19px, 2.2vw, 28px); line-height: 1.18; }.job-review-action { display: flex; justify-content: flex-end; }.job-review-action .button { width: fit-content; max-width: 100%; }
+.guided-redo { grid-column: 1 / -1; width: min(100%, 1000px); max-height: min(78vh, 900px); margin-inline: auto; overflow: auto; container-type: inline-size; display: grid; gap: 18px; }.guided-redo > header h3 { margin: 4px 0 6px; }.guided-redo > header p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }.guided-redo-scopes { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 7px; padding: 7px; background: #eaf0ec; border-radius: 11px; }.guided-redo-scopes button { min-height: 38px; padding: 8px 11px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; font-size: 11px; font-weight: 700; line-height: 1.2; white-space: nowrap; cursor: pointer; }.guided-redo-scopes button.active { color: var(--green-dark); background: white; box-shadow: 0 2px 6px rgba(0,0,0,.06); }.guided-redo-control-sections { display: grid; gap: 15px; }.guided-redo-control-section { display: grid; gap: 9px; }.guided-redo-control-section h4 { margin: 0; color: var(--green-dark); font-size: 12px; }.guided-redo-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }.guided-redo-controls fieldset { min-width: 0; margin: 0; padding: 11px; border: 1px solid var(--line); border-radius: 9px; }.guided-redo-controls legend { max-width: 100%; color: var(--muted); font-size: 10px; font-weight: 700; overflow-wrap: anywhere; }.guided-redo-controls .review-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 4px; padding: 4px; }.guided-redo-controls .review-tabs button { min-height: 34px; padding: 6px 7px; line-height: 1.2; }.guided-redo-summary { padding: 11px 13px; border-radius: 9px; background: var(--green-soft); }.guided-redo-summary > strong { font-size: 11px; }.guided-redo-summary-lines { margin: 5px 0 0; color: #365b4c; font-size: 11px; line-height: 1.5; }.guided-redo-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; background: var(--paper); border-top: 1px solid var(--line); }
 .batch-job-row { display: grid; grid-template-columns: 42px minmax(180px,2fr) minmax(130px,1fr) auto auto; align-items: center; gap: 12px; padding: 14px 17px; border-bottom: 1px solid #edf0ed; }
 .review-desk { display: grid; gap: 18px; max-width: 1280px; }.review-desk-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; padding: 22px; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; }.review-desk-header h2 { margin: 4px 0; }.review-desk-header p, .review-desk-header small { color: var(--muted); font-size: 11px; }.review-desk-header > div:last-child { display: grid; justify-items: end; gap: 9px; }.review-tabs { display: flex; gap: 7px; padding: 7px; background: #eaf0ec; border-radius: 11px; }.review-tabs button { padding: 8px 11px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; font-size: 11px; font-weight: 700; cursor: pointer; }.review-tabs button.active { color: var(--green-dark); background: white; box-shadow: 0 2px 6px rgba(0,0,0,.06); }.review-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; }.review-grid .alert, .review-grid .review-actions { grid-column: 1 / -1; }.review-actions { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 16px; border: 1px solid #cfe1d7; border-radius: 12px; background: var(--green-soft); }.review-actions small { display: block; color: #4d6e60; font-size: 11px; }.document-review, .traceability-card, .visual-review, .adventure-review { padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }.document-review h4 { margin: 7px 0 12px; font-size: 18px; }.document-review article { white-space: pre-wrap; line-height: 1.7; }.document-review small { display: block; margin-top: 16px; color: var(--muted); overflow-wrap: anywhere; font-size: 9px; }.visual-strip { margin-top: 22px; }.visual-strip > div { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }.visual-strip article { display: grid; gap: 6px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #fbfcfb; font-size: 11px; }.visual-strip img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #e8eeeb; }.visual-strip strong, .visual-strip small { padding: 0 10px; }.visual-strip strong { padding-top: 7px; }.visual-strip small { color: var(--muted); font-size: 9px; }.visual-strip small:last-child { padding-bottom: 10px; }.traceability-card dl { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }.traceability-card dl div { padding: 12px; border: 1px solid var(--line); border-radius: 10px; }.traceability-card dt { color: var(--muted); font-size: 10px; }.traceability-card dd { margin: 5px 0 0; overflow-wrap: anywhere; font-size: 11px; }
 .batch-job-row:last-child { border-bottom: 0; }
@@ -442,6 +443,7 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
 
 @media (max-width: 1180px) {
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
+  .destination-job-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .overview-grid { grid-template-columns: repeat(2, 1fr); }
   .definition-grid.compact, .definition-grid.failure-details { grid-template-columns: repeat(2, 1fr); }
   .research-row { grid-template-columns: 42px minmax(160px, 2fr) minmax(110px, 1fr) minmax(90px, .8fr) 26px; }
@@ -461,4 +463,24 @@ h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI
   .draft-columns, .quality-layout, .history-grid, .connectivity-call-grid { grid-template-columns: 1fr; }
   .human-gate { grid-column: auto; }
   .tile-grid { grid-template-columns: 1fr; }
+}
+
+@container (max-width: 680px) {
+  .guided-redo { gap: 14px; }
+  .guided-redo-controls { grid-template-columns: 1fr; }
+  .guided-redo-scopes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .guided-redo-scopes button { white-space: normal; }
+}
+
+@media (max-width: 760px) {
+  body { min-width: 0; }
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar { position: static; height: auto; padding: 14px; }
+  .sidebar nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .environment-card { display: none; }
+  .topbar, .content { padding-left: 16px; padding-right: 16px; }
+  .destination-job-metrics { grid-template-columns: 1fr; }
+  .job-review-action .button { width: 100%; }
+  .review-desk-header, .section-heading { align-items: flex-start; flex-direction: column; }
+  .review-grid, .traceability-card dl { grid-template-columns: 1fr; }
 }

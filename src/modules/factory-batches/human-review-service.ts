@@ -5,7 +5,7 @@ import {
   type RealEditorialLibraryVersioningReadRepository,
   type RealEditorialLibraryVersioningRepository,
 } from '@modules/library-versioning'
-import type { DestinationBatchJob } from '@shared/factory-batch-contracts'
+import type { DestinationBatchJob, DestinationBatchJobReviewReadModel } from '@shared/factory-batch-contracts'
 import type { DestinationBatchRepository } from './contracts'
 
 /** Coordinates the existing Library human approval commands for a completed
@@ -26,6 +26,9 @@ export class DestinationBatchHumanReviewService {
     const review = await this.batches.readJobForReview(jobId)
     if (!review || job.status !== 'READY_FOR_REVIEW' || !review.student || !review.adventure || !review.visualPackageId || !review.reviewArtifactId) {
       throw new Error('BATCH_REVIEW_APPROVAL_GATE: faltan revisiones, visuales o auto-review requeridos')
+    }
+    if (review.structuredPackage && unresolvedVisualIntentCount(review.structuredPackage) > 0) {
+      throw new Error('BATCH_REVIEW_APPROVAL_GATE: el package estructurado conserva visuales sin resolver')
     }
     await Promise.all([this.approveRevision(review.student), this.approveRevision(review.adventure)])
     return this.batches.approveReadyJob(job.id, new Date())
@@ -55,6 +58,16 @@ export class DestinationBatchHumanReviewService {
     })
     if (approved.status !== 'ok') throw new Error(`BATCH_REVIEW_APPROVE_FAILED:${approved.code}`)
   }
+}
+
+function unresolvedVisualIntentCount(value: NonNullable<DestinationBatchJobReviewReadModel['structuredPackage']>): number {
+  return value.visualIntents.filter(intent => {
+    const student = value.student.document.blocks.some(block => block.type === 'figure' && block.resolution === 'INTENT' && block.visualIntentId === intent.id)
+    const hero = value.adventure.document.hero.asset.status === 'INTENT' && value.adventure.document.hero.asset.visualIntentId === intent.id
+    const story = value.adventure.document.visualStory.items.some(item => item.asset.status === 'INTENT' && item.asset.visualIntentId === intent.id)
+    const place = value.adventure.document.placesToGo.items.some(item => item.asset?.status === 'INTENT' && item.asset.visualIntentId === intent.id)
+    return student || hero || story || place
+  }).length
 }
 
 function operationKey(value: string): string {

@@ -25,7 +25,7 @@ const intent = (id: string, purpose: 'STUDENT_FIGURE' | 'ADVENTURE_HERO' | 'VISU
 
 function fixture() {
   return {
-    version: 'structured-editorial-package-v1' as const, packageId: ids.package, executionId: ids.execution, destinationId: ids.destination, state: 'DRAFT' as const,
+    version: 'structured-editorial-package-v1' as const, packageId: ids.package, executionId: ids.execution, destinationId: ids.destination, masterKnowledgeArtifactId: ids.execution, state: 'DRAFT' as const,
     student: {
       document: { version: 'student-document-v1' as const, headline: 'Destino documentado', lead: [], blocks: [
         { type: 'paragraph' as const, text: 'Una explicación basada en evidencia disponible.' },
@@ -98,9 +98,13 @@ describe('structured editorial package contracts', () => {
       appendArtifact: async (_executionId: string, _kind: 'editorial_package', _key: string, version: number, payload: unknown) => { artifacts.push({ version, payload }) },
     }
     const service = new StructuredEditorialPackageArtifactService(repository as never)
-    const result = await service.save(ids.execution, composeStructuredEditorialPackage({ package: fixture(), masterKnowledgeArtifactId: 'master-knowledge-artifact' }))
+    const result = await service.save(ids.execution, composeStructuredEditorialPackage({ package: fixture(), masterKnowledgeArtifactId: ids.execution }))
     expect(result.version).toBe(1)
+    const revised = { ...fixture(), packageId: '00000000-0000-4000-8000-000000000099' }
+    expect((await service.save(ids.execution, composeStructuredEditorialPackage({ package: revised, masterKnowledgeArtifactId: ids.execution }))).version).toBe(2)
     expect((await service.loadCurrent(ids.execution))?.student.libraryRevision.revisionId).toBe(ids.studentRevision)
+    expect((await service.loadCurrent(ids.execution))?.masterKnowledgeArtifactId).toBe(ids.execution)
+    expect(artifacts).toHaveLength(2)
   })
 
   it('models caption work as a post-selection boundary without a provider', () => {

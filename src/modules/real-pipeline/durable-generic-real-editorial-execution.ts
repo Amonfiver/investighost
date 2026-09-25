@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import {
   FullRealEditorialPipeline,
   type RealEditorialResearchPhaseResult,
@@ -20,6 +21,17 @@ import type { IntelligenceDraft, RealPipelineProviderSelection } from './ports'
 import { REAL_EDITORIAL_OPERATION_BUDGETS } from './durable-real-editorial-pipeline'
 import type { BatchSharedLibraryTransition } from '@modules/library-versioning/batch-library-transition'
 import { redoGenerationStrategy, redoVariation } from '@shared/redo-guidance-contracts'
+import {
+  GeneratedAdventurePackageV1Schema,
+  GeneratedStudentDocumentV1Schema,
+  generateAdventurePackageV1,
+  generateStudentDocumentV1,
+  projectAdventurePackageToLegacyText,
+  projectStudentDocumentToLegacyText,
+  type StructuredGenerationTransport,
+} from './structured-generation-runtime'
+import { StructuredEditorialPackageArtifactService, composeStructuredEditorialPackage } from '@modules/editorial-pipeline/structured-editorial-package-service'
+import type { AdventurePackageV1, StudentDocumentV1 } from '@shared/structured-editorial-package-contracts'
 
 export interface DurableGenericRealEditorialExecutionDependencies {
   repository: SupabaseGenericDurableExecutionRepository
@@ -102,9 +114,42 @@ export class DurableGenericRealEditorialExecution {
     const kind = profile === 'student' ? 'draft_student' : 'draft_adventure'
     const artifactKey = this.profileKey(context, profile)
     let artifact = await runtime.repository.latestArtifactReference(runtime.execution.id, kind, artifactKey)
+    const structuredKind = profile === 'student' ? 'student_document' : 'adventure_package'
+    let structuredArtifact = await runtime.repository.latestArtifactReference(runtime.execution.id, structuredKind, artifactKey)
     let actualCost = 0
     const regenerates = this.regeneratesProfile(context, profile)
-    if (!artifact || regenerates) {
+    const transport = runtime.structuredTransport
+    if (transport && (!structuredArtifact || regenerates)) {
+      const research = await this.loadResearch(runtime, signal)
+      const previous = structuredArtifact?.payload as { document?: StudentDocumentV1 | AdventurePackageV1 } | undefined
+      const generated = await runtime.calls.execute<
+        Awaited<ReturnType<typeof generateStudentDocumentV1>> | Awaited<ReturnType<typeof generateAdventurePackageV1>>
+      >(
+        `${runtime.mission.taskId}:draft_${profile}`,
+        REAL_EDITORIAL_OPERATION_BUDGETS.drafting / runtime.mission.profiles.filter(candidate => candidate.enabled).length,
+        () => profile === 'student'
+          ? generateStudentDocumentV1(transport, {
+            destination: { id: runtime.context.destination.destinationId, name: runtime.context.destination.name, countryCode: runtime.context.destination.countryCode, region: runtime.context.destination.region },
+            masterKnowledge: research.masterKnowledge, dossier: research.dossier, guidance: context.redo?.guidance,
+            ...(previous?.document ? { previousRevision: { revisionId: context.redo?.previousArtifactRefs?.[profile.toUpperCase()] ?? 'previous-document', document: previous.document } } : {}),
+          }, signal)
+          : generateAdventurePackageV1(transport, {
+            destination: { id: runtime.context.destination.destinationId, name: runtime.context.destination.name, countryCode: runtime.context.destination.countryCode, region: runtime.context.destination.region },
+            masterKnowledge: research.masterKnowledge, dossier: research.dossier, guidance: context.redo?.guidance,
+            ...(previous?.document ? { previousRevision: { revisionId: context.redo?.previousArtifactRefs?.[profile.toUpperCase()] ?? 'previous-package', document: previous.document } } : {}),
+          }, signal),
+      )
+      const nextVersion = (structuredArtifact?.version ?? 0) + 1
+      await runtime.repository.appendArtifact(runtime.execution.id, structuredKind, artifactKey, nextVersion, {
+        document: generated.document, visualIntents: generated.visualIntents,
+      })
+      await runtime.repository.appendArtifact(runtime.execution.id, 'visual_intent', profile, nextVersion, generated.visualIntents)
+      structuredArtifact = await this.requireArtifact(runtime, structuredKind, artifactKey)
+      const draft = this.legacyDraft(profile, generated.document, generated.usage)
+      await runtime.repository.appendArtifact(runtime.execution.id, kind, artifactKey, (artifact?.version ?? 0) + 1, draft)
+      artifact = await this.requireArtifact(runtime, kind, artifactKey)
+      actualCost = runtime.calls.snapshot().spentCost
+    } else if (!artifact || regenerates) {
       const research = await this.loadResearch(runtime, signal)
       const mission = regenerates ? this.guidedMission(runtime.mission, context, profile, artifact?.payload as IntelligenceDraft | undefined) : runtime.mission
       const draft = profile === 'student'
@@ -126,12 +171,14 @@ export class DurableGenericRealEditorialExecution {
     const reference = await library.materialize({
       executionOwnerId: runtime.execution.id,
       destination: runtime.context.destination,
-      sourceArtifact: { id: artifact.id, payloadHash: artifact.payloadHash },
+      sourceArtifact: { id: structuredArtifact?.id ?? artifact.id, payloadHash: structuredArtifact?.payloadHash ?? artifact.payloadHash },
       draft: artifact.payload as IntelligenceDraft,
       actorId,
     })
     const libraryCheckpointKey = regenerates ? `library/${profile}/redo/${context.redo!.operationId}` : `library/${profile}`
     await runtime.repository.appendArtifact(runtime.execution.id, 'checkpoint', libraryCheckpointKey, 1, reference)
+    if (structuredArtifact) await runtime.repository.appendArtifact(runtime.execution.id, 'checkpoint', `structured-library/${profile}${regenerates ? `/redo/${context.redo!.operationId}` : ''}`, 1, reference)
+    if (structuredArtifact && (profile === 'adventure' || (profile === 'student' && regenerates))) await this.saveStructuredPackage(runtime, context)
     return { artifactRef: reference.revisionId, artifactKey, actualCost }
   }
 
@@ -178,6 +225,9 @@ export class DurableGenericRealEditorialExecution {
     )
     return {
       context, execution, repository, mission, calls,
+      structuredTransport: hasStructuredTransport(this.dependencies.providers.intelligenceEngine)
+        ? this.dependencies.providers.intelligenceEngine as StructuredGenerationTransport
+        : undefined,
       pipeline: new FullRealEditorialPipeline(workflow, this.dependencies.providers.intelligenceEngine, calls, {
         draftingCost: REAL_EDITORIAL_OPERATION_BUDGETS.drafting,
         reviewCost: REAL_EDITORIAL_OPERATION_BUDGETS.finalReview,
@@ -192,6 +242,49 @@ export class DurableGenericRealEditorialExecution {
     const recovered = await runtime.repository.latestArtifact(runtime.execution.id, 'master_knowledge', 'final')
     if (!recovered) throw new DurableGenericExecutionError('RESEARCH_ARTIFACT_REQUIRED', 'La investigación no dejó un artifact durable')
     return recovered.payload as RealWorkflowOutcome
+  }
+
+  private legacyDraft(
+    profile: 'student' | 'adventure',
+    document: StudentDocumentV1 | AdventurePackageV1,
+    usage: { providerId: string; model: string; inputTokens: number; cachedInputTokens?: number; outputTokens: number; estimatedCost: number; currency: 'EUR' | 'USD'; providerRequestIds?: string[] },
+  ): IntelligenceDraft {
+    const isStudent = profile === 'student'
+    const title = isStudent ? (document as StudentDocumentV1).headline : (document as AdventurePackageV1).copy.headline
+    const content = isStudent ? projectStudentDocumentToLegacyText(document as StudentDocumentV1) : projectAdventurePackageToLegacyText(document as AdventurePackageV1)
+    return {
+      profile, title, content, approximateWordCount: content.trim().split(/\s+/).filter(Boolean).length,
+      promptVersion: 'structured-generation-v1', schemaVersion: isStudent ? 'student-document-v1' : 'adventure-package-v1', usage,
+    }
+  }
+
+  private async saveStructuredPackage(
+    runtime: Awaited<ReturnType<DurableGenericRealEditorialExecution['runtime']>>,
+    context: GenericRealEditorialExecutionContext,
+  ): Promise<void> {
+    const studentRedo = context.redo?.scope === 'EDITORIAL' || context.redo?.scope === 'STUDENT'
+    const adventureRedo = context.redo?.scope === 'EDITORIAL' || context.redo?.scope === 'ADVENTURE'
+    const [masterKnowledge, studentArtifact, adventureArtifact, studentRevision, adventureRevision] = await Promise.all([
+      this.requireArtifact(runtime, 'master_knowledge', 'final'),
+      this.requireArtifact(runtime, 'student_document', this.profileKey(context, 'student')),
+      this.requireArtifact(runtime, 'adventure_package', this.profileKey(context, 'adventure')),
+      this.requireArtifact(runtime, 'checkpoint', `structured-library/student${studentRedo ? `/redo/${context.redo!.operationId}` : ''}`),
+      this.requireArtifact(runtime, 'checkpoint', `structured-library/adventure${adventureRedo ? `/redo/${context.redo!.operationId}` : ''}`),
+    ])
+    const student = GeneratedStudentDocumentV1Schema.parse(studentArtifact.payload)
+    const adventure = GeneratedAdventurePackageV1Schema.parse(adventureArtifact.payload)
+    const packageValue = composeStructuredEditorialPackage({
+      masterKnowledgeArtifactId: masterKnowledge.id,
+      package: {
+        version: 'structured-editorial-package-v1', packageId: randomUUID(), executionId: runtime.execution.id,
+        destinationId: runtime.context.destination.destinationId, masterKnowledgeArtifactId: masterKnowledge.id,
+        state: 'STRUCTURED_GENERATED',
+        student: { document: student.document, libraryRevision: libraryRevision(studentRevision.payload) },
+        adventure: { document: adventure.document, libraryRevision: libraryRevision(adventureRevision.payload) },
+        visualIntents: [...student.visualIntents, ...adventure.visualIntents],
+      },
+    })
+    await new StructuredEditorialPackageArtifactService(runtime.repository).save(runtime.execution.id, packageValue)
   }
 
   private profileKey(context: GenericRealEditorialExecutionContext, profile: 'student' | 'adventure'): string {
@@ -257,4 +350,20 @@ export class DurableGenericExecutionError extends Error {
     super(message)
     this.name = 'DurableGenericExecutionError'
   }
+}
+
+function hasStructuredTransport(value: RealPipelineProviderSelection['intelligenceEngine']): value is RealPipelineProviderSelection['intelligenceEngine'] & StructuredGenerationTransport {
+  const candidate = value as RealPipelineProviderSelection['intelligenceEngine'] & { structuredGenerationAvailable?: boolean }
+  return candidate.structuredGenerationAvailable === undefined
+    ? typeof candidate.generateStructured === 'function'
+    : candidate.structuredGenerationAvailable && typeof candidate.generateStructured === 'function'
+}
+
+function libraryRevision(value: unknown): { libraryEntryId: string; versionId: string; revisionId: string; revisionHash: string } {
+  if (!value || typeof value !== 'object') throw new DurableGenericExecutionError('ARTIFACT_REQUIRED', 'Falta la revisión Library estructurada')
+  const candidate = value as Record<string, unknown>
+  if (typeof candidate.libraryEntryId !== 'string' || typeof candidate.versionId !== 'string' || typeof candidate.revisionId !== 'string' || typeof candidate.revisionHash !== 'string') {
+    throw new DurableGenericExecutionError('ARTIFACT_REQUIRED', 'La revisión Library estructurada no es válida')
+  }
+  return { libraryEntryId: candidate.libraryEntryId, versionId: candidate.versionId, revisionId: candidate.revisionId, revisionHash: candidate.revisionHash }
 }

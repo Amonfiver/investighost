@@ -190,12 +190,14 @@ export const LibraryRevisionReferenceSchema = z.object({
   revisionHash: LibraryVersionSha256Schema,
 }).strict()
 
-export const StructuredEditorialPackageStateSchema = z.enum(['DRAFT', 'READY_FOR_REVIEW', 'APPROVED'])
+export const StructuredEditorialPackageStateSchema = z.enum(['DRAFT', 'STRUCTURED_GENERATED', 'READY_FOR_REVIEW', 'APPROVED'])
 export const StructuredEditorialPackageV1Schema = z.object({
   version: z.literal(STRUCTURED_EDITORIAL_PACKAGE_V1),
   packageId: LibraryVersionUuidSchema,
   executionId: LibraryVersionUuidSchema,
   destinationId: LibraryVersionUuidSchema,
+  /** The single durable corpus consumed directly by both generators. */
+  masterKnowledgeArtifactId: LibraryVersionUuidSchema,
   state: StructuredEditorialPackageStateSchema,
   student: z.object({ document: StudentDocumentV1Schema, libraryRevision: LibraryRevisionReferenceSchema }).strict(),
   adventure: z.object({ document: AdventurePackageV1Schema, libraryRevision: LibraryRevisionReferenceSchema }).strict(),
@@ -212,6 +214,11 @@ export const StructuredEditorialPackageV1Schema = z.object({
   }
   if (value.state === 'APPROVED' && requiredIntentIds.size > 0) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['state'], message: 'Un package APPROVED no puede conservar referencias visuales sin resolver' })
+  }
+  // Resolved packages retain their original intents as provenance even though
+  // the live content points to assetIds. Drafts must not carry an orphan.
+  for (const intent of value.visualIntents) if (value.state !== 'APPROVED' && !requiredIntentIds.has(intent.id)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['visualIntents'], message: `El visual intent ${intent.id} no está enlazado a contenido editorial` })
   }
 })
 

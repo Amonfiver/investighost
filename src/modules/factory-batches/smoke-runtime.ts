@@ -9,6 +9,7 @@ import type {
   ResearchToolResult,
 } from '@modules/real-pipeline'
 import type { RealResearchMission, RealResearchSource } from '@shared/real-pipeline-contracts'
+import type { ZodTypeAny } from 'zod'
 import { REAL_BATCH_EXECUTION_TOKEN_ENV } from './batch-provider-authorization'
 import type { BatchEditorialPhaseContext, BatchEditorialPhasePort } from './editorial-phase-port'
 import { ProductionBatchEditorialPhasePort } from './real-batch-phase-port'
@@ -125,6 +126,33 @@ class SmokeIntelligenceEngine implements IntelligenceEngine {
       approximateWordCount: 16, promptVersion: 'factory-smoke-v1', schemaVersion: 'factory-smoke-v1',
       usage: { providerId: 'openai', model: 'gpt-5.6-luna', inputTokens: 0, outputTokens: 0, estimatedCost: 0, currency: 'EUR' },
     }]
+  }
+
+  async generateStructured<T>(operation: string, _payload: Record<string, unknown>, schema: ZodTypeAny): Promise<{ output: T; usage: IntelligenceRoundAnalysis['usage'] }> {
+    const source = [{ kind: 'source' as const, referenceId: 'factory-smoke-source-1' }]
+    const ids = {
+      figure: '085f0000-0000-4000-8000-000000000001', hero: '085f0000-0000-4000-8000-000000000002',
+      story: '085f0000-0000-4000-8000-000000000003', place: '085f0000-0000-4000-8000-000000000004',
+      storyItem: '085f0000-0000-4000-8000-000000000005', placeItem: '085f0000-0000-4000-8000-000000000006', linked: '085f0000-0000-4000-8000-000000000007',
+    }
+    const visual = (id: string, purpose: 'STUDENT_FIGURE' | 'ADVENTURE_HERO' | 'VISUAL_STORY' | 'PLACE_ASSET', linkedContent: 'STUDENT_BLOCK' | 'HERO' | 'VISUAL_STORY_ITEM' | 'PLACE', subject: string) => ({
+      id, purpose, subject, keywords: subject.split(' ').slice(0, 3), context: 'Entidad presente en el corpus determinista.', desiredRole: purpose === 'ADVENTURE_HERO' ? 'HERO' as const : purpose === 'STUDENT_FIGURE' ? 'FIGURE' as const : purpose === 'PLACE_ASSET' ? 'PLACE' as const : 'HIGHLIGHT' as const,
+      desiredPlacement: purpose === 'STUDENT_FIGURE' ? 'WIDE' as const : 'OVERLAY' as const, linkedContent: { type: linkedContent, id: linkedContent === 'VISUAL_STORY_ITEM' ? ids.storyItem : linkedContent === 'PLACE' ? ids.placeItem : ids.linked }, evidenceRefs: source,
+    })
+    const output = operation === 'generate_student_document_v1'
+      ? { document: { version: 'student-document-v1' as const, headline: 'Granada, patrimonio y vida cultural', lead: ['Una síntesis basada en el corpus común.'], blocks: [
+        { type: 'heading' as const, level: 2 as const, text: 'Contexto' }, { type: 'paragraph' as const, text: 'Granada conserva patrimonio histórico, paisaje urbano y una vida cultural documentable.' },
+        { type: 'list' as const, style: 'unordered' as const, items: ['Patrimonio histórico', 'Paisaje urbano'] }, { type: 'key_facts' as const, items: [{ label: 'Enfoque', value: 'Patrimonio y cultura' }] },
+        { type: 'timeline' as const, items: [{ label: 'Actualidad', text: 'El corpus describe patrimonio y vida cultural.' }] },
+        { type: 'figure' as const, resolution: 'INTENT' as const, visualIntentId: ids.figure, placement: 'WIDE' as const, altHint: 'Patrimonio urbano de Granada' },
+        { type: 'references' as const, items: [{ title: 'Fuente determinista de smoke local', url: 'https://fixture.invalid/factory-smoke/1' }] },
+      ] }, visualIntents: [visual(ids.figure, 'STUDENT_FIGURE', 'STUDENT_BLOCK', 'Patrimonio urbano de Granada')] }
+      : { document: { version: 'adventure-package-v1' as const, copy: { headline: 'Granada para mirar despacio', hook: 'Patrimonio, miradores y vida cultural en una entrada visual.', highlights: ['Patrimonio histórico', 'Paisaje urbano'], sections: [], practicalTips: [], cta: 'Explora con contexto.', evidenceRefs: source },
+        hero: { asset: { status: 'INTENT' as const, visualIntentId: ids.hero }, title: 'Granada desde sus miradores', shortCopy: 'Una llegada entre paisaje y patrimonio.', presentationTone: 'LANDSCAPE' as const, textPlacement: 'OVERLAY' as const, evidenceRefs: source },
+        visualStory: { items: [{ id: ids.storyItem, asset: { status: 'INTENT' as const, visualIntentId: ids.story }, order: 0, title: 'Patrimonio urbano', presentationTone: 'CULTURE' as const, textPlacement: 'CARD_OVERLAY' as const, evidenceRefs: source }] },
+        placesToGo: { items: [{ id: ids.placeItem, category: 'EAT' as const, name: 'Mesa documentada', order: 0, shortDescription: 'Lugar presente en la evidencia de fixture.', reasonToGo: 'El corpus común lo respalda.', evidenceRefs: source, asset: { status: 'INTENT' as const, visualIntentId: ids.place } }], supplementalGaps: [{ type: 'MISSING_STAY_EVIDENCE' as const, description: 'El fixture no contiene evidencia de alojamiento.', evidenceRefs: source }, { type: 'MISSING_DRINK_EVIDENCE' as const, description: 'El fixture no contiene evidencia de bebidas.', evidenceRefs: source }, { type: 'MISSING_NIGHTLIFE_EVIDENCE' as const, description: 'El fixture no contiene evidencia nocturna.', evidenceRefs: source }] },
+      }, visualIntents: [visual(ids.hero, 'ADVENTURE_HERO', 'HERO', 'Miradores de Granada'), visual(ids.story, 'VISUAL_STORY', 'VISUAL_STORY_ITEM', 'Patrimonio urbano de Granada'), visual(ids.place, 'PLACE_ASSET', 'PLACE', 'Mesa documentada')] }
+    return { output: schema.parse(output) as T, usage: { providerId: 'fixture', model: 'structured-smoke', inputTokens: 0, outputTokens: 0, estimatedCost: 0, currency: 'EUR' } }
   }
 
   async review(): Promise<IntelligenceReview> {

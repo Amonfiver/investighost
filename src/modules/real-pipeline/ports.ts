@@ -11,6 +11,7 @@ import type {
   RealRoundResult,
 } from '@shared/real-pipeline-contracts'
 import type { RealEditorialCoverageConstraints } from '@shared/real-editorial-pilot-contracts'
+import type { ZodTypeAny } from 'zod'
 
 export type ProviderResultDiscardReason =
   | 'empty'
@@ -161,6 +162,14 @@ export interface IntelligenceEngine {
     knowledge: RealMasterKnowledge,
     constraints?: RealEditorialCoverageConstraints,
   ): void
+  /** Optional provider-neutral JSON-schema transport used by native editorial
+   * contracts. Legacy draft() remains available for historical records. */
+  generateStructured?<T>(
+    operation: string,
+    payload: Record<string, unknown>,
+    schema: ZodTypeAny,
+    signal: AbortSignal,
+  ): Promise<{ output: T; usage: IntelligenceRoundAnalysis['usage'] }>
   draft(
     mission: RealResearchMission,
     knowledge: RealMasterKnowledge,

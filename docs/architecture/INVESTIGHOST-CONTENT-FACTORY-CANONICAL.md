@@ -73,6 +73,14 @@ Los scopes `STUDENT`, `ADVENTURE`, `VISUALS` y `EDITORIAL` conservan research/an
 
 El boundary `composeStructuredEditorialPackage` exige nombrar el mismo `masterKnowledgeArtifactId` común. No ejecuta providers ni contiene lógica de destino. La ejecución real continúa produciendo drafts textuales hasta `COMPLETE_STRUCTURED_GENERATION`; por ello `STRUCTURED_CONTRACTS = DONE`, `STRUCTURED_DURABILITY = DONE`, `REVIEW_PACKAGE_AWARENESS = PARTIAL`, `LIBRARY_STRUCTURED_CURRENT_APPROVED = PENDING`, `STRUCTURED_GENERATION_RUNTIME = PENDING`, `MEDIA_INGRESS = PENDING` y `HANDOFF_V2_EXTENDED = PENDING`.
 
+### 085F — runtime de generación estructurada
+
+`DurableGenericRealEditorialExecution` prefiere ahora el boundary provider-neutral `generateStudentDocumentV1` / `generateAdventurePackageV1` cuando el engine expone transporte de JSON Schema. Ambos reciben directamente el mismo artifact `master_knowledge/final` y su dossier/provenance; Adventure no lee ni deriva de Student. La respuesta raw se valida como `StudentDocumentV1` o `AdventurePackageV1` antes de persistir `student_document`, `adventure_package` y `visual_intent`; el texto histórico de Library es únicamente una proyección de compatibilidad del documento validado, nunca un Markdown que se vuelve a parsear.
+
+El runtime materializa candidates/revisions existentes con el artifact estructurado como origen, conserva append-only el package `editorial_package/structured/v1`, su `masterKnowledgeArtifactId` y las revisiones Student/Adventure. Los redo de Student y Adventure conservan research/análisis y vuelven a usar ese mismo artifact. `STRUCTURED_GENERATION_RUNTIME = DONE`, `STUDENT_STRUCTURED_GENERATION = DONE`, `ADVENTURE_STRUCTURED_GENERATION = DONE`, `VISUAL_INTENT_GENERATION = DONE`, `PLACES_STRUCTURED_GENERATION = DONE`; `MEDIA_INGRESS = PENDING`, `HANDOFF_V2_EXTENDED = PENDING`, `R7_IMPLEMENTED = NO`, `R7_TESTED = NO` y `R7_SMOKE_APPROVED = NO`.
+
+Review Desk presenta el resumen estructurado, Hero intent, número de Visual Story, categorías/count de Places e intents visuales no resueltos. Un package queda `STRUCTURED_GENERATED`, no `READY_FOR_FINAL_APPROVAL`, mientras conserve intents/activos visuales sin resolver.
+
 ## Lo construido y su estado
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |

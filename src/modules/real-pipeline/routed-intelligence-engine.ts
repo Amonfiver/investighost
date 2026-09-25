@@ -11,6 +11,7 @@ import type {
   IntelligenceRoundAnalysis,
 } from './ports'
 import type { IntelligenceRoutingStage, ResolvedIntelligenceRoute } from './llm-routing'
+import type { ZodTypeAny } from 'zod'
 
 export interface RoutedIntelligenceStage {
   route: ResolvedIntelligenceRoute
@@ -33,6 +34,10 @@ export class RoutedIntelligenceEngine implements IntelligenceEngine {
     this.model = stages.analysis.route.model
     this.simulation = Object.values(stages).every(stage => stage.engine.simulation)
     this.analysisStrategy = stages.analysis.engine.analysisStrategy
+  }
+
+  get structuredGenerationAvailable(): boolean {
+    return Boolean(this.stages.draft_student.engine.generateStructured && this.stages.draft_adventure.engine.generateStructured)
   }
 
   routeFor(stage: IntelligenceRoutingStage): ResolvedIntelligenceRoute {
@@ -93,6 +98,12 @@ export class RoutedIntelligenceEngine implements IntelligenceEngine {
       drafts.push(...result)
     }
     return drafts
+  }
+
+  async generateStructured<T>(operation: string, payload: Record<string, unknown>, schema: ZodTypeAny, signal: AbortSignal): Promise<{ output: T; usage: IntelligenceRoundAnalysis['usage'] }> {
+    const stage = operation === 'generate_adventure_package_v1' ? this.stages.draft_adventure : this.stages.draft_student
+    if (!stage.engine.generateStructured) throw new Error('STRUCTURED_GENERATION_UNAVAILABLE')
+    return stage.engine.generateStructured<T>(operation, payload, schema, signal)
   }
 
   validateReview(

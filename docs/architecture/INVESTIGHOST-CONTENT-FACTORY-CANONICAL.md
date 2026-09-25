@@ -2,7 +2,7 @@
 
 > Antes de cualquier prompt estructural de Investighost, leer este documento primero. Reauditar únicamente componentes cuya implementación haya cambiado o no esté documentada.
 
-**Actualizado:** 2026-09-23
+**Actualizado:** 2026-09-26
 **Referencia de partida:** `d253f32739ff13b9b17f9d929a2664c022cce436` en `feat/investighost-real-pipeline`; los cambios estructurales posteriores se registran explícitamente en esta tabla.
 
 ## Objetivo de producto V1
@@ -23,6 +23,55 @@ La primera meta operativa es un lote de 10 destinos; la misma arquitectura debe 
 - **Visuales:** rights fail-closed. `UNKNOWN`, `PENDING` y `REFERENCE_ONLY` nunca son publicables. Investighost decide significado, selección, crédito, provenance y uso público.
 - La URL HTTPS pública final de media pertenece a la infraestructura de Trawel en la entrega aprobada. Investighost no necesita operar un host público propio; su storage local es staging/provenance, no la autoridad runtime final.
 - Handoff V2 conserva outbox, snapshot inmutable, fingerprint, idempotencia, retries y trazabilidad por perfil. No introducir heurísticas editoriales en Trawel.
+- `ONE_DESTINATION_ONE_RESEARCH_CORPUS = TRUE`. Student, Adventure y planificación visual parten de la misma evidencia durable; Adventure no deriva de Student. Una segunda llamada a Tavily sólo puede responder a un gap concreto, nunca repetir investigación completa del destino.
+- `STUDENT_DOCUMENT_V1 = TARGET_CONTRACT`. `INVESTIGHOST_OWNS_STUDENT_COMPOSITION = TRUE`, `TRAWEL_DOES_NOT_RECOMPOSE_STUDENT = TRUE`, `STUDENT_VARIABLE_LENGTH = TRUE`, `STUDENT_OPTIONAL_BLOCKS = TRUE` y `NO_EMPTY_EDITORIAL_BLOCKS = TRUE`.
+- `ADVENTURE_TARGET = HERO + ADVENTURE + DESTINATION_VISUAL_STORY + PLACES_TO_GO`. Investighost decide el contenido, el orden, los assets, las captions y los derechos; Trawel recibe un package coherente y renderiza pasivamente (`TRAWEL_IS_PASSIVE_RENDERER = TRUE`).
+
+## 085D — preparación para el contrato canónico de Trawel
+
+Esta sección fija el destino de la extensión. No habilita una entrega, no llama proveedores y no sustituye el contrato V2 extendido por una V3. El contrato de Trawel es una entrada fija: Investighost debe preparar y aprobar un único package que contenga `DESTINATION_IDENTITY`, `STUDENT`, `ADVENTURE`, `HERO`, `DESTINATION_VISUAL_STORY`, `PLACES_TO_GO`, `MEDIA`, `CAPTIONS_MICROCOPY` y las identidades de versión aprobadas. No cruzan la frontera corpus, prompts, razonamiento, candidatos, rechazos, URLs temporales ni decisiones internas.
+
+### Mapa factual actual → target
+
+| Componente | Estado actual comprobado | Clasificación 085D | Extensión necesaria |
+|---|---|---|---|
+| Research | `ControlledRealWorkflow` conserva `RealResearchDossier` (fuentes con contenido), evidencia y `RealMasterKnowledge` en `master_knowledge/final`; Tavily trabaja en hasta dos rondas gobernadas y la segunda sólo nace de un gap analizado. | NEEDS_EXTENSION | Taxonomía/coverage explícita de identidad, cultura, visual entities y gaps de `STAY/EAT/DRINK/NIGHTLIFE`; conservar el corpus único como input formal de Student, Adventure y visual planning. |
+| Analysis | DeepSeek analiza cada ronda, crea knowledge/coverage/gaps y gobierna la investigación focalizada. | ALREADY_ALIGNED | Exponer una planificación común que materialice los intents y gaps del contrato, sin crear un análisis paralelo. |
+| Student | Runtime real entrega `IntelligenceDraft` con `title`, `content` y `schemaVersion`; el generador histórico persiste `EditorialDraft + EditorialSection` V2 con plantilla fija. Library versiona texto/revisión. | LEGACY_TO_REPLACE | Adaptador/versionado durable a `student-document-v1`: `headline`, `lead[]`, `blocks[]` ordenados, `FIGURE`, referencias y trazabilidad de assets; mantener lectura de historial V2. |
+| Adventure | Runtime real entrega un `IntelligenceDraft` textual y Library lo versiona. | NEEDS_EXTENSION | Documento/copy Adventure estructurado y package `HERO + ADVENTURE + DESTINATION_VISUAL_STORY + PLACES_TO_GO`; no deriva de Student. |
+| Visuales | Paquete durable con candidates, rights fail-closed, staging, checksum y selecciones `hero/highlight/gallery` por modo. | NEEDS_EXTENSION | Intents concretos desde contenido, mapping a Hero/Visual Story/Figures/Places, aprobación de media y copy únicamente después de seleccionar asset. |
+| Places | `ResearchPlace` es genérico y no expresa las cuatro categorías ni el item final del consumidor. | MISSING | Modelo evidence-backed y selección final `STAY/EAT/DRINK/NIGHTLIFE`; supplemental research focalizado sólo para el gap de categoría. |
+| Review | Mesa de lote enseña Student, Adventure, paquete visual, warnings y trazabilidad; aprobar exige ambas revisiones, visual package y auto-review. | NEEDS_EXTENSION | Mostrar/revisar explícitamente StudentDocument, Hero, Visual Story, Places, media y package atómico antes de aprobar. |
+| Library | Candidate/revision/approval/currentApproved son durables; el batch crea candidates y su aprobación usa Library. | NEEDS_EXTENSION | Versionar cada componente estructurado y vincularlo a la misma aprobación/package; conservar el historial textual existente. |
+| Handoff | V2 actual proyecta dos perfiles textuales y una colección visual anterior; tiene outbox e idempotencia. | LEGACY_TO_REPLACE | Conservar V2 extendido como envelope y añadir la proyección exacta de los ingredientes/IDs ya aprobados, después del upload de media; no ejecutar delivery en esta fase. |
+
+### Research corpus y routing
+
+El flujo de lote actual es `IDENTITY → RESEARCH → ANALYSIS → STUDENT → ADVENTURE → VISUALS → AUTO_REVIEW`. `RESEARCH` persiste el resultado gobernado en `master_knowledge/final`; `ANALYSIS` reutiliza ese artefacto y no abre una llamada independiente. Student y Adventure cargan ambos ese mismo artefacto y pasan su `masterKnowledge` al motor DeepSeek. El delegate visual actual **no** consume el corpus: formula consultas genéricas por categoría/rol con el nombre del destino. Por tanto, `STUDENT_READS = master_knowledge/final`, `ADVENTURE_READS = master_knowledge/final`, `VISUAL_PIPELINE_READS = destination identity + generic category/role`.
+
+El corpus durable ya retiene fuentes con URL, título, publisher, fecha, hash y contenido, evidencia vinculada a fuentes, knowledge claims, coverage, contradicciones y gaps. Es suficiente como base durable, pero sus categorías actuales no garantizan cobertura formal de todos los ingredientes de Trawel ni de entidades de búsqueda visual. El siguiente cambio debe ampliar el análisis/coverage y no crear un corpus gigante ni una segunda ruta Tavily. Gaps admisibles incluyen `MISSING_STAY_EVIDENCE`, `MISSING_EAT_EVIDENCE`, `MISSING_NIGHTLIFE_EVIDENCE` y `MISSING_VISUAL_ENTITY_EVIDENCE`.
+
+### Contratos target que deben implementar los adaptadores
+
+- **StudentDocumentV1:** `version: "student-document-v1"`, `headline`, `lead[]` y `blocks[]` autoritativo. Los únicos bloques iniciales son `PARAGRAPH`, `HEADING`, `FIGURE`, `LIST`, `KEY_FACTS`, `CALLOUT`, `TIMELINE` y `REFERENCES`. `FIGURE` sólo entra después de seleccionar un asset aprobado y conserva `assetId`, placement `INLINE|WIDE`, alt y caption opcional. No se rellenan bloques vacíos ni se impone longitud fija.
+- **Adventure:** copy breve visual-first, selectivo y evidence-backed, más Hero (`heroAssetId`, title, shortCopy, `presentationTone`, `textPlacement`, kicker/caption/CTA opcionales), un único `DESTINATION_VISUAL_STORY` ordenado y un único `PLACES_TO_GO` ordenado.
+- **Places:** item final con `category` `STAY|EAT|DRINK|NIGHTLIFE`, nombre, orden, descripción, razón, y sólo los opcionales aprobados (área, asset, caption, tono, dirección, URL, coordenadas). No se inventan establecimientos ni zonas.
+- **Media/copy:** antes del handoff, cada asset debe tener bytes, checksum, MIME, dimensiones, alt, crédito, fuente, licencia, rights status `APPROVED_FOR_PUBLIC_USE` y focal point opcional. Captions, alt contextual, short copy y CTA se generan después de la selección concreta.
+- **Handoff V2 extended:** subir primero media aprobada al endpoint interno de Trawel, recibir `trawelMediaId`, y sólo entonces construir el payload V2 que referencia esos IDs y las revisiones `CURRENT_APPROVED` del mismo package. La preparación será idempotente y atómica; no se entrega media ni destinos reales durante 085D.
+
+### Redo y R7
+
+Los scopes `STUDENT`, `ADVENTURE`, `VISUALS` y `EDITORIAL` conservan research/análisis y sólo invalidan sus artefactos dependientes. La implementación actual propaga guidance y una instrucción de variación, preserva la revisión previa y añade `REDO_OUTPUT_TOO_SIMILAR_TO_PREVIOUS` cuando la superposición léxica alcanza el umbral. Esto es un warning de auto-review, no un gate que fuerce una salida materialmente distinta.
+
+`VERY_DIFFERENT_IMPLEMENTED = PARTIAL` (guidance, estrategia y warning); `VERY_DIFFERENT_TESTED = PARTIAL` (contrato unitario y smoke durable determinista que espera el warning); `VERY_DIFFERENT_HUMAN_SMOKE = NOT_RECORDED`; `R7_IMPLEMENTED = NO`, `R7_TESTED = NO`, `R7_SMOKE_APPROVED = NO`. Sigue abierto el gap: hacer que `VERY_DIFFERENT_IS_A_CONSTRAINT_NOT_A_SUGGESTION = TRUE`, con criterio medible/gate y smoke humano aprobado, sin mezclarlo accidentalmente con el cambio de contrato Trawel.
+
+### 085E — incremento vertical estructurado
+
+`src/shared/structured-editorial-package-contracts.ts` implementa los contratos internos validados para `StudentDocumentV1`, bloques ordenados, figure `INTENT|RESOLVED`, `AdventurePackageV1`, Hero, Visual Story único, Places, visual intents, gaps focalizados y contexto de captions post-selección. `structured-visual-intent-adapter.ts` traduce esos intents al request existente de Wikimedia sin buscar, seleccionar ni relajar derechos. Ningún schema obliga longitud, headings, figuras, referencias o categorías sin evidencia; sí rechaza bloques vacíos, Places sin evidencia, órdenes duplicados, intents huérfanos y packages aprobados con media pendiente.
+
+`StructuredEditorialPackageV1` es un snapshot coherente de una ejecución/destino y referencia las revisiones reales Student y Adventure de Library. `StructuredEditorialPackageArtifactService` lo guarda versionado y append-only como `editorial_package/structured/v1` en los artifacts existentes; la migración `20260926090000_structured_editorial_package_v1.sql` añade únicamente los tipos de artifact necesarios. No altera, convierte ni borra el historial textual de Library. El read model de Review Desk conoce el package estructurado y lo expone como metadata de revisión; la aprobación atómica del package y el reemplazo del generador textual quedan pendientes.
+
+El boundary `composeStructuredEditorialPackage` exige nombrar el mismo `masterKnowledgeArtifactId` común. No ejecuta providers ni contiene lógica de destino. La ejecución real continúa produciendo drafts textuales hasta `COMPLETE_STRUCTURED_GENERATION`; por ello `STRUCTURED_CONTRACTS = DONE`, `STRUCTURED_DURABILITY = DONE`, `REVIEW_PACKAGE_AWARENESS = PARTIAL`, `LIBRARY_STRUCTURED_CURRENT_APPROVED = PENDING`, `STRUCTURED_GENERATION_RUNTIME = PENDING`, `MEDIA_INGRESS = PENDING` y `HANDOFF_V2_EXTENDED = PENDING`.
 
 ## Lo construido y su estado
 
@@ -264,10 +313,11 @@ Un fallo nunca debe detener otros jobs. La concurrencia inicial recomendada es *
 
 ## Gaps que bloquean Factory V1, en orden
 
-1. **Executor real phase-addressable.** Usar el owner durable `BATCH_JOB` ya disponible para separar research/análisis/drafts/review del executor monolítico y registrar los delegates reales sin duplicar proveedores o Library.
-2. **Flujo visual aprobado a Trawel media.** Acordar/implementar el payload de byte o referencia aprobada y respuesta de URL HTTPS, sin trasladar autoridad editorial a Trawel.
-3. **Mesa de revisión de lote.** Lista/estado/coste/warnings; vista Student, Adventure y visuales; approve y redo selectivo.
-4. **Exportador JSON V1 y entrega bulk.** Sólo `APPROVED`, dedupe de delivery, resultado por job y retry del fallido.
+1. **Alinear el modelo editorial interno al contrato V2 extendido de Trawel.** Introducir los adapters/versiones durables de StudentDocumentV1, Adventure package, Hero, Visual Story y Places sin perder historial textual ni crear un pipeline paralelo.
+2. **Planificación visual evidence-backed.** Sustituir las consultas genéricas por intents concretos derivados de corpus/análisis y mapear selecciones existentes a figures, Hero, Visual Story y Places.
+3. **Places con evidencia y gaps focalizados.** Modelar y revisar los cuatro cajones cerrados; las únicas nuevas llamadas Tavily permitidas son las de una carencia categorizada, no una investigación completa repetida.
+4. **Package approval y media ingress.** Ampliar Review Desk y Library para aprobar la composición completa; después implementar el upload idempotente de bytes aprobados y la referencia `trawelMediaId` antes del handoff V2.
+5. **VERY_DIFFERENT R7.** Convertir el warning actual en una restricción/gate verificable y cerrar su smoke humano como trabajo separado o explícitamente secuenciado.
 
 ## Contratos mínimos pendientes
 
@@ -331,5 +381,10 @@ PASS: jobs aislados, no duplicados, costes bajo límites, artefactos y Library t
 
 ## Próximo paso único
 
-`HUMAN_REVIEW_DESK_V1`: usar la proyección por job para revisar Student,
-Adventure, visuales y warnings antes de cualquier aprobación o entrega.
+`ALIGN_INVESTIGHOST_FACTORY_TO_TRAWEL_CONTRACT`: implementar, con providers
+desactivados, el primer incremento vertical de contratos internos y adapters
+durables para `StudentDocumentV1`, el package Adventure/hero/visual story,
+Places evidence-backed y el package de aprobación atómica. Debe reutilizar el
+corpus único y el visual pipeline existente; no debe tocar Trawel, entregar
+destinos, ejecutar producción masiva ni volver a auditar Trawel. El prompt
+debe declarar por separado si R7 se aborda después como `CLOSE_VERY_DIFFERENT_R7`.

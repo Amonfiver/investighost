@@ -77,6 +77,7 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
       destination: { canonicalDestinationId: job.canonicalDestinationId ?? null, name: job.originalName, country: job.country, region: job.region ?? null },
       status: job.status, phase: job.currentPhase, student: null, adventure: null,
       visualPackageId: job.artifactRefs.VISUALS ?? null, visualPackage: null, reviewArtifactId: job.artifactRefs.AUTO_REVIEW ?? null,
+      structuredPackage: null,
       reviewSummary: null, warnings: [], cost: job.actualCost, attempts: job.attemptCount, lastError: job.lastFailure ?? null, redo: null,
     })
     const { data: redoRow, error: redoError } = await this.client.from('editorial_destination_batch_redo_operations')
@@ -138,7 +139,12 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
       assertNoError(selectionsError, 'READ_REVIEW_VISUAL_SELECTIONS')
       if (packageRow) visualPackage = visualPackageFromRows(packageRow as Row, assets as Row[] ?? [], selections as Row[] ?? [])
     }
-    return DestinationBatchJobReviewReadModelSchema.parse({ ...withRedo, student: reference(job.artifactRefs.STUDENT), adventure: reference(job.artifactRefs.ADVENTURE), visualPackage, reviewSummary, warnings })
+    const { data: structuredRow, error: structuredError } = await this.client.from('real_editorial_artifacts').select('payload')
+      .eq('execution_owner_id', String((execution as Row).id)).eq('artifact_kind', 'editorial_package').eq('artifact_key', 'structured/v1')
+      .order('version', { ascending: false }).limit(1).maybeSingle()
+    assertNoError(structuredError, 'READ_REVIEW_STRUCTURED_PACKAGE')
+    const structuredPackage = structuredRow ? (structuredRow as Row).payload : null
+    return DestinationBatchJobReviewReadModelSchema.parse({ ...withRedo, student: reference(job.artifactRefs.STUDENT), adventure: reference(job.artifactRefs.ADVENTURE), visualPackage, structuredPackage, reviewSummary, warnings })
   }
 
   async updateJob(job: DestinationBatchJob): Promise<DestinationBatchJob> {

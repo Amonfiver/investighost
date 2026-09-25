@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { RedoGenerationGuidanceSchema } from './redo-guidance-contracts'
 import { DestinationVisualMediaPackageSchema } from './destination-visual-media-contract'
+import { StructuredEditorialPackageV1Schema } from './structured-editorial-package-contracts'
 
 const IdSchema = z.string().uuid()
 const TimestampSchema = z.date()
@@ -147,6 +148,7 @@ export const DestinationBatchJobReviewReadModelSchema = z.object({
   adventure: z.object({ libraryEntryId: IdSchema, versionId: IdSchema, revisionId: IdSchema, title: NonEmptyText.max(500), content: z.string().min(1) }).nullable(),
   visualPackageId: IdSchema.nullable(),
   visualPackage: DestinationVisualMediaPackageSchema.nullable(),
+  structuredPackage: StructuredEditorialPackageV1Schema.nullable(),
   reviewArtifactId: IdSchema.nullable(),
   reviewSummary: z.record(z.unknown()).nullable(),
   warnings: z.array(z.string()),

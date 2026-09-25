@@ -133,6 +133,10 @@ export type RealEditorialArtifactKind =
   | 'coverage'
   | 'draft_adventure'
   | 'draft_student'
+  | 'student_document'
+  | 'adventure_package'
+  | 'visual_intent'
+  | 'editorial_package'
   | 'final_review'
   | 'checkpoint'
 

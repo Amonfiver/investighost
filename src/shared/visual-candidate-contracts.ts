@@ -22,6 +22,8 @@ export const WikimediaCommonsDiscoveryQuerySchema = z.object({
   countryOrRegion: z.string().trim().min(1).max(300).nullable(),
   category: VisualAssetCategorySchema,
   role: VisualAssetRoleSchema,
+  /** Structured editorial intent terms; omitted for legacy category searches. */
+  searchKeywords: z.array(z.string().trim().min(1).max(200)).min(1).max(20).optional(),
   limit: z.number().int().min(1).max(20),
 }).strict()
 

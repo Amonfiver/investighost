@@ -83,7 +83,7 @@ export function buildWikimediaCommonsSearchTerm(input: WikimediaCommonsDiscovery
     landmark: 'monument', landscape: 'landscape', culture: 'culture', food: 'gastronomy',
     'people-life': 'daily life', atmosphere: 'cityscape', detail: 'architecture detail',
   }
-  return [query.destinationName, query.countryOrRegion, categoryTerm[query.category]].filter((value): value is string => value !== null).join(' ')
+  return [query.destinationName, query.countryOrRegion, ...query.searchKeywords ?? [], categoryTerm[query.category]].filter((value): value is string => value !== null).join(' ')
 }
 
 export function normalizeWikimediaCommonsResponse(

@@ -76,4 +76,12 @@ describe('STRUCTURED_GENERATION_RUNTIME', () => {
     expect((transport.payloads[1].masterKnowledge as RealMasterKnowledge)).toBe(masterKnowledge)
     expect(redo.document.version).toBe('student-document-v1')
   })
+
+  it('VERY_DIFFERENT_CONSTRAINT_IS_EXPLICIT_ON_FIRST_AND_CONTROLLED_RETRY', async () => {
+    const transport = new DeterministicStructuredTransport()
+    await generateStudentDocumentV1(transport, { ...input(), variationAttempt: { attempt: 1, constraint: 'No reutilices la apertura.' } }, new AbortController().signal)
+    await generateAdventurePackageV1(transport, { ...input(), variationAttempt: { attempt: 2, previousFailure: 'REDO_OUTPUT_TOO_SIMILAR_TO_PREVIOUS', constraint: 'Cambia la organización.' } }, new AbortController().signal)
+    expect(transport.payloads[0]).toMatchObject({ variationAttempt: { attempt: 1 }, instruction: expect.stringContaining('No reutilices la apertura.') })
+    expect(transport.payloads[1]).toMatchObject({ variationAttempt: { attempt: 2, previousFailure: 'REDO_OUTPUT_TOO_SIMILAR_TO_PREVIOUS' }, instruction: expect.stringContaining('Cambia la organización.') })
+  })
 })

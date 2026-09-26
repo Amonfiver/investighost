@@ -79,5 +79,8 @@ export function redoGenerationStrategy(value: RedoGenerationGuidance, profile: '
       : value.scope === 'EDITORIAL'
         ? `Calidad ${value.controls.quality}; profundidad ${value.controls.depth}; originalidad ${value.controls.originality}; peso académico Student ${value.controls.studentAcademicWeight}; peso emocional Adventure ${value.controls.adventureEmotionalWeight}; detalle ${value.controls.detail}.`
         : 'Aplica la dirección visual en búsqueda, ranking y selección; conserva derechos y procedencia fail-closed.'
-  return { variation: strength, instruction: `Produce una revisión materialmente distinta, no una paráfrasis. Conserva sólo hechos verificados y evidencia. Variación solicitada: ${strength}. ${controls} ${profileRule}` }
+  const constraint = variation === 'VERY_DIFFERENT'
+    ? 'Es una restricción verificable: no reutilices título ni apertura, cambia enfoque y organización cuando la evidencia lo permita, evita frases y estructura demasiado similares, y conserva estrictamente hechos y evidencia.'
+    : 'Es una guía editorial: conserva estrictamente hechos y evidencia.'
+  return { variation: strength, instruction: `Produce una revisión materialmente distinta, no una paráfrasis. Variación solicitada: ${strength}. ${constraint} ${controls} ${profileRule}` }
 }

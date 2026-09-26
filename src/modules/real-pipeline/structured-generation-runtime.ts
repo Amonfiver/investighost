@@ -41,6 +41,9 @@ export interface StructuredGenerationInput {
   dossier: RealResearchDossier
   guidance?: RedoGenerationGuidance
   previousRevision?: { revisionId: string; document: StudentDocumentV1 | AdventurePackageV1 }
+  /** Runtime-owned retry context. It is intentionally provider-neutral and
+   * only present after a deterministic variation gate has failed. */
+  variationAttempt?: { attempt: 1 | 2; constraint: string; previousFailure?: 'REDO_OUTPUT_TOO_SIMILAR_TO_PREVIOUS' }
 }
 
 export const GeneratedStudentDocumentV1Schema = z.object({
@@ -143,11 +146,13 @@ function studentPayload(input: StructuredGenerationInput): Record<string, unknow
     evidence: evidencePayload(input.dossier),
     humanRedoGuidance: input.guidance ?? null,
     previousRevision: input.previousRevision ?? null,
+    variationAttempt: input.variationAttempt ?? null,
     instruction: [
       'Devuelve StudentDocumentV1 nativo: headline, lead y blocks ordenados; no devuelvas Markdown ni texto para parsear.',
       'La composición es variable: omite secciones sin evidencia, exige un bloque informativo y no dejes bloques vacíos.',
       'Usa sólo masterKnowledge y evidence. Las figuras son intents con subject concreto, keywords y evidenceRefs; no inventes assetId.',
       'Incluye referencias públicas sólo cuando sean editorialmente pertinentes.',
+      ...(input.variationAttempt ? [input.variationAttempt.constraint] : []),
     ].join(' '),
   }
 }
@@ -159,11 +164,13 @@ function adventurePayload(input: StructuredGenerationInput): Record<string, unkn
     evidence: evidencePayload(input.dossier),
     humanRedoGuidance: input.guidance ?? null,
     previousRevision: input.previousRevision ?? null,
+    variationAttempt: input.variationAttempt ?? null,
     instruction: [
       'Devuelve AdventurePackageV1 nativo, breve y visual-first; no derives copy del Student ni devuelvas Markdown.',
       'Usa sólo masterKnowledge y evidence. Hero y visualStory usan intents concretos, nunca assetId inventados ni búsquedas genéricas del destino.',
       'Places sólo si existe evidenceRefs; omite categorías sin evidencia y emite su supplemental gap tipado si es útil.',
       'visualStory es una única lista ordenada y sus sujetos son entidades concretas documentadas.',
+      ...(input.variationAttempt ? [input.variationAttempt.constraint] : []),
     ].join(' '),
   }
 }

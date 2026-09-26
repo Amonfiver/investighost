@@ -61,9 +61,9 @@ El corpus durable ya retiene fuentes con URL, título, publisher, fecha, hash y 
 
 ### Redo y R7
 
-Los scopes `STUDENT`, `ADVENTURE`, `VISUALS` y `EDITORIAL` conservan research/análisis y sólo invalidan sus artefactos dependientes. La implementación actual propaga guidance y una instrucción de variación, preserva la revisión previa y añade `REDO_OUTPUT_TOO_SIMILAR_TO_PREVIOUS` cuando la superposición léxica alcanza el umbral. Esto es un warning de auto-review, no un gate que fuerce una salida materialmente distinta.
+Los scopes `STUDENT`, `ADVENTURE`, `VISUALS` y `EDITORIAL` conservan research/análisis y sólo invalidan sus artefactos dependientes. `VERY_DIFFERENT` se aplica exclusivamente al redo editorial de Student/Adventure: no abre Tavily, no reanaliza el destino y no toca el redo visual.
 
-`VERY_DIFFERENT_IMPLEMENTED = PARTIAL` (guidance, estrategia y warning); `VERY_DIFFERENT_TESTED = PARTIAL` (contrato unitario y smoke durable determinista que espera el warning); `VERY_DIFFERENT_HUMAN_SMOKE = NOT_RECORDED`; `R7_IMPLEMENTED = NO`, `R7_TESTED = NO`, `R7_SMOKE_APPROVED = NO`. Sigue abierto el gap: hacer que `VERY_DIFFERENT_IS_A_CONSTRAINT_NOT_A_SUGGESTION = TRUE`, con criterio medible/gate y smoke humano aprobado, sin mezclarlo accidentalmente con el cambio de contrato Trawel.
+`VERY_DIFFERENT_IS_A_CONSTRAINT_NOT_A_SUGGESTION = TRUE`: una métrica provider-neutral y determinista compara titulares, tokens normalizados, estructura y frases repetidas. `LIGHT` y `CLEAR` conservan guidance/warning sin retry obligatorio; `VERY_DIFFERENT` reintenta una sola vez si el primer candidate supera el umbral y existe presupuesto/capacidad. Si no hay retry o el segundo candidate vuelve a fallar, se conserva `READY_FOR_REVIEW` con `REDO_VARIATION_TARGET_NOT_MET`, nunca con un tercer intento. Cada operación persiste append-only su trace de attempts, métricas, umbral, resultado y warning.
 
 ### 085E — incremento vertical estructurado
 
@@ -195,6 +195,25 @@ readiness/estado, key abreviada, intentos y receipt remoto. `HANDOFF_V2_EXTENDED
 `DELIVERY_CLIENT = DONE`, `HANDOFF_REVIEW_AWARENESS = DONE` y
 `HANDOFF_V2_EXTENDED = DONE`. `R7_IMPLEMENTED = NO`, `R7_TESTED = NO` y
 `R7_SMOKE_APPROVED = NO`.
+
+### 085K — cierre técnico de R7 VERY_DIFFERENT
+
+`redo-variation-policy.ts` implementa el gate de variación editorial sin
+embeddings, proveedores ni llamadas de red. La política mide solapamiento
+léxico, de headline/título, firmas estructurales y frases repetidas; el score y
+el umbral quedan en el checkpoint durable `redo-variation/{operation}/{profile}`.
+El primer intento `VERY_DIFFERENT` recibe restricciones explícitas y, si no
+cumple, el runtime hace como máximo un segundo intento con la causa
+`REDO_OUTPUT_TOO_SIMILAR_TO_PREVIOUS`. Student y Adventure leen el mismo corpus
+durable y sus identidades permanecen separadas. El Review Desk presenta nivel,
+intentos, score, target y warning.
+
+`VERY_DIFFERENT_IS_A_CONSTRAINT_NOT_A_SUGGESTION = TRUE`,
+`VERY_DIFFERENT_IMPLEMENTED = DONE`, `VERY_DIFFERENT_TESTED = DONE`,
+`VERY_DIFFERENT_RETRY_LIMIT = 1`, `REDO_VARIATION_TARGET_NOT_MET = DONE`,
+`R7_IMPLEMENTED = YES` y `R7_TESTED = YES`. El smoke humano/provider real no
+se ejecutó: `R7_SMOKE_APPROVED = NOT_RUN`. `MEDIA_INGRESS = DONE` y
+`HANDOFF_V2_EXTENDED = DONE` permanecen sin cambios.
 
 ## Lo construido y su estado
 
@@ -440,7 +459,7 @@ Un fallo nunca debe detener otros jobs. La concurrencia inicial recomendada es *
 2. **Planificación visual evidence-backed.** Sustituir las consultas genéricas por intents concretos derivados de corpus/análisis y mapear selecciones existentes a figures, Hero, Visual Story y Places.
 3. **Places con evidencia y gaps focalizados.** Modelar y revisar los cuatro cajones cerrados; las únicas nuevas llamadas Tavily permitidas son las de una carencia categorizada, no una investigación completa repetida.
 4. **Package approval y media ingress.** Ampliar Review Desk y Library para aprobar la composición completa; después implementar el upload idempotente de bytes aprobados y la referencia `trawelMediaId` antes del handoff V2.
-5. **VERY_DIFFERENT R7.** Convertir el warning actual en una restricción/gate verificable y cerrar su smoke humano como trabajo separado o explícitamente secuenciado.
+5. **Reconciliación vertical Factory V1.** R7 ya tiene gate técnico y tests deterministas; queda comprobar el flujo vertical completo como producto antes de producción masiva. El smoke humano/provider real de R7 sigue explícitamente no ejecutado.
 
 ## Contratos mínimos pendientes
 
@@ -504,10 +523,5 @@ PASS: jobs aislados, no duplicados, costes bajo límites, artefactos y Library t
 
 ## Próximo paso único
 
-`ALIGN_INVESTIGHOST_FACTORY_TO_TRAWEL_CONTRACT`: implementar, con providers
-desactivados, el primer incremento vertical de contratos internos y adapters
-durables para `StudentDocumentV1`, el package Adventure/hero/visual story,
-Places evidence-backed y el package de aprobación atómica. Debe reutilizar el
-corpus único y el visual pipeline existente; no debe tocar Trawel, entregar
-destinos, ejecutar producción masiva ni volver a auditar Trawel. El prompt
-debe declarar por separado si R7 se aborda después como `CLOSE_VERY_DIFFERENT_R7`.
+`FACTORY_V1_VERTICAL_SLICE_RECONCILIATION`: comprobar el flujo completo ya
+construido como producto, sin abrir otra ronda estructural ni producción masiva.

@@ -80,6 +80,14 @@ describe('simplified factory UI boundaries', () => {
     expect(desk).toContain('Revisión anterior')
   })
 
+  it('shows durable VERY_DIFFERENT attempts, target and warning without adding a new review flow', async () => {
+    const desk = await readFile(new URL('../src/renderer/BatchReviewDesk.tsx', import.meta.url), 'utf8')
+    expect(desk).toContain('variationTraces')
+    expect(desk).toContain('objetivo cumplido')
+    expect(desk).toContain('objetivo no cumplido')
+    expect(desk).toContain('attempt.similarity.score')
+  })
+
   it('keeps the destination detail and guided redo panel responsive without changing redo controls', async () => {
     const [operations, desk, css] = await Promise.all([
       readFile(new URL('../src/renderer/BatchOperationViews.tsx', import.meta.url), 'utf8'),

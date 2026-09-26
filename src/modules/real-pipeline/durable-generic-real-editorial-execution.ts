@@ -21,6 +21,7 @@ import type { IntelligenceDraft, RealPipelineProviderSelection } from './ports'
 import { REAL_EDITORIAL_OPERATION_BUDGETS } from './durable-real-editorial-pipeline'
 import type { BatchSharedLibraryTransition } from '@modules/library-versioning/batch-library-transition'
 import { redoGenerationStrategy, redoVariation } from '@shared/redo-guidance-contracts'
+import { assessRedoVariation, enforceRedoVariation, veryDifferentConstraint, type RedoVariationTrace } from './redo-variation-policy'
 import {
   GeneratedAdventurePackageV1Schema,
   GeneratedStudentDocumentV1Schema,
@@ -122,23 +123,53 @@ export class DurableGenericRealEditorialExecution {
     if (transport && (!structuredArtifact || regenerates)) {
       const research = await this.loadResearch(runtime, signal)
       const previous = structuredArtifact?.payload as { document?: StudentDocumentV1 | AdventurePackageV1 } | undefined
-      const generated = await runtime.calls.execute<
+      const draftingReservation = REAL_EDITORIAL_OPERATION_BUDGETS.drafting / runtime.mission.profiles.filter(candidate => candidate.enabled).length
+      const generate = (attempt: 1 | 2) => runtime.calls.execute<
         Awaited<ReturnType<typeof generateStudentDocumentV1>> | Awaited<ReturnType<typeof generateAdventurePackageV1>>
       >(
-        `${runtime.mission.taskId}:draft_${profile}`,
-        REAL_EDITORIAL_OPERATION_BUDGETS.drafting / runtime.mission.profiles.filter(candidate => candidate.enabled).length,
+        `${runtime.mission.taskId}:draft_${profile}${attempt === 2 ? ':variation-attempt-2' : ''}`,
+        draftingReservation,
         () => profile === 'student'
           ? generateStudentDocumentV1(transport, {
             destination: { id: runtime.context.destination.destinationId, name: runtime.context.destination.name, countryCode: runtime.context.destination.countryCode, region: runtime.context.destination.region },
             masterKnowledge: research.masterKnowledge, dossier: research.dossier, guidance: context.redo?.guidance,
             ...(previous?.document ? { previousRevision: { revisionId: context.redo?.previousArtifactRefs?.[profile.toUpperCase()] ?? 'previous-document', document: previous.document } } : {}),
+            ...((attempt === 2 || (attempt === 1 && context.redo?.guidance && redoVariation(context.redo.guidance) === 'VERY_DIFFERENT')) ? { variationAttempt: { attempt, ...(attempt === 2 ? { previousFailure: 'REDO_OUTPUT_TOO_SIMILAR_TO_PREVIOUS' as const } : {}), constraint: veryDifferentConstraint(attempt) } } : {}),
           }, signal)
           : generateAdventurePackageV1(transport, {
             destination: { id: runtime.context.destination.destinationId, name: runtime.context.destination.name, countryCode: runtime.context.destination.countryCode, region: runtime.context.destination.region },
             masterKnowledge: research.masterKnowledge, dossier: research.dossier, guidance: context.redo?.guidance,
             ...(previous?.document ? { previousRevision: { revisionId: context.redo?.previousArtifactRefs?.[profile.toUpperCase()] ?? 'previous-package', document: previous.document } } : {}),
+            ...((attempt === 2 || (attempt === 1 && context.redo?.guidance && redoVariation(context.redo.guidance) === 'VERY_DIFFERENT')) ? { variationAttempt: { attempt, ...(attempt === 2 ? { previousFailure: 'REDO_OUTPUT_TOO_SIMILAR_TO_PREVIOUS' as const } : {}), constraint: veryDifferentConstraint(attempt) } } : {}),
           }, signal),
       )
+      const first = await generate(1)
+      let generated = first
+      if (context.redo?.guidance && previous?.document) {
+        const variation = redoVariation(context.redo.guidance)
+        const assessment = assessRedoVariation(variation, previous.document, first.document)
+        const retryAllowed = variation === 'VERY_DIFFERENT' && assessment.result === 'FAIL' && !signal.aborted
+          && runtime.calls.canExecute(`${runtime.mission.taskId}:draft_${profile}:variation-attempt-2`, draftingReservation)
+        let retryGenerated: typeof first | null = null
+        try {
+          await enforceRedoVariation({
+            variation, previous: previous.document, first: first.document,
+            canRetry: retryAllowed,
+            onTrace: async trace => this.saveRedoVariationTrace(runtime, context, profile, trace),
+            generateRetry: retryAllowed ? async () => {
+              retryGenerated = await generate(2)
+              return retryGenerated.document
+            } : undefined,
+          })
+          if (retryGenerated) generated = retryGenerated
+        } catch (error) {
+          if (signal.aborted) throw error
+          await this.saveRedoVariationTrace(runtime, context, profile, {
+            variation, targetMet: false, warning: 'REDO_VARIATION_TARGET_NOT_MET',
+            attempts: [{ attempt: 1, result: assessment.result, similarity: assessment.similarity, threshold: assessment.threshold, retryTriggered: retryAllowed }],
+          })
+        }
+      }
       const nextVersion = (structuredArtifact?.version ?? 0) + 1
       await runtime.repository.appendArtifact(runtime.execution.id, structuredKind, artifactKey, nextVersion, {
         document: generated.document, visualIntents: generated.visualIntents,
@@ -327,11 +358,28 @@ export class DurableGenericRealEditorialExecution {
     const profiles = context.redo.scope === 'EDITORIAL' ? ['student', 'adventure'] : context.redo.scope === 'STUDENT' ? ['student'] : context.redo.scope === 'ADVENTURE' ? ['adventure'] : []
     const warnings: string[] = []
     for (const profile of profiles) {
-      const artifact = await runtime.repository.latestArtifact(runtime.execution.id, 'checkpoint', `redo-guidance/${context.redo.operationId}/${profile}`)
+      const variation = await runtime.repository.latestArtifact(runtime.execution.id, 'checkpoint', `redo-variation/${context.redo.operationId}/${profile}`)
+      const artifact = variation ?? await runtime.repository.latestArtifact(runtime.execution.id, 'checkpoint', `redo-guidance/${context.redo.operationId}/${profile}`)
       const warning = (artifact?.payload as { warning?: unknown } | undefined)?.warning
       if (typeof warning === 'string') warnings.push(warning)
     }
     return warnings
+  }
+
+  private async saveRedoVariationTrace(
+    runtime: Awaited<ReturnType<DurableGenericRealEditorialExecution['runtime']>>,
+    context: GenericRealEditorialExecutionContext,
+    profile: 'student' | 'adventure',
+    trace: RedoVariationTrace,
+  ): Promise<void> {
+    if (!context.redo) return
+    const key = `redo-variation/${context.redo.operationId}/${profile}`
+    const previous = await runtime.repository.latestArtifactReference(runtime.execution.id, 'checkpoint', key)
+    await runtime.repository.appendArtifact(runtime.execution.id, 'checkpoint', key, (previous?.version ?? 0) + 1, {
+      redoOperationId: context.redo.operationId,
+      profile,
+      ...trace,
+    })
   }
 
   private async requireArtifact(

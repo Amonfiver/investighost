@@ -163,6 +163,16 @@ export const DestinationBatchJobReviewReadModelSchema = z.object({
   handoffAttempts: z.number().int().nonnegative().default(0),
   handoffRemoteDeliveryId: z.string().nullable().default(null),
   handoffFailure: z.string().nullable().default(null),
+  variationTraces: z.array(z.object({
+    profile: z.enum(['student', 'adventure']),
+    variation: z.enum(['LIGHT', 'CLEAR', 'VERY_DIFFERENT']),
+    targetMet: z.boolean(),
+    warning: z.enum(['REDO_OUTPUT_TOO_SIMILAR_TO_PREVIOUS', 'REDO_VARIATION_TARGET_NOT_MET']).nullable(),
+    attempts: z.array(z.object({
+      attempt: z.union([z.literal(1), z.literal(2)]), result: z.enum(['PASS', 'FAIL']), threshold: z.number().finite(), retryTriggered: z.boolean(),
+      similarity: z.object({ lexicalOverlap: z.number().finite(), headlineOverlap: z.number().finite(), structuralOverlap: z.number().finite(), repeatedPhraseOverlap: z.number().finite(), score: z.number().finite() }),
+    }).strict()).max(2),
+  }).strict()).default([]),
   reviewArtifactId: IdSchema.nullable(),
   reviewSummary: z.record(z.unknown()).nullable(),
   warnings: z.array(z.string()),

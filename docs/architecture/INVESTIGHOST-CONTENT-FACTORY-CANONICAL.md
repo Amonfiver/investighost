@@ -81,6 +81,52 @@ El runtime materializa candidates/revisions existentes con el artifact estructur
 
 Review Desk presenta el resumen estructurado, Hero intent, número de Visual Story, categorías/count de Places e intents visuales no resueltos. Un package queda `STRUCTURED_GENERATED`, no `READY_FOR_FINAL_APPROVAL`, mientras conserve intents/activos visuales sin resolver.
 
+### 085G — resolución visual y copy contextual
+
+`structured-visual-resolution.ts` consume los `VisualIntent` ya persistidos y
+los enruta al adapter existente de Wikimedia Commons por `subject` y
+`keywords`; el delegado de batch ya no fabrica la matriz de queries genéricas
+por destino. La selección recibe candidates y la relación durable
+candidate→asset del pipeline visual existente; sólo aplica slots cuando el
+asset tiene `lifecycle=APPROVED`, `usageAllowed=true`, checksum y
+`rightsStatus=APPROVED_FOR_PUBLIC_USE`. `UNKNOWN`, `PENDING` y
+`REFERENCE_ONLY` se conservan como no resueltos y nunca generan placeholder.
+
+La resolución es determinista y role-aware: verifica coincidencia de entidad,
+dimensiones, aspect ratio, metadata, derechos y exclusión por `assetId` y
+SHA-256 entre slots. Una revisión `visualResolution` conserva candidate,
+asset, checksum, score, snapshot de rights, alt/caption y causa tipada de no
+resolución. Reemplaza sólo las referencias editoriales pertinentes: mantiene
+la posición de `FIGURE` Student y el orden de Visual Story; no reescribe el
+texto Student ni el copy Adventure.
+
+`DeterministicContextualMediaCopyComposer` es la frontera provider-neutral
+`generateContextualMediaCopy`: se invoca después de seleccionar el asset y
+sólo compone metadata del asset seleccionado con el contexto/evidencia ya
+existentes. No se hicieron llamadas Tavily, DeepSeek, OpenAI, Wikimedia ni
+Trawel para este incremento. Las revisiones se guardan append-only en
+`editorial_package/structured/v1`; `saveVisualRevision` exige
+`SAME_EXECUTION_PACKAGE` (mismo execution, destino, master knowledge y
+revisiones Student/Adventure). No se añadió migración: el artifact JSON
+versionado conserva el nuevo snapshot.
+
+El estado estructurado distingue `VISUALS_PENDING`, `VISUALS_RESOLVED`,
+`CAPTIONS_RESOLVED` y `PACKAGE_READY_FOR_REVIEW`; ninguno equivale a
+aprobación humana. Hero es obligatorio para `PACKAGE_READY_FOR_REVIEW` porque
+la puerta existente de Review Desk rechaza cualquier intent ligado sin
+resolver. Las figuras Student y Places siguen siendo opcionales cuando el
+contrato no exige el slot: permanecen intent/no resueltos con warning, sin
+bloquear por categorías de Places que no existan por evidencia. La pantalla
+de revisión muestra estado de Hero/Figures/Story/Places, rights, captions y
+warnings de la resolución. `VISUAL_INTENT_ROUTING = DONE`,
+`EVIDENCE_BACKED_VISUAL_SEARCH = DONE`, `VISUAL_SELECTION_PIPELINE = DONE`,
+`STUDENT_FIGURE_RESOLUTION = DONE`, `ADVENTURE_HERO_RESOLUTION = DONE`,
+`VISUAL_STORY_RESOLUTION = DONE`, `PLACE_ASSET_RESOLUTION = DONE`,
+`POST_SELECTION_CAPTIONS = DONE`, `VISUAL_DURABILITY = DONE` y
+`REVIEW_VISUAL_AWARENESS = DONE`. `MEDIA_INGRESS = PENDING`,
+`HANDOFF_V2_EXTENDED = PENDING`, `R7_IMPLEMENTED = NO`, `R7_TESTED = NO` y
+`R7_SMOKE_APPROVED = NO`.
+
 ## Lo construido y su estado
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |

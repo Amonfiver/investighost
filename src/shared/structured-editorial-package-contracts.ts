@@ -190,7 +190,45 @@ export const LibraryRevisionReferenceSchema = z.object({
   revisionHash: LibraryVersionSha256Schema,
 }).strict()
 
-export const StructuredEditorialPackageStateSchema = z.enum(['DRAFT', 'STRUCTURED_GENERATED', 'READY_FOR_REVIEW', 'APPROVED'])
+export const StructuredEditorialPackageStateSchema = z.enum([
+  'DRAFT', 'STRUCTURED_GENERATED', 'VISUALS_PENDING', 'VISUALS_RESOLVED',
+  'CAPTIONS_RESOLVED', 'PACKAGE_READY_FOR_REVIEW', 'READY_FOR_REVIEW', 'APPROVED',
+])
+
+/** A resolved slot retains its original intent in visualIntents.  This makes
+ * visual revisions reviewable without re-inferring editorial intent. */
+export const VisualResolutionReasonSchema = z.enum([
+  'NO_CANDIDATES', 'RIGHTS_NOT_APPROVED', 'DIMENSIONS_REJECTED', 'ASPECT_REJECTED',
+  'DUPLICATE_CONFLICT', 'ENTITY_MATCH_TOO_WEAK',
+])
+export const VisualResolvedSlotSchema = z.object({
+  intentId: LibraryVersionUuidSchema,
+  candidateId: LibraryVersionUuidSchema,
+  assetId: LibraryVersionUuidSchema,
+  checksum: LibraryVersionSha256Schema,
+  score: z.number().finite(),
+  rightsStatus: z.literal('APPROVED_FOR_PUBLIC_USE'),
+  alt: ShortText,
+  caption: OptionalText,
+  shortCopy: OptionalText,
+  cta: OptionalText,
+}).strict()
+export const VisualUnresolvedSlotSchema = z.object({
+  intentId: LibraryVersionUuidSchema,
+  reason: VisualResolutionReasonSchema,
+}).strict()
+export const StructuredVisualResolutionSchema = z.object({
+  visualRevisionId: LibraryVersionUuidSchema,
+  sourceVisualPackageId: LibraryVersionUuidSchema.optional(),
+  state: z.enum(['VISUALS_PENDING', 'VISUALS_RESOLVED', 'CAPTIONS_RESOLVED', 'PACKAGE_READY_FOR_REVIEW']),
+  resolved: z.array(VisualResolvedSlotSchema).max(200),
+  unresolved: z.array(VisualUnresolvedSlotSchema).max(200),
+  generatedAt: z.string().datetime({ offset: true }),
+}).strict().superRefine((value, context) => {
+  const ids = [...value.resolved.map(slot => slot.intentId), ...value.unresolved.map(slot => slot.intentId)]
+  if (new Set(ids).size !== ids.length) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Un intent visual sólo puede tener una resolución por revisión' })
+  if (value.state === 'CAPTIONS_RESOLVED' && value.resolved.some(slot => !slot.alt)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Captions resueltas requieren alt contextual' })
+})
 export const StructuredEditorialPackageV1Schema = z.object({
   version: z.literal(STRUCTURED_EDITORIAL_PACKAGE_V1),
   packageId: LibraryVersionUuidSchema,
@@ -203,6 +241,7 @@ export const StructuredEditorialPackageV1Schema = z.object({
   adventure: z.object({ document: AdventurePackageV1Schema, libraryRevision: LibraryRevisionReferenceSchema }).strict(),
   visualIntents: z.array(VisualIntentSchema).max(200),
   visualPackageId: LibraryVersionUuidSchema.optional(),
+  visualResolution: StructuredVisualResolutionSchema.optional(),
 }).strict().superRefine((value, context) => {
   if (value.student.libraryRevision.revisionId === value.adventure.libraryRevision.revisionId) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['adventure', 'libraryRevision'], message: 'Student y Adventure no pueden referenciar la misma revisión Library' })
@@ -215,10 +254,22 @@ export const StructuredEditorialPackageV1Schema = z.object({
   if (value.state === 'APPROVED' && requiredIntentIds.size > 0) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['state'], message: 'Un package APPROVED no puede conservar referencias visuales sin resolver' })
   }
-  // Resolved packages retain their original intents as provenance even though
-  // the live content points to assetIds. Drafts must not carry an orphan.
-  for (const intent of value.visualIntents) if (value.state !== 'APPROVED' && !requiredIntentIds.has(intent.id)) {
+  // Resolved packages retain original intents as provenance even after the
+  // live content points to an asset. Every inactive intent must be accounted
+  // for by the same visual revision, never silently discarded.
+  const accounted = new Set([
+    ...requiredIntentIds,
+    ...(value.visualResolution?.resolved.map(slot => slot.intentId) ?? []),
+    ...(value.visualResolution?.unresolved.map(slot => slot.intentId) ?? []),
+  ])
+  for (const intent of value.visualIntents) if (value.state !== 'APPROVED' && !accounted.has(intent.id)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['visualIntents'], message: `El visual intent ${intent.id} no está enlazado a contenido editorial` })
+  }
+  if (value.visualResolution) {
+    const known = new Set(value.visualIntents.map(intent => intent.id))
+    for (const slot of [...value.visualResolution.resolved, ...value.visualResolution.unresolved]) if (!known.has(slot.intentId)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['visualResolution'], message: `La resolución referencia un intent desconocido ${slot.intentId}` })
+    }
   }
 })
 

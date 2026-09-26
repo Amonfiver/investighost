@@ -46,4 +46,26 @@ export class StructuredEditorialPackageArtifactService {
     const artifact = await this.repository.latestArtifact(executionId, 'editorial_package', 'structured/v1')
     return artifact ? StructuredEditorialPackageV1Schema.parse(artifact.payload) : null
   }
+
+  /** Visual redo may add a new package revision, but never splice it onto a
+   * different corpus or Student/Adventure Library revision. */
+  async saveVisualRevision(
+    executionId: string,
+    previous: StructuredEditorialPackageV1,
+    next: StructuredEditorialPackageV1,
+  ): Promise<{ version: number; package: StructuredEditorialPackageV1 }> {
+    assertSameExecutionPackage(previous, next)
+    return this.save(executionId, next)
+  }
+}
+
+export function assertSameExecutionPackage(previousInput: StructuredEditorialPackageV1, nextInput: StructuredEditorialPackageV1): void {
+  const previous = StructuredEditorialPackageV1Schema.parse(previousInput)
+  const next = StructuredEditorialPackageV1Schema.parse(nextInput)
+  const same = previous.executionId === next.executionId
+    && previous.destinationId === next.destinationId
+    && previous.masterKnowledgeArtifactId === next.masterKnowledgeArtifactId
+    && previous.student.libraryRevision.revisionId === next.student.libraryRevision.revisionId
+    && previous.adventure.libraryRevision.revisionId === next.adventure.libraryRevision.revisionId
+  if (!same) throw new Error('SAME_EXECUTION_PACKAGE_REQUIRED')
 }

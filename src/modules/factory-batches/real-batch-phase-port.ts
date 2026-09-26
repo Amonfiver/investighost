@@ -26,10 +26,14 @@ import {
   type WikimediaCommonsFetch,
   WikimediaCommonsDiscoveryAdapter,
 } from '@modules/visual-acquisition'
+import { discoveryQueryForVisualIntent } from '@modules/visual-acquisition/structured-visual-intent-adapter'
 import type { BatchEditorialPhaseContext, BatchEditorialPhasePort, BatchEditorialPhaseResult } from './editorial-phase-port'
 import { BatchExecutionContextMapper } from './batch-execution-context'
 import { readBatchJobProviderAuthorization } from './batch-provider-authorization'
 import type { RedoGenerationGuidance } from '@shared/redo-guidance-contracts'
+import { StructuredEditorialPackageV1Schema, type VisualIntent } from '@shared/structured-editorial-package-contracts'
+import { resolveStructuredVisualIntents } from '@modules/visual-acquisition/structured-visual-resolution'
+import { StructuredEditorialPackageArtifactService } from '@modules/editorial-pipeline/structured-editorial-package-service'
 
 export interface ProductionBatchPhasePortDependencies {
   client: SupabaseClient
@@ -72,7 +76,7 @@ export class ProductionBatchEditorialPhasePort implements BatchEditorialPhasePor
     if (!authorization.enabled || !authorization.featureToken) {
       throw new Error('BATCH_PROVIDER_AUTHORIZATION_REQUIRED: falta la capability explícita de ejecución batch')
     }
-    if (input.phase === 'VISUALS') return this.visual.prepare(context.destination, input.job.redoScope === 'VISUALS' ? input.job.redoOperationId : undefined, input.job.redoGuidance, input.job.redoPreviousArtifactRefs?.VISUALS)
+    if (input.phase === 'VISUALS') return this.visual.prepare(context.destination, input.job.id, input.job.redoScope === 'VISUALS' ? input.job.redoOperationId : undefined, input.job.redoGuidance, input.job.redoPreviousArtifactRefs?.VISUALS)
     const gate = {
         featureToken: authorization.featureToken,
         preflightStatus: 'ready_for_real_batch_execution',
@@ -126,45 +130,77 @@ function createBatchLibraryTransition(client: SupabaseClient): BatchSharedLibrar
 class BatchVisualReviewDelegate {
   private readonly discovery: VisualCandidateDiscoveryService
   private readonly acquisition: VisualCandidateAcquisitionService
+  private readonly client: SupabaseClient
+  private readonly candidates: SupabaseVisualCandidateRepository
 
   constructor(client: SupabaseClient, options: { fetchFn?: WikimediaCommonsFetch; imageFetchFn?: VisualDownloadFetch } = {}) {
-    const candidates = new SupabaseVisualCandidateRepository(client)
-    this.discovery = new VisualCandidateDiscoveryService(new WikimediaCommonsDiscoveryAdapter({ fetchFn: options.fetchFn }), candidates)
+    this.client = client
+    this.candidates = new SupabaseVisualCandidateRepository(client)
+    this.discovery = new VisualCandidateDiscoveryService(new WikimediaCommonsDiscoveryAdapter({ fetchFn: options.fetchFn }), this.candidates)
     this.acquisition = new VisualCandidateAcquisitionService(
-      candidates,
+      this.candidates,
       new SupabaseVisualProcessingRepository(client),
       new VisualCandidateDownloader(options.imageFetchFn),
       new SupabaseVisualMediaStorage(client),
     )
   }
 
-  async prepare(destination: { destinationId: string; name: string; countryCode: string; region?: string }, redoOperationId?: string, guidance?: RedoGenerationGuidance, previousPackageId?: string): Promise<BatchEditorialPhaseResult> {
+  async prepare(destination: { destinationId: string; name: string; countryCode: string; region?: string }, jobId: string, redoOperationId?: string, guidance?: RedoGenerationGuidance, previousPackageId?: string): Promise<BatchEditorialPhaseResult> {
     const countryOrRegion = destination.region ?? destination.countryCode
-    for (const query of visualQueries(guidance)) {
-      await this.discovery.discover({ destinationId: destination.destinationId, destinationName: destination.name, countryOrRegion, ...query, limit: 20 })
+    const structured = await this.loadStructuredPackage(jobId)
+    const intents = structured.package.visualIntents
+    if (intents.length === 0) throw new Error('STRUCTURED_VISUAL_INTENTS_REQUIRED')
+    for (const intent of intents) {
+      await this.discovery.discover(discoveryQueryForVisualIntent(intent, {
+        destinationId: destination.destinationId, destinationName: destination.name, countryOrRegion,
+      }, visualCategoryForIntent(intent)))
     }
     const avoidPrevious = guidance?.scope === 'VISUALS' && guidance.controls.avoidPreviousSimilarity !== 'OFF'
     const excluded = avoidPrevious && previousPackageId ? await this.acquisition.previousCandidateIds(previousPackageId) : []
     const prepared = await this.acquisition.prepareDestinationForHumanVisualReview(destination.destinationId, {
       modes: ['adventure', 'student'], highlightLimit: 4, galleryLimit: 6, excludeCandidateIds: excluded, ...visualSelectionGuidance(guidance),
     }, redoOperationId ? `visual-acquisition-v1/redo/${redoOperationId}` : undefined)
+    // This production phase only has private staged assets, so this records a
+    // rights-pending visual revision rather than pretending that staging is a
+    // public approval. The same resolver receives approved asset provenance
+    // after the authorized media ingress phase, not in this prompt.
+    const visualRevision = resolveStructuredVisualIntents({
+      package: structured.package,
+      candidates: await this.candidates.listByDestination(destination.destinationId),
+      assetsByCandidateId: new Map(),
+      sourceVisualPackageId: prepared.package.packageId,
+    })
+    await new StructuredEditorialPackageArtifactService(new SupabaseGenericDurableExecutionRepository(this.client))
+      .saveVisualRevision(structured.executionId, structured.package, visualRevision)
     return {
       artifactRef: prepared.package.packageId,
       visualReviewState: prepared.package.state === 'DRAFT' ? 'EMPTY' : 'PARTIAL',
       warnings: prepared.failures.map(failure => `${failure.candidateId}:${failure.code}`),
     }
   }
+
+  private async loadStructuredPackage(jobId: string): Promise<{ executionId: string; package: ReturnType<typeof StructuredEditorialPackageV1Schema.parse> }> {
+    const { data: execution, error: executionError } = await this.client.from('real_editorial_executions').select('id')
+      .eq('owner_type', 'BATCH_JOB').eq('owner_id', jobId).maybeSingle()
+    if (executionError) throw new Error(`STRUCTURED_VISUAL_EXECUTION_LOOKUP_FAILED:${executionError.message}`)
+    if (!execution) throw new Error('STRUCTURED_VISUAL_EXECUTION_REQUIRED')
+    const { data: artifact, error: artifactError } = await this.client.from('real_editorial_artifacts').select('payload')
+      .eq('execution_owner_id', String((execution as { id: unknown }).id)).eq('artifact_kind', 'editorial_package').eq('artifact_key', 'structured/v1')
+      .order('version', { ascending: false }).limit(1).maybeSingle()
+    if (artifactError) throw new Error(`STRUCTURED_VISUAL_PACKAGE_LOOKUP_FAILED:${artifactError.message}`)
+    const payload = artifact ? (artifact as { payload: unknown }).payload : null
+    if (!payload || typeof payload !== 'object' || !Array.isArray((payload as { visualIntents?: unknown }).visualIntents)) throw new Error('STRUCTURED_VISUAL_PACKAGE_REQUIRED')
+    return { executionId: String((execution as { id: unknown }).id), package: StructuredEditorialPackageV1Schema.parse(payload) }
+  }
 }
 
-function visualQueries(guidance?: RedoGenerationGuidance) {
-  const normal = [
-    { category: 'landmark' as const, role: 'hero' as const }, { category: 'landmark' as const, role: 'highlight' as const },
-    { category: 'landscape' as const, role: 'highlight' as const }, { category: 'culture' as const, role: 'gallery' as const },
-    { category: 'atmosphere' as const, role: 'gallery' as const }, { category: 'detail' as const, role: 'gallery' as const },
-  ]
-  if (guidance?.scope !== 'VISUALS') return normal
-  const preferred = guidance.controls.heritage === 'PRIORITIZE' ? 'culture' : guidance.controls.landscape === 'PRIORITIZE' ? 'landscape' : guidance.controls.localLife === 'PRIORITIZE' ? 'atmosphere' : null
-  return preferred ? [...normal.filter(query => query.category === preferred), ...normal.filter(query => query.category !== preferred)] : normal
+function visualCategoryForIntent(intent: VisualIntent): 'landmark' | 'landscape' | 'culture' | 'food' | 'people-life' | 'atmosphere' | 'detail' {
+  const terms = `${intent.subject} ${intent.keywords.join(' ')} ${intent.context}`.toLocaleLowerCase()
+  if (/restaurante|cafe|café|bar|comida|gastronom/.test(terms)) return 'food'
+  if (/barrio|museo|iglesia|palacio|monumento|torre/.test(terms)) return 'culture'
+  if (/mirador|paisaje|río|rio|montaña|montana|playa/.test(terms)) return 'landscape'
+  if (/mercado|vida local|personas/.test(terms)) return 'people-life'
+  return intent.purpose === 'ADVENTURE_HERO' ? 'landmark' : 'detail'
 }
 
 function visualSelectionGuidance(guidance?: RedoGenerationGuidance) {

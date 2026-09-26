@@ -173,6 +173,29 @@ receipts son append-only y exponen `MEDIA_PENDING`, `MEDIA_PARTIAL` o
 `MEDIA_HANDOFF_READINESS = DONE`. `HANDOFF_V2_EXTENDED = PENDING`,
 `R7_IMPLEMENTED = NO`, `R7_TESTED = NO` y `R7_SMOKE_APPROVED = NO`.
 
+### 085J — handoff V2 extendido del package aprobado
+
+El builder `buildApprovedTrawelDeliveryV2` sólo acepta el package estructurado
+`APPROVED` cuyo ID coincide con `CURRENT_APPROVED`, la decisión humana exacta y
+un receipt `MEDIA_COMPLETE`. Exige mappings `COMPLETE` por package, asset y
+checksum, y sustituye cada referencia visual editorial por su `trawelMediaId`.
+Student conserva `StudentDocumentV1` y el orden de `blocks`; Adventure conserva
+copy, Hero, Visual Story única y Places evidenciados. No se exportan IDs de
+asset locales, paths de staging, corpus raw, prompts ni candidates rechazados.
+
+La compatibilidad V2 se mantiene: los perfiles legacy siguen siendo proyectados
+desde las mismas revisiones aprobadas de Library, y la composición estructurada
+se añade como metadata V2 compatible e incluida en handoff key/fingerprint. El
+outbox V2 existente persiste el snapshot inmutable, deduplica por handoff key y
+reutiliza su cliente, respuesta, retry y reconciliación. Review Desk expone
+readiness/estado, key abreviada, intentos y receipt remoto. `HANDOFF_V2_EXTENDED_BUILDER = DONE`,
+`STUDENT_V2_PROJECTION = DONE`, `ADVENTURE_V2_PROJECTION = DONE`,
+`TRAWEL_MEDIA_ID_PROJECTION = DONE`, `PROFILE_TRACEABILITY = DONE`,
+`HANDOFF_KEY = DONE`, `PAYLOAD_FINGERPRINT = DONE`, `OUTBOX_IDEMPOTENCY = DONE`,
+`DELIVERY_CLIENT = DONE`, `HANDOFF_REVIEW_AWARENESS = DONE` y
+`HANDOFF_V2_EXTENDED = DONE`. `R7_IMPLEMENTED = NO`, `R7_TESTED = NO` y
+`R7_SMOKE_APPROVED = NO`.
+
 ## Lo construido y su estado
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |

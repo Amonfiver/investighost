@@ -58,6 +58,7 @@ export class MemoryDestinationBatchRepository implements DestinationBatchReposit
       visualPackageId: job.artifactRefs.VISUALS ?? null, visualPackage: null, reviewArtifactId: job.artifactRefs.AUTO_REVIEW ?? null,
       structuredPackage: null, structuredPackageArtifactId: null, structuredPackageVersion: null,
       mediaIngressState: null, mediaAssetCount: 0, mediaUploadedCount: 0, mediaReusedCount: 0, mediaFailedCount: 0, mediaBlockingIssues: [],
+      handoffState: 'NOT_READY', handoffKey: null, handoffAttempts: 0, handoffRemoteDeliveryId: null, handoffFailure: null,
       reviewSummary: null, warnings: [], cost: job.actualCost, attempts: job.attemptCount, lastError: job.lastFailure ?? null,
       redo: redo ? { operationId: redo[0], scope: redo[1].scope, reason: redo[1].reason ?? null, guidance: redo[1].guidance ?? null, previousArtifactRefs: redo[1].previousArtifactRefs, requestedBy: redo[1].requestedBy, requestedAt: redo[1].requestedAt, status: redo[1].status, completedAt: redo[1].completedAt ?? null } : null,
     })

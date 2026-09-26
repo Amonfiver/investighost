@@ -174,8 +174,8 @@ function clone<T>(value: T): T { return structuredClone(value) }
 function nullableClone<T>(value: T | undefined): T | null { return value === undefined ? null : clone(value) }
 
 function targetSnapshot(payload: TrawelEditorialDeliveryV2Payload): Record<string, unknown> {
-  const adventure = payload.profiles.adventure.metadata.investighost as { target: Record<string, unknown> }
-  return { sourceMappingId: payload.mappingId, canonicalDestinationId: payload.canonicalDestinationId, ...adventure.target }
+  const adventure = payload.profiles.adventure.metadata.investighost as { target: Record<string, unknown>; structuredPackage?: { identity?: Record<string, unknown> } }
+  return { sourceMappingId: payload.mappingId, canonicalDestinationId: payload.canonicalDestinationId, ...adventure.target, ...(adventure.structuredPackage?.identity ?? {}) }
 }
 
 function sourceSnapshot(profile: 'adventure' | 'student', payload: TrawelEditorialDeliveryV2Payload): EditorialDeliverySource {

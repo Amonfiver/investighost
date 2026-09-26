@@ -4,6 +4,7 @@ import {
   TRAWEL_EDITORIAL_DELIVERY_V2_SCHEMA,
   TrawelEditorialDeliveryTargetSchema,
   TrawelEditorialDeliveryV2PayloadSchema,
+  TrawelEditorialProfileSchema,
   type TrawelEditorialDeliveryTarget,
   type TrawelEditorialDeliveryV2Payload,
   type TrawelEditorialProfile,
@@ -29,6 +30,8 @@ export interface PrepareTrawelEditorialDeliveryV2Command {
   destinationVisuals?: typeof DestinationVisualContractSchema._output
   /** Canonical collection for Visual Bridge V1; only its public projection crosses the boundary. */
   destinationVisualMedia?: typeof DestinationVisualMediaPackageSchema._output
+  /** Additive V2 metadata. Legacy consumers ignore this record while its content remains fingerprinted. */
+  profileMetadataExtensions?: Partial<Record<'adventure' | 'student', Record<string, unknown>>>
 }
 
 export class TrawelEditorialDeliveryV2Error extends Error {
@@ -41,8 +44,8 @@ export function prepareTrawelEditorialDeliveryV2(candidate: PrepareTrawelEditori
   const sources = LibraryTrawelApprovedPairSchema.parse(candidate.sources)
   const byProfile = new Map(sources.map(source => [source.entry.profile, source]))
   const profiles = {
-    adventure: requiredProfile(byProfile, 'adventure', target),
-    student: requiredProfile(byProfile, 'student', target),
+    adventure: extendProfile(requiredProfile(byProfile, 'adventure', target), candidate.profileMetadataExtensions?.adventure),
+    student: extendProfile(requiredProfile(byProfile, 'student', target), candidate.profileMetadataExtensions?.student),
   }
   const envelope = deliveryEnvelope(byProfile)
   const destinationVisuals = candidate.destinationVisuals === undefined
@@ -129,9 +132,16 @@ function requiredProfile(
 
 function identityProfiles(profiles: Record<'adventure' | 'student', TrawelEditorialProfile>) {
   return Object.fromEntries((['adventure', 'student'] as const).map(profile => {
-    const current = profiles[profile].metadata.investighost as { libraryEntryId: string; currentApproved: Record<string, unknown> }
-    return [profile, { libraryEntryId: current.libraryEntryId, currentApproved: current.currentApproved }]
+    const current = profiles[profile].metadata.investighost as { libraryEntryId: string; currentApproved: Record<string, unknown>; structuredPackage?: Record<string, unknown> }
+    const structuredPackage = current.structuredPackage
+    return [profile, { libraryEntryId: current.libraryEntryId, currentApproved: current.currentApproved, ...(structuredPackage === undefined ? {} : { structuredPackage }) }]
   }))
+}
+
+function extendProfile(profile: TrawelEditorialProfile, extension: Record<string, unknown> | undefined): TrawelEditorialProfile {
+  if (extension === undefined) return profile
+  const metadata = profile.metadata.investighost as Record<string, unknown>
+  return TrawelEditorialProfileSchema.parse({ ...profile, metadata: { ...profile.metadata, investighost: { ...metadata, ...extension } } })
 }
 
 function deliveryEnvelope(byProfile: Map<'adventure' | 'student', LibraryTrawelApprovedSource>) {

@@ -79,6 +79,7 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
       visualPackageId: job.artifactRefs.VISUALS ?? null, visualPackage: null, reviewArtifactId: job.artifactRefs.AUTO_REVIEW ?? null,
       structuredPackage: null, structuredPackageArtifactId: null, structuredPackageVersion: null,
       mediaIngressState: null, mediaAssetCount: 0, mediaUploadedCount: 0, mediaReusedCount: 0, mediaFailedCount: 0, mediaBlockingIssues: [],
+      handoffState: 'NOT_READY', handoffKey: null, handoffAttempts: 0, handoffRemoteDeliveryId: null, handoffFailure: null,
       reviewSummary: null, warnings: [], cost: job.actualCost, attempts: job.attemptCount, lastError: job.lastFailure ?? null, redo: null,
     })
     const { data: redoRow, error: redoError } = await this.client.from('editorial_destination_batch_redo_operations')
@@ -153,7 +154,14 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
     const receipt = mediaReceipt as Row | null
     const mediaIngressState = receipt ? String(receipt.state) : null
     const mediaFailedCount = receipt ? Number(receipt.failed_count) : 0
-    return DestinationBatchJobReviewReadModelSchema.parse({ ...withRedo, student: reference(job.artifactRefs.STUDENT), adventure: reference(job.artifactRefs.ADVENTURE), visualPackage, structuredPackage, structuredPackageArtifactId: structuredRow ? String((structuredRow as Row).id) : null, structuredPackageVersion: structuredRow ? Number((structuredRow as Row).version) : null, mediaIngressState, mediaAssetCount: receipt ? Number(receipt.asset_count) : 0, mediaUploadedCount: receipt ? Number(receipt.uploaded_count) : 0, mediaReusedCount: receipt ? Number(receipt.reused_count) : 0, mediaFailedCount, mediaBlockingIssues: mediaIngressState && mediaIngressState !== 'MEDIA_COMPLETE' ? ['HANDOFF_BLOCKED_UNTIL_MEDIA_COMPLETE'] : mediaFailedCount > 0 ? ['MEDIA_INGRESS_FAILED'] : [], reviewSummary, warnings })
+    const { data: handoffRow, error: handoffError } = packageId
+      ? await this.client.from('real_editorial_trawel_deliveries').select('handoff_key,state,attempt_count,trawel_receipt_id,last_result_code').contains('target_snapshot', { packageId }).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      : { data: null, error: null }
+    assertNoError(handoffError, 'READ_REVIEW_HANDOFF')
+    const handoff = handoffRow as Row | null
+    const storedState = handoff ? String(handoff.state) : null
+    const handoffState = storedState === 'CONFIRMED' ? 'DELIVERED' : storedState === 'FAILED' || storedState === 'CONFLICT' ? 'FAILED' : handoff ? 'PENDING' : mediaIngressState === 'MEDIA_COMPLETE' ? 'READY' : 'NOT_READY'
+    return DestinationBatchJobReviewReadModelSchema.parse({ ...withRedo, student: reference(job.artifactRefs.STUDENT), adventure: reference(job.artifactRefs.ADVENTURE), visualPackage, structuredPackage, structuredPackageArtifactId: structuredRow ? String((structuredRow as Row).id) : null, structuredPackageVersion: structuredRow ? Number((structuredRow as Row).version) : null, mediaIngressState, mediaAssetCount: receipt ? Number(receipt.asset_count) : 0, mediaUploadedCount: receipt ? Number(receipt.uploaded_count) : 0, mediaReusedCount: receipt ? Number(receipt.reused_count) : 0, mediaFailedCount, mediaBlockingIssues: mediaIngressState && mediaIngressState !== 'MEDIA_COMPLETE' ? ['HANDOFF_BLOCKED_UNTIL_MEDIA_COMPLETE'] : mediaFailedCount > 0 ? ['MEDIA_INGRESS_FAILED'] : [], handoffState, handoffKey: handoff ? String(handoff.handoff_key) : null, handoffAttempts: handoff ? Number(handoff.attempt_count) : 0, handoffRemoteDeliveryId: handoff?.trawel_receipt_id === null || handoff?.trawel_receipt_id === undefined ? null : String(handoff.trawel_receipt_id), handoffFailure: handoff?.last_result_code === null || handoff?.last_result_code === undefined ? null : String(handoff.last_result_code), reviewSummary, warnings })
   }
 
   async updateJob(job: DestinationBatchJob): Promise<DestinationBatchJob> {

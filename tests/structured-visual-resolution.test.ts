@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { StructuredEditorialPackageArtifactService, assertSameExecutionPackage } from '@modules/editorial-pipeline/structured-editorial-package-service'
 import { discoveryQueryForVisualIntent } from '@modules/visual-acquisition/structured-visual-intent-adapter'
 import { resolveStructuredVisualIntents } from '@modules/visual-acquisition/structured-visual-resolution'
+import { assessStructuredPackageReadiness } from '@modules/factory-batches/structured-package-approval'
 import type { DestinationVisualAssetSchema } from '@shared/destination-visual-media-contract'
 import type { VisualCandidate } from '@shared/visual-candidate-contracts'
 import type { StructuredEditorialPackageV1 } from '@shared/structured-editorial-package-contracts'
@@ -97,5 +98,21 @@ describe('COMPLETE_VISUAL_AND_CAPTION_PIPELINE', () => {
     expect((stored[0] as StructuredEditorialPackageV1).student.document.blocks[1]).toMatchObject({ resolution: 'INTENT' })
     expect((stored[1] as StructuredEditorialPackageV1).visualResolution?.resolved).toHaveLength(4)
     expect(() => assertSameExecutionPackage(packageFixture(), { ...resolved, masterKnowledgeArtifactId: ids.package })).toThrow('SAME_EXECUTION_PACKAGE_REQUIRED')
+  })
+
+  it('requires one exact ready snapshot, approved rights, auto-review and matching Library revisions before package approval', () => {
+    const resolved = resolve(fullCandidates())
+    const review = {
+      jobId: ids.package, batchId: ids.execution, destination: { canonicalDestinationId: ids.destination, name: 'Destino', country: 'ES', region: null }, status: 'READY_FOR_REVIEW', phase: 'AUTO_REVIEW',
+      student: { libraryEntryId: ids.studentEntry, versionId: ids.studentVersion, revisionId: ids.studentRevision, title: 'Destino', content: 'Texto.' },
+      adventure: { libraryEntryId: ids.adventureEntry, versionId: ids.adventureVersion, revisionId: ids.adventureRevision, title: 'Adventure', content: 'Texto.' },
+      visualPackageId: '085f0000-0000-4000-8000-000000000099', visualPackage: null, structuredPackage: resolved, structuredPackageArtifactId: '085f0000-0000-4000-8000-000000000098', structuredPackageVersion: 2,
+      reviewArtifactId: '085f0000-0000-4000-8000-000000000097', reviewSummary: { outcome: 'passed' }, warnings: [], cost: 0, attempts: 1, lastError: null, redo: null,
+    } as const
+    expect(assessStructuredPackageReadiness(review as never)).toMatchObject({ ready: true, blocking: [] })
+    expect(assessStructuredPackageReadiness({ ...review, structuredPackageArtifactId: null } as never).blocking).toContain('PACKAGE_SNAPSHOT_REQUIRED')
+    const heroUnresolved = { ...resolved, adventure: { ...resolved.adventure, document: { ...resolved.adventure.document, hero: { ...resolved.adventure.document.hero, asset: { status: 'INTENT' as const, visualIntentId: ids.hero } } } } }
+    expect(assessStructuredPackageReadiness({ ...review, structuredPackage: heroUnresolved } as never).blocking).toContain('MANDATORY_HERO_UNRESOLVED')
+    expect(assessStructuredPackageReadiness({ ...review, student: { ...review.student, revisionId: ids.package } } as never).blocking).toContain('MIXED_REVISIONS_BLOCKED')
   })
 })

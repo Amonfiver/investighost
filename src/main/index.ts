@@ -114,6 +114,7 @@ import {
   DestinationBatchRedoService,
   createFactoryBatchPhasePort,
   SupabaseDestinationBatchRepository,
+  SupabaseStructuredPackageApprovalRepository,
 } from '@modules/factory-batches'
 import {
   getManualPersistenceStatus,
@@ -188,12 +189,14 @@ ipcMain.handle('factory-batches:review-read', async (_event, jobId: unknown) => 
   return (await getDestinationBatchRuntime()).readJobForReview(z.string().uuid().parse(jobId))
 })
 
-ipcMain.handle('factory-batches:approve', async (_event, jobId: unknown) => {
+ipcMain.handle('factory-batches:approve', async (_event, input: unknown) => {
+  const request = z.object({ jobId: z.string().uuid(), structuredPackageArtifactId: z.string().uuid(), packageId: z.string().uuid() }).parse(input)
   const client = createLocalSupabaseClientFromEnv().client
   return new DestinationBatchHumanReviewService(
     new SupabaseDestinationBatchRepository(client),
     new SupabaseRealEditorialLibraryVersioningRepository(client),
-  ).approve(z.string().uuid().parse(jobId))
+    new SupabaseStructuredPackageApprovalRepository(client),
+  ).approve(request.jobId, request)
 })
 
 ipcMain.handle('factory-batches:request-redo', async (_event, input: unknown) => {

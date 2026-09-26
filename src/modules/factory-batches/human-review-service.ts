@@ -7,6 +7,7 @@ import {
 } from '@modules/library-versioning'
 import type { DestinationBatchJob, DestinationBatchJobReviewReadModel } from '@shared/factory-batch-contracts'
 import type { DestinationBatchRepository } from './contracts'
+import { assessStructuredPackageReadiness, type StructuredPackageApprovalRepository } from './structured-package-approval'
 
 /** Coordinates the existing Library human approval commands for a completed
  * batch job. It creates neither a review store nor a delivery. */
@@ -17,15 +18,28 @@ export class DestinationBatchHumanReviewService {
   constructor(
     private readonly batches: DestinationBatchRepository,
     repository: RealEditorialLibraryVersioningRepository & RealEditorialLibraryVersioningReadRepository,
+    private readonly structuredApprovals?: StructuredPackageApprovalRepository,
   ) { this.library = new RealEditorialLibraryVersioningService(repository); this.reader = repository }
 
-  async approve(jobId: string): Promise<DestinationBatchJob> {
+  async approve(jobId: string, expected?: { structuredPackageArtifactId: string; packageId: string }): Promise<DestinationBatchJob> {
     const job = await this.batches.getJob(jobId)
     if (!job) throw new Error('BATCH_REVIEW_JOB_NOT_FOUND')
     if (job.status === 'APPROVED') return job
     const review = await this.batches.readJobForReview(jobId)
     if (!review || job.status !== 'READY_FOR_REVIEW' || !review.student || !review.adventure || !review.visualPackageId || !review.reviewArtifactId) {
       throw new Error('BATCH_REVIEW_APPROVAL_GATE: faltan revisiones, visuales o auto-review requeridos')
+    }
+    if (this.structuredApprovals) {
+      if (!expected || !review.structuredPackage || review.structuredPackageArtifactId !== expected.structuredPackageArtifactId || review.structuredPackage.packageId !== expected.packageId) throw new Error('REVIEWED_PACKAGE_ID_MATCH_REQUIRED')
+      const readiness = assessStructuredPackageReadiness(review)
+      if (!readiness.ready) throw new Error(`PACKAGE_READINESS_GATE:${readiness.blocking.join(',')}`)
+      await this.structuredApprovals.approveStructuredEditorialPackage({
+        jobId: job.id, structuredPackageArtifactId: expected.structuredPackageArtifactId,
+        packageId: expected.packageId, reviewerId: MANUAL_LOCAL_ACTOR_ID,
+      })
+      const approved = await this.batches.getJob(job.id)
+      if (!approved || approved.status !== 'APPROVED') throw new Error('STRUCTURED_PACKAGE_APPROVAL_NOT_COMMITTED')
+      return approved
     }
     if (review.structuredPackage && unresolvedVisualIntentCount(review.structuredPackage) > 0) {
       throw new Error('BATCH_REVIEW_APPROVAL_GATE: el package estructurado conserva visuales sin resolver')

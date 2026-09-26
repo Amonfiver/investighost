@@ -127,6 +127,29 @@ warnings de la resolución. `VISUAL_INTENT_ROUTING = DONE`,
 `HANDOFF_V2_EXTENDED = PENDING`, `R7_IMPLEMENTED = NO`, `R7_TESTED = NO` y
 `R7_SMOKE_APPROVED = NO`.
 
+### 085H — aprobación atómica del package estructurado
+
+La revisión humana opera sobre el artifact exacto de
+`editorial_package/structured/v1` que el Desk muestra. El command lleva
+`jobId`, `structuredPackageArtifactId` y `packageId`; la operación transaccional
+`factory_approve_structured_editorial_package` bloquea el job, exige que dicho
+artifact siga siendo el último snapshot y verifica identidad de ejecución,
+corpus, revisiones Student/Adventure, visual package, Hero, derechos, alt y
+auto-review. Un cambio posterior obliga una nueva revisión: no hay aprobación
+flotante por destination ni por “último generado”.
+
+La misma transacción envía ambas revisiones Library por submit/approve, registra
+la decisión durable en `real_editorial_structured_package_approvals` y cambia
+el job a `APPROVED`; cualquier fallo revierte el conjunto. La tabla conserva
+artifact/package, execution/destination, revisiones exactas, visual package,
+revisor y timestamp, con idempotencia por job/snapshot. El Desk deshabilita
+“Aprobar package” y muestra el gate cuando falta snapshot, auto-review, Hero o
+coherencia. Esto no hace media ingress ni handoff. `REVIEW_COMPLETE_PACKAGE =
+DONE`, `PACKAGE_READINESS_GATES = DONE`, `PACKAGE_ATOMIC_APPROVAL = DONE`,
+`LIBRARY_STRUCTURED_CURRENT_APPROVED = DONE`, `STALE_REVIEW_PROTECTION = DONE`
+y `APPROVED_PACKAGE_HISTORY = DONE`; `MEDIA_INGRESS = PENDING`,
+`HANDOFF_V2_EXTENDED = PENDING`, `R7_IMPLEMENTED = NO`.
+
 ## Lo construido y su estado
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |

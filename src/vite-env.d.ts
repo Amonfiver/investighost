@@ -93,7 +93,7 @@ declare global {
       retryDestinationBatchJob: (jobId: string) => Promise<import('./modules/factory-batches').DestinationBatchRetryResult>
       startDestinationBatch: (batchId: string) => Promise<import('./modules/factory-batches').BatchWorkerRunResult[]>
       readDestinationBatchJobReview: (jobId: string) => Promise<import('./shared/factory-batch-contracts').DestinationBatchJobReviewReadModel>
-      approveDestinationBatchJob: (jobId: string) => Promise<import('./shared/factory-batch-contracts').DestinationBatchJob>
+      approveDestinationBatchJob: (input: { jobId: string; structuredPackageArtifactId: string; packageId: string }) => Promise<import('./shared/factory-batch-contracts').DestinationBatchJob>
       requestDestinationBatchRedo: (input: { jobId: string; scope: import('./shared/factory-batch-contracts').DestinationBatchRedoScope; guidance?: import('./shared/redo-guidance-contracts').RedoGenerationGuidance; reason?: string }) => Promise<import('./shared/factory-batch-contracts').DestinationBatchJob>
 
       // Pipeline Manual canónico

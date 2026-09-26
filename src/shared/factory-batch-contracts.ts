@@ -149,6 +149,9 @@ export const DestinationBatchJobReviewReadModelSchema = z.object({
   visualPackageId: IdSchema.nullable(),
   visualPackage: DestinationVisualMediaPackageSchema.nullable(),
   structuredPackage: StructuredEditorialPackageV1Schema.nullable(),
+  /** Immutable artifact snapshot shown to the reviewer; approval must CAS it. */
+  structuredPackageArtifactId: IdSchema.nullable().default(null),
+  structuredPackageVersion: z.number().int().positive().nullable().default(null),
   reviewArtifactId: IdSchema.nullable(),
   reviewSummary: z.record(z.unknown()).nullable(),
   warnings: z.array(z.string()),

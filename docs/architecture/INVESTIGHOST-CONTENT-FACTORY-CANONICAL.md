@@ -150,6 +150,29 @@ DONE`, `PACKAGE_READINESS_GATES = DONE`, `PACKAGE_ATOMIC_APPROVAL = DONE`,
 y `APPROVED_PACKAGE_HISTORY = DONE`; `MEDIA_INGRESS = PENDING`,
 `HANDOFF_V2_EXTENDED = PENDING`, `R7_IMPLEMENTED = NO`.
 
+### 085I — media ingress del package aprobado
+
+Media ingress consume exclusivamente el snapshot estructurado `APPROVED` y su
+decisión humana exacta. Enumera sólo los assets resueltos del Hero, Visual
+Story, Places y figuras Student, valida bytes, magic bytes, MIME JPG/PNG/WebP,
+dimensiones, SHA-256, tamaño máximo de 5 MiB, proveniencia y derechos
+`APPROVED_FOR_PUBLIC_USE`. El cliente aislado usa multipart contra el endpoint
+interno de media de Trawel y requiere respuesta `trawelMediaId`; no construye ni
+envía el payload editorial.
+
+Los mappings tienen identidad durable por package, asset y checksum; almacenan
+la decisión, destino, ejecución, estado y fallo saneado. `COMPLETE` se
+reutiliza, `FAILED_RETRYABLE` se reintenta y `FAILED_PERMANENT` se bloquea. Los
+receipts son append-only y exponen `MEDIA_PENDING`, `MEDIA_PARTIAL` o
+`MEDIA_COMPLETE` al Review Desk, que mantiene el handoff bloqueado hasta el
+último estado. `MEDIA_INGRESS_BOUNDARY = DONE`,
+`APPROVED_MEDIA_ENUMERATION = DONE`, `TRAWEL_MEDIA_CLIENT = DONE`,
+`MEDIA_MAPPING_DURABILITY = DONE`, `MEDIA_RECEIPT_DURABILITY = DONE`,
+`MEDIA_INGRESS_IDEMPOTENCY = DONE`, `DURABLE_PARTIAL_RETRY = DONE`,
+`PROCESS_RESTART_SAFE = DONE`, `MEDIA_REVIEW_AWARENESS = DONE` y
+`MEDIA_HANDOFF_READINESS = DONE`. `HANDOFF_V2_EXTENDED = PENDING`,
+`R7_IMPLEMENTED = NO`, `R7_TESTED = NO` y `R7_SMOKE_APPROVED = NO`.
+
 ## Lo construido y su estado
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |

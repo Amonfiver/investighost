@@ -78,6 +78,7 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
       status: job.status, phase: job.currentPhase, student: null, adventure: null,
       visualPackageId: job.artifactRefs.VISUALS ?? null, visualPackage: null, reviewArtifactId: job.artifactRefs.AUTO_REVIEW ?? null,
       structuredPackage: null, structuredPackageArtifactId: null, structuredPackageVersion: null,
+      mediaIngressState: null, mediaAssetCount: 0, mediaUploadedCount: 0, mediaReusedCount: 0, mediaFailedCount: 0, mediaBlockingIssues: [],
       reviewSummary: null, warnings: [], cost: job.actualCost, attempts: job.attemptCount, lastError: job.lastFailure ?? null, redo: null,
     })
     const { data: redoRow, error: redoError } = await this.client.from('editorial_destination_batch_redo_operations')
@@ -144,7 +145,15 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
       .order('version', { ascending: false }).limit(1).maybeSingle()
     assertNoError(structuredError, 'READ_REVIEW_STRUCTURED_PACKAGE')
     const structuredPackage = structuredRow ? (structuredRow as Row).payload : null
-    return DestinationBatchJobReviewReadModelSchema.parse({ ...withRedo, student: reference(job.artifactRefs.STUDENT), adventure: reference(job.artifactRefs.ADVENTURE), visualPackage, structuredPackage, structuredPackageArtifactId: structuredRow ? String((structuredRow as Row).id) : null, structuredPackageVersion: structuredRow ? Number((structuredRow as Row).version) : null, reviewSummary, warnings })
+    const packageId = structuredPackage && isRecord(structuredPackage) && typeof structuredPackage.packageId === 'string' ? structuredPackage.packageId : null
+    const { data: mediaReceipt, error: mediaReceiptError } = packageId
+      ? await this.client.from('real_editorial_trawel_media_ingress_receipts').select('asset_count,uploaded_count,reused_count,failed_count,state').eq('package_id', packageId).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      : { data: null, error: null }
+    assertNoError(mediaReceiptError, 'READ_REVIEW_MEDIA_INGRESS')
+    const receipt = mediaReceipt as Row | null
+    const mediaIngressState = receipt ? String(receipt.state) : null
+    const mediaFailedCount = receipt ? Number(receipt.failed_count) : 0
+    return DestinationBatchJobReviewReadModelSchema.parse({ ...withRedo, student: reference(job.artifactRefs.STUDENT), adventure: reference(job.artifactRefs.ADVENTURE), visualPackage, structuredPackage, structuredPackageArtifactId: structuredRow ? String((structuredRow as Row).id) : null, structuredPackageVersion: structuredRow ? Number((structuredRow as Row).version) : null, mediaIngressState, mediaAssetCount: receipt ? Number(receipt.asset_count) : 0, mediaUploadedCount: receipt ? Number(receipt.uploaded_count) : 0, mediaReusedCount: receipt ? Number(receipt.reused_count) : 0, mediaFailedCount, mediaBlockingIssues: mediaIngressState && mediaIngressState !== 'MEDIA_COMPLETE' ? ['HANDOFF_BLOCKED_UNTIL_MEDIA_COMPLETE'] : mediaFailedCount > 0 ? ['MEDIA_INGRESS_FAILED'] : [], reviewSummary, warnings })
   }
 
   async updateJob(job: DestinationBatchJob): Promise<DestinationBatchJob> {

@@ -152,6 +152,12 @@ export const DestinationBatchJobReviewReadModelSchema = z.object({
   /** Immutable artifact snapshot shown to the reviewer; approval must CAS it. */
   structuredPackageArtifactId: IdSchema.nullable().default(null),
   structuredPackageVersion: z.number().int().positive().nullable().default(null),
+  mediaIngressState: z.enum(['MEDIA_PENDING', 'MEDIA_PARTIAL', 'MEDIA_COMPLETE']).nullable().default(null),
+  mediaAssetCount: z.number().int().nonnegative().default(0),
+  mediaUploadedCount: z.number().int().nonnegative().default(0),
+  mediaReusedCount: z.number().int().nonnegative().default(0),
+  mediaFailedCount: z.number().int().nonnegative().default(0),
+  mediaBlockingIssues: z.array(z.string()).default([]),
   reviewArtifactId: IdSchema.nullable(),
   reviewSummary: z.record(z.unknown()).nullable(),
   warnings: z.array(z.string()),

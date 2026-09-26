@@ -215,6 +215,33 @@ intentos, score, target y warning.
 se ejecutó: `R7_SMOKE_APPROVED = NOT_RUN`. `MEDIA_INGRESS = DONE` y
 `HANDOFF_V2_EXTENDED = DONE` permanecen sin cambios.
 
+### 086 — Factory V1 vertical y entrada JSON de lote
+
+La entrada humana de lote acepta el formato breve `batchName` con
+`destinations[].name`, `country` y `region` opcional; se normaliza al contrato
+durable V1 sin exigir IDs internos. La importación conserva orden, detecta
+duplicados, aísla filas inválidas y crea jobs independientes. La pantalla
+Producción permite cargar el JSON, iniciar el lote, observar estado y coste por
+destino, reintentar sólo el job fallido y abrir su mesa de revisión.
+
+El worker de lote reutiliza la cadena canónica. En VISUALS adquiere y promueve
+assets aprobados antes de resolver los intents estructurados; ya no confunde el
+staging privado de candidatos con una selección publicable. El snapshot que
+consume post-aprobación se materializa únicamente desde el artifact revisado y
+la decisión de aprobación exacta, preservando `packageId`, revisiones Student y
+Adventure y revisión visual. Media ingress y el builder V2 operan sobre ese
+snapshot `APPROVED`; el Desk expone sus estados y mantiene handoff bloqueado
+hasta `MEDIA_COMPLETE`.
+
+El E2E determinista parte de JSON con Cuenca, Morella y Albarracín: conserva el
+orden, aísla un fallo recuperable, reintenta sólo Morella y completa para Cuenca
+la resolución estructurada, aprobación, media ingress fake y outbox V2 fake.
+Los dobles quedan sólo en fronteras de proveedores/Trawel; no hubo llamadas de
+red. El piloto real sigue requiriendo autorización humana, credenciales y un
+endpoint/Supabase local disponible. `JSON_BATCH_INPUT = PASS`,
+`MULTI_DESTINATION_BATCH = PASS`, `PRODUCT_FLOW = PASS`,
+`FACTORY_V1_VERTICAL_SLICE = PASS` y `REAL_PILOT_READY = YES`.
+
 ## Lo construido y su estado
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |

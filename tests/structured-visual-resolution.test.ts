@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { StructuredEditorialPackageArtifactService, assertSameExecutionPackage } from '@modules/editorial-pipeline/structured-editorial-package-service'
 import { discoveryQueryForVisualIntent } from '@modules/visual-acquisition/structured-visual-intent-adapter'
 import { resolveStructuredVisualIntents } from '@modules/visual-acquisition/structured-visual-resolution'
-import { assessStructuredPackageReadiness } from '@modules/factory-batches/structured-package-approval'
+import { assessStructuredPackageReadiness, materializeApprovedPackageSnapshot } from '@modules/factory-batches/structured-package-approval'
 import type { DestinationVisualAssetSchema } from '@shared/destination-visual-media-contract'
 import type { VisualCandidate } from '@shared/visual-candidate-contracts'
 import type { StructuredEditorialPackageV1 } from '@shared/structured-editorial-package-contracts'
@@ -114,5 +114,16 @@ describe('COMPLETE_VISUAL_AND_CAPTION_PIPELINE', () => {
     const heroUnresolved = { ...resolved, adventure: { ...resolved.adventure, document: { ...resolved.adventure.document, hero: { ...resolved.adventure.document.hero, asset: { status: 'INTENT' as const, visualIntentId: ids.hero } } } } }
     expect(assessStructuredPackageReadiness({ ...review, structuredPackage: heroUnresolved } as never).blocking).toContain('MANDATORY_HERO_UNRESOLVED')
     expect(assessStructuredPackageReadiness({ ...review, student: { ...review.student, revisionId: ids.package } } as never).blocking).toContain('MIXED_REVISIONS_BLOCKED')
+  })
+
+  it('VERTICAL_APPROVAL materializes only the exact immutable ready snapshot for media and handoff', () => {
+    const resolved = { ...resolve(fullCandidates()), visualPackageId: '085f0000-0000-4000-8000-000000000099' }
+    const approved = materializeApprovedPackageSnapshot(resolved, {
+      packageId: ids.package, studentRevisionId: ids.studentRevision, adventureRevisionId: ids.adventureRevision, visualPackageId: '085f0000-0000-4000-8000-000000000099',
+    })
+    expect(approved.state).toBe('APPROVED')
+    expect(() => materializeApprovedPackageSnapshot(resolved, {
+      packageId: ids.package, studentRevisionId: ids.package, adventureRevisionId: ids.adventureRevision, visualPackageId: '085f0000-0000-4000-8000-000000000099',
+    })).toThrow('MIXED_REVISIONS_BLOCKED')
   })
 })

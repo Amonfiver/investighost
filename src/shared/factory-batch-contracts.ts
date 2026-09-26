@@ -8,7 +8,7 @@ const TimestampSchema = z.date()
 const NonEmptyText = z.string().trim().min(1)
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/)
 
-export const DestinationBatchInputSchema = z.object({
+const DestinationBatchInputCanonicalSchema = z.object({
   batch: z.object({
     name: z.string(),
     maxCostPerDestination: z.number().nonnegative().optional(),
@@ -20,6 +20,16 @@ export const DestinationBatchInputSchema = z.object({
   }),
   destinations: z.array(z.unknown()),
 })
+
+/** `batch.name` remains the persisted V1 contract. `batchName` is accepted at
+ * the import boundary so a person can use the concise documented JSON form. */
+export const DestinationBatchInputSchema = z.preprocess(value => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  const input = value as Record<string, unknown>
+  if (typeof input.batchName !== 'string' || input.batch !== undefined) return value
+  const { batchName, ...rest } = input
+  return { ...rest, batch: { name: batchName } }
+}, DestinationBatchInputCanonicalSchema)
 
 export const DestinationBatchDestinationSchema = z.object({
   name: z.string().trim().min(1).max(160),

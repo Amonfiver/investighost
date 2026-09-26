@@ -80,3 +80,19 @@ export function assertApprovedPackageSnapshot(value: StructuredEditorialPackageV
   if (packageValue.state !== 'PACKAGE_READY_FOR_REVIEW' || packageValue.adventure.document.hero.asset.status !== 'RESOLVED' || packageValue.visualResolution?.unresolved.length) throw new Error('PACKAGE_READINESS_REQUIRED')
   return packageValue
 }
+
+/** The reviewed artifact is append-only and therefore remains
+ * PACKAGE_READY_FOR_REVIEW. This pure projection is the exact immutable
+ * snapshot consumed after the durable human decision; it never selects a
+ * newer revision by destination. */
+export function materializeApprovedPackageSnapshot(
+  value: StructuredEditorialPackageV1,
+  approval: Pick<StructuredPackageApprovalReceipt, 'packageId' | 'studentRevisionId' | 'adventureRevisionId' | 'visualPackageId'>,
+): StructuredEditorialPackageV1 {
+  const ready = assertApprovedPackageSnapshot(value)
+  if (ready.packageId !== approval.packageId
+    || ready.student.libraryRevision.revisionId !== approval.studentRevisionId
+    || ready.adventure.libraryRevision.revisionId !== approval.adventureRevisionId
+    || ready.visualPackageId !== approval.visualPackageId) throw new Error('MIXED_REVISIONS_BLOCKED')
+  return StructuredEditorialPackageV1Schema.parse({ ...ready, state: 'APPROVED' })
+}

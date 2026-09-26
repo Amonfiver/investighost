@@ -50,6 +50,16 @@ function fixture() {
 }
 
 describe('DestinationBatchService', () => {
+  it('JSON_BATCH_SCHEMA / JSON_MULTI_DESTINATION_IMPORT accepts the concise human batchName form in input order', async () => {
+    const { service } = setup()
+    const result = await service.importJson(JSON.stringify({ batchName: 'Prueba España 001', destinations: [
+      { name: 'Cuenca', country: 'España' }, { name: 'Morella', country: 'España' }, { name: 'Albarracín', country: 'España' },
+    ] }))
+    expect(result.batch.name).toBe('Prueba España 001')
+    expect(result.jobs.map(job => job.originalName)).toEqual(['Cuenca', 'Morella', 'Albarracín'])
+    expect(result.jobs.map(job => job.inputIndex)).toEqual([0, 1, 2])
+  })
+
   it('imports a 10-row fixture with row-level invalid and duplicate handling', async () => {
     const { service } = setup()
     const result = await service.importJson(fixture())

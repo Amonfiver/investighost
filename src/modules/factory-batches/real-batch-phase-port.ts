@@ -76,7 +76,7 @@ export class ProductionBatchEditorialPhasePort implements BatchEditorialPhasePor
     if (!authorization.enabled || !authorization.featureToken) {
       throw new Error('BATCH_PROVIDER_AUTHORIZATION_REQUIRED: falta la capability explícita de ejecución batch')
     }
-    if (input.phase === 'VISUALS') return this.visual.prepare(context.destination, input.job.id, input.job.redoScope === 'VISUALS' ? input.job.redoOperationId : undefined, input.job.redoGuidance, input.job.redoPreviousArtifactRefs?.VISUALS)
+    if (input.phase === 'VISUALS') return this.visual.prepare(context.destination, input.job.id, input.job.redoGuidance, input.job.redoPreviousArtifactRefs?.VISUALS)
     const gate = {
         featureToken: authorization.featureToken,
         preflightStatus: 'ready_for_real_batch_execution',
@@ -145,7 +145,7 @@ class BatchVisualReviewDelegate {
     )
   }
 
-  async prepare(destination: { destinationId: string; name: string; countryCode: string; region?: string }, jobId: string, redoOperationId?: string, guidance?: RedoGenerationGuidance, previousPackageId?: string): Promise<BatchEditorialPhaseResult> {
+  async prepare(destination: { destinationId: string; name: string; countryCode: string; region?: string }, jobId: string, guidance?: RedoGenerationGuidance, previousPackageId?: string): Promise<BatchEditorialPhaseResult> {
     const countryOrRegion = destination.region ?? destination.countryCode
     const structured = await this.loadStructuredPackage(jobId)
     const intents = structured.package.visualIntents
@@ -157,25 +157,25 @@ class BatchVisualReviewDelegate {
     }
     const avoidPrevious = guidance?.scope === 'VISUALS' && guidance.controls.avoidPreviousSimilarity !== 'OFF'
     const excluded = avoidPrevious && previousPackageId ? await this.acquisition.previousCandidateIds(previousPackageId) : []
-    const prepared = await this.acquisition.prepareDestinationForHumanVisualReview(destination.destinationId, {
+    // The Factory path must resolve the same rights-approved assets that the
+    // structured package and later media ingress consume. Private staging is
+    // useful for candidate inspection but cannot make a package approvable.
+    const acquired = await this.acquisition.acquireDestination(destination.destinationId, {
       modes: ['adventure', 'student'], highlightLimit: 4, galleryLimit: 6, excludeCandidateIds: excluded, ...visualSelectionGuidance(guidance),
-    }, redoOperationId ? `visual-acquisition-v1/redo/${redoOperationId}` : undefined)
-    // This production phase only has private staged assets, so this records a
-    // rights-pending visual revision rather than pretending that staging is a
-    // public approval. The same resolver receives approved asset provenance
-    // after the authorized media ingress phase, not in this prompt.
+    })
+    const assetsByCandidateId = new Map(acquired.promotions.map(promotion => [promotion.selection.candidate.candidateId, promotion.asset]))
     const visualRevision = resolveStructuredVisualIntents({
       package: structured.package,
       candidates: await this.candidates.listByDestination(destination.destinationId),
-      assetsByCandidateId: new Map(),
-      sourceVisualPackageId: prepared.package.packageId,
+      assetsByCandidateId,
+      sourceVisualPackageId: acquired.package.packageId,
     })
     await new StructuredEditorialPackageArtifactService(new SupabaseGenericDurableExecutionRepository(this.client))
       .saveVisualRevision(structured.executionId, structured.package, visualRevision)
     return {
-      artifactRef: prepared.package.packageId,
-      visualReviewState: prepared.package.state === 'DRAFT' ? 'EMPTY' : 'PARTIAL',
-      warnings: prepared.failures.map(failure => `${failure.candidateId}:${failure.code}`),
+      artifactRef: acquired.package.packageId,
+      visualReviewState: acquired.package.state === 'DRAFT' ? 'EMPTY' : acquired.package.state === 'APPROVED' ? 'READY_FOR_HUMAN_VISUAL_REVIEW' : 'PARTIAL',
+      warnings: acquired.failures.map(failure => `${failure.candidateId}:${failure.code}`),
     }
   }
 

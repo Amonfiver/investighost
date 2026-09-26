@@ -1,0 +1,8 @@
+{
+  "batchName": "Prueba España 001",
+  "destinations": [
+    { "name": "Cuenca", "country": "España" },
+    { "name": "Morella", "country": "España" },
+    { "name": "Albarracín", "country": "España" }
+  ]
+}

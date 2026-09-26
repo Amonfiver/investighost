@@ -83,7 +83,7 @@ export function DestinationBatchPanel({ onOpenBatch }: { onOpenBatch: (batchId: 
       {notice && <div className="alert success" role="status"><strong>{notice}</strong></div>}
       <section className="form-card">
         <label className="field"><span>Archivo JSON</span><input type="file" accept="application/json,.json" disabled={busy} onChange={event => { void chooseFile(event.currentTarget.files?.[0]) }} /></label>
-        <small className="muted">{fileName || 'Formato: batch.name y destinations[].name/country; region es opcional.'}</small>
+        <small className="muted">{fileName || 'Formato: batchName y destinations[].name/country; region es opcional.'}</small>
         <div className="form-actions"><button className="button primary" disabled={busy || !jsonText.trim()} onClick={() => { void submit() }}>Importar lote JSON</button></div>
       </section>
 

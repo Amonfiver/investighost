@@ -179,7 +179,9 @@ export function requiresCanonicalIdentityRecovery(job: DestinationBatchJob): boo
   return job.status === 'FAILED'
     && !job.canonicalDestinationId
     && ['IDENTITY', 'RESEARCH'].includes(job.currentPhase)
-    && /^CANONICAL_DESTINATION_REQUIRED:/.test(job.lastFailure ?? '')
+    // Historical jobs persisted only the Spanish message because the old
+    // error classifier discarded `BatchExecutionContextError.code`.
+    && /^(?:CANONICAL_DESTINATION_REQUIRED|El job no tiene una identidad geográfica canónica):/.test(job.lastFailure ?? '')
 }
 
 export function canRetryDestinationBatchJob(job: DestinationBatchJob): boolean {

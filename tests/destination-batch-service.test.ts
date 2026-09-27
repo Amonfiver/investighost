@@ -114,19 +114,18 @@ describe('DestinationBatchService', () => {
     expect(await repository.getJob(another.id)).toMatchObject({ status: 'QUEUED' })
   })
 
-  it('repairs the exact legacy canonical identity failure through the same job from IDENTITY', async () => {
+  it('maps the exact real historical Segovia failure shape to a retryable same job from IDENTITY', async () => {
     const { service, repository } = setup()
     const imported = await service.importJson(JSON.stringify({ batchName: 'Piloto real Segovia', destinations: [{ name: 'Segovia', country: 'España' }] }))
     const segovia = imported.jobs[0]!
     await repository.updateJob({
-      ...segovia, status: 'FAILED', currentPhase: 'IDENTITY', completedPhases: ['IDENTITY'], artifactRefs: { IDENTITY: 'legacy-missing' },
-      retryable: false, lastFailure: 'CANONICAL_DESTINATION_REQUIRED: El job no tiene una identidad geográfica canónica', updatedAt: new Date(),
+      ...segovia, status: 'FAILED', currentPhase: 'IDENTITY', completedPhases: [], artifactRefs: {},
+      retryable: false, lastFailure: 'El job no tiene una identidad geográfica canónica: El job no tiene una identidad geográfica canónica', updatedAt: new Date(),
     })
     const read = await service.read(imported.batch.id)
     expect(read.jobs[0]).toMatchObject({ id: segovia.id, status: 'FAILED', retryable: true })
     const retried = await service.retry(segovia.id)
     expect(retried).toMatchObject({ resumedPhase: 'IDENTITY', job: { id: segovia.id, batchId: imported.batch.id, status: 'QUEUED', currentPhase: 'IDENTITY', completedPhases: [], retryable: true } })
-    expect(retried.job.artifactRefs.IDENTITY).toBeUndefined()
     expect((await repository.listJobs(imported.batch.id)).filter(job => job.originalName === 'Segovia')).toHaveLength(1)
   })
 

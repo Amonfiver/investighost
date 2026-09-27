@@ -62,7 +62,8 @@ export class BatchWorkerPhaseError extends Error {
 export function classifyBatchWorkerError(error: unknown): BatchWorkerPhaseError {
   if (error instanceof BatchWorkerPhaseError) return error
   const message = error instanceof Error ? error.message : String(error)
-  const code = message.split(':')[0].trim() || 'WORKER_PHASE_FAILED'
+  const typedCode = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : undefined
+  const code = typedCode ?? (message.split(':')[0].trim() || 'WORKER_PHASE_FAILED')
   const transient = /(TIMEOUT|RATE_LIMIT|TEMPORARY|NETWORK|UNAVAILABLE|STORAGE_FAILURE|ECONNRESET)/i.test(code)
   return new BatchWorkerPhaseError(code, transient ? 'TRANSIENT' : 'TERMINAL', message)
 }

@@ -144,6 +144,20 @@ describe('simplified factory UI boundaries', () => {
     expect(app).toContain("go('batch-job')")
   })
 
+  it('shows a guarded retry action only for retryable failed jobs and starts the existing durable worker', async () => {
+    const [operations, main] = await Promise.all([
+      readFile(new URL('../src/renderer/BatchOperationViews.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('../src/main/index.ts', import.meta.url), 'utf8'),
+    ])
+    expect(operations).toContain("liveJob.status === 'FAILED' && liveJob.retryable")
+    expect(operations).toContain("retrying ? 'Reintentando…' : 'Reintentar'")
+    expect(operations).toContain('disabled={retrying}')
+    expect(operations).toContain('retryDestinationBatchJob(liveJob.id)')
+    expect(operations).toContain('No se pudo reintentar.')
+    expect(operations).toContain('setAwaitingRetryProgress(true)')
+    expect(main).toContain('worker.runJob(retried.job.id)')
+  })
+
   it('translates durable budget failures once while preserving a concise technical detail', () => {
     const failure = 'REAL_EDITORIAL_BUDGET_EXCEEDED: REAL_EDITORIAL_BUDGET_EXCEEDED: remaining budget is insufficient'
     expect(userFacingJobFailure(failure, 'ADVENTURE'))

@@ -70,13 +70,17 @@ describe('EditorialBatchWorker', () => {
     expect(port.calls.some(value => value.startsWith('Reutilizado:'))).toBe(false)
   })
 
-  it('retries only the failed phase and does not duplicate completed research or analysis', async () => {
+  it('retries the same durable failed job, preserves its history, and does not duplicate completed research or analysis', async () => {
     const { repository, service, batch, jobs } = await fixture()
     const port = new FixturePhasePort({ Transitorio: 'transient-analysis' })
     const worker = new EditorialBatchWorker(repository, port, { workerId: 'fixture-worker' })
     const target = jobs.find(job => job.originalName === 'Transitorio')!
     await worker.runJob(target.id)
-    await service.retry(target.id)
+    const failed = await repository.getJob(target.id)
+    const queued = await service.retry(target.id)
+    expect(queued.job).toMatchObject({ id: target.id, batchId: target.batchId, status: 'QUEUED', attemptCount: failed?.attemptCount, completedPhases: failed?.completedPhases })
+    expect(queued.job.canonicalDestinationId).toBe(failed?.canonicalDestinationId)
+    expect((await repository.listJobs(batch.id)).filter(job => job.originalName === 'Transitorio')).toHaveLength(1)
     const retried = await worker.runJob(target.id)
     expect(retried.job).toMatchObject({ status: 'READY_FOR_REVIEW', attemptCount: 2, completedPhases: phases })
     expect(port.calls.filter(value => value === 'Transitorio:RESEARCH')).toHaveLength(1)

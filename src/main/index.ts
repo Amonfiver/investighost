@@ -178,7 +178,10 @@ ipcMain.handle('factory-batches:read', async (_event, batchId: unknown) => {
 })
 
 ipcMain.handle('factory-batches:retry-job', async (_event, jobId: unknown) => {
-  return (await getDestinationBatchRuntime()).retry(z.string().uuid().parse(jobId))
+  const retried = await (await getDestinationBatchRuntime()).retry(z.string().uuid().parse(jobId))
+  // Same durable job, same worker: retry never reimports or creates a second destination.
+  void getDestinationBatchWorkerRuntime().then(worker => worker.runJob(retried.job.id)).catch(() => undefined)
+  return retried
 })
 
 ipcMain.handle('factory-batches:start', async (_event, batchId: unknown) => {

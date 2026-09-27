@@ -18,20 +18,27 @@ export function BatchDetail({ batchId, onBack, onOpenJob }: { batchId: string; o
 
 export function BatchJobDetail({ job, onBack, onOpenReview }: { job: DestinationBatchJob; onBack: () => void; onOpenReview: () => void }) {
   const [liveJob, setLiveJob] = useState(job)
+  const [retrying, setRetrying] = useState(false)
+  const [awaitingRetryProgress, setAwaitingRetryProgress] = useState(false)
+  const [retryError, setRetryError] = useState<string | null>(null)
   useEffect(() => { setLiveJob(job) }, [job])
-  const active = isActiveBatchJob(liveJob)
+  const active = isActiveBatchJob(liveJob) || awaitingRetryProgress
   useEffect(() => {
     if (!active) return
     const refresh = () => void window.electronAPI.readDestinationBatch(liveJob.batchId).then(model => {
       const next = model.jobs.find(item => item.id === liveJob.id)
-      if (next) setLiveJob(next)
+      if (next) {
+        setLiveJob(next)
+        if (next.status !== 'QUEUED') setAwaitingRetryProgress(false)
+      }
     }).catch(() => undefined)
     const timer = window.setInterval(refresh, BATCH_LIVE_REFRESH_INTERVAL_MS)
     return () => window.clearInterval(timer)
   }, [active, liveJob.batchId, liveJob.id])
   const phase = liveJob.status === 'READY_FOR_REVIEW' ? 'Lista para revisión' : jobPhaseLabel(liveJob.currentPhase, liveJob.redoScope)
   const redoActive = isActiveRedo(liveJob)
-  return <section className="batch-import-layout destination-job-detail"><button className="back-link" onClick={onBack}>← Volver al lote</button><div className="section-heading"><div><h2>{liveJob.originalName}</h2><p>{liveJob.country}{liveJob.region ? ` · ${liveJob.region}` : ''}</p></div><span className={`state-badge state-${liveJob.status.toLowerCase()}`}>{jobStatusLabel(liveJob.status, liveJob.redoScope)}</span></div>{redoActive && <LiveActivity scope={liveJob.redoScope} />}<div className="metric-grid compact destination-job-metrics"><Metric label="Fase" value={phase} /><Metric label="Coste" value={formatCost(liveJob.actualCost)} /><Metric label="Intentos" value={liveJob.attemptCount} /></div>{liveJob.lastFailure && <div className="alert warning"><strong>{userFacingJobFailure(liveJob.lastFailure, liveJob.redoScope)}</strong><details><summary>Detalles técnicos</summary><span>{technicalJobFailureDetail(liveJob.lastFailure)}</span></details></div>}{liveJob.status === 'READY_FOR_REVIEW' && <div className="job-review-action"><button className="button primary" onClick={onOpenReview}>Abrir revisión</button></div>}</section>
+  const retry = async () => { setRetrying(true); setRetryError(null); try { const result = await window.electronAPI.retryDestinationBatchJob(liveJob.id); setLiveJob(result.job); setAwaitingRetryProgress(true) } catch (reason) { setRetryError(reason instanceof Error ? reason.message : String(reason)) } finally { setRetrying(false) } }
+  return <section className="batch-import-layout destination-job-detail"><button className="back-link" onClick={onBack}>← Volver al lote</button><div className="section-heading"><div><h2>{liveJob.originalName}</h2><p>{liveJob.country}{liveJob.region ? ` · ${liveJob.region}` : ''}</p></div><span className={`state-badge state-${liveJob.status.toLowerCase()}`}>{jobStatusLabel(liveJob.status, liveJob.redoScope)}</span></div>{redoActive && <LiveActivity scope={liveJob.redoScope} />}<div className="metric-grid compact destination-job-metrics"><Metric label="Fase" value={phase} /><Metric label="Coste" value={formatCost(liveJob.actualCost)} /><Metric label="Intentos" value={liveJob.attemptCount} /></div>{retryError && <div className="alert error"><strong>No se pudo reintentar.</strong><span>{retryError}</span></div>}{liveJob.lastFailure && <div className="alert warning"><strong>{userFacingJobFailure(liveJob.lastFailure, liveJob.redoScope)}</strong><details><summary>Detalles técnicos</summary><span>{technicalJobFailureDetail(liveJob.lastFailure)}</span></details></div>}{liveJob.status === 'FAILED' && liveJob.retryable && <div className="job-review-action"><button className="button primary" disabled={retrying} onClick={() => { void retry() }}>{retrying ? 'Reintentando…' : 'Reintentar'}</button></div>}{liveJob.status === 'READY_FOR_REVIEW' && <div className="job-review-action"><button className="button primary" onClick={onOpenReview}>Abrir revisión</button></div>}</section>
 }
 
 function LiveActivity({ scope }: { scope?: DestinationBatchJob['redoScope'] }) { return <div className="live-job-status" role="status"><span className="spinner" /><div><strong>{scope ? jobStatusLabel('PROCESSING', scope) : 'Procesando'}</strong><small>Investighost está trabajando.</small></div></div> }

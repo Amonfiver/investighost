@@ -22,8 +22,8 @@ function environment(token: string = batchToken): NodeJS.ProcessEnv {
 
 function providerCenter(): ProviderCenterSnapshot {
   return {
-    secureStorageAvailable: true, simulationOnly: true, realClientsAvailable: true,
-    externalCallsAllowed: false, pricingCatalogVersion: '2026-07-25.1',
+    secureStorageAvailable: true, simulationOnly: false, realClientsAvailable: true,
+    externalCallsAllowed: true, pricingCatalogVersion: '2026-07-25.1',
     providers: [
       { id: 'tavily', displayName: 'Tavily', category: 'research_tool', configured: true, credentialMask: '••••••••', active: true, selectedModel: 'search-and-extract', availableModels: ['search-and-extract'], tariffStatus: 'current', tariffVerifiedAt: '2026-07-25T00:00:00.000+02:00', tariffReviewAfter: '2026-08-25T00:00:00.000+02:00', tariffCurrency: 'USD', tariffSummary: 'Tarifa Tavily oficial', connectionState: 'not_tested' },
       { id: 'openai', displayName: 'OpenAI', category: 'intelligence_engine', configured: true, credentialMask: '••••••••', active: true, selectedModel: 'gpt-5.6-luna', availableModels: ['gpt-5.6-luna'], tariffStatus: 'current', tariffVerifiedAt: '2026-07-25T00:00:00.000+02:00', tariffReviewAfter: '2026-08-25T00:00:00.000+02:00', tariffCurrency: 'USD', tariffSummary: 'Tarifa OpenAI oficial', connectionState: 'not_tested' },

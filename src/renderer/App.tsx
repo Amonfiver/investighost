@@ -124,6 +124,11 @@ export function App(): JSX.Element {
   const [batchDetailId, setBatchDetailId] = useState<string | null>(null)
   const [batchJob, setBatchJob] = useState<import('@shared/factory-batch-contracts').DestinationBatchJob | null>(null)
   const [factoryNotice, setFactoryNotice] = useState<string | null>(null)
+  const [externalCallsAllowed, setExternalCallsAllowed] = useState(false)
+
+  useEffect(() => {
+    window.electronAPI.listProviders().then(snapshot => setExternalCallsAllowed(snapshot.externalCallsAllowed)).catch(() => undefined)
+  }, [])
 
   const loadRealLibrary = useCallback(async () => {
     setRealLibraryLoading(true)
@@ -277,7 +282,7 @@ export function App(): JSX.Element {
             <h1>{viewTitle(view, selected)}</h1>
           </div>
           <div className="topbar-actions">
-            <span className="safety-pill">Local · Manual · Simulado</span>
+            <span className="safety-pill">Local · Manual · {externalCallsAllowed ? 'Real' : 'Simulado'}</span>
           </div>
         </header>
 
@@ -332,7 +337,7 @@ export function App(): JSX.Element {
             setBatchDetailId(job.batchId)
             go('batch-job')
           }} />}
-          {view === 'providers' && <ProviderCenterPanel />}
+          {view === 'providers' && <ProviderCenterPanel onExecutionModeChanged={setExternalCallsAllowed} />}
           {view === 'real-config' && (
             <RealProfileSettingsPanel
               onLibraryChanged={loadRealLibrary}
@@ -823,7 +828,7 @@ function ContributionImportPanel(): JSX.Element {
   return <section><div className="section-heading"><div><span className="eyebrow">MÓDULO LOCAL EXISTENTE</span><h2>Contribuciones pendientes</h2><p>Adaptador remoto simulado y archivos privados en Supabase local.</p></div><button className="button primary" onClick={download} disabled={syncing || !connected}>{syncing ? 'Procesando…' : 'Descargar pendientes'}</button></div>{error && <div className="alert error">{error}</div>}{summary && <div className="metric-grid compact"><Metric label="Encontradas" value={summary.found} detail="en origen mock" /><Metric label="Descargadas" value={summary.downloaded} detail="en local" /><Metric label="Verificadas" value={summary.verified} detail="integridad correcta" /><Metric label="Fallidas" value={summary.failed} detail="visibles" tone={summary.failed ? 'warn' : 'normal'} /></div>}<div className="card-list">{jobs.map(job => <article className="data-card" key={job.id}><div className="data-card-heading"><div><strong>{job.remoteId}</strong><p>{job.sourceType} · intento {job.attemptCount}</p></div><StateBadge value={job.status} /></div>{job.lastError && <p className="inline-error">{job.lastError}</p>}{['failed', 'retry_pending'].includes(job.status) && <button className="button secondary" onClick={() => retry(job.id)} disabled={syncing}>Reintentar</button>}</article>)}</div></section>
 }
 
-function ProviderCenterPanel(): JSX.Element {
+function ProviderCenterPanel({ onExecutionModeChanged }: { onExecutionModeChanged: (enabled: boolean) => void }): JSX.Element {
   const [snapshot, setSnapshot] = useState<ProviderCenterSnapshot | null>(null)
   const [editing, setEditing] = useState<ProviderPublicStatus | null>(null)
   const [credential, setCredential] = useState('')
@@ -877,6 +882,14 @@ function ProviderCenterPanel(): JSX.Element {
     }))
   }
 
+  const toggleExternalCalls = async () => {
+    await mutate(async () => {
+      const next = await window.electronAPI.setExternalCallsAllowed(!snapshot?.externalCallsAllowed)
+      onExecutionModeChanged(next.externalCallsAllowed)
+      return next
+    })
+  }
+
   if (!snapshot) {
     return <section><div className="empty-card provider-loading"><span className="spinner" /><h2>Preparando almacenamiento seguro…</h2></div></section>
   }
@@ -890,8 +903,13 @@ function ProviderCenterPanel(): JSX.Element {
     <section>
       <div className="section-heading">
         <div><span className="eyebrow">CONFIGURACIÓN LOCAL SEGURA</span><h2>Centro de proveedores</h2><p>Clientes reales instalados detrás del gate; guardar y validar la configuración no usa red.</p></div>
-        <span className="safety-pill">Llamadas externas bloqueadas</span>
+        <span className="safety-pill">{snapshot.externalCallsAllowed ? 'Llamadas externas habilitadas' : 'Llamadas externas bloqueadas'}</span>
       </div>
+      <section className={`form-card ${snapshot.externalCallsAllowed ? 'execution-real' : ''}`} aria-label="Modo de ejecución">
+        <strong>Modo de ejecución: {snapshot.externalCallsAllowed ? 'Real' : 'Simulado'}</strong>
+        <p>{snapshot.externalCallsAllowed ? 'Los proveedores activos pueden usarse al iniciar un job. OpenAI permanece inactivo si no lo activas.' : 'La red permanece bloqueada aunque haya credenciales configuradas.'}</p>
+        <button className={`button ${snapshot.externalCallsAllowed ? 'danger' : 'primary'}`} disabled={working || !snapshot.secureStorageAvailable} onClick={() => { void toggleExternalCalls() }}>{snapshot.externalCallsAllowed ? 'Deshabilitar llamadas externas' : 'Habilitar llamadas externas'}</button>
+      </section>
       {!snapshot.secureStorageAvailable && (
         <div className="alert error" role="alert">
           <strong>Almacenamiento seguro no disponible.</strong>
@@ -919,7 +937,7 @@ function ProviderCenterPanel(): JSX.Element {
                   <div><dt>Vigente desde</dt><dd>{provider.tariffEffectiveFrom ? formatDate(provider.tariffEffectiveFrom) : 'Sin verificar'}</dd></div>
                   <div><dt>Tarifa verificada</dt><dd>{provider.tariffVerifiedAt ? formatDate(provider.tariffVerifiedAt) : 'Sin verificar'}</dd></div>
                   <div><dt>Revisar antes de</dt><dd>{provider.tariffReviewAfter ? formatDate(provider.tariffReviewAfter) : 'Sin verificar'}</dd></div>
-                  <div><dt>Entorno</dt><dd>Cliente real preparado · red bloqueada</dd></div>
+                  <div><dt>Entorno</dt><dd>Cliente real preparado · {snapshot.externalCallsAllowed ? 'red habilitada' : 'red bloqueada'}</dd></div>
                 </dl>
                 <div className="provider-actions">
                   <button className="button secondary" disabled={working || !snapshot.secureStorageAvailable} onClick={() => openConfiguration(provider)}>{provider.configured ? 'Sustituir credencial' : 'Configurar'}</button>

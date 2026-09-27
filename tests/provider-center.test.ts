@@ -91,6 +91,21 @@ function configuration(providerId = 'tavily', credential = syntheticCredential) 
 }
 
 describe('Centro seguro de proveedores', () => {
+  it('NETWORK_DEFAULT_BLOCKED y ENABLE_REAL_UPDATES_GATE sin alterar proveedores activos', async () => {
+    const { center, file } = await service()
+    await center.configure(configuration('tavily'))
+    await center.setActive({ providerId: 'tavily', active: true })
+    expect(center.snapshot()).toMatchObject({ simulationOnly: true, externalCallsAllowed: false })
+    const enabled = await center.setExternalCallsAllowed(true)
+    expect(enabled).toMatchObject({ simulationOnly: false, externalCallsAllowed: true })
+    expect(enabled.providers.find(provider => provider.id === 'tavily')).toMatchObject({ active: true })
+    expect(enabled.providers.find(provider => provider.id === 'openai')).toMatchObject({ active: false })
+    const restarted = new ProviderCenterService(file, new SyntheticEncryption(), { catalog, projectDirectory: process.cwd() })
+    await restarted.initialize()
+    expect(restarted.snapshot()).toMatchObject({ simulationOnly: false, externalCallsAllowed: true })
+    expect(await restarted.setExternalCallsAllowed(false)).toMatchObject({ simulationOnly: true, externalCallsAllowed: false })
+  })
+
   it('guarda una credencial cifrada fuera del proyecto y solo devuelve máscara', async () => {
     const { center, file } = await service()
     const snapshot = await center.configure(configuration())

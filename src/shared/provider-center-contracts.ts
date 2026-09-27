@@ -34,9 +34,9 @@ export const ProviderPublicStatusSchema = z.object({
 
 export const ProviderCenterSnapshotSchema = z.object({
   secureStorageAvailable: z.boolean(),
-  simulationOnly: z.literal(true),
+  simulationOnly: z.boolean(),
   realClientsAvailable: z.literal(true),
-  externalCallsAllowed: z.literal(false),
+  externalCallsAllowed: z.boolean(),
   pricingCatalogVersion: z.string().regex(/^\d{4}-\d{2}-\d{2}\.\d+$/),
   providers: z.array(ProviderPublicStatusSchema),
 })

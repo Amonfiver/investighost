@@ -170,9 +170,9 @@ describe('clientes de conectividad real bajo transporte simulado', () => {
 function fakeProviderCenter(): ProviderCenterService {
   const snapshot = {
     secureStorageAvailable: true,
-    simulationOnly: true,
+    simulationOnly: false,
     realClientsAvailable: true,
-    externalCallsAllowed: false,
+    externalCallsAllowed: true,
     pricingCatalogVersion: '2026-07-25.1',
     providers: [
       provider('tavily', 'research_tool', 'search-and-extract'),

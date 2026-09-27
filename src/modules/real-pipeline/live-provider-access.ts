@@ -82,6 +82,9 @@ export function issueLiveProviderNetworkPermit(
       'El almacenamiento seguro de proveedores no está disponible',
     )
   }
+  if (!input.providerCenter.externalCallsAllowed) {
+    throw new LiveProviderAccessError('REAL_FEATURE_DISABLED', 'Las llamadas externas están bloqueadas en el Centro de proveedores')
+  }
   const requiredProviderIds = ['tavily', ...new Set(input.intelligenceProviderIds)]
   for (const providerId of requiredProviderIds) {
     const provider = input.providerCenter.providers.find(entry => entry.id === providerId)

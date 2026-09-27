@@ -99,6 +99,7 @@ const StoredProviderSchema = z.object({
 })
 const StoredDocumentSchema = z.object({
   version: z.literal(1),
+  externalCallsAllowed: z.boolean().default(false),
   providers: z.record(StoredProviderSchema),
 })
 type StoredProvider = z.infer<typeof StoredProviderSchema>
@@ -118,7 +119,7 @@ export class ProviderCenterService {
   private readonly connectionTester: SimulatedConnectionTester
   private readonly projectDirectory: string
   private readonly pricingCatalog: ProviderPricingCatalog
-  private document: StoredDocument = { version: 1, providers: {} }
+  private document: StoredDocument = { version: 1, externalCallsAllowed: false, providers: {} }
   private initialized = false
 
   constructor(
@@ -145,7 +146,7 @@ export class ProviderCenterService {
       this.validateStoredDocument()
     } catch (error) {
       if (isFileNotFound(error)) {
-        this.document = { version: 1, providers: {} }
+        this.document = { version: 1, externalCallsAllowed: false, providers: {} }
       } else if (error instanceof ProviderCenterError) {
         throw error
       } else {
@@ -160,9 +161,9 @@ export class ProviderCenterService {
     const secureStorageAvailable = this.encryption.isAvailable()
     return ProviderCenterSnapshotSchema.parse({
       secureStorageAvailable,
-      simulationOnly: true,
+      simulationOnly: !this.document.externalCallsAllowed,
       realClientsAvailable: true,
-      externalCallsAllowed: false,
+      externalCallsAllowed: this.document.externalCallsAllowed,
       pricingCatalogVersion: this.pricingCatalog.version,
       providers: this.catalog.map(provider => {
         const stored = secureStorageAvailable ? this.document.providers[provider.id] : undefined
@@ -241,6 +242,15 @@ export class ProviderCenterService {
       const stored = this.document.providers[catalogEntry.id]
       if (stored) stored.active = catalogEntry.id === provider.id ? input.active : false
     }
+    await this.persist()
+    return this.snapshot()
+  }
+
+  /** The Electron main process invokes this only after its native cost warning.
+   * It persists the single execution-mode decision beside encrypted provider state. */
+  async setExternalCallsAllowed(enabled: boolean): Promise<ProviderCenterSnapshot> {
+    this.assertSecure()
+    this.document.externalCallsAllowed = enabled
     await this.persist()
     return this.snapshot()
   }

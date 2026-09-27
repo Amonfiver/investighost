@@ -21,6 +21,7 @@ import type {
   ProviderConfigureInput,
   ProviderDeleteInput,
   ProviderTestInput,
+  ProviderCenterSnapshot,
 } from '@shared/provider-center-contracts'
 import type { RealProfileSettings } from '@shared/real-profile-settings'
 import type {
@@ -92,6 +93,7 @@ const electronAPI = {
   setProviderActive: (input: ProviderActivationInput) => ipcRenderer.invoke('providers:set-active', input),
   removeProviderCredential: (input: ProviderDeleteInput) => ipcRenderer.invoke('providers:remove', input),
   testProviderSimulated: (input: ProviderTestInput) => ipcRenderer.invoke('providers:test-simulated', input),
+  setExternalCallsAllowed: (enabled: boolean): Promise<ProviderCenterSnapshot> => ipcRenderer.invoke('providers:set-external-calls', enabled),
   getRealConnectivityPreflight: () => ipcRenderer.invoke('real-preflight:get'),
   runRealConnectivityCheck: (input: RealConnectivityAuthorization) =>
     ipcRenderer.invoke('real-connectivity:run', input),

@@ -18,6 +18,22 @@ describe('superficie de preparación y conectividad real controlada', () => {
     expect(contracts).not.toMatch(/decryptedCredential|apiKey|credentialValue/)
   })
 
+  it('ENABLE_REAL_REQUIRES_CONFIRMATION muestra el modo real sin exponer claves ni iniciar jobs', async () => {
+    const [main, preload, renderer, contracts] = await Promise.all([
+      source('src/main/index.ts'), source('src/main/preload.ts'), source('src/renderer/App.tsx'), source('src/shared/provider-center-contracts.ts'),
+    ])
+    expect(main).toContain("ipcMain.handle('providers:set-external-calls'")
+    expect(main).toContain('Habilitar llamadas externas')
+    expect(main).toContain('puede generar costes')
+    expect(preload).toContain("ipcRenderer.invoke('providers:set-external-calls'")
+    expect(renderer).toContain('Modo de ejecución:')
+    expect(renderer).toContain("externalCallsAllowed ? 'Real' : 'Simulado'")
+    expect(renderer).toContain('Deshabilitar llamadas externas')
+    expect(contracts).toContain('externalCallsAllowed: z.boolean()')
+    expect(main).not.toMatch(/providers:set-external-calls[\s\S]{0,600}startDestinationBatch/)
+    expect(preload).not.toMatch(/credential.*setExternalCallsAllowed|setExternalCallsAllowed.*credential/i)
+  })
+
   it('separa conectividad y piloto editorial, cuyo inicio depende del preflight', async () => {
     const renderer = await source('src/renderer/App.tsx')
 

@@ -13,8 +13,8 @@ function permit() {
     budgetReserved: true,
     globalGuardAcquired: true,
     providerCenter: {
-      secureStorageAvailable: true, simulationOnly: true, realClientsAvailable: true,
-      externalCallsAllowed: false, pricingCatalogVersion: '2026-09-14.2',
+      secureStorageAvailable: true, simulationOnly: false, realClientsAvailable: true,
+      externalCallsAllowed: true, pricingCatalogVersion: '2026-09-14.2',
       providers: [
         { id: 'tavily', displayName: 'Tavily', category: 'research_tool', configured: true, active: true, selectedModel: 'search-and-extract', availableModels: ['search-and-extract'], tariffStatus: 'current', tariffSummary: 'fixture', connectionState: 'not_tested' },
         { id: 'openai', displayName: 'OpenAI', category: 'intelligence_engine', configured: true, active: true, selectedModel: 'gpt-5.6-luna', availableModels: ['gpt-5.6-luna'], tariffStatus: 'current', tariffSummary: 'fixture', connectionState: 'not_tested' },

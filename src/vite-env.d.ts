@@ -116,6 +116,7 @@ declare global {
 
       // Centro de proveedores; las respuestas son siempre públicas y no incluyen credenciales.
       listProviders: () => Promise<ProviderCenterSnapshot>
+      setExternalCallsAllowed: (enabled: boolean) => Promise<ProviderCenterSnapshot>
       configureProvider: (input: ProviderConfigureInput) => Promise<ProviderCenterSnapshot>
       setProviderActive: (input: ProviderActivationInput) => Promise<ProviderCenterSnapshot>
       removeProviderCredential: (input: ProviderDeleteInput) => Promise<ProviderCenterSnapshot>

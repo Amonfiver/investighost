@@ -17,8 +17,8 @@
  *   - El pipeline Manual activo usa exclusivamente proveedores mock locales.
  */
 
-import { app, BrowserWindow, ipcMain } from 'electron'
-import type { BrowserWindow as BrowserWindowType } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import type { BrowserWindow as BrowserWindowType, MessageBoxOptions } from 'electron'
 import { createHash } from 'node:crypto'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -291,6 +291,24 @@ ipcMain.handle('providers:remove', async (_event, input: unknown) => {
 
 ipcMain.handle('providers:test-simulated', async (_event, input: unknown) => {
   return providerCenterAction(service => service.testConnection(input))
+})
+
+// The renderer cannot enable network access by itself: Electron main owns the
+// native confirmation and the persisted provider-center gate. Disabling is
+// immediate and never touches credentials or provider activation.
+ipcMain.handle('providers:set-external-calls', async (_event, enabled: unknown) => {
+  const requested = z.boolean().parse(enabled)
+  if (requested) {
+    const options: MessageBoxOptions = {
+      type: 'warning', buttons: ['Cancelar', 'Habilitar llamadas externas'], defaultId: 0, cancelId: 0,
+      title: 'Habilitar modo real',
+      message: 'Esta acción permitirá llamadas reales a los proveedores activos y puede generar costes.',
+      detail: 'No inicia ningún destino automáticamente. Deberás volver a Producción y pulsar Iniciar producción.',
+    }
+    const result = mainWindow ? await dialog.showMessageBox(mainWindow, options) : await dialog.showMessageBox(options)
+    if (result.response !== 1) throw new Error('EXTERNAL_CALLS_ENABLE_CONFIRMATION_REQUIRED')
+  }
+  return providerCenterAction(service => service.setExternalCallsAllowed(requested))
 })
 
 ipcMain.handle('real-preflight:get', () => getRealConnectivityPreflightRuntime())

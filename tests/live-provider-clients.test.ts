@@ -26,9 +26,9 @@ const openAICredential = 'synthetic-openai-live-key'
 function providerCenter(): ProviderCenterSnapshot {
   return {
     secureStorageAvailable: true,
-    simulationOnly: true,
+    simulationOnly: false,
     realClientsAvailable: true,
-    externalCallsAllowed: false,
+    externalCallsAllowed: true,
     pricingCatalogVersion: '2026-07-25.1',
     providers: [
       {

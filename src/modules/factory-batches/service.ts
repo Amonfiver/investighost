@@ -173,15 +173,15 @@ export class DestinationBatchService {
   }
 }
 
-/** Only this pre-fix identity failure is recoverable without changing a
- * user's scope. Other terminal errors remain non-retryable. */
+/** Only known pre-fix identity materialization failures are recoverable
+ * without changing a user's scope. Other terminal errors remain blocked. */
 export function requiresCanonicalIdentityRecovery(job: DestinationBatchJob): boolean {
   return job.status === 'FAILED'
     && !job.canonicalDestinationId
     && ['IDENTITY', 'RESEARCH'].includes(job.currentPhase)
     // Historical jobs persisted only the Spanish message because the old
     // error classifier discarded `BatchExecutionContextError.code`.
-    && /^(?:CANONICAL_DESTINATION_REQUIRED|El job no tiene una identidad geográfica canónica):/.test(job.lastFailure ?? '')
+    && /^(?:CANONICAL_DESTINATION_REQUIRED|GEOGRAPHY_IDENTITY_CREATE_FAILED|El job no tiene una identidad geográfica canónica):/.test(job.lastFailure ?? '')
 }
 
 export function canRetryDestinationBatchJob(job: DestinationBatchJob): boolean {

@@ -203,7 +203,7 @@ class BatchVisualReviewDelegate {
 
 /** Supabase persistence for the canonical locality created from verified human
  * batch input when the catalog has no existing row. */
-class SupabaseBatchGeographicIdentityStore implements BatchGeographicIdentityStore {
+export class SupabaseBatchGeographicIdentityStore implements BatchGeographicIdentityStore {
   constructor(private readonly client: SupabaseClient) {}
 
   async find(countryCode: string, normalizedName: string): Promise<string | null> {
@@ -214,13 +214,21 @@ class SupabaseBatchGeographicIdentityStore implements BatchGeographicIdentitySto
   }
 
   async create(input: { id: string; name: string; normalizedName: string; countryCode: string; slug: string }): Promise<string> {
+    const { data: country, error: countryError } = await this.client.from('geographic_entities').select('id')
+      .eq('country_code', input.countryCode).eq('entity_type', 'country').eq('status', 'active').maybeSingle()
+    if (countryError) throw new Error(`GEOGRAPHY_COUNTRY_PARENT_LOOKUP_FAILED:${countryError.message}`)
+    if (!country) throw new Error(`GEOGRAPHY_COUNTRY_PARENT_REQUIRED:No existe un país canónico activo para ${input.countryCode}`)
     const { data, error } = await this.client.from('geographic_entities').insert({
-      id: input.id, parent_id: null, entity_type: 'locality', name: input.name,
+      id: input.id, parent_id: String((country as { id: unknown }).id), entity_type: 'locality', name: input.name,
       normalized_name: input.normalizedName, country_code: input.countryCode,
       region_code: null, slug: input.slug, source_name: 'factory_batch_input',
       source_version: 'v1', source_license: 'USER_INPUT', status: 'active',
       resolution_method: 'exact', version: 1,
     }).select('id').single()
+    if (error?.code === '23505') {
+      const existing = await this.find(input.countryCode, input.normalizedName)
+      if (existing) return existing
+    }
     if (error) throw new Error(`GEOGRAPHY_IDENTITY_CREATE_FAILED:${error.message}`)
     return String((data as { id: unknown }).id)
   }

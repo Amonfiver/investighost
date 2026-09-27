@@ -129,6 +129,18 @@ describe('DestinationBatchService', () => {
     expect((await repository.listJobs(imported.batch.id)).filter(job => job.originalName === 'Segovia')).toHaveLength(1)
   })
 
+  it('retries the real GEOGRAPHY_IDENTITY_CREATE_FAILED shape through the same durable Segovia job', async () => {
+    const { service, repository } = setup()
+    const imported = await service.importJson(JSON.stringify({ batchName: 'Piloto real Segovia', destinations: [{ name: 'Segovia', country: 'España' }] }))
+    const segovia = imported.jobs[0]!
+    await repository.updateJob({
+      ...segovia, status: 'FAILED', currentPhase: 'IDENTITY', retryable: false,
+      lastFailure: 'GEOGRAPHY_IDENTITY_CREATE_FAILED: GEOGRAPHY_IDENTITY_CREATE_FAILED:new row violates check constraint', updatedAt: new Date(),
+    })
+    expect((await service.read(imported.batch.id)).jobs[0]).toMatchObject({ id: segovia.id, retryable: true })
+    expect(await service.retry(segovia.id)).toMatchObject({ resumedPhase: 'IDENTITY', job: { id: segovia.id, batchId: imported.batch.id, status: 'QUEUED' } })
+  })
+
   it('exposes a durable read model to a later service instance', async () => {
     const { service, repository } = setup()
     const imported = await service.importJson(fixture())

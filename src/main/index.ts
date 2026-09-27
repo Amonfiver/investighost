@@ -117,7 +117,7 @@ import {
   SupabaseStructuredPackageApprovalRepository,
   batchJobExecutionAuthorizations,
 } from '@modules/factory-batches'
-import { buildFactoryBatchTechnicalDiagnostic } from './factory-batch-diagnostics'
+import { buildFactoryBatchTechnicalDiagnostic, type FactoryBatchReservationDiagnostic } from './factory-batch-diagnostics'
 import {
   getManualPersistenceStatus,
   getManualResearchRuntime,
@@ -216,10 +216,12 @@ ipcMain.handle('factory-batches:authorize-real-execution', async (_event, jobId:
 
 ipcMain.handle('factory-batches:technical-diagnostics', async (_event, jobId: unknown) => {
   const parsedJobId = z.string().uuid().parse(jobId)
-  const job = await new SupabaseDestinationBatchRepository(createLocalSupabaseClientFromEnv().client).getJob(parsedJobId)
+  const client = createLocalSupabaseClientFromEnv().client
+  const job = await new SupabaseDestinationBatchRepository(client).getJob(parsedJobId)
   if (!job) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')
   const providerCenter = await getProviderCenterRuntime()
-  return buildFactoryBatchTechnicalDiagnostic(job, providerCenter.snapshot(), batchJobExecutionAuthorizations.status(job))
+  const reservation = await readBatchReservationDiagnostic(client, job.id, job.lastFailure)
+  return buildFactoryBatchTechnicalDiagnostic(job, providerCenter.snapshot(), batchJobExecutionAuthorizations.status(job), reservation)
 })
 
 ipcMain.handle('factory-batches:start', async (_event, batchId: unknown) => {
@@ -1223,6 +1225,44 @@ function readOptionalE2E04PilotId(arguments_: string[]): string | undefined {
     ?.split('=', 2)[1]
   if (!candidate) return undefined
   return RealEditorialPilotActionSchema.parse({ pilotId: candidate }).pilotId
+}
+
+/** Read-only projection of the last reservation for a batch job.  It is kept
+ * in main so the renderer never receives a Supabase capability or ledger rows
+ * beyond the small, sanitized diagnostic envelope. */
+async function readBatchReservationDiagnostic(
+  client: ReturnType<typeof createLocalSupabaseClientFromEnv>['client'],
+  jobId: string,
+  failure: string | undefined,
+): Promise<FactoryBatchReservationDiagnostic | null> {
+  const { data: execution, error: executionError } = await client
+    .from('real_editorial_executions')
+    .select('id,reserved_cost,spent_cost')
+    .eq('owner_type', 'BATCH_JOB')
+    .eq('owner_id', jobId)
+    .maybeSingle()
+  if (executionError || !execution) return null
+
+  const { data: reservation, error: reservationError } = await client
+    .from('real_editorial_call_reservations')
+    .select('id,state,reserved_cost,calculated_cost')
+    .eq('execution_owner_id', execution.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (reservationError || !reservation) return null
+
+  const state = String(reservation.state)
+  const invalidSettlement = /^INVALID_RESERVATION_STATE:/.test(failure ?? '')
+  return {
+    reservationId: String(reservation.id),
+    reservationState: state,
+    reservedAmount: Number(reservation.reserved_cost),
+    committedAmount: Number(execution.spent_cost),
+    expectedReservationState: invalidSettlement ? 'reserved | started' : null,
+    requestedTransition: invalidSettlement ? 'started → unknown' : null,
+    ledgerState: state === 'unknown' ? 'AMBIGUOUS_PENDING' : state === 'started' ? 'RESERVED' : state.toUpperCase(),
+  }
 }
 
 app.on('window-all-closed', () => {

@@ -237,7 +237,10 @@ export class SupabaseGenericExecutionLedgerRepository implements CostLedgerRepos
 
   async start(reservationId: string): Promise<ProviderCallReservation> {
     const { data, error } = await this.client.rpc('start_generic_real_editorial_call', { p_reservation_id: reservationId })
-    if (error || data !== true) throw new CostLedgerError('INVALID_RESERVATION_STATE', 'La reserva batch no pudo iniciarse')
+    if (error || data !== true) throw new CostLedgerError(
+      'INVALID_RESERVATION_STATE',
+      `La reserva batch no pudo iniciarse${error?.message ? `: ${sanitizeLedgerPersistenceCause(error.message)}` : ''}`,
+    )
     const stored = await this.readReservation(reservationId)
     if (!stored) throw new CostLedgerError('RESERVATION_NOT_FOUND', 'La reserva batch no existe')
     return stored
@@ -256,7 +259,10 @@ export class SupabaseGenericExecutionLedgerRepository implements CostLedgerRepos
       p_sanitized_error: settlement.sanitizedError ?? null,
       p_output_hash: settlement.usage.outputHash ?? null,
     })
-    if (error || data !== true) throw new CostLedgerError('INVALID_RESERVATION_STATE', 'La reserva batch no pudo conciliarse')
+    if (error || data !== true) throw new CostLedgerError(
+      'INVALID_RESERVATION_STATE',
+      `La reserva batch no pudo conciliarse${error?.message ? `: ${sanitizeLedgerPersistenceCause(error.message)}` : ''}`,
+    )
     const stored = await this.readReservation(settlement.reservationId)
     if (!stored) throw new CostLedgerError('RESERVATION_NOT_FOUND', 'La reserva batch no existe')
     return stored
@@ -339,4 +345,11 @@ function entryFromRow(row: Record<string, unknown>): ProviderCallLedgerEntry {
     schemaVersion: String(row.schema_version), inputHash: String(row.input_hash), outputHash: row.output_hash ? String(row.output_hash) : undefined,
     createdAt: String(row.created_at),
   }
+}
+
+function sanitizeLedgerPersistenceCause(value: string): string {
+  return value
+    .replace(/(?:authorization|api[_-]?key|token|secret)\s*[:=]\s*[^\s,;]+/gi, 'credential=[REDACTED]')
+    .replace(/\s+/g, ' ')
+    .slice(0, 500)
 }

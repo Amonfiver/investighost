@@ -267,6 +267,27 @@ acción es autorizar el job/lote real antes de reintentar.
 `ACTIONABLE_TECHNICAL_DIAGNOSTICS = DONE` y
 `SECRETS_IN_RENDERER_DIAGNOSTICS = FORBIDDEN`.
 
+### 094 — conciliación fail-closed de reservas genéricas batch
+
+Las reservas de `BATCH_JOB` y de pilotos comparten el ledger, pero sólo las de
+piloto tienen `pilot_id` y `run_id`. El trigger histórico de llamadas ambiguas
+ahora crea una incidencia humana únicamente cuando esas dos identidades de
+piloto existen. Una llamada de batch con resultado remoto indeterminado puede
+por tanto transicionar durablemente a `unknown` sin revertir la conciliación;
+conserva su importe como reservado, no se convierte en gasto y no habilita un
+retry automático. La rama de pilotos y su mesa de resolución ambigua se
+mantienen sin cambios.
+
+El Detail de Producción proyecta de forma read-only `reservationId`, estado,
+importe reservado, gasto ya comprometido, estado/transición esperados y estado
+del ledger. Esa proyección no expone credenciales ni headers. Los errores de
+RPC de reserva conservan una causa saneada para diagnósticos futuros.
+
+`GENERIC_UNKNOWN_RESERVATION_RECONCILIATION = DONE`,
+`GENERIC_UNKNOWN_NO_FAKE_SPEND = TRUE`,
+`GENERIC_UNKNOWN_NO_AUTOMATIC_RETRY = TRUE` y
+`BATCH_RESERVATION_DIAGNOSTICS = DONE`.
+
 ## Lo construido y su estado
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |

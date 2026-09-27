@@ -47,5 +47,7 @@ describe('Production job detail', () => {
     expect(renderer).toContain('getDestinationBatchTechnicalDiagnostics')
     expect(renderer).toContain('La red está separada de la autorización de coste de este trabajo.')
     expect(renderer).toContain('TechnicalDiagnostic')
+    expect(renderer).toContain('Estado reserva')
+    expect(renderer).toContain('Transición solicitada')
   })
 })

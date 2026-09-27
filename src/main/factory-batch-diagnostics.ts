@@ -2,6 +2,16 @@ import type { DestinationBatchJob } from '@shared/factory-batch-contracts'
 import type { ProviderCenterSnapshot } from '@shared/provider-center-contracts'
 import type { BatchJobExecutionAuthorizationStatus } from '@modules/factory-batches'
 
+export type FactoryBatchReservationDiagnostic = {
+  reservationId: string
+  reservationState: string
+  reservedAmount: number
+  committedAmount: number
+  expectedReservationState: string | null
+  requestedTransition: string | null
+  ledgerState: string
+}
+
 export type FactoryBatchTechnicalDiagnostic = {
   errorCode: string
   humanMessage: string
@@ -23,6 +33,7 @@ export type FactoryBatchTechnicalDiagnostic = {
   retryReason: string | null
   internalCauseSanitized: string
   suggestedAction: string
+  reservation: FactoryBatchReservationDiagnostic | null
 }
 
 /** Projects durable batch facts plus public provider state.  This is a safe
@@ -32,6 +43,7 @@ export function buildFactoryBatchTechnicalDiagnostic(
   job: DestinationBatchJob,
   providers: ProviderCenterSnapshot,
   authorization: BatchJobExecutionAuthorizationStatus,
+  reservation: FactoryBatchReservationDiagnostic | null = null,
 ): FactoryBatchTechnicalDiagnostic {
   const persisted = job.failureDiagnostic
   const errorCode = persisted?.code ?? failureCode(job.lastFailure)
@@ -59,7 +71,10 @@ export function buildFactoryBatchTechnicalDiagnostic(
     internalCauseSanitized: sanitize(persisted?.cause ?? job.lastFailure ?? 'No disponible'),
     suggestedAction: authorizationRequired
       ? 'Autoriza la ejecución real de este lote/job antes de reintentar.'
+      : errorCode === 'INVALID_RESERVATION_STATE' && reservation?.reservationState === 'unknown'
+        ? 'La llamada anterior tiene resultado remoto ambiguo. Confirma su consumo fuera de la app antes de autorizar otro intento.'
       : job.retryable ? 'Reintenta el trabajo cuando la causa indicada esté resuelta.' : 'Revisa la causa técnica antes de volver a intentarlo.',
+    reservation,
   }
 }
 

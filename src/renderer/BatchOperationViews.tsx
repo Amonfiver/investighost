@@ -75,6 +75,10 @@ function TechnicalDiagnostic({ details }: { details: FactoryBatchTechnicalDiagno
     ['Modo', details.executionMode], ['Red', details.networkGate], ['Proveedor esperado', details.expectedProvider], ['Proveedor activo', details.providerActive],
     ['Credencial configurada', details.credentialConfigured], ['Autorización', details.authorizationState], ['Reintentable', details.retryable],
     ['Motivo de reintento', details.retryReason], ['Causa', details.internalCauseSanitized], ['Acción sugerida', details.suggestedAction],
+    ['Reserva', details.reservation?.reservationId ?? null], ['Estado reserva', details.reservation?.reservationState ?? null],
+    ['Importe reservado', details.reservation?.reservedAmount ?? null], ['Importe comprometido', details.reservation?.committedAmount ?? null],
+    ['Estado esperado de reserva', details.reservation?.expectedReservationState ?? null], ['Transición solicitada', details.reservation?.requestedTransition ?? null],
+    ['Estado del ledger', details.reservation?.ledgerState ?? null],
   ]
   return <dl className="technical-diagnostic">{rows.filter(([, value]) => value !== null).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{String(value)}</dd></div>)}</dl>
 }

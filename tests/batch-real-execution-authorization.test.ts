@@ -73,4 +73,14 @@ describe('real batch execution authorization', () => {
     const diagnostics = buildFactoryBatchTechnicalDiagnostic(job, providerCenter(false), { state: 'NOT_AUTHORIZED' })
     expect(diagnostics).toMatchObject({ executionMode: 'SIMULATED', networkGate: 'BLOCKED', providerActive: true, credentialConfigured: true })
   })
+
+  it('TECH_DETAILS expose reservation reconciliation facts without credentials', async () => {
+    const { job } = await failedSegovia()
+    const diagnostics = buildFactoryBatchTechnicalDiagnostic(job, providerCenter(), { state: 'AUTHORIZED' }, {
+      reservationId: '90000000-0000-4000-8000-000000000077', reservationState: 'started', reservedAmount: 0.02,
+      committedAmount: 0.048, expectedReservationState: 'reserved | started', requestedTransition: 'started → unknown', ledgerState: 'RESERVED',
+    })
+    expect(diagnostics.reservation).toMatchObject({ reservationState: 'started', reservedAmount: 0.02, committedAmount: 0.048 })
+    expect(JSON.stringify(diagnostics)).not.toContain('token=should-never-render')
+  })
 })

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { MANUAL_LOCAL_ACTOR_ID } from '@modules/editorial-pipeline/manual-runtime'
 import { SupabaseGeographyCatalogRepository } from '@modules/editorial-pipeline/supabase-geography-repository'
+import { GeographicResolver } from '@modules/editorial-pipeline/geography'
 import {
   BatchSharedLibraryTransition,
   RealEditorialLibraryVersionDraftApplicationService,
@@ -34,6 +35,7 @@ import type { RedoGenerationGuidance } from '@shared/redo-guidance-contracts'
 import { StructuredEditorialPackageV1Schema, type VisualIntent } from '@shared/structured-editorial-package-contracts'
 import { resolveStructuredVisualIntents } from '@modules/visual-acquisition/structured-visual-resolution'
 import { StructuredEditorialPackageArtifactService } from '@modules/editorial-pipeline/structured-editorial-package-service'
+import { BatchGeographicIdentityService, type BatchGeographicIdentityStore } from './geographic-identity'
 
 export interface ProductionBatchPhasePortDependencies {
   client: SupabaseClient
@@ -53,6 +55,7 @@ export interface ProductionBatchPhasePortDependencies {
  */
 export class ProductionBatchEditorialPhasePort implements BatchEditorialPhasePort {
   private readonly contextMapper: BatchExecutionContextMapper
+  private readonly identity: BatchGeographicIdentityService
   private readonly visual: BatchVisualReviewDelegate
   private readonly environment: NodeJS.ProcessEnv
 
@@ -62,6 +65,7 @@ export class ProductionBatchEditorialPhasePort implements BatchEditorialPhasePor
       throw new Error('BATCH_TEST_DOUBLE_FORBIDDEN_OUTSIDE_TEST')
     }
     this.contextMapper = new BatchExecutionContextMapper(new SupabaseGeographyCatalogRepository(dependencies.client))
+    this.identity = new BatchGeographicIdentityService(new GeographicResolver(new SupabaseGeographyCatalogRepository(dependencies.client), 'geonames-2026-07-20'), new SupabaseBatchGeographicIdentityStore(dependencies.client))
     this.visual = new BatchVisualReviewDelegate(dependencies.client, {
       fetchFn: dependencies.testWikimediaFetch,
       imageFetchFn: dependencies.testImageFetch,
@@ -70,8 +74,11 @@ export class ProductionBatchEditorialPhasePort implements BatchEditorialPhasePor
   }
 
   async run(input: BatchEditorialPhaseContext): Promise<BatchEditorialPhaseResult> {
+    if (input.phase === 'IDENTITY') {
+      const canonicalDestinationId = await this.identity.ensure(input.job)
+      return { artifactRef: canonicalDestinationId, canonicalDestinationId }
+    }
     const context = await this.contextMapper.map(input.batch, input.job)
-    if (input.phase === 'IDENTITY') return { artifactRef: context.destination.destinationId }
     const authorization = readBatchJobProviderAuthorization(this.environment)
     if (!authorization.enabled || !authorization.featureToken) {
       throw new Error('BATCH_PROVIDER_AUTHORIZATION_REQUIRED: falta la capability explícita de ejecución batch')
@@ -191,6 +198,31 @@ class BatchVisualReviewDelegate {
     const payload = artifact ? (artifact as { payload: unknown }).payload : null
     if (!payload || typeof payload !== 'object' || !Array.isArray((payload as { visualIntents?: unknown }).visualIntents)) throw new Error('STRUCTURED_VISUAL_PACKAGE_REQUIRED')
     return { executionId: String((execution as { id: unknown }).id), package: StructuredEditorialPackageV1Schema.parse(payload) }
+  }
+}
+
+/** Supabase persistence for the canonical locality created from verified human
+ * batch input when the catalog has no existing row. */
+class SupabaseBatchGeographicIdentityStore implements BatchGeographicIdentityStore {
+  constructor(private readonly client: SupabaseClient) {}
+
+  async find(countryCode: string, normalizedName: string): Promise<string | null> {
+    const { data, error } = await this.client.from('geographic_entities').select('id')
+      .eq('country_code', countryCode).eq('normalized_name', normalizedName).eq('status', 'active').maybeSingle()
+    if (error) throw new Error(`GEOGRAPHY_IDENTITY_LOOKUP_FAILED:${error.message}`)
+    return data ? String((data as { id: unknown }).id) : null
+  }
+
+  async create(input: { id: string; name: string; normalizedName: string; countryCode: string; slug: string }): Promise<string> {
+    const { data, error } = await this.client.from('geographic_entities').insert({
+      id: input.id, parent_id: null, entity_type: 'locality', name: input.name,
+      normalized_name: input.normalizedName, country_code: input.countryCode,
+      region_code: null, slug: input.slug, source_name: 'factory_batch_input',
+      source_version: 'v1', source_license: 'USER_INPUT', status: 'active',
+      resolution_method: 'exact', version: 1,
+    }).select('id').single()
+    if (error) throw new Error(`GEOGRAPHY_IDENTITY_CREATE_FAILED:${error.message}`)
+    return String((data as { id: unknown }).id)
   }
 }
 

@@ -15,6 +15,8 @@ export interface BatchEditorialPhaseContext {
 export interface BatchEditorialPhaseResult {
   /** Durable identifier owned by the delegated module, never a duplicate blob. */
   artifactRef?: string
+  /** ID materialized by the canonical IDENTITY phase before any provider work. */
+  canonicalDestinationId?: string
   /** Internal durable draft key, needed when a later redo reviews a previous
    * regenerated sibling profile. Never rendered as a user-facing identifier. */
   artifactKey?: string

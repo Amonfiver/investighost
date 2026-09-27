@@ -31,7 +31,7 @@ describe('ProductionBatchEditorialPhasePort', () => {
   it('maps IDENTITY through the owner-neutral production port without a provider or fixture delegate', async () => {
     const providerCenter = vi.fn()
     const port = new ProductionBatchEditorialPhasePort({ client: geographyClient(), providerCenter })
-    await expect(port.run({ batch, job, phase: 'IDENTITY' })).resolves.toEqual({ artifactRef: job.canonicalDestinationId })
+    await expect(port.run({ batch, job, phase: 'IDENTITY' })).resolves.toEqual({ artifactRef: job.canonicalDestinationId, canonicalDestinationId: job.canonicalDestinationId })
     expect(providerCenter).not.toHaveBeenCalled()
   })
 

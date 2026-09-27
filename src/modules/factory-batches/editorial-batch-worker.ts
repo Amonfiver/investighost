@@ -103,6 +103,7 @@ export class EditorialBatchWorker {
         const nextPhase = workerPhases[workerPhases.indexOf(phase) + 1] ?? 'AUTO_REVIEW'
         job = DestinationBatchJobSchema.parse({
           ...job, artifactRefs: refs, completedPhases, actualCost: nextCost,
+          ...(result.canonicalDestinationId ? { canonicalDestinationId: result.canonicalDestinationId } : {}),
           currentPhase: nextPhase, updatedAt: this.now(),
         })
         job = await this.repository.updateJob(job)

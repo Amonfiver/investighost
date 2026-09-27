@@ -72,6 +72,17 @@ export const DestinationBatchIssueSchema = z.object({
   createdAt: TimestampSchema,
 })
 
+/** A durable, secret-free failure record.  The raw provider error is never a
+ * renderer contract; only this sanitized context is. */
+export const DestinationBatchFailureDiagnosticSchema = z.object({
+  code: NonEmptyText.max(160),
+  phase: DestinationJobPhaseSchema,
+  operation: NonEmptyText.max(160),
+  cause: NonEmptyText.max(1000),
+  retryable: z.boolean(),
+  occurredAt: TimestampSchema,
+}).strict()
+
 export const DestinationBatchSchema = z.object({
   id: IdSchema,
   name: NonEmptyText.max(200),
@@ -118,6 +129,7 @@ export const DestinationBatchJobSchema = z.object({
   artifactRefs: z.record(z.string().max(200)),
   attemptCount: z.number().int().nonnegative(),
   lastFailure: z.string().max(2000).optional(),
+  failureDiagnostic: DestinationBatchFailureDiagnosticSchema.optional(),
   retryable: z.boolean(),
   retryRequestedAt: TimestampSchema.optional(),
   actualCost: z.number().nonnegative(),
@@ -223,6 +235,7 @@ export const DestinationBatchImportResultSchema = z.object({
 export type DestinationBatch = z.infer<typeof DestinationBatchSchema>
 export type DestinationBatchJob = z.infer<typeof DestinationBatchJobSchema>
 export type DestinationBatchIssue = z.infer<typeof DestinationBatchIssueSchema>
+export type DestinationBatchFailureDiagnostic = z.infer<typeof DestinationBatchFailureDiagnosticSchema>
 export type DestinationBatchReadModel = z.infer<typeof DestinationBatchReadModelSchema>
 export type DestinationBatchJobReviewReadModel = z.infer<typeof DestinationBatchJobReviewReadModelSchema>
 export type DestinationBatchImportResult = z.infer<typeof DestinationBatchImportResultSchema>

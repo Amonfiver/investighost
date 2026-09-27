@@ -242,6 +242,31 @@ endpoint/Supabase local disponible. `JSON_BATCH_INPUT = PASS`,
 `MULTI_DESTINATION_BATCH = PASS`, `PRODUCT_FLOW = PASS`,
 `FACTORY_V1_VERTICAL_SLICE = PASS` y `REAL_PILOT_READY = YES`.
 
+### 093 — autorización explícita de ejecución real y diagnóstico
+
+`NETWORK_ENABLED` y `PROVIDER_ACTIVE` no autorizan por sí mismos coste o uso
+de proveedores para un job batch. El job real requiere una confirmación humana
+adicional y específica en Electron main. Tras confirmar, main crea o reutiliza
+la capability batch ya existente exclusivamente en memoria y conserva un
+consentimiento limitado a `jobId + batchId`; ni capability, tokens, claves ni
+headers cruzan IPC. El permiso no inicia el worker: el usuario debe pulsar
+después `Reintentar` sobre el mismo job durable. Reiniciar la aplicación exige
+una nueva confirmación segura.
+
+Los fallos batch nuevos guardan `failure_diagnostic` durable y saneado con
+código, fase, operación, causa, reintentable y timestamp. El Detail de
+Producción complementa esos datos con identidades job/batch/destino/ejecución,
+modo/red, estado público de Tavily, autorización, acción sugerida y motivo de
+retry. La proyección de filas históricas sin JSON conserva compatibilidad a
+partir de `last_failure`; nunca muestra secretos, credenciales, tokens,
+headers ni respuestas crudas. Para `BATCH_PROVIDER_AUTHORIZATION_REQUIRED` la
+acción es autorizar el job/lote real antes de reintentar.
+
+`NETWORK_ENABLED_IS_NOT_JOB_AUTHORIZATION = TRUE`,
+`BATCH_JOB_HUMAN_AUTHORIZATION = REQUIRED`,
+`ACTIONABLE_TECHNICAL_DIAGNOSTICS = DONE` y
+`SECRETS_IN_RENDERER_DIAGNOSTICS = FORBIDDEN`.
+
 ## Lo construido y su estado
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |

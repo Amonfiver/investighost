@@ -115,7 +115,9 @@ import {
   createFactoryBatchPhasePort,
   SupabaseDestinationBatchRepository,
   SupabaseStructuredPackageApprovalRepository,
+  batchJobExecutionAuthorizations,
 } from '@modules/factory-batches'
+import { buildFactoryBatchTechnicalDiagnostic } from './factory-batch-diagnostics'
 import {
   getManualPersistenceStatus,
   getManualResearchRuntime,
@@ -148,6 +150,7 @@ configureDestinationBatchWorkerPhasePort(createFactoryBatchPhasePort({
   client: createLocalSupabaseClientFromEnv().client,
   providerCenter: getProviderCenterRuntime,
   isDevelopment: isDev,
+  jobAuthorizations: batchJobExecutionAuthorizations,
 }))
 
 ipcMain.handle('contributions:import-pending', async () => {
@@ -182,6 +185,41 @@ ipcMain.handle('factory-batches:retry-job', async (_event, jobId: unknown) => {
   // Same durable job, same worker: retry never reimports or creates a second destination.
   void getDestinationBatchWorkerRuntime().then(worker => worker.runJob(retried.job.id)).catch(() => undefined)
   return retried
+})
+
+ipcMain.handle('factory-batches:authorization-status', async (_event, jobId: unknown) => {
+  const parsedJobId = z.string().uuid().parse(jobId)
+  const job = await new SupabaseDestinationBatchRepository(createLocalSupabaseClientFromEnv().client).getJob(parsedJobId)
+  if (!job) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')
+  return batchJobExecutionAuthorizations.status(job)
+})
+
+// A distinct confirmation is intentional: enabling network only makes a
+// boundary available; it never authorizes cost for a particular batch job.
+ipcMain.handle('factory-batches:authorize-real-execution', async (_event, jobId: unknown) => {
+  const parsedJobId = z.string().uuid().parse(jobId)
+  const repository = new SupabaseDestinationBatchRepository(createLocalSupabaseClientFromEnv().client)
+  const job = await repository.getJob(parsedJobId)
+  if (!job) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')
+  const providers = await getProviderCenterRuntime()
+  if (!providers.snapshot().externalCallsAllowed) throw new Error('EXTERNAL_CALLS_NOT_ENABLED')
+  const options: MessageBoxOptions = {
+    type: 'warning', buttons: ['Cancelar', 'Autorizar este destino'], defaultId: 0, cancelId: 0,
+    title: 'Autorizar ejecución real',
+    message: `Autorizar la ejecución real de ${job.originalName}.`,
+    detail: 'Este permiso sólo habilita este trabajo mientras la app permanezca abierta. Puede consumir proveedores activos y generar costes. No inicia el trabajo automáticamente.',
+  }
+  const result = mainWindow ? await dialog.showMessageBox(mainWindow, options) : await dialog.showMessageBox(options)
+  if (result.response !== 1) throw new Error('BATCH_PROVIDER_AUTHORIZATION_CONFIRMATION_REQUIRED')
+  return batchJobExecutionAuthorizations.authorize(job)
+})
+
+ipcMain.handle('factory-batches:technical-diagnostics', async (_event, jobId: unknown) => {
+  const parsedJobId = z.string().uuid().parse(jobId)
+  const job = await new SupabaseDestinationBatchRepository(createLocalSupabaseClientFromEnv().client).getJob(parsedJobId)
+  if (!job) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')
+  const providerCenter = await getProviderCenterRuntime()
+  return buildFactoryBatchTechnicalDiagnostic(job, providerCenter.snapshot(), batchJobExecutionAuthorizations.status(job))
 })
 
 ipcMain.handle('factory-batches:start', async (_event, batchId: unknown) => {

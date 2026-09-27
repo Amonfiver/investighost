@@ -63,6 +63,9 @@ const electronAPI = {
   listDestinationBatches: (): Promise<DestinationBatch[]> => ipcRenderer.invoke('factory-batches:list'),
   readDestinationBatch: (batchId: string): Promise<DestinationBatchReadModel> =>
     ipcRenderer.invoke('factory-batches:read', batchId),
+  getDestinationBatchAuthorizationStatus: (jobId: string) => ipcRenderer.invoke('factory-batches:authorization-status', jobId),
+  authorizeDestinationBatchRealExecution: (jobId: string) => ipcRenderer.invoke('factory-batches:authorize-real-execution', jobId),
+  getDestinationBatchTechnicalDiagnostics: (jobId: string) => ipcRenderer.invoke('factory-batches:technical-diagnostics', jobId),
   retryDestinationBatchJob: (jobId: string) => ipcRenderer.invoke('factory-batches:retry-job', jobId),
   startDestinationBatch: (batchId: string) => ipcRenderer.invoke('factory-batches:start', batchId),
   readDestinationBatchJobReview: (jobId: string): Promise<DestinationBatchJobReviewReadModel> => ipcRenderer.invoke('factory-batches:review-read', jobId),

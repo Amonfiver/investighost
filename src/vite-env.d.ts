@@ -90,6 +90,9 @@ declare global {
       importDestinationBatchJson: (jsonText: string) => Promise<import('./shared/factory-batch-contracts').DestinationBatchImportResult>
       listDestinationBatches: () => Promise<import('./shared/factory-batch-contracts').DestinationBatch[]>
       readDestinationBatch: (batchId: string) => Promise<import('./shared/factory-batch-contracts').DestinationBatchReadModel>
+      getDestinationBatchAuthorizationStatus: (jobId: string) => Promise<{ state: 'AUTHORIZED' | 'NOT_AUTHORIZED'; authorizedAt?: string }>
+      authorizeDestinationBatchRealExecution: (jobId: string) => Promise<{ state: 'AUTHORIZED' | 'NOT_AUTHORIZED'; authorizedAt?: string }>
+      getDestinationBatchTechnicalDiagnostics: (jobId: string) => Promise<import('./main/factory-batch-diagnostics').FactoryBatchTechnicalDiagnostic>
       retryDestinationBatchJob: (jobId: string) => Promise<import('./modules/factory-batches').DestinationBatchRetryResult>
       startDestinationBatch: (batchId: string) => Promise<import('./modules/factory-batches').BatchWorkerRunResult[]>
       readDestinationBatchJobReview: (jobId: string) => Promise<import('./shared/factory-batch-contracts').DestinationBatchJobReviewReadModel>

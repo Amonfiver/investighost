@@ -283,7 +283,7 @@ export class SupabaseDestinationBatchRepository implements DestinationBatchRepos
 
   async approveReadyJob(jobId: string, now: Date): Promise<DestinationBatchJob> {
     const { data, error } = await this.client.from('editorial_destination_batch_jobs')
-      .update({ status: 'APPROVED', retryable: false, last_failure: null, updated_at: now.toISOString() })
+      .update({ status: 'APPROVED', retryable: false, last_failure: null, failure_diagnostic: null, updated_at: now.toISOString() })
       .eq('id', jobId).eq('status', 'READY_FOR_REVIEW').select().maybeSingle()
     assertNoError(error, 'APPROVE_READY_JOB')
     if (!data) throw new Error('BATCH_REVIEW_STATE_CHANGED')
@@ -311,7 +311,7 @@ function jobToRow(job: DestinationBatchJob): Row {
     normalized_identity: job.normalizedIdentity, canonical_destination_id: job.canonicalDestinationId ?? null,
     identity_state: job.identityState, reuse_policy: job.reusePolicy, existing_job_id: job.existingJobId ?? null,
     status: job.status, current_phase: job.currentPhase, completed_phases: job.completedPhases,
-    artifact_refs: job.artifactRefs, attempt_count: job.attemptCount, last_failure: job.lastFailure ?? null,
+    artifact_refs: job.artifactRefs, attempt_count: job.attemptCount, last_failure: job.lastFailure ?? null, failure_diagnostic: job.failureDiagnostic ?? null,
     retryable: job.retryable, retry_requested_at: iso(job.retryRequestedAt), actual_cost: job.actualCost,
     claimed_by: job.claimedBy ?? null, claim_token: job.claimToken ?? null, claim_expires_at: iso(job.claimExpiresAt), started_at: iso(job.startedAt),
     redo_operation_id: job.redoOperationId ?? null, redo_scope: job.redoScope ?? null, redo_guidance: job.redoGuidance ?? null, redo_reason: job.redoReason ?? null, redo_previous_artifact_refs: job.redoPreviousArtifactRefs ?? null,
@@ -346,7 +346,8 @@ function jobFromRow(row: Row): DestinationBatchJob {
     normalizedIdentity: row.normalized_identity, canonicalDestinationId: row.canonical_destination_id ?? undefined,
     identityState: row.identity_state, reusePolicy: row.reuse_policy, existingJobId: row.existing_job_id ?? undefined,
     status: row.status, currentPhase: row.current_phase, completedPhases: row.completed_phases ?? [], artifactRefs: row.artifact_refs ?? {},
-    attemptCount: Number(row.attempt_count), lastFailure: row.last_failure ?? undefined, retryable: Boolean(row.retryable),
+    attemptCount: Number(row.attempt_count), lastFailure: row.last_failure ?? undefined,
+    failureDiagnostic: failureDiagnosticFromRow(row.failure_diagnostic), retryable: Boolean(row.retryable),
     retryRequestedAt: row.retry_requested_at ? new Date(String(row.retry_requested_at)) : undefined,
     actualCost: Number(row.actual_cost), createdAt: new Date(String(row.created_at)), updatedAt: new Date(String(row.updated_at)),
     claimedBy: row.claimed_by ?? undefined, claimToken: row.claim_token ?? undefined,
@@ -356,6 +357,14 @@ function jobFromRow(row: Row): DestinationBatchJob {
     redoGuidance: row.redo_guidance ? RedoGenerationGuidanceSchema.parse(row.redo_guidance) : undefined,
     redoReason: row.redo_reason ?? undefined, redoPreviousArtifactRefs: row.redo_previous_artifact_refs ?? undefined,
   })
+}
+
+function failureDiagnosticFromRow(value: unknown): DestinationBatchJob['failureDiagnostic'] {
+  if (!isRecord(value)) return undefined
+  return {
+    ...value,
+    occurredAt: new Date(String(value.occurredAt)),
+  } as DestinationBatchJob['failureDiagnostic']
 }
 
 function issueFromRow(row: Row): DestinationBatchIssue {

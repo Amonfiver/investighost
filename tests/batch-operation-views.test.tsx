@@ -39,4 +39,13 @@ describe('Production job detail', () => {
     const html = renderToStaticMarkup(<BatchJobDetail job={read.jobs[0]!} onBack={() => undefined} onOpenReview={() => undefined} />)
     expect(html).toContain('Reintentar')
   })
+
+  it('keeps the real authorization action and structured diagnostics on the production job-detail route', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const renderer = await readFile(new URL('../src/renderer/BatchOperationViews.tsx', import.meta.url), 'utf8')
+    expect(renderer).toContain('Autorizar ejecución real')
+    expect(renderer).toContain('getDestinationBatchTechnicalDiagnostics')
+    expect(renderer).toContain('La red está separada de la autorización de coste de este trabajo.')
+    expect(renderer).toContain('TechnicalDiagnostic')
+  })
 })

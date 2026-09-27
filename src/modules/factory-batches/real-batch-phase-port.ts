@@ -31,6 +31,7 @@ import { discoveryQueryForVisualIntent } from '@modules/visual-acquisition/struc
 import type { BatchEditorialPhaseContext, BatchEditorialPhasePort, BatchEditorialPhaseResult } from './editorial-phase-port'
 import { BatchExecutionContextMapper } from './batch-execution-context'
 import { readBatchJobProviderAuthorization } from './batch-provider-authorization'
+import type { BatchJobExecutionAuthorizationRegistry } from './batch-job-execution-authorization'
 import type { RedoGenerationGuidance } from '@shared/redo-guidance-contracts'
 import { StructuredEditorialPackageV1Schema, type VisualIntent } from '@shared/structured-editorial-package-contracts'
 import { resolveStructuredVisualIntents } from '@modules/visual-acquisition/structured-visual-resolution'
@@ -46,6 +47,8 @@ export interface ProductionBatchPhasePortDependencies {
   testProviderSelection?: RealPipelineProviderSelection
   testWikimediaFetch?: WikimediaCommonsFetch
   testImageFetch?: VisualDownloadFetch
+  /** Electron main injects a per-job human-consent registry for real runs. */
+  jobAuthorizations?: BatchJobExecutionAuthorizationRegistry
 }
 
 /**
@@ -80,7 +83,7 @@ export class ProductionBatchEditorialPhasePort implements BatchEditorialPhasePor
     }
     const context = await this.contextMapper.map(input.batch, input.job)
     const authorization = readBatchJobProviderAuthorization(this.environment)
-    if (!authorization.enabled || !authorization.featureToken) {
+    if (!authorization.enabled || !authorization.featureToken || (this.dependencies.jobAuthorizations && !this.dependencies.jobAuthorizations.isAuthorized(input.job))) {
       throw new Error('BATCH_PROVIDER_AUTHORIZATION_REQUIRED: falta la capability explícita de ejecución batch')
     }
     if (input.phase === 'VISUALS') return this.visual.prepare(context.destination, input.job.id, input.job.redoGuidance, input.job.redoPreviousArtifactRefs?.VISUALS)

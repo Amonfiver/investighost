@@ -169,7 +169,7 @@ describe('simplified factory UI boundaries', () => {
     ])
     expect(operations).toContain("liveJob.status === 'FAILED' && liveJob.retryable")
     expect(operations).toContain("retrying ? 'Reintentando…' : 'Reintentar'")
-    expect(operations).toContain('disabled={retrying}')
+    expect(operations).toContain("disabled={retrying || (authorizationRequired && authorizationState !== 'AUTHORIZED')}")
     expect(operations).toContain('retryDestinationBatchJob(liveJob.id)')
     expect(operations).toContain('No se pudo reintentar.')
     expect(operations).toContain('setAwaitingRetryProgress(true)')

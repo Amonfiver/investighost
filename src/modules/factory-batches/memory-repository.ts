@@ -143,7 +143,7 @@ export class MemoryDestinationBatchRepository implements DestinationBatchReposit
     this.redoOperations.set(operationId, { jobId: job.id, scope: input.scope, guidance: input.guidance, reason: input.reason, requestedBy: input.requestedBy, requestedAt: input.now, status: 'REQUESTED', previousArtifactRefs: structuredClone(job.artifactRefs) })
     const refs = { ...job.artifactRefs }
     for (const key of invalidatedRefs(input.scope)) delete refs[key]
-    const next = DestinationBatchJobSchema.parse({ ...job, status: 'REDO_REQUIRED', currentPhase: firstPhase(input.scope), completedPhases: retainedPhases(input.scope), artifactRefs: refs, retryable: true, redoOperationId: operationId, redoScope: input.scope, redoGuidance: input.guidance, redoReason: input.reason, redoPreviousArtifactRefs: structuredClone(job.artifactRefs), lastFailure: undefined, updatedAt: input.now })
+    const next = DestinationBatchJobSchema.parse({ ...job, status: 'REDO_REQUIRED', currentPhase: firstPhase(input.scope), completedPhases: retainedPhases(input.scope), artifactRefs: refs, retryable: true, redoOperationId: operationId, redoScope: input.scope, redoGuidance: input.guidance, redoReason: input.reason, redoPreviousArtifactRefs: structuredClone(job.artifactRefs), lastFailure: undefined, failureDiagnostic: undefined, updatedAt: input.now })
     this.jobs.set(next.id, structuredClone(next))
     return structuredClone(next)
   }
@@ -157,7 +157,7 @@ export class MemoryDestinationBatchRepository implements DestinationBatchReposit
   async approveReadyJob(jobId: string, now: Date): Promise<DestinationBatchJob> {
     const job = this.jobs.get(jobId)
     if (!job || job.status !== 'READY_FOR_REVIEW') throw new Error('BATCH_REVIEW_STATE_CHANGED')
-    const next = DestinationBatchJobSchema.parse({ ...job, status: 'APPROVED', retryable: false, lastFailure: undefined, updatedAt: now })
+    const next = DestinationBatchJobSchema.parse({ ...job, status: 'APPROVED', retryable: false, lastFailure: undefined, failureDiagnostic: undefined, updatedAt: now })
     this.jobs.set(jobId, structuredClone(next))
     return structuredClone(next)
   }

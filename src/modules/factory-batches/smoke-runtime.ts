@@ -13,6 +13,7 @@ import type { ZodTypeAny } from 'zod'
 import { REAL_BATCH_EXECUTION_TOKEN_ENV } from './batch-provider-authorization'
 import type { BatchEditorialPhaseContext, BatchEditorialPhasePort } from './editorial-phase-port'
 import { ProductionBatchEditorialPhasePort } from './real-batch-phase-port'
+import type { BatchJobExecutionAuthorizationRegistry } from './batch-job-execution-authorization'
 
 /** Explicitly opt-in development harness. It is not a production capability. */
 export const FACTORY_SMOKE_MODE_ENV = 'INVESTIGHOST_FACTORY_SMOKE_MODE'
@@ -38,12 +39,14 @@ export function createFactoryBatchPhasePort(input: {
   providerCenter: () => Promise<ProviderCenterService>
   environment?: NodeJS.ProcessEnv
   isDevelopment: boolean
+  jobAuthorizations?: BatchJobExecutionAuthorizationRegistry
 }): BatchEditorialPhasePort {
   const environment = input.environment ?? process.env
   const production = new ProductionBatchEditorialPhasePort({
     client: input.client,
     providerCenter: input.providerCenter,
     environment,
+    jobAuthorizations: input.jobAuthorizations,
   })
   if (!isFactorySmokeMode(environment, input.isDevelopment)) return production
 

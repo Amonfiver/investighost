@@ -123,7 +123,7 @@ export class DestinationBatchService {
     const artifactRefs = { ...job.artifactRefs }
     if (recoverCanonicalIdentity) delete artifactRefs.IDENTITY
     const next = DestinationBatchJobSchema.parse({
-      ...job, status: 'QUEUED', lastFailure: undefined, retryable: true, artifactRefs,
+      ...job, status: 'QUEUED', lastFailure: undefined, failureDiagnostic: undefined, retryable: true, artifactRefs,
       ...(recoverCanonicalIdentity ? { currentPhase: 'IDENTITY' as const, completedPhases: job.completedPhases.filter(phase => phase !== 'IDENTITY') } : {}),
       retryRequestedAt: new Date(), updatedAt: new Date(),
     })
@@ -186,7 +186,16 @@ export function requiresCanonicalIdentityRecovery(job: DestinationBatchJob): boo
 
 export function canRetryDestinationBatchJob(job: DestinationBatchJob): boolean {
   return ['FAILED', 'REDO_REQUIRED'].includes(job.status)
-    && (job.retryable || requiresCanonicalIdentityRecovery(job))
+    && (job.retryable || requiresCanonicalIdentityRecovery(job) || requiresBatchProviderAuthorizationRecovery(job))
+}
+
+/** A real job blocked before its first provider call is safe to retry after a
+ * human grants the per-job execution consent. */
+export function requiresBatchProviderAuthorizationRecovery(job: DestinationBatchJob): boolean {
+  return job.status === 'FAILED'
+    && job.currentPhase === 'RESEARCH'
+    && Boolean(job.canonicalDestinationId)
+    && /^(?:BATCH_PROVIDER_AUTHORIZATION_REQUIRED):/.test(job.lastFailure ?? '')
 }
 
 function classifyExisting(existing: ExistingDestinationMatch): {

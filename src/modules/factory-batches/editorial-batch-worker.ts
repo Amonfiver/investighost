@@ -111,7 +111,7 @@ export class EditorialBatchWorker {
       const completedRedoOperation = job.redoOperationId
       const released = await this.repository.releaseClaim(DestinationBatchJobSchema.parse({
         ...job, status: 'READY_FOR_REVIEW', currentPhase: 'AUTO_REVIEW', retryable: false,
-        redoOperationId: undefined, redoScope: undefined, redoGuidance: undefined, redoReason: undefined, redoPreviousArtifactRefs: undefined, lastFailure: undefined, updatedAt: this.now(),
+        redoOperationId: undefined, redoScope: undefined, redoGuidance: undefined, redoReason: undefined, redoPreviousArtifactRefs: undefined, lastFailure: undefined, failureDiagnostic: undefined, updatedAt: this.now(),
       }), token)
       if (completedRedoOperation) await this.repository.completeRedo(completedRedoOperation, 'COMPLETED', this.now())
       return released
@@ -125,7 +125,11 @@ export class EditorialBatchWorker {
       const failedRedoOperation = job.redoOperationId
       const released = await this.repository.releaseClaim(DestinationBatchJobSchema.parse({
         ...job, status: 'FAILED', retryable: classified.classification === 'TRANSIENT',
-        lastFailure: `${classified.code}: ${classified.message}`.slice(0, 2000), updatedAt: this.now(),
+        lastFailure: `${classified.code}: ${classified.message}`.slice(0, 2000),
+        failureDiagnostic: {
+          code: classified.code, phase: job.currentPhase, operation: 'BATCH_EDITORIAL_PHASE',
+          cause: sanitizeFailureCause(classified.message), retryable: classified.classification === 'TRANSIENT', occurredAt: this.now(),
+        }, updatedAt: this.now(),
       }), token)
       if (failedRedoOperation) await this.repository.completeRedo(failedRedoOperation, 'FAILED', this.now())
       return released
@@ -147,6 +151,12 @@ export class EditorialBatchWorker {
   private async batchBudgetReached(batch: DestinationBatch): Promise<boolean> {
     return batch.maxCostPerBatch !== null && await this.repository.totalActualCost(batch.id) >= batch.maxCostPerBatch
   }
+}
+
+function sanitizeFailureCause(value: string): string {
+  return value
+    .replace(/(?:authorization|x-internal-editorial-secret|api[_-]?key|token)\s*[:=]\s*[^\s,;]+/gi, 'credential=[REDACTED]')
+    .slice(0, 1000)
 }
 
 class BatchBudgetStopError extends Error {

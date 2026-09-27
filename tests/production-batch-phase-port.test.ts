@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ProductionBatchEditorialPhasePort } from '@modules/factory-batches'
+import { BatchJobExecutionAuthorizationRegistry, ProductionBatchEditorialPhasePort } from '@modules/factory-batches'
 import type { DestinationBatch, DestinationBatchJob } from '@shared/factory-batch-contracts'
 
 const now = new Date('2026-09-22T10:00:00.000Z')
@@ -40,5 +40,17 @@ describe('ProductionBatchEditorialPhasePort', () => {
     const port = new ProductionBatchEditorialPhasePort({ client: geographyClient(), providerCenter, environment: {} })
     await expect(port.run({ batch, job, phase: 'RESEARCH' })).rejects.toThrow('BATCH_PROVIDER_AUTHORIZATION_REQUIRED')
     expect(providerCenter).not.toHaveBeenCalled()
+  })
+
+  it('requires per-job human authorization even with network capability, then reaches the provider boundary without a network call', async () => {
+    const environment = { INVESTIGHOST_REAL_BATCH_EXECUTION_TOKEN: 'batch_execution_token_for_tests_2026' }
+    const authorizations = new BatchJobExecutionAuthorizationRegistry(environment)
+    const providerCenter = vi.fn(async () => ({ snapshot: () => ({ externalCallsAllowed: true, providers: [] }) }))
+    const port = new ProductionBatchEditorialPhasePort({ client: geographyClient(), providerCenter, environment, jobAuthorizations: authorizations })
+    await expect(port.run({ batch, job, phase: 'RESEARCH' })).rejects.toThrow('BATCH_PROVIDER_AUTHORIZATION_REQUIRED')
+    expect(providerCenter).not.toHaveBeenCalled()
+    authorizations.authorize(job)
+    await expect(port.run({ batch, job, phase: 'RESEARCH' })).rejects.not.toThrow('BATCH_PROVIDER_AUTHORIZATION_REQUIRED')
+    expect(providerCenter).toHaveBeenCalledOnce()
   })
 })

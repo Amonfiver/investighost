@@ -68,6 +68,8 @@ describe('EditorialBatchWorker', () => {
     expect(terminal).toMatchObject({ status: 'FAILED', currentPhase: 'STUDENT', retryable: false, completedPhases: ['IDENTITY', 'RESEARCH', 'ANALYSIS'] })
     expect(reused).toMatchObject({ status: 'REUSED' })
     expect(port.calls.some(value => value.startsWith('Reutilizado:'))).toBe(false)
+    const finalSummary = await new DestinationBatchService(repository, new GeographicResolver(new MemoryGeographyCatalogRepository([]), 'fixture-v1')).read(batch.id)
+    expect(finalSummary).toMatchObject({ countsByStatus: { READY_FOR_REVIEW: 1, FAILED: 2, REUSED: 1 } })
   })
 
   it('retries the same durable failed job, preserves its history, and does not duplicate completed research or analysis', async () => {

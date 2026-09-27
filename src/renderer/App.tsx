@@ -314,7 +314,7 @@ export function App(): JSX.Element {
               onNext={() => { void libraryNavigator.next() }}
             />
           )}
-          {view === 'new' && status?.connected && <NewDestinationResearch onCreated={() => go('batches')} />}
+          {view === 'new' && status?.connected && <NewDestinationResearch onCreated={batchId => { setBatchDetailId(batchId); go('batch-detail') }} />}
           {view === 'detail' && (
             selected
               ? <ResearchWorkspace result={selected} versions={versions} busy={busy} actorId={actorId} applyResult={applyResult} onBack={() => go('library')} />

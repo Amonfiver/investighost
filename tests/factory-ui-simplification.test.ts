@@ -121,6 +121,24 @@ describe('simplified factory UI boundaries', () => {
     expect(app).toContain('El destino volverá a revisión cuando termine.')
   })
 
+  it('keeps batch creation in Nueva investigación and Production focused on durable work', async () => {
+    const [newResearch, production, app] = await Promise.all([
+      readFile(new URL('../src/renderer/NewDestinationResearch.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('../src/renderer/DestinationBatchPanel.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
+    ])
+    expect(newResearch).toContain('Destino individual')
+    expect(newResearch).toContain('>Lote<')
+    expect(newResearch).toContain('Archivo de lote (.json)')
+    expect(newResearch).toContain('importDestinationBatchJson')
+    expect(newResearch).toContain('startDestinationBatch(imported.batch.id)')
+    expect(production).not.toContain('importDestinationBatchJson')
+    expect(production).not.toContain('Importar lote JSON')
+    expect(production).toContain('Consulta, reintenta y revisa los lotes ya creados.')
+    expect(production).toContain('Lotes DURABLES'.toUpperCase())
+    expect(app).toContain("setBatchDetailId(batchId); go('batch-detail')")
+  })
+
   it('refreshes only active jobs, presents live redo activity and locks incompatible actions', async () => {
     expect(BATCH_LIVE_REFRESH_INTERVAL_MS).toBe(1_500)
     expect(isActiveBatchJob({ status: 'REDO_REQUIRED' } as never)).toBe(true)

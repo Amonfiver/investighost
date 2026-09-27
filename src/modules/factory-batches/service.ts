@@ -96,7 +96,10 @@ export class DestinationBatchService {
   async read(batchId: string): Promise<DestinationBatchReadModel> {
     const batch = await this.repository.getBatch(batchId)
     if (!batch) throw new DestinationBatchImportError('BATCH_NOT_FOUND', 'El lote no existe')
-    const [jobs, issues] = await Promise.all([this.repository.listJobs(batchId), this.repository.listIssues(batchId)])
+    const [storedJobs, issues] = await Promise.all([this.repository.listJobs(batchId), this.repository.listIssues(batchId)])
+    // A job created before identity materialization was fixed may still have a
+    // terminal flag. Its exact known failure is now recoverable from IDENTITY.
+    const jobs = storedJobs.map(job => canRetryDestinationBatchJob(job) && !job.retryable ? { ...job, retryable: true } : job)
     const countsByStatus = Object.fromEntries(['QUEUED', 'PROCESSING', 'READY_FOR_REVIEW', 'APPROVED', 'REDO_REQUIRED', 'DELIVERED', 'FAILED', 'BLOCKED_AMBIGUOUS', 'REUSED']
       .map(status => [status, jobs.filter(job => job.status === status).length]))
     return DestinationBatchReadModelSchema.parse({ batch, jobs, issues, countsByStatus })
@@ -113,11 +116,15 @@ export class DestinationBatchService {
   async retry(jobId: string): Promise<DestinationBatchRetryResult> {
     const job = await this.repository.getJob(jobId)
     if (!job) throw new DestinationBatchImportError('JOB_NOT_FOUND', 'El trabajo no existe')
-    if (!job.retryable || !['FAILED', 'REDO_REQUIRED'].includes(job.status)) {
+    if (!canRetryDestinationBatchJob(job)) {
       throw new DestinationBatchImportError('RETRY_NOT_ALLOWED', 'El trabajo no admite reintento en su estado actual')
     }
+    const recoverCanonicalIdentity = requiresCanonicalIdentityRecovery(job)
+    const artifactRefs = { ...job.artifactRefs }
+    if (recoverCanonicalIdentity) delete artifactRefs.IDENTITY
     const next = DestinationBatchJobSchema.parse({
-      ...job, status: 'QUEUED', lastFailure: undefined, retryable: true,
+      ...job, status: 'QUEUED', lastFailure: undefined, retryable: true, artifactRefs,
+      ...(recoverCanonicalIdentity ? { currentPhase: 'IDENTITY' as const, completedPhases: job.completedPhases.filter(phase => phase !== 'IDENTITY') } : {}),
       retryRequestedAt: new Date(), updatedAt: new Date(),
     })
     return { job: await this.repository.updateJob(next), resumedPhase: next.currentPhase }
@@ -164,6 +171,20 @@ export class DestinationBatchService {
       summary: summarize(batch.totalItems, jobs, issues),
     })
   }
+}
+
+/** Only this pre-fix identity failure is recoverable without changing a
+ * user's scope. Other terminal errors remain non-retryable. */
+export function requiresCanonicalIdentityRecovery(job: DestinationBatchJob): boolean {
+  return job.status === 'FAILED'
+    && !job.canonicalDestinationId
+    && ['IDENTITY', 'RESEARCH'].includes(job.currentPhase)
+    && /^CANONICAL_DESTINATION_REQUIRED:/.test(job.lastFailure ?? '')
+}
+
+export function canRetryDestinationBatchJob(job: DestinationBatchJob): boolean {
+  return ['FAILED', 'REDO_REQUIRED'].includes(job.status)
+    && (job.retryable || requiresCanonicalIdentityRecovery(job))
 }
 
 function classifyExisting(existing: ExistingDestinationMatch): {

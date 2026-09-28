@@ -2,6 +2,18 @@ import type { DestinationBatchJob } from '@shared/factory-batch-contracts'
 import type { ProviderCenterSnapshot } from '@shared/provider-center-contracts'
 import type { BatchJobExecutionAuthorizationStatus } from '@modules/factory-batches'
 
+export type FactoryBatchUsageEvidence = {
+  evidenceType: string
+  provider: string
+  model: string
+  requestCount: number
+  inputCacheMissTokens: number
+  outputTokens: number
+  providerCost: number
+  currency: string
+  limitation: string
+}
+
 export type FactoryBatchReservationDiagnostic = {
   reservationId: string
   reservationState: string
@@ -10,6 +22,12 @@ export type FactoryBatchReservationDiagnostic = {
   expectedReservationState: string | null
   requestedTransition: string | null
   ledgerState: string
+  ambiguityResolution: {
+    decision: 'no_consumption' | 'consumption_confirmed' | 'indeterminate'
+    responseRecovered: boolean
+    resolvedAt: string | null
+    evidence: FactoryBatchUsageEvidence | null
+  } | null
 }
 
 export type FactoryBatchTechnicalDiagnostic = {

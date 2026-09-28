@@ -49,5 +49,8 @@ describe('Production job detail', () => {
     expect(renderer).toContain('TechnicalDiagnostic')
     expect(renderer).toContain('Estado reserva')
     expect(renderer).toContain('Transición solicitada')
+    expect(renderer).toContain('Resolver resultado ambiguo')
+    expect(renderer).toContain('Confirmar resolución humana')
+    expect(renderer).toContain("retrying ? 'Reintentando…' : 'Reintentar'")
   })
 })

@@ -66,6 +66,7 @@ const electronAPI = {
   getDestinationBatchAuthorizationStatus: (jobId: string) => ipcRenderer.invoke('factory-batches:authorization-status', jobId),
   authorizeDestinationBatchRealExecution: (jobId: string) => ipcRenderer.invoke('factory-batches:authorize-real-execution', jobId),
   getDestinationBatchTechnicalDiagnostics: (jobId: string) => ipcRenderer.invoke('factory-batches:technical-diagnostics', jobId),
+  resolveDestinationBatchAmbiguousCall: (input: unknown) => ipcRenderer.invoke('factory-batches:resolve-ambiguous-call', input),
   retryDestinationBatchJob: (jobId: string) => ipcRenderer.invoke('factory-batches:retry-job', jobId),
   startDestinationBatch: (batchId: string) => ipcRenderer.invoke('factory-batches:start', batchId),
   readDestinationBatchJobReview: (jobId: string): Promise<DestinationBatchJobReviewReadModel> => ipcRenderer.invoke('factory-batches:review-read', jobId),

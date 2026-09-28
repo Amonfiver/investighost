@@ -288,6 +288,27 @@ RPC de reserva conservan una causa saneada para diagnósticos futuros.
 `GENERIC_UNKNOWN_NO_AUTOMATIC_RETRY = TRUE` y
 `BATCH_RESERVATION_DIAGNOSTICS = DONE`.
 
+### 095 — resolución humana de consumo externo ambiguo en batch
+
+La misma auditoría append-only de llamadas ambiguas admite ahora owner
+`BATCH_JOB`. Una decisión humana de `consumption_confirmed` requiere evidence
+`PROVIDER_USAGE_EXPORT`, conserva la limitación de correlación agregada y marca
+explícitamente `response_recovered = false` cuando el output editorial no se
+puede recuperar. El evidence de proveedor puede conservar coste y tokens USD;
+no se inventa FX ni se registra como gasto EUR. La reserva EUR permanece como
+envolvente conservadora, la llamada original se cierra como `failed` y el retry
+crea una reserva nueva.
+
+`no_consumption` libera la reserva sin gasto; `indeterminate` mantiene el gate
+fail-closed. Para un checkpoint con dossier durable, el workflow gobernado
+reanuda el análisis ausente y no repite Tavily. La resolución requiere un
+diálogo de confirmación de Electron main y nunca inicia un provider.
+
+`BATCH_AMBIGUOUS_HUMAN_RESOLUTION = DONE`,
+`EXTERNAL_USAGE_EVIDENCE_APPEND_ONLY = DONE`,
+`RESPONSE_LOSS_NOT_RECONSTRUCTED = TRUE` y
+`BATCH_RESEARCH_RESUME_REUSES_CHECKPOINT = TRUE`.
+
 ## Lo construido y su estado
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |

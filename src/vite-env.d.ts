@@ -93,6 +93,7 @@ declare global {
       getDestinationBatchAuthorizationStatus: (jobId: string) => Promise<{ state: 'AUTHORIZED' | 'NOT_AUTHORIZED'; authorizedAt?: string }>
       authorizeDestinationBatchRealExecution: (jobId: string) => Promise<{ state: 'AUTHORIZED' | 'NOT_AUTHORIZED'; authorizedAt?: string }>
       getDestinationBatchTechnicalDiagnostics: (jobId: string) => Promise<import('./main/factory-batch-diagnostics').FactoryBatchTechnicalDiagnostic>
+      resolveDestinationBatchAmbiguousCall: (input: import('./shared/factory-batch-contracts').BatchAmbiguousCallResolution) => Promise<import('./modules/factory-batches').BatchAmbiguousCallResolutionResult>
       retryDestinationBatchJob: (jobId: string) => Promise<import('./modules/factory-batches').DestinationBatchRetryResult>
       startDestinationBatch: (batchId: string) => Promise<import('./modules/factory-batches').BatchWorkerRunResult[]>
       readDestinationBatchJobReview: (jobId: string) => Promise<import('./shared/factory-batch-contracts').DestinationBatchJobReviewReadModel>

@@ -83,6 +83,37 @@ export const DestinationBatchFailureDiagnosticSchema = z.object({
   occurredAt: TimestampSchema,
 }).strict()
 
+const ProviderUsageEvidenceSchema = z.object({
+  evidenceType: z.literal('PROVIDER_USAGE_EXPORT'),
+  provider: z.literal('deepseek'),
+  model: NonEmptyText.max(120),
+  windowStart: z.string().datetime({ offset: true }),
+  windowEnd: z.string().datetime({ offset: true }),
+  apiKeyName: z.string().trim().min(1).max(120).refine(value => !/(sk-|api[_ -]?key|authorization|bearer)/i.test(value)),
+  requestCount: z.number().int().positive(),
+  inputCacheMissTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  providerCost: z.number().nonnegative(),
+  currency: z.literal('USD'),
+  requestIdPresentInExport: z.literal(false),
+  limitation: NonEmptyText.max(1000),
+}).strict()
+
+export const BatchAmbiguousCallResolutionSchema = z.object({
+  jobId: IdSchema,
+  decision: z.enum(['NO_CONSUMPTION', 'CONSUMPTION_CONFIRMED', 'INDETERMINATE']),
+  responseRecovered: z.boolean(),
+  evidence: ProviderUsageEvidenceSchema.optional(),
+  note: z.string().trim().min(1).max(1000).optional(),
+}).superRefine((value, context) => {
+  if (value.decision === 'CONSUMPTION_CONFIRMED' && (!value.evidence || value.responseRecovered)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['evidence'], message: 'El consumo confirmado requiere evidence y respuesta no recuperada.' })
+  }
+  if (value.decision !== 'CONSUMPTION_CONFIRMED' && value.evidence) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['evidence'], message: 'La evidencia de uso sólo corresponde a consumo confirmado.' })
+  }
+})
+
 export const DestinationBatchSchema = z.object({
   id: IdSchema,
   name: NonEmptyText.max(200),
@@ -236,6 +267,7 @@ export type DestinationBatch = z.infer<typeof DestinationBatchSchema>
 export type DestinationBatchJob = z.infer<typeof DestinationBatchJobSchema>
 export type DestinationBatchIssue = z.infer<typeof DestinationBatchIssueSchema>
 export type DestinationBatchFailureDiagnostic = z.infer<typeof DestinationBatchFailureDiagnosticSchema>
+export type BatchAmbiguousCallResolution = z.infer<typeof BatchAmbiguousCallResolutionSchema>
 export type DestinationBatchReadModel = z.infer<typeof DestinationBatchReadModelSchema>
 export type DestinationBatchJobReviewReadModel = z.infer<typeof DestinationBatchJobReviewReadModelSchema>
 export type DestinationBatchImportResult = z.infer<typeof DestinationBatchImportResultSchema>

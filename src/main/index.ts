@@ -116,7 +116,9 @@ import {
   SupabaseDestinationBatchRepository,
   SupabaseStructuredPackageApprovalRepository,
   batchJobExecutionAuthorizations,
+  BatchAmbiguousCallResolutionService,
 } from '@modules/factory-batches'
+import { BatchAmbiguousCallResolutionSchema } from '@shared/factory-batch-contracts'
 import { buildFactoryBatchTechnicalDiagnostic, type FactoryBatchReservationDiagnostic } from './factory-batch-diagnostics'
 import {
   getManualPersistenceStatus,
@@ -222,6 +224,26 @@ ipcMain.handle('factory-batches:technical-diagnostics', async (_event, jobId: un
   const providerCenter = await getProviderCenterRuntime()
   const reservation = await readBatchReservationDiagnostic(client, job.id, job.lastFailure)
   return buildFactoryBatchTechnicalDiagnostic(job, providerCenter.snapshot(), batchJobExecutionAuthorizations.status(job), reservation)
+})
+
+ipcMain.handle('factory-batches:resolve-ambiguous-call', async (_event, candidate: unknown) => {
+  const input = BatchAmbiguousCallResolutionSchema.parse(candidate)
+  const client = createLocalSupabaseClientFromEnv().client
+  const job = await new SupabaseDestinationBatchRepository(client).getJob(input.jobId)
+  if (!job) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')
+  const selected = input.decision === 'CONSUMPTION_CONFIRMED'
+    ? 'Confirmado consumido; la respuesta editorial no se recuperará.'
+    : input.decision === 'NO_CONSUMPTION'
+      ? 'Confirmado no consumido.'
+      : 'Seguirá indeterminado y bloqueado.'
+  const options: MessageBoxOptions = {
+    type: 'warning', buttons: ['Cancelar', 'Guardar resolución'], defaultId: 0, cancelId: 0,
+    title: 'Resolver resultado ambiguo', message: `Resolver la llamada ambigua de ${job.originalName}.`,
+    detail: `${selected} Esta decisión es durable, no inicia ningún provider y no puede deshacerse.`,
+  }
+  const result = mainWindow ? await dialog.showMessageBox(mainWindow, options) : await dialog.showMessageBox(options)
+  if (result.response !== 1) throw new Error('AMBIGUITY_RESOLUTION_CONFIRMATION_REQUIRED')
+  return new BatchAmbiguousCallResolutionService(client, MANUAL_LOCAL_ACTOR_ID).resolve(input)
 })
 
 ipcMain.handle('factory-batches:start', async (_event, batchId: unknown) => {
@@ -1252,6 +1274,14 @@ async function readBatchReservationDiagnostic(
     .maybeSingle()
   if (reservationError || !reservation) return null
 
+  const { data: ambiguity } = await client.from('real_editorial_ambiguous_calls')
+    .select('resolved_at,terminal_decision,terminal_resolution_id')
+    .eq('reservation_id', reservation.id).maybeSingle()
+  const { data: resolution } = ambiguity?.terminal_resolution_id
+    ? await client.from('real_editorial_call_human_resolutions')
+      .select('decision,response_recovered,decided_at,external_usage_evidence')
+      .eq('id', ambiguity.terminal_resolution_id).maybeSingle()
+    : { data: null }
   const state = String(reservation.state)
   const invalidSettlement = /^INVALID_RESERVATION_STATE:/.test(failure ?? '')
   return {
@@ -1262,6 +1292,28 @@ async function readBatchReservationDiagnostic(
     expectedReservationState: invalidSettlement ? 'reserved | started' : null,
     requestedTransition: invalidSettlement ? 'started → unknown' : null,
     ledgerState: state === 'unknown' ? 'AMBIGUOUS_PENDING' : state === 'started' ? 'RESERVED' : state.toUpperCase(),
+    ambiguityResolution: resolution && isResolutionDecision(resolution.decision)
+      ? { decision: resolution.decision, responseRecovered: Boolean(resolution.response_recovered), resolvedAt: ambiguity?.resolved_at ? String(ambiguity.resolved_at) : null, evidence: usageEvidenceFromRow(resolution.external_usage_evidence) }
+      : null,
+  }
+}
+
+function isResolutionDecision(value: unknown): value is 'no_consumption' | 'consumption_confirmed' | 'indeterminate' {
+  return value === 'no_consumption' || value === 'consumption_confirmed' || value === 'indeterminate'
+}
+
+function usageEvidenceFromRow(value: unknown): import('./factory-batch-diagnostics').FactoryBatchUsageEvidence | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const evidence = value as Record<string, unknown>
+  if (typeof evidence.evidenceType !== 'string' || typeof evidence.provider !== 'string' || typeof evidence.model !== 'string'
+    || typeof evidence.requestCount !== 'number' || typeof evidence.inputCacheMissTokens !== 'number'
+    || typeof evidence.outputTokens !== 'number' || typeof evidence.providerCost !== 'number'
+    || typeof evidence.currency !== 'string' || typeof evidence.limitation !== 'string') return null
+  return {
+    evidenceType: evidence.evidenceType, provider: evidence.provider, model: evidence.model,
+    requestCount: evidence.requestCount, inputCacheMissTokens: evidence.inputCacheMissTokens,
+    outputTokens: evidence.outputTokens, providerCost: evidence.providerCost,
+    currency: evidence.currency, limitation: evidence.limitation,
   }
 }
 

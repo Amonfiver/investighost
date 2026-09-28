@@ -31,10 +31,10 @@ describe('conciliación de reservas genéricas batch', () => {
     let sequence = 0
     const repository = new MemoryCostLedgerRepository(
       { task: 0.2, batch: 0.5, daily: 1, currency: 'EUR' },
-      { now: () => new Date('2026-09-27T18:38:04.750Z'), id: () => `reservation-${++sequence}` },
+      { now: () => new Date('2027-09-27T18:38:04.750Z'), id: () => `reservation-${++sequence}` },
     )
     const ledger = new CostLedgerService(repository)
-    await ledger.acquireExecution(input.executionId, 'lease-segovia', new Date('2026-09-27T19:38:04.750Z'))
+    await ledger.acquireExecution(input.executionId, 'lease-segovia', new Date('2027-09-27T19:38:04.750Z'))
     const reserved = await ledger.reserve(input)
     await ledger.start(reserved.id)
     const reconciled = await ledger.settle({
@@ -55,10 +55,10 @@ describe('conciliación de reservas genéricas batch', () => {
     let sequence = 0
     const repository = new MemoryCostLedgerRepository(
       { task: 0.2, batch: 0.5, daily: 1, currency: 'EUR' },
-      { now: () => new Date('2026-09-27T18:38:04.750Z'), id: () => `idempotent-${++sequence}` },
+      { now: () => new Date('2027-09-27T18:38:04.750Z'), id: () => `idempotent-${++sequence}` },
     )
     const ledger = new CostLedgerService(repository)
-    await ledger.acquireExecution(input.executionId, 'lease-segovia', new Date('2026-09-27T19:38:04.750Z'))
+    await ledger.acquireExecution(input.executionId, 'lease-segovia', new Date('2027-09-27T19:38:04.750Z'))
     const first = await ledger.reserve(input)
     const replay = await ledger.reserve(input)
     expect(replay.id).toBe(first.id)

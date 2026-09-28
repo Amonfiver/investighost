@@ -68,24 +68,11 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
       setDiagnostic(current => current ? { ...current, authorizationState: result.state } : current)
     } catch (reason) { setAuthorizationError(reason instanceof Error ? reason.message : String(reason)) } finally { setAuthorizing(false) }
   }
-  const resolveAmbiguity = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); setResolving(true); setResolutionError(null)
-    const values = new FormData(event.currentTarget)
-    const decision = String(values.get('decision')) as BatchAmbiguousCallResolution['decision']
-    const base = { jobId: liveJob.id, decision, responseRecovered: false }
-    const input: BatchAmbiguousCallResolution = decision === 'CONSUMPTION_CONFIRMED'
-      ? { ...base, decision, evidence: {
-        evidenceType: 'PROVIDER_USAGE_EXPORT', provider: 'deepseek', model: String(values.get('model')),
-        windowStart: String(values.get('windowStart')), windowEnd: String(values.get('windowEnd')),
-        apiKeyName: String(values.get('apiKeyName')), requestCount: Number(values.get('requestCount')),
-        inputCacheMissTokens: Number(values.get('inputCacheMissTokens')), outputTokens: Number(values.get('outputTokens')),
-        providerCost: Number(values.get('providerCost')), currency: 'USD', requestIdPresentInExport: false,
-        limitation: String(values.get('limitation')),
-      }, note: String(values.get('note') || '') || undefined }
-      : { ...base, decision, note: String(values.get('note') || '') || undefined }
+  const resolveAmbiguity = async (input: BatchAmbiguousCallResolution) => {
+    setResolving(true); setResolutionError(null)
     try {
       const result = await window.electronAPI.resolveDestinationBatchAmbiguousCall(input)
-      setLiveJob(result.job); setSavedResolution(decision); setShowResolution(false)
+      setLiveJob(result.job); setSavedResolution(input.decision); setShowResolution(false)
       setDiagnostic(await window.electronAPI.getDestinationBatchTechnicalDiagnostics(liveJob.id))
     } catch (reason) { setResolutionError(reason instanceof Error ? reason.message : String(reason)) } finally { setResolving(false) }
   }
@@ -98,7 +85,77 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
       : savedResolution === 'INDETERMINATE'
         ? 'La llamada sigue indeterminada y queda bloqueada para evitar un posible doble consumo.'
         : null
-  return <section className="batch-import-layout destination-job-detail"><button className="back-link" onClick={onBack}>← Volver al lote</button><div className="section-heading"><div><h2>{liveJob.originalName}</h2><p>{liveJob.country}{liveJob.region ? ` · ${liveJob.region}` : ''}</p></div><span className={`state-badge state-${liveJob.status.toLowerCase()}`}>{jobStatusLabel(liveJob.status, liveJob.redoScope)}</span></div>{redoActive && <LiveActivity scope={liveJob.redoScope} />}<div className="metric-grid compact destination-job-metrics"><Metric label="Fase" value={phase} /><Metric label="Coste" value={formatCost(liveJob.actualCost)} /><Metric label="Intentos" value={liveJob.attemptCount} /></div>{retryError && <div className="alert error"><strong>No se pudo reintentar.</strong><span>{retryError}</span></div>}{authorizationError && <div className="alert error"><strong>No se pudo autorizar.</strong><span>{authorizationError}</span></div>}{resolutionError && <div className="alert error"><strong>No se pudo guardar la resolución.</strong><span>{resolutionError}</span></div>}{savedResolutionMessage && <div className="alert success">{savedResolutionMessage}</div>}{liveJob.lastFailure && <div className="alert warning"><strong>{userFacingJobFailure(liveJob.lastFailure, liveJob.redoScope)}</strong><details><summary>Detalles técnicos</summary>{diagnostic ? <TechnicalDiagnostic details={diagnostic} /> : <span>{technicalJobFailureDetail(liveJob.lastFailure)}</span>}</details></div>}{ambiguous && !showResolution && <div className="job-review-action"><p className="muted">La llamada tiene resultado remoto ambiguo y permanece bloqueada hasta una decisión humana.</p><button className="button secondary" onClick={() => setShowResolution(true)}>Resolver resultado ambiguo</button></div>}{showResolution && <form className="job-review-action" onSubmit={resolveAmbiguity}><label>Resolución<select name="decision" defaultValue="CONSUMPTION_CONFIRMED"><option value="NO_CONSUMPTION">Confirmado no consumido</option><option value="CONSUMPTION_CONFIRMED">Confirmado consumido</option><option value="INDETERMINATE">Sigue indeterminado</option></select></label><label>Modelo<input name="model" placeholder="deepseek-flash" required /></label><label>Inicio ventana<input name="windowStart" placeholder="2026-09-27T20:00:00+02:00" required /></label><label>Fin ventana<input name="windowEnd" placeholder="2026-09-27T21:00:00+02:00" required /></label><label>Nombre público de API key<input name="apiKeyName" placeholder="investighost" required /></label><label>Requests<input name="requestCount" type="number" min="1" placeholder="1" required /></label><label>Tokens input miss<input name="inputCacheMissTokens" type="number" min="0" placeholder="40341" required /></label><label>Tokens output<input name="outputTokens" type="number" min="0" placeholder="8036" required /></label><label>Coste proveedor USD<input name="providerCost" type="number" min="0" step="0.00000001" placeholder="0.01087275" required /></label><label>Limitación<textarea name="limitation" placeholder="Usage export aggregated hourly; request id not present. Same API key/window contained exactly one request." required /></label><label>Nota opcional<input name="note" /></label><p className="muted">No se guarda una clave secreta ni se reconstruye la respuesta editorial perdida.</p><button className="button primary" disabled={resolving}>{resolving ? 'Guardando…' : 'Confirmar resolución humana'}</button></form>}{authorizationRequired && authorizationState !== 'AUTHORIZED' && <div className="job-review-action"><p className="muted">La red está separada de la autorización de coste de este trabajo.</p><button className="button secondary" disabled={authorizing} onClick={() => { void authorize() }}>{authorizing ? 'Solicitando autorización…' : 'Autorizar ejecución real'}</button></div>}{liveJob.status === 'FAILED' && liveJob.retryable && <div className="job-review-action"><button className="button primary" disabled={retrying || (authorizationRequired && authorizationState !== 'AUTHORIZED')} onClick={() => { void retry() }}>{retrying ? 'Reintentando…' : 'Reintentar'}</button></div>}{liveJob.status === 'READY_FOR_REVIEW' && <div className="job-review-action"><button className="button primary" onClick={onOpenReview}>Abrir revisión</button></div>}</section>
+  return <section className="batch-import-layout destination-job-detail">
+    <button className="back-link" onClick={onBack}>← Volver al lote</button>
+    <div className="section-heading"><div><h2>{liveJob.originalName}</h2><p>{liveJob.country}{liveJob.region ? ` · ${liveJob.region}` : ''}</p></div><span className={`state-badge state-${liveJob.status.toLowerCase()}`}>{jobStatusLabel(liveJob.status, liveJob.redoScope)}</span></div>
+    {redoActive && <LiveActivity scope={liveJob.redoScope} />}
+    <div className="metric-grid compact destination-job-metrics"><Metric label="Fase" value={phase} /><Metric label="Coste" value={formatCost(liveJob.actualCost)} /><Metric label="Intentos" value={liveJob.attemptCount} /></div>
+    {retryError && <div className="alert error"><strong>No se pudo reintentar.</strong><span>{retryError}</span></div>}
+    {authorizationError && <div className="alert error"><strong>No se pudo autorizar.</strong><span>{authorizationError}</span></div>}
+    {resolutionError && <div className="alert error"><strong>No se pudo guardar la resolución.</strong><span>{resolutionError}</span></div>}
+    {savedResolutionMessage && <div className="alert success">{savedResolutionMessage}</div>}
+    {liveJob.lastFailure && <div className="alert warning"><strong>{userFacingJobFailure(liveJob.lastFailure, liveJob.redoScope)}</strong><details><summary>Detalles técnicos</summary>{diagnostic ? <TechnicalDiagnostic details={diagnostic} /> : <span>{technicalJobFailureDetail(liveJob.lastFailure)}</span>}</details></div>}
+    {ambiguous && !showResolution && <div className="job-review-action"><p className="muted">La llamada tiene resultado remoto ambiguo y permanece bloqueada hasta una decisión humana.</p><button className="button secondary" onClick={() => setShowResolution(true)}>Resolver resultado ambiguo</button></div>}
+    {showResolution && <AmbiguousCallResolutionForm job={liveJob} saving={resolving} onCancel={() => { setShowResolution(false); setResolutionError(null) }} onConfirm={resolveAmbiguity} />}
+    {authorizationRequired && authorizationState !== 'AUTHORIZED' && <div className="job-review-action"><p className="muted">La red está separada de la autorización de coste de este trabajo.</p><button className="button secondary" disabled={authorizing} onClick={() => { void authorize() }}>{authorizing ? 'Solicitando autorización…' : 'Autorizar ejecución real'}</button></div>}
+    {liveJob.status === 'FAILED' && liveJob.retryable && <div className="job-review-action"><button className="button primary" disabled={retrying || (authorizationRequired && authorizationState !== 'AUTHORIZED')} onClick={() => { void retry() }}>{retrying ? 'Reintentando…' : 'Reintentar'}</button></div>}
+    {liveJob.status === 'READY_FOR_REVIEW' && <div className="job-review-action"><button className="button primary" onClick={onOpenReview}>Abrir revisión</button></div>}
+  </section>
+}
+
+type AmbiguousUsageDraft = {
+  decision: BatchAmbiguousCallResolution['decision']; model: string; windowStart: string; windowEnd: string; apiKeyName: string
+  requestCount: string; inputCacheMissTokens: string; outputTokens: string; providerCost: string; limitation: string; note: string; locked: boolean
+}
+
+const SEGOVIA_AMBIGUOUS_USAGE_JOB_ID = '2efade2d-b011-4cc2-a51d-ce2a095036c1'
+
+function createAmbiguousUsageDraft(job: Pick<DestinationBatchJob, 'id'>): AmbiguousUsageDraft {
+  if (job.id === SEGOVIA_AMBIGUOUS_USAGE_JOB_ID) return {
+    decision: 'CONSUMPTION_CONFIRMED', model: 'deepseek-flash', windowStart: '2026-09-27T20:00:00+02:00', windowEnd: '2026-09-27T21:00:00+02:00',
+    apiKeyName: 'investighost', requestCount: '1', inputCacheMissTokens: '40341', outputTokens: '8036', providerCost: '0.01087275',
+    limitation: 'Usage export aggregated hourly; request ID unavailable.', note: '', locked: true,
+  }
+  return { decision: 'CONSUMPTION_CONFIRMED', model: '', windowStart: '', windowEnd: '', apiKeyName: '', requestCount: '', inputCacheMissTokens: '', outputTokens: '', providerCost: '', limitation: '', note: '', locked: false }
+}
+
+function ambiguousUsageDraftIsValid(draft: AmbiguousUsageDraft): boolean {
+  if (draft.decision !== 'CONSUMPTION_CONFIRMED') return true
+  const start = Date.parse(draft.windowStart), end = Date.parse(draft.windowEnd)
+  const integers = [draft.requestCount, draft.inputCacheMissTokens, draft.outputTokens].map(Number)
+  const cost = Number(draft.providerCost)
+  return Boolean(draft.model.trim() && draft.apiKeyName.trim() && draft.limitation.trim())
+    && Number.isFinite(start) && Number.isFinite(end) && start < end
+    && Number.isInteger(integers[0]) && integers[0] >= 1 && integers.slice(1).every(value => Number.isInteger(value) && value >= 0)
+    && Number.isFinite(cost) && cost >= 0
+}
+
+export function AmbiguousCallResolutionForm({ job, saving, onCancel, onConfirm }: {
+  job: DestinationBatchJob; saving: boolean; onCancel: () => void; onConfirm: (input: BatchAmbiguousCallResolution) => void
+}) {
+  const [draft, setDraft] = useState(() => createAmbiguousUsageDraft(job))
+  const valid = ambiguousUsageDraftIsValid(draft)
+  const update = (key: keyof AmbiguousUsageDraft, value: string) => setDraft(current => ({ ...current, [key]: value }))
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!valid) return
+    const base = { jobId: job.id, decision: draft.decision, responseRecovered: false }
+    const input: BatchAmbiguousCallResolution = draft.decision === 'CONSUMPTION_CONFIRMED'
+      ? { ...base, evidence: { evidenceType: 'PROVIDER_USAGE_EXPORT', provider: 'deepseek', model: draft.model.trim(), windowStart: draft.windowStart, windowEnd: draft.windowEnd, apiKeyName: draft.apiKeyName.trim(), requestCount: Number(draft.requestCount), inputCacheMissTokens: Number(draft.inputCacheMissTokens), outputTokens: Number(draft.outputTokens), providerCost: Number(draft.providerCost), currency: 'USD', requestIdPresentInExport: false, limitation: draft.limitation.trim() }, note: draft.note.trim() || undefined }
+      : { ...base, note: draft.note.trim() || undefined }
+    onConfirm(input)
+  }
+  const evidenceVisible = draft.decision === 'CONSUMPTION_CONFIRMED'
+  return <form className="ambiguous-resolution-form" onSubmit={submit} noValidate>
+    <header><span className="card-kicker">RESOLUCIÓN HUMANA</span><h3>Resolver resultado ambiguo</h3><p>La decisión no inicia proveedores ni reconstruye una respuesta perdida.</p></header>
+    <fieldset><legend>Resolución</legend><label>Resultado<select value={draft.decision} disabled={saving} onChange={event => update('decision', event.target.value)}><option value="NO_CONSUMPTION">Confirmado no consumido</option><option value="CONSUMPTION_CONFIRMED">Confirmado consumido</option><option value="INDETERMINATE">Sigue indeterminado</option></select></label><label>Respuesta recuperada<input value="No" readOnly aria-readonly="true" /></label></fieldset>
+    {evidenceVisible && <><fieldset><legend>Evidencia de provider</legend><div className="ambiguous-resolution-fields"><label>Provider<input value="DeepSeek" readOnly aria-readonly="true" /></label><label>Modelo<input value={draft.model} readOnly={draft.locked} disabled={saving} onChange={event => update('model', event.target.value)} /></label><label>Inicio ventana<input value={draft.windowStart} readOnly={draft.locked} disabled={saving} onChange={event => update('windowStart', event.target.value)} /></label><label>Fin ventana<input value={draft.windowEnd} readOnly={draft.locked} disabled={saving} onChange={event => update('windowEnd', event.target.value)} /></label><label>Nombre público API key<input value={draft.apiKeyName} readOnly={draft.locked} disabled={saving} onChange={event => update('apiKeyName', event.target.value)} /></label><label>Moneda<input value="USD" readOnly aria-readonly="true" /></label></div></fieldset>
+      <fieldset><legend>Tokens y coste</legend><div className="ambiguous-resolution-fields"><label>Requests<input value={draft.requestCount} inputMode="numeric" readOnly={draft.locked} disabled={saving} onChange={event => update('requestCount', event.target.value)} /></label><label>Tokens input miss<input value={draft.inputCacheMissTokens} inputMode="numeric" readOnly={draft.locked} disabled={saving} onChange={event => update('inputCacheMissTokens', event.target.value)} /></label><label>Tokens output<input value={draft.outputTokens} inputMode="numeric" readOnly={draft.locked} disabled={saving} onChange={event => update('outputTokens', event.target.value)} /></label><label>Coste provider USD<input value={draft.providerCost} inputMode="decimal" readOnly={draft.locked} disabled={saving} onChange={event => update('providerCost', event.target.value)} /></label></div></fieldset>
+      <aside className="ambiguous-resolution-summary"><strong>Resumen para confirmar</strong><span>DeepSeek · {draft.model}</span><span>{draft.requestCount} request · {draft.inputCacheMissTokens} input tokens · {draft.outputTokens} output tokens</span><span>{draft.providerCost} USD · respuesta recuperada: NO</span><small>Limitación: {draft.limitation}</small></aside></>}
+    <fieldset><legend>Limitación y nota</legend>{evidenceVisible && <label>Limitación<textarea value={draft.limitation} readOnly={draft.locked} disabled={saving} onChange={event => update('limitation', event.target.value)} /></label>}<label>Nota opcional<textarea value={draft.note} disabled={saving} onChange={event => update('note', event.target.value)} /></label></fieldset>
+    <p className="muted">No se guarda ninguna clave secreta, header de autorización ni token de ejecución.</p>
+    <footer><button type="button" className="button ghost" disabled={saving} onClick={onCancel}>Cancelar</button><button className="button primary" disabled={saving || !valid}>{saving ? 'Guardando…' : 'Confirmar resolución humana'}</button></footer>
+  </form>
 }
 
 function TechnicalDiagnostic({ details }: { details: FactoryBatchTechnicalDiagnostic }) {

@@ -1,6 +1,7 @@
 import type { DestinationBatchJob } from '@shared/factory-batch-contracts'
 import type { ProviderCenterSnapshot } from '@shared/provider-center-contracts'
 import type { BatchJobExecutionAuthorizationStatus } from '@modules/factory-batches'
+import type { BatchResumePlan } from '@modules/factory-batches'
 
 export type FactoryBatchUsageEvidence = {
   evidenceType: string
@@ -43,7 +44,7 @@ export type FactoryBatchTechnicalDiagnostic = {
   timestamp: string
   executionMode: 'REAL' | 'SIMULATED'
   networkGate: 'ENABLED' | 'BLOCKED'
-  expectedProvider: 'tavily'
+  expectedProvider: 'tavily' | 'deepseek' | null
   providerActive: boolean
   credentialConfigured: boolean
   authorizationState: 'AUTHORIZED' | 'NOT_AUTHORIZED'
@@ -51,6 +52,10 @@ export type FactoryBatchTechnicalDiagnostic = {
   retryReason: string | null
   internalCauseSanitized: string
   suggestedAction: string
+  resumeFromStage: string | null
+  reusedResearchCorpus: boolean
+  nextStage: string | null
+  previousAmbiguousUsageResolved: boolean
   reservation: FactoryBatchReservationDiagnostic | null
 }
 
@@ -62,16 +67,18 @@ export function buildFactoryBatchTechnicalDiagnostic(
   providers: ProviderCenterSnapshot,
   authorization: BatchJobExecutionAuthorizationStatus,
   reservation: FactoryBatchReservationDiagnostic | null = null,
+  resume: BatchResumePlan | null = null,
 ): FactoryBatchTechnicalDiagnostic {
   const persisted = job.failureDiagnostic
   const errorCode = persisted?.code ?? failureCode(job.lastFailure)
-  const tavily = providers.providers.find(provider => provider.id === 'tavily')
+  const expectedProvider = resume?.expectedProvider ?? 'tavily'
+  const provider = expectedProvider ? providers.providers.find(item => item.id === expectedProvider) : undefined
   const authorizationRequired = errorCode === 'BATCH_PROVIDER_AUTHORIZATION_REQUIRED'
   return {
     errorCode,
     humanMessage: authorizationRequired ? 'La ejecución del destino no está autorizada.' : 'No se pudo completar este destino.',
-    phase: persisted?.phase ?? job.currentPhase,
-    operation: persisted?.operation ?? 'BATCH_EDITORIAL_PHASE',
+    phase: resume?.resumeFromStage ? 'ANALYSIS' : persisted?.phase ?? job.currentPhase,
+    operation: resume?.resumeFromStage ?? persisted?.operation ?? 'BATCH_EDITORIAL_PHASE',
     jobId: job.id,
     batchId: job.batchId,
     destinationId: job.canonicalDestinationId ?? null,
@@ -80,20 +87,28 @@ export function buildFactoryBatchTechnicalDiagnostic(
     timestamp: (persisted?.occurredAt ?? job.updatedAt).toISOString(),
     executionMode: providers.externalCallsAllowed ? 'REAL' : 'SIMULATED',
     networkGate: providers.externalCallsAllowed ? 'ENABLED' : 'BLOCKED',
-    expectedProvider: 'tavily',
-    providerActive: Boolean(tavily?.active),
-    credentialConfigured: Boolean(tavily?.configured),
+    expectedProvider,
+    providerActive: Boolean(provider?.active),
+    credentialConfigured: Boolean(provider?.configured),
     authorizationState: authorization.state,
     retryable: job.retryable || authorizationRequired,
     retryReason: authorizationRequired ? 'AUTHORIZATION_REQUIRED' : job.retryable ? 'TRANSIENT_FAILURE' : null,
     internalCauseSanitized: sanitize(persisted?.cause ?? job.lastFailure ?? 'No disponible'),
     suggestedAction: authorizationRequired
-      ? 'Autoriza la ejecución real de este lote/job antes de reintentar.'
+      ? `Autoriza la ejecución real para ${providerLabel(expectedProvider)}${resume?.nextStage ? ` en ${resume.nextStage}` : ''} antes de reintentar.`
       : errorCode === 'INVALID_RESERVATION_STATE' && reservation?.reservationState === 'unknown'
         ? 'La llamada anterior tiene resultado remoto ambiguo. Confirma su consumo fuera de la app antes de autorizar otro intento.'
       : job.retryable ? 'Reintenta el trabajo cuando la causa indicada esté resuelta.' : 'Revisa la causa técnica antes de volver a intentarlo.',
+    resumeFromStage: resume?.resumeFromStage ?? null,
+    reusedResearchCorpus: resume?.researchCorpusExists ?? false,
+    nextStage: resume?.nextStage ?? null,
+    previousAmbiguousUsageResolved: resume?.previousAmbiguousUsageResolved ?? false,
     reservation,
   }
+}
+
+function providerLabel(provider: FactoryBatchTechnicalDiagnostic['expectedProvider']): string {
+  return provider === 'deepseek' ? 'DeepSeek' : provider === 'tavily' ? 'Tavily' : 'el siguiente provider'
 }
 
 function failureCode(value: string | undefined): string {

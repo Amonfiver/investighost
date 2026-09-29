@@ -117,6 +117,7 @@ import {
   SupabaseStructuredPackageApprovalRepository,
   batchJobExecutionAuthorizations,
   BatchAmbiguousCallResolutionService,
+  readBatchResumePlan,
 } from '@modules/factory-batches'
 import { BatchAmbiguousCallResolutionSchema } from '@shared/factory-batch-contracts'
 import { buildFactoryBatchTechnicalDiagnostic, type FactoryBatchReservationDiagnostic } from './factory-batch-diagnostics'
@@ -183,7 +184,18 @@ ipcMain.handle('factory-batches:read', async (_event, batchId: unknown) => {
 })
 
 ipcMain.handle('factory-batches:retry-job', async (_event, jobId: unknown) => {
-  const retried = await (await getDestinationBatchRuntime()).retry(z.string().uuid().parse(jobId))
+  const parsedJobId = z.string().uuid().parse(jobId)
+  const client = createLocalSupabaseClientFromEnv().client
+  const repository = new SupabaseDestinationBatchRepository(client)
+  const job = await repository.getJob(parsedJobId)
+  if (!job) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')
+  const resume = await readBatchResumePlan(client, job)
+  // Authorization is a precondition, not a failed provider attempt. This is
+  // deliberately before `retry()` changes state or a worker can claim a lease.
+  if (resume.expectedProvider && !batchJobExecutionAuthorizations.isAuthorized(job)) {
+    throw new Error('BATCH_PROVIDER_AUTHORIZATION_REQUIRED')
+  }
+  const retried = await (await getDestinationBatchRuntime()).retry(parsedJobId)
   // Same durable job, same worker: retry never reimports or creates a second destination.
   void getDestinationBatchWorkerRuntime().then(worker => worker.runJob(retried.job.id)).catch(() => undefined)
   return retried
@@ -205,11 +217,13 @@ ipcMain.handle('factory-batches:authorize-real-execution', async (_event, jobId:
   if (!job) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')
   const providers = await getProviderCenterRuntime()
   if (!providers.snapshot().externalCallsAllowed) throw new Error('EXTERNAL_CALLS_NOT_ENABLED')
+  const resume = await readBatchResumePlan(createLocalSupabaseClientFromEnv().client, job)
+  const providerLabel = resume.expectedProvider === 'deepseek' ? 'DeepSeek' : resume.expectedProvider === 'tavily' ? 'Tavily' : 'el siguiente provider'
   const options: MessageBoxOptions = {
     type: 'warning', buttons: ['Cancelar', 'Autorizar este destino'], defaultId: 0, cancelId: 0,
     title: 'Autorizar ejecución real',
     message: `Autorizar la ejecución real de ${job.originalName}.`,
-    detail: 'Este permiso sólo habilita este trabajo mientras la app permanezca abierta. Puede consumir proveedores activos y generar costes. No inicia el trabajo automáticamente.',
+    detail: `Este permiso habilita ${providerLabel}${resume.nextStage ? ` para ${resume.nextStage}` : ''} sólo mientras la app permanezca abierta. Puede generar costes y no inicia el trabajo automáticamente.`,
   }
   const result = mainWindow ? await dialog.showMessageBox(mainWindow, options) : await dialog.showMessageBox(options)
   if (result.response !== 1) throw new Error('BATCH_PROVIDER_AUTHORIZATION_CONFIRMATION_REQUIRED')
@@ -223,7 +237,8 @@ ipcMain.handle('factory-batches:technical-diagnostics', async (_event, jobId: un
   if (!job) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')
   const providerCenter = await getProviderCenterRuntime()
   const reservation = await readBatchReservationDiagnostic(client, job.id, job.lastFailure)
-  return buildFactoryBatchTechnicalDiagnostic(job, providerCenter.snapshot(), batchJobExecutionAuthorizations.status(job), reservation)
+  const resume = await readBatchResumePlan(client, job)
+  return buildFactoryBatchTechnicalDiagnostic(job, providerCenter.snapshot(), batchJobExecutionAuthorizations.status(job), reservation, resume)
 })
 
 ipcMain.handle('factory-batches:resolve-ambiguous-call', async (_event, candidate: unknown) => {

@@ -7,6 +7,7 @@ import {
 } from '@modules/factory-batches'
 import { GeographicResolver, MemoryGeographyCatalogRepository } from '@modules/editorial-pipeline/geography'
 import { buildFactoryBatchTechnicalDiagnostic } from '../src/main/factory-batch-diagnostics'
+import { deriveBatchResumePlan } from '@modules/factory-batches'
 import type { ProviderCenterSnapshot } from '@shared/provider-center-contracts'
 
 const providerCenter = (externalCallsAllowed = true): ProviderCenterSnapshot => ({
@@ -61,11 +62,23 @@ describe('real batch execution authorization', () => {
       errorCode: 'BATCH_PROVIDER_AUTHORIZATION_REQUIRED', phase: 'RESEARCH', operation: 'BATCH_EDITORIAL_PHASE',
       jobId: job.id, batchId: job.batchId, attempt: 3, expectedProvider: 'tavily', providerActive: true,
       credentialConfigured: true, networkGate: 'ENABLED', authorizationState: 'NOT_AUTHORIZED', retryable: true,
-      suggestedAction: 'Autoriza la ejecución real de este lote/job antes de reintentar.',
+      suggestedAction: 'Autoriza la ejecución real para Tavily antes de reintentar.',
     })
     expect(JSON.stringify(diagnostics)).not.toContain('should-never-render')
     expect(JSON.stringify(diagnostics)).not.toContain('INVESTIGHOST_REAL_BATCH_EXECUTION_TOKEN')
     expect(JSON.stringify(diagnostics)).not.toContain('x-internal-editorial-secret')
+  })
+
+  it('AUTHORIZATION_UI_SHOWS_NEXT_PROVIDER when the durable checkpoint resumes directly at DeepSeek analysis', async () => {
+    const { job } = await failedSegovia()
+    const resume = deriveBatchResumePlan({
+      checkpointPayload: { state: 'analyzing_round_1', dossier: { sources: [{ id: 'tavily-durable' }] } },
+      analysisArtifactExists: false,
+      ambiguityResolved: true,
+    })
+    const diagnostics = buildFactoryBatchTechnicalDiagnostic(job, providerCenter(), { state: 'NOT_AUTHORIZED' }, null, resume)
+    expect(diagnostics).toMatchObject({ phase: 'ANALYSIS', operation: 'analysis.stage_a', expectedProvider: 'deepseek', providerActive: true, credentialConfigured: true, resumeFromStage: 'analysis.stage_a', reusedResearchCorpus: true, nextStage: 'analysis.stage_a', previousAmbiguousUsageResolved: true })
+    expect(diagnostics.suggestedAction).toContain('DeepSeek')
   })
 
   it('reports blocked network independently of public provider configuration', async () => {

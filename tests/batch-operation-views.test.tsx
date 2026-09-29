@@ -53,6 +53,9 @@ describe('Production job detail', () => {
     expect(renderer).toContain('Transición solicitada')
     expect(renderer).toContain('Resolver resultado ambiguo')
     expect(renderer).toContain('Confirmar resolución humana')
+    expect(renderer).toContain('Siguiente provider:')
+    expect(renderer).toContain("diagnostic.expectedProvider === 'deepseek' ? 'DeepSeek' : 'Tavily'")
+    expect(renderer).toContain("['Reanudar desde', details.resumeFromStage]")
     expect(renderer).toContain("retrying ? 'Reintentando…' : 'Reintentar'")
   })
 

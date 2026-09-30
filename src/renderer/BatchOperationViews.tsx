@@ -76,7 +76,14 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
       setDiagnostic(await window.electronAPI.getDestinationBatchTechnicalDiagnostics(liveJob.id))
     } catch (reason) { setResolutionError(reason instanceof Error ? reason.message : String(reason)) } finally { setResolving(false) }
   }
-  const authorizationRequired = diagnostic?.errorCode === 'BATCH_PROVIDER_AUTHORIZATION_REQUIRED'
+  // Authorization is a start precondition for every failed real-provider job,
+  // not merely for jobs whose most recent error happened to be authorization.
+  // This keeps a reconciled analysis retry from consuming a click/attempt only
+  // to discover that its in-memory consent expired after an app restart.
+  const authorizationRequired = liveJob.status === 'FAILED'
+    && liveJob.retryable
+    && diagnostic?.executionMode === 'REAL'
+    && diagnostic.expectedProvider !== null
   const ambiguous = diagnostic?.reservation?.reservationState === 'unknown'
   const savedResolutionMessage = savedResolution === 'CONSUMPTION_CONFIRMED'
     ? 'Consumo confirmado; respuesta no recuperable. Puede reintentarse la generación sin repetir la investigación ya conservada.'
@@ -166,6 +173,8 @@ function TechnicalDiagnostic({ details }: { details: FactoryBatchTechnicalDiagno
     ['Credencial configurada', details.credentialConfigured], ['Autorización', details.authorizationState], ['Reintentable', details.retryable],
     ['Motivo de reintento', details.retryReason], ['Causa', details.internalCauseSanitized], ['Acción sugerida', details.suggestedAction],
     ['Reanudar desde', details.resumeFromStage], ['Corpus Research reutilizado', details.reusedResearchCorpus], ['Siguiente etapa', details.nextStage], ['Uso ambiguo anterior resuelto', details.previousAmbiguousUsageResolved],
+    ['Tipo de límite', details.limit?.type ?? null], ['Valor de límite', details.limit?.value ?? null], ['Valor actual', details.limit?.currentValue ?? null],
+    ['Ámbito de límite', details.limit?.scope ?? null], ['Override humano requerido', details.limit?.requiresHumanOverride ?? null], ['Acción sobre límite', details.limit?.overrideAction ?? null],
     ['Reserva', details.reservation?.reservationId ?? null], ['Estado reserva', details.reservation?.reservationState ?? null],
     ['Importe reservado', details.reservation?.reservedAmount ?? null], ['Importe comprometido', details.reservation?.committedAmount ?? null],
     ['Estado esperado de reserva', details.reservation?.expectedReservationState ?? null], ['Transición solicitada', details.reservation?.requestedTransition ?? null],

@@ -117,6 +117,7 @@ import {
   SupabaseStructuredPackageApprovalRepository,
   batchJobExecutionAuthorizations,
   BatchAmbiguousCallResolutionService,
+  canRetryReconciledAnalysis,
   readBatchResumePlan,
 } from '@modules/factory-batches'
 import { BatchAmbiguousCallResolutionSchema } from '@shared/factory-batch-contracts'
@@ -180,7 +181,15 @@ ipcMain.handle('factory-batches:import-json', async (_event, jsonText: unknown) 
 ipcMain.handle('factory-batches:list', async () => (await getDestinationBatchRuntime()).list())
 
 ipcMain.handle('factory-batches:read', async (_event, batchId: unknown) => {
-  return (await getDestinationBatchRuntime()).read(z.string().uuid().parse(batchId))
+  const model = await (await getDestinationBatchRuntime()).read(z.string().uuid().parse(batchId))
+  const client = createLocalSupabaseClientFromEnv().client
+  const jobs = await Promise.all(model.jobs.map(async job => {
+    const resume = await readBatchResumePlan(client, job)
+    return canRetryReconciledAnalysis(job, resume) && !job.retryable
+      ? { ...job, retryable: true }
+      : job
+  }))
+  return { ...model, jobs }
 })
 
 ipcMain.handle('factory-batches:retry-job', async (_event, jobId: unknown) => {
@@ -190,9 +199,15 @@ ipcMain.handle('factory-batches:retry-job', async (_event, jobId: unknown) => {
   const job = await repository.getJob(parsedJobId)
   if (!job) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')
   const resume = await readBatchResumePlan(client, job)
+  // Compatibility for a job that failed before the reconciled analysis retry
+  // rule existed. The durable ambiguity evidence, not the message alone,
+  // makes this exact failed stage eligible for a new attempt.
+  const retryJob = canRetryReconciledAnalysis(job, resume) && !job.retryable
+    ? await repository.updateJob({ ...job, retryable: true, updatedAt: new Date() })
+    : job
   // Authorization is a precondition, not a failed provider attempt. This is
   // deliberately before `retry()` changes state or a worker can claim a lease.
-  if (resume.expectedProvider && !batchJobExecutionAuthorizations.isAuthorized(job)) {
+  if (resume.expectedProvider && !batchJobExecutionAuthorizations.isAuthorized(retryJob)) {
     throw new Error('BATCH_PROVIDER_AUTHORIZATION_REQUIRED')
   }
   const retried = await (await getDestinationBatchRuntime()).retry(parsedJobId)

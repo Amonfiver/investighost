@@ -237,6 +237,12 @@ export class DurableGenericRealEditorialExecution {
       ledger,
       createGenericLedgerMetadataFactory(context, this.dependencies.providers.intelligenceEngine),
       context.policy.limits.taskBudgetEur,
+      undefined,
+      undefined,
+      (_operationId, reservation) => repository.canRetryTerminalAnalysisAfterHumanResolution(
+        execution.id,
+        reservation,
+      ),
     )
     const workflow = new ControlledRealWorkflow(
       this.dependencies.providers,

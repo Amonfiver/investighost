@@ -31,6 +31,15 @@ export type FactoryBatchReservationDiagnostic = {
   } | null
 }
 
+export type FactoryBatchLimitDiagnostic = {
+  type: 'DURABLE_STAGE_RETRY_POLICY'
+  value: string
+  currentValue: string
+  scope: string
+  requiresHumanOverride: boolean
+  overrideAction: string
+}
+
 export type FactoryBatchTechnicalDiagnostic = {
   errorCode: string
   humanMessage: string
@@ -57,6 +66,7 @@ export type FactoryBatchTechnicalDiagnostic = {
   nextStage: string | null
   previousAmbiguousUsageResolved: boolean
   reservation: FactoryBatchReservationDiagnostic | null
+  limit: FactoryBatchLimitDiagnostic | null
 }
 
 /** Projects durable batch facts plus public provider state.  This is a safe
@@ -74,6 +84,19 @@ export function buildFactoryBatchTechnicalDiagnostic(
   const expectedProvider = resume?.expectedProvider ?? 'tavily'
   const provider = expectedProvider ? providers.providers.find(item => item.id === expectedProvider) : undefined
   const authorizationRequired = errorCode === 'BATCH_PROVIDER_AUTHORIZATION_REQUIRED'
+  const terminalStageLimit = errorCode === 'LIMIT_EXCEEDED'
+    && /La etapa durable anterior terminó; requiere una decisión humana antes de reintentarla/.test(persisted?.cause ?? job.lastFailure ?? '')
+  const reconciledTerminalRetry = terminalStageLimit && Boolean(resume?.terminalAnalysisRetryAuthorized)
+  const limit = terminalStageLimit ? {
+    type: 'DURABLE_STAGE_RETRY_POLICY' as const,
+    value: 'HUMAN_RECONCILIATION_REQUIRED',
+    currentValue: reconciledTerminalRetry ? 'CONSUMPTION_CONFIRMED_RESPONSE_LOST' : 'TERMINAL_STAGE_FAILED',
+    scope: resume?.resumeFromStage ?? persisted?.operation ?? job.currentPhase,
+    requiresHumanOverride: !reconciledTerminalRetry,
+    overrideAction: reconciledTerminalRetry
+      ? 'La conciliación humana ya permite una nueva llamada. Reintenta la etapa indicada.'
+      : 'Resuelve la llamada ambigua o aporta la decisión humana requerida antes de reintentar.',
+  } : null
   return {
     errorCode,
     humanMessage: authorizationRequired ? 'La ejecución del destino no está autorizada.' : 'No se pudo completar este destino.',
@@ -91,19 +114,22 @@ export function buildFactoryBatchTechnicalDiagnostic(
     providerActive: Boolean(provider?.active),
     credentialConfigured: Boolean(provider?.configured),
     authorizationState: authorization.state,
-    retryable: job.retryable || authorizationRequired,
-    retryReason: authorizationRequired ? 'AUTHORIZATION_REQUIRED' : job.retryable ? 'TRANSIENT_FAILURE' : null,
+    retryable: job.retryable || authorizationRequired || reconciledTerminalRetry,
+    retryReason: authorizationRequired ? 'AUTHORIZATION_REQUIRED' : reconciledTerminalRetry ? 'RECONCILED_RESPONSE_LOST' : job.retryable ? 'TRANSIENT_FAILURE' : null,
     internalCauseSanitized: sanitize(persisted?.cause ?? job.lastFailure ?? 'No disponible'),
     suggestedAction: authorizationRequired
       ? `Autoriza la ejecución real para ${providerLabel(expectedProvider)}${resume?.nextStage ? ` en ${resume.nextStage}` : ''} antes de reintentar.`
       : errorCode === 'INVALID_RESERVATION_STATE' && reservation?.reservationState === 'unknown'
         ? 'La llamada anterior tiene resultado remoto ambiguo. Confirma su consumo fuera de la app antes de autorizar otro intento.'
+      : reconciledTerminalRetry
+        ? 'La conciliación confirmó consumo sin respuesta recuperable. Reintenta analysis.stage_a: se creará una nueva llamada DeepSeek sin repetir Research.'
       : job.retryable ? 'Reintenta el trabajo cuando la causa indicada esté resuelta.' : 'Revisa la causa técnica antes de volver a intentarlo.',
     resumeFromStage: resume?.resumeFromStage ?? null,
     reusedResearchCorpus: resume?.researchCorpusExists ?? false,
     nextStage: resume?.nextStage ?? null,
     previousAmbiguousUsageResolved: resume?.previousAmbiguousUsageResolved ?? false,
     reservation,
+    limit,
   }
 }
 

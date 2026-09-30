@@ -59,6 +59,37 @@ describe('conciliación de fallos facturables y reanudación idempotente', () =>
     expect(await repository.findByIdempotencyKey('task-morella:round:1:analysis.stage_c:attempt:2')).toBeUndefined()
   })
 
+  it('RECONCILED_CONSUMED_RESPONSE_LOST_CAN_START_NEW_ANALYSIS_CALL with a new durable reservation', async () => {
+    let sequence = 0
+    const repository = new MemoryCostLedgerRepository(
+      { task: 0.2, batch: 0.2, daily: 0.2, currency: 'EUR' },
+      { now: () => new Date(now), id: () => `resolved-analysis-${++sequence}` },
+    )
+    const ledger = new CostLedgerService(repository, { now: () => new Date(now) })
+    await ledger.acquireExecution('real-editorial:run-morella', 'lease-resolved-analysis', new Date('2026-07-26T00:00:00.000Z'))
+    const operation = 'task-morella:round:1:analysis.stage_a'
+    const first = await ledger.reserve(metadata().create(operation, 1, 0.008))
+    await ledger.start(first.id)
+    await ledger.settle({ reservationId: first.id, outcome: 'failed', calculatedCost: 0, usage: { inputTokens: 0, outputTokens: 0, toolCalls: 1, credits: 0 }, sanitizedError: 'HUMAN_CONFIRMED_CONSUMPTION_RESPONSE_LOST' })
+    const provider = vi.fn(async () => ({ providerRequestIds: ['new-deepseek-call'], usage: { inputTokens: 10, outputTokens: 2, estimatedCost: 0.001 } }))
+    const executor = new LedgeredWorkflowCallExecutor(
+      ledger,
+      metadata(),
+      0.2,
+      undefined,
+      undefined,
+      async (_operationId, reservation) => reservation.callId === first.callId,
+    )
+
+    await executor.execute(operation, 0.008, provider, { retryTerminalAttempts: false })
+
+    expect(provider).toHaveBeenCalledOnce()
+    expect(await repository.findByIdempotencyKey(`${operation}:attempt:2`)).toMatchObject({
+      state: 'reconciled', input: { retryOfCallId: first.callId, attempt: 2 },
+    })
+    expect(await repository.findByIdempotencyKey(`${operation}:attempt:1`)).toMatchObject({ state: 'failed' })
+  })
+
   it('crea el siguiente attempt durable al recuperar un artifact perdido', async () => {
     let sequence = 0
     const repository = new MemoryCostLedgerRepository(

@@ -21,6 +21,13 @@ export interface LedgeredCallMetadataFactory {
   ): ProviderCallReservationInput
 }
 
+/** A terminal multi-stage call can be retried only when its durable owner
+ * proves that a human reconciliation explicitly permits a new request. */
+export type TerminalAttemptRetryPermission = (
+  operationId: string,
+  reservation: ProviderCallReservation,
+) => Promise<boolean> | boolean
+
 export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
   private readonly completed = new Map<string, unknown>()
   private readonly running = new Map<string, Promise<unknown>>()
@@ -37,6 +44,7 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     private readonly durableResultAvailable: (operationId: string) => Promise<boolean> =
       async () => false,
     initialSpentCost?: number,
+    private readonly terminalAttemptRetryPermission?: TerminalAttemptRetryPermission,
   ) {
     if (
       initialSpentCost !== undefined
@@ -93,7 +101,7 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
     ))
     this.previousReservations.set(operationId, reservation)
     while (['failed', 'cancelled'].includes(reservation.state)) {
-      if (options.retryTerminalAttempts === false) {
+      if (!await this.canRetryTerminalAttempt(operationId, reservation, options.retryTerminalAttempts)) {
         throw new RealWorkflowError(
           'LIMIT_EXCEEDED',
           'La etapa durable anterior terminó; requiere una decisión humana antes de reintentarla',
@@ -256,13 +264,22 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
       )
     }
     if (!['failed', 'cancelled'].includes(latest.state)) return
-    if (retryTerminalAttempts === false) {
+    if (!await this.canRetryTerminalAttempt(operationId, latest, retryTerminalAttempts)) {
       throw new RealWorkflowError(
         'LIMIT_EXCEEDED',
         'La etapa durable anterior terminó; requiere una decisión humana antes de reintentarla',
       )
     }
     this.seedAttempt(operationId, latest.input.attempt, latest.callId)
+  }
+
+  private async canRetryTerminalAttempt(
+    operationId: string,
+    reservation: ProviderCallReservation,
+    requested: boolean | undefined,
+  ): Promise<boolean> {
+    if (requested !== false) return true
+    return Boolean(await this.terminalAttemptRetryPermission?.(operationId, reservation))
   }
 
   private async settleWithDurableCostAdjustment(

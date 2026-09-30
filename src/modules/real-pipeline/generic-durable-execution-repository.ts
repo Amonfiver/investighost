@@ -148,6 +148,41 @@ export class SupabaseGenericDurableExecutionRepository {
   checkpointStore(executionOwnerId: string, artifactKey = 'workflow'): RealWorkflowCheckpointStore {
     return new GenericDurableWorkflowCheckpointStore(this, executionOwnerId, artifactKey)
   }
+
+  /**
+   * A response-lost DeepSeek analysis call is normally terminal to avoid a
+   * duplicate charge.  This is the sole durable exception: an explicit human
+   * consumption confirmation, with no recovered response, authorizes a fresh
+   * call for that same analysis stage.  It does not reopen or mutate the old
+   * reservation.
+   */
+  async canRetryTerminalAnalysisAfterHumanResolution(
+    executionOwnerId: string,
+    reservation: ProviderCallReservation,
+  ): Promise<boolean> {
+    if (
+      reservation.state !== 'failed'
+      || reservation.input.providerId !== 'deepseek'
+      || !/^analysis\.stage_[a-z0-9_]+$/i.test(reservation.input.operation)
+    ) return false
+    const { data: ambiguity, error: ambiguityError } = await this.client
+      .from('real_editorial_ambiguous_calls')
+      .select('terminal_decision,terminal_resolution_id,resolved_at')
+      .eq('execution_owner_id', executionOwnerId)
+      .eq('call_id', reservation.callId)
+      .eq('terminal_decision', 'consumption_confirmed')
+      .not('resolved_at', 'is', null)
+      .maybeSingle()
+    if (ambiguityError || !ambiguity?.terminal_resolution_id) return false
+    const { data: resolution, error: resolutionError } = await this.client
+      .from('real_editorial_call_human_resolutions')
+      .select('decision,response_recovered')
+      .eq('id', ambiguity.terminal_resolution_id)
+      .maybeSingle()
+    return !resolutionError
+      && resolution?.decision === 'consumption_confirmed'
+      && resolution.response_recovered === false
+  }
 }
 
 export class GenericDurableWorkflowCheckpointStore implements RealWorkflowCheckpointStore {

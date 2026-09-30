@@ -74,11 +74,36 @@ describe('real batch execution authorization', () => {
     const resume = deriveBatchResumePlan({
       checkpointPayload: { state: 'analyzing_round_1', dossier: { sources: [{ id: 'tavily-durable' }] } },
       analysisArtifactExists: false,
-      ambiguityResolved: true,
+      ambiguity: { decision: 'consumption_confirmed', responseRecovered: false },
     })
     const diagnostics = buildFactoryBatchTechnicalDiagnostic(job, providerCenter(), { state: 'NOT_AUTHORIZED' }, null, resume)
     expect(diagnostics).toMatchObject({ phase: 'ANALYSIS', operation: 'analysis.stage_a', expectedProvider: 'deepseek', providerActive: true, credentialConfigured: true, resumeFromStage: 'analysis.stage_a', reusedResearchCorpus: true, nextStage: 'analysis.stage_a', previousAmbiguousUsageResolved: true })
     expect(diagnostics.suggestedAction).toContain('DeepSeek')
+  })
+
+  it('LIMIT_EXCEEDED_REPORTS_LIMIT_TYPE_VALUE_CURRENT_VALUE_AND_SCOPE for a reconciled response-lost stage', async () => {
+    const { job } = await failedSegovia()
+    const terminal = {
+      ...job,
+      lastFailure: 'LIMIT_EXCEEDED: La etapa durable anterior terminó; requiere una decisión humana antes de reintentarla',
+      failureDiagnostic: { code: 'LIMIT_EXCEEDED', phase: 'RESEARCH' as const, operation: 'BATCH_EDITORIAL_PHASE', cause: 'La etapa durable anterior terminó; requiere una decisión humana antes de reintentarla', retryable: false, occurredAt: new Date('2026-09-29T20:18:48.219Z') },
+    }
+    const resume = deriveBatchResumePlan({
+      checkpointPayload: { state: 'analyzing_round_1', dossier: { sources: [{ id: 'tavily-durable' }] } },
+      analysisArtifactExists: false,
+      ambiguity: { decision: 'consumption_confirmed', responseRecovered: false },
+    })
+    const diagnostics = buildFactoryBatchTechnicalDiagnostic(terminal, providerCenter(), { state: 'AUTHORIZED' }, null, resume)
+    expect(diagnostics).toMatchObject({
+      retryable: true,
+      retryReason: 'RECONCILED_RESPONSE_LOST',
+      limit: {
+        type: 'DURABLE_STAGE_RETRY_POLICY', value: 'HUMAN_RECONCILIATION_REQUIRED',
+        currentValue: 'CONSUMPTION_CONFIRMED_RESPONSE_LOST', scope: 'analysis.stage_a',
+        requiresHumanOverride: false,
+      },
+    })
+    expect(diagnostics.suggestedAction).toContain('nueva llamada DeepSeek')
   })
 
   it('reports blocked network independently of public provider configuration', async () => {

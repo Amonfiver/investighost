@@ -478,6 +478,17 @@ describe('OpenAI IntelligenceEngine estructurado y sin red', () => {
     expect(aborted).toBe(true)
   })
 
+  it('DEEPSEEK_TIMEOUT_LABELS_DEEPSEEK_NOT_OPENAI aunque use el contrato Responses compatible', async () => {
+    const client = new FakeResponsesClient([], signal => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('abortado')), { once: true })
+    }))
+    await expect(engine(client, { providerId: 'deepseek', timeoutMs: 5 }).analyze(
+      mission(),
+      dossier(),
+      new AbortController().signal,
+    )).rejects.toMatchObject({ code: 'TIMEOUT', message: 'DeepSeek superó 5 ms' })
+  })
+
   it('aplica cancelación humana abortando el cliente', async () => {
     const controller = new AbortController()
     const client = new FakeResponsesClient([], signal => new Promise((_resolve, reject) => {

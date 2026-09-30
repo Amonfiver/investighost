@@ -17,6 +17,29 @@ type LiveProviderGateInput = Omit<z.input<typeof LiveProviderAccessInputSchema>,
 export interface LiveProviderClients { tavily: TavilyResearchTool; intelligence: RoutedIntelligenceEngine }
 export interface LiveProviderClientOptions { tavilyRequestJournal?: TavilyRequestJournal; environment?: NodeJS.ProcessEnv; routing?: RealLlmRouting }
 
+/** A bounded total request timeout.  Analysis stage A serializes the complete
+ * evidence dossier and can legitimately request a long structured response;
+ * short requests keep the conservative default.  An explicit route setting
+ * always takes precedence. */
+export type IntelligenceOperationTimeoutPolicy = {
+  type: 'TOTAL_REQUEST_TIMEOUT'
+  timeoutMs: number
+  source: 'ROUTE_OVERRIDE' | 'DEEPSEEK_ANALYSIS_DEFAULT' | 'DEFAULT'
+}
+
+export function resolveIntelligenceOperationTimeout(
+  stage: IntelligenceRoutingStage,
+  route: ResolvedIntelligenceRoute,
+): IntelligenceOperationTimeoutPolicy {
+  if (route.timeoutMs !== undefined) {
+    return { type: 'TOTAL_REQUEST_TIMEOUT', timeoutMs: route.timeoutMs, source: 'ROUTE_OVERRIDE' }
+  }
+  if (stage === 'analysis' && route.providerId === 'deepseek') {
+    return { type: 'TOTAL_REQUEST_TIMEOUT', timeoutMs: 90_000, source: 'DEEPSEEK_ANALYSIS_DEFAULT' }
+  }
+  return { type: 'TOTAL_REQUEST_TIMEOUT', timeoutMs: 30_000, source: 'DEFAULT' }
+}
+
 export async function withLiveProviderClients<T>(providerCenter: ProviderCenterService, gate: LiveProviderGateInput, operation: (clients: LiveProviderClients) => Promise<T>, options: LiveProviderClientOptions = {}): Promise<T> {
   const routing = options.routing ?? readRealLlmRouting(options.environment)
   const snapshot = providerCenter.snapshot()
@@ -33,10 +56,11 @@ export async function withLiveProviderClients<T>(providerCenter: ProviderCenterS
 }
 
 function createEngine(stage: IntelligenceRoutingStage, route: ResolvedIntelligenceRoute, credential: string, permit: ReturnType<typeof issueLiveProviderNetworkPermit>): IntelligenceEngine {
+  const timeout = resolveIntelligenceOperationTimeout(stage, route)
   const client = route.providerId === 'deepseek' ? new DeepSeekResponsesClient(credential, permit) : new OpenAISdkResponsesClient(credential, permit)
   const engine = new OpenAIIntelligenceEngine(client, {
     providerId: route.providerId, model: route.apiModel, telemetryModel: route.model,
-    maxOutputTokens: route.maxOutputTokens ?? 12_000, timeoutMs: route.timeoutMs ?? 30_000,
+    maxOutputTokens: route.maxOutputTokens ?? 12_000, timeoutMs: timeout.timeoutMs,
     reasoningEffort: route.reasoningEffort, temperature: route.temperature, topP: route.topP,
     currency: 'USD', simulation: false,
     costForUsage: usage => estimatedRouteCost(route, usage, usage.occurredAt),

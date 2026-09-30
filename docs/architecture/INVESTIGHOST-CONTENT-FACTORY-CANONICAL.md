@@ -309,6 +309,29 @@ diálogo de confirmación de Electron main y nunca inicia un provider.
 `RESPONSE_LOSS_NOT_RECONSTRUCTED = TRUE` y
 `BATCH_RESEARCH_RESUME_REUSES_CHECKPOINT = TRUE`.
 
+### 099 — timeout de análisis DeepSeek y resultado remoto ambiguo
+
+El adapter de DeepSeek sigue usando el protocolo Responses compatible con
+OpenAI, pero conserva la identidad de producto `DeepSeek` en errores y
+diagnósticos. `analysis.stage_a` usa una política explícita, finita y por
+operación: 90 segundos para DeepSeek cuando no hay override de ruta; los
+overrides explícitos continúan prevaleciendo y el resto de operaciones conserva
+el límite general de 30 segundos. Es un timeout total de solicitud no-streaming,
+no una autorización para esperar indefinidamente.
+
+Un timeout posterior al asiento `started` permanece `unknown` y abre
+conciliación humana: no presupone que el proveedor no consumió, no inventa una
+respuesta, no libera la reserva y no habilita retry. El Detail muestra provider
+real, modelo, call ID local, dispatch local, timestamps, tipo/fuente/valor de
+timeout, reserva y necesidad de conciliación, sin secretos ni headers. La
+ausencia de `remote_id`, cabeceras o cuerpo significa "no observado localmente",
+no prueba de que DeepSeek no procesara la solicitud.
+
+`DEEPSEEK_ANALYSIS_TIMEOUT_POLICY = DONE`,
+`DEEPSEEK_TIMEOUT_PRODUCT_LABEL = DONE`,
+`TIMEOUT_AMBIGUITY_FAIL_CLOSED = TRUE` y
+`TIMEOUT_DIAGNOSTICS_SAFE = DONE`.
+
 ## Lo construido y su estado
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |

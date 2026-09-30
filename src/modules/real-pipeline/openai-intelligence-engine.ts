@@ -338,6 +338,7 @@ export class OpenAIIntelligenceEngine implements IntelligenceEngine {
         operationSignal => this.client.create(request, operationSignal),
         this.configuration.timeoutMs,
         signal,
+        providerDisplayName(this.configuration.providerId),
       )
     } catch (error) {
       if (error instanceof OpenAIIntelligenceError) throw error
@@ -653,6 +654,7 @@ async function withOpenAITimeout<T>(
   operation: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,
   parentSignal: AbortSignal,
+  providerName: string,
 ): Promise<T> {
   if (parentSignal.aborted) throw new OpenAIIntelligenceError('CANCELLED', 'La operación fue cancelada')
   const controller = new AbortController()
@@ -662,7 +664,7 @@ async function withOpenAITimeout<T>(
     const timeout = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
         controller.abort()
-        reject(new OpenAIIntelligenceError('TIMEOUT', `OpenAI superó ${timeoutMs} ms`))
+        reject(new OpenAIIntelligenceError('TIMEOUT', `${providerName} superó ${timeoutMs} ms`))
       }, timeoutMs)
     })
     const cancellation = new Promise<never>((_, reject) => {
@@ -677,6 +679,10 @@ async function withOpenAITimeout<T>(
     if (timeoutId) clearTimeout(timeoutId)
     if (cancellationListener) parentSignal.removeEventListener('abort', cancellationListener)
   }
+}
+
+function providerDisplayName(providerId: string): string {
+  return providerId === 'deepseek' ? 'DeepSeek' : providerId === 'openai' ? 'OpenAI' : providerId
 }
 
 function roleInstruction(

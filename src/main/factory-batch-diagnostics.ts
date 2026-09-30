@@ -18,6 +18,16 @@ export type FactoryBatchUsageEvidence = {
 export type FactoryBatchReservationDiagnostic = {
   reservationId: string
   reservationState: string
+  providerCallId?: string | null
+  realProvider?: string | null
+  model?: string | null
+  reservationOperation?: string | null
+  requestDispatched?: boolean
+  callStartedAt?: string | null
+  timeoutAt?: string | null
+  remoteRequestId?: string | null
+  responseHeadersReceived?: boolean | null
+  responseBodyStarted?: boolean | null
   reservedAmount: number
   committedAmount: number
   expectedReservationState: string | null
@@ -29,6 +39,14 @@ export type FactoryBatchReservationDiagnostic = {
     resolvedAt: string | null
     evidence: FactoryBatchUsageEvidence | null
   } | null
+}
+
+export type FactoryBatchTimeoutDiagnostic = {
+  type: 'TOTAL_REQUEST_TIMEOUT'
+  timeoutMs: number
+  timeoutSource: string
+  ambiguousRemoteResult: boolean
+  reconciliationRequired: boolean
 }
 
 export type FactoryBatchLimitDiagnostic = {
@@ -67,6 +85,7 @@ export type FactoryBatchTechnicalDiagnostic = {
   previousAmbiguousUsageResolved: boolean
   reservation: FactoryBatchReservationDiagnostic | null
   limit: FactoryBatchLimitDiagnostic | null
+  timeout: FactoryBatchTimeoutDiagnostic | null
 }
 
 /** Projects durable batch facts plus public provider state.  This is a safe
@@ -78,6 +97,7 @@ export function buildFactoryBatchTechnicalDiagnostic(
   authorization: BatchJobExecutionAuthorizationStatus,
   reservation: FactoryBatchReservationDiagnostic | null = null,
   resume: BatchResumePlan | null = null,
+  timeout: FactoryBatchTimeoutDiagnostic | null = null,
 ): FactoryBatchTechnicalDiagnostic {
   const persisted = job.failureDiagnostic
   const errorCode = persisted?.code ?? failureCode(job.lastFailure)
@@ -121,6 +141,8 @@ export function buildFactoryBatchTechnicalDiagnostic(
       ? `Autoriza la ejecución real para ${providerLabel(expectedProvider)}${resume?.nextStage ? ` en ${resume.nextStage}` : ''} antes de reintentar.`
       : errorCode === 'INVALID_RESERVATION_STATE' && reservation?.reservationState === 'unknown'
         ? 'La llamada anterior tiene resultado remoto ambiguo. Confirma su consumo fuera de la app antes de autorizar otro intento.'
+      : errorCode === 'TIMEOUT' && timeout?.reconciliationRequired
+        ? 'La solicitud fue despachada localmente, pero el resultado remoto es ambiguo. Comprueba el usage de DeepSeek y resuelve el resultado ambiguo antes de reintentar.'
       : reconciledTerminalRetry
         ? 'La conciliación confirmó consumo sin respuesta recuperable. Reintenta analysis.stage_a: se creará una nueva llamada DeepSeek sin repetir Research.'
       : job.retryable ? 'Reintenta el trabajo cuando la causa indicada esté resuelta.' : 'Revisa la causa técnica antes de volver a intentarlo.',
@@ -130,6 +152,7 @@ export function buildFactoryBatchTechnicalDiagnostic(
     previousAmbiguousUsageResolved: resume?.previousAmbiguousUsageResolved ?? false,
     reservation,
     limit,
+    timeout,
   }
 }
 

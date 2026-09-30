@@ -7,6 +7,7 @@ import {
   LiveProviderAccessError,
   type LiveProviderNetworkPermit,
 } from '@modules/real-pipeline/live-provider-access'
+import { resolveIntelligenceOperationTimeout } from '@modules/real-pipeline/live-provider-clients'
 import {
   inspectInstalledOpenAIResponsesCapability,
   inspectOpenAIResponsesClient,
@@ -109,6 +110,18 @@ function openAIRequest() {
 }
 
 describe('clientes reales cerrados por permisos e inyectables sin red', () => {
+  it('ANALYSIS_STAGE_A_USES_OPERATION_TIMEOUT_POLICY finita y específica para DeepSeek', () => {
+    expect(resolveIntelligenceOperationTimeout('analysis', {
+      providerId: 'deepseek', model: 'deepseek-flash', apiModel: 'deepseek-v4-flash',
+    })).toEqual({ type: 'TOTAL_REQUEST_TIMEOUT', timeoutMs: 90_000, source: 'DEEPSEEK_ANALYSIS_DEFAULT' })
+    expect(resolveIntelligenceOperationTimeout('analysis', {
+      providerId: 'deepseek', model: 'deepseek-flash', apiModel: 'deepseek-v4-flash', timeoutMs: 45_000,
+    })).toEqual({ type: 'TOTAL_REQUEST_TIMEOUT', timeoutMs: 45_000, source: 'ROUTE_OVERRIDE' })
+    expect(resolveIntelligenceOperationTimeout('review', {
+      providerId: 'openai', model: 'gpt-5.6-luna', apiModel: 'gpt-5.6-luna',
+    })).toEqual({ type: 'TOTAL_REQUEST_TIMEOUT', timeoutMs: 30_000, source: 'DEFAULT' })
+  })
+
   it('mantiene el cliente inaccesible con feature flag apagada', () => {
     expect(() => issueLiveProviderNetworkPermit(gate({
       featureToken: 'false',

@@ -145,7 +145,7 @@ import {
   RealEditorialLibraryVersioningService,
   SupabaseRealEditorialLibraryVersioningRepository,
 } from '@modules/library-versioning'
-import { readRealLlmRouting, withLiveProviderClients } from '@modules/real-pipeline'
+import { readRealLlmRouting, resolveIntelligenceOperationTimeout, withLiveProviderClients } from '@modules/real-pipeline'
 import { RedoGenerationGuidanceSchema } from '@shared/redo-guidance-contracts'
 
 // The normal path remains fail-closed. The local smoke wrapper is selected
@@ -198,6 +198,9 @@ ipcMain.handle('factory-batches:retry-job', async (_event, jobId: unknown) => {
   const repository = new SupabaseDestinationBatchRepository(client)
   const job = await repository.getJob(parsedJobId)
   if (!job) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')
+  if (await hasOpenBatchProviderAmbiguity(client, job.id)) {
+    throw new Error('AMBIGUOUS_PROVIDER_RESULT_REQUIRES_RECONCILIATION')
+  }
   const resume = await readBatchResumePlan(client, job)
   // Compatibility for a job that failed before the reconciled analysis retry
   // rule existed. The durable ambiguity evidence, not the message alone,
@@ -253,7 +256,8 @@ ipcMain.handle('factory-batches:technical-diagnostics', async (_event, jobId: un
   const providerCenter = await getProviderCenterRuntime()
   const reservation = await readBatchReservationDiagnostic(client, job.id, job.lastFailure)
   const resume = await readBatchResumePlan(client, job)
-  return buildFactoryBatchTechnicalDiagnostic(job, providerCenter.snapshot(), batchJobExecutionAuthorizations.status(job), reservation, resume)
+  const timeout = readBatchTimeoutDiagnostic(job.lastFailure, reservation, resume)
+  return buildFactoryBatchTechnicalDiagnostic(job, providerCenter.snapshot(), batchJobExecutionAuthorizations.status(job), reservation, resume, timeout)
 })
 
 ipcMain.handle('factory-batches:resolve-ambiguous-call', async (_event, candidate: unknown) => {
@@ -1297,12 +1301,19 @@ async function readBatchReservationDiagnostic(
 
   const { data: reservation, error: reservationError } = await client
     .from('real_editorial_call_reservations')
-    .select('id,state,reserved_cost,calculated_cost')
+    .select('id,call_id,state,reserved_cost,calculated_cost,provider_id,model,operation')
     .eq('execution_owner_id', execution.id)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
   if (reservationError || !reservation) return null
+
+  const { data: providerCalls } = await client.from('real_editorial_provider_calls')
+    .select('state,remote_id,created_at')
+    .eq('reservation_id', reservation.id)
+    .order('sequence', { ascending: true })
+  const started = (providerCalls ?? []).find(call => call.state === 'started')
+  const terminal = (providerCalls ?? []).at(-1)
 
   const { data: ambiguity } = await client.from('real_editorial_ambiguous_calls')
     .select('resolved_at,terminal_decision,terminal_resolution_id')
@@ -1317,6 +1328,18 @@ async function readBatchReservationDiagnostic(
   return {
     reservationId: String(reservation.id),
     reservationState: state,
+    providerCallId: String(reservation.call_id),
+    realProvider: typeof reservation.provider_id === 'string' ? reservation.provider_id : null,
+    model: typeof reservation.model === 'string' ? reservation.model : null,
+    reservationOperation: typeof reservation.operation === 'string' ? reservation.operation : null,
+    requestDispatched: Boolean(started),
+    callStartedAt: started?.created_at ? String(started.created_at) : null,
+    timeoutAt: terminal?.state === 'unknown' && terminal.created_at ? String(terminal.created_at) : null,
+    remoteRequestId: terminal?.remote_id ? String(terminal.remote_id) : null,
+    // A timeout that reached `unknown` has no response metadata in the
+    // durable ledger.  Null means not observed, never "not received".
+    responseHeadersReceived: null,
+    responseBodyStarted: null,
     reservedAmount: Number(reservation.reserved_cost),
     committedAmount: Number(execution.spent_cost),
     expectedReservationState: invalidSettlement ? 'reserved | started' : null,
@@ -1325,6 +1348,41 @@ async function readBatchReservationDiagnostic(
     ambiguityResolution: resolution && isResolutionDecision(resolution.decision)
       ? { decision: resolution.decision, responseRecovered: Boolean(resolution.response_recovered), resolvedAt: ambiguity?.resolved_at ? String(ambiguity.resolved_at) : null, evidence: usageEvidenceFromRow(resolution.external_usage_evidence) }
       : null,
+  }
+}
+
+async function hasOpenBatchProviderAmbiguity(
+  client: ReturnType<typeof createLocalSupabaseClientFromEnv>['client'],
+  jobId: string,
+): Promise<boolean> {
+  const { data: execution, error: executionError } = await client
+    .from('real_editorial_executions').select('id')
+    .eq('owner_type', 'BATCH_JOB').eq('owner_id', jobId).maybeSingle()
+  if (executionError || !execution) return false
+  const { data, error } = await client.from('real_editorial_ambiguous_calls')
+    .select('call_id').eq('execution_owner_id', execution.id).is('resolved_at', null).limit(1)
+  return !error && (data?.length ?? 0) > 0
+}
+
+function readBatchTimeoutDiagnostic(
+  failure: string | undefined,
+  reservation: FactoryBatchReservationDiagnostic | null,
+  resume: Awaited<ReturnType<typeof readBatchResumePlan>>,
+): import('./factory-batch-diagnostics').FactoryBatchTimeoutDiagnostic | null {
+  if (!/^TIMEOUT:/.test(failure ?? '') || !reservation) return null
+  const routing = readRealLlmRouting()
+  const stage = resume?.nextStage?.startsWith('analysis.') ? 'analysis' : 'analysis'
+  const route = routing.routes[stage]
+  const policy = resolveIntelligenceOperationTimeout(stage, route)
+  const historicalTimeout = failure?.match(/superó\s+(\d+)\s+ms/i)?.[1]
+  return {
+    type: 'TOTAL_REQUEST_TIMEOUT',
+    timeoutMs: historicalTimeout ? Number(historicalTimeout) : policy.timeoutMs,
+    timeoutSource: historicalTimeout && policy.source === 'DEEPSEEK_ANALYSIS_DEFAULT'
+      ? 'LEGACY_GENERIC_DEFAULT'
+      : policy.source,
+    ambiguousRemoteResult: reservation.reservationState === 'unknown',
+    reconciliationRequired: reservation.reservationState === 'unknown',
   }
 }
 

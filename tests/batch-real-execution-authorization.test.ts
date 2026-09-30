@@ -121,4 +121,25 @@ describe('real batch execution authorization', () => {
     expect(diagnostics.reservation).toMatchObject({ reservationState: 'started', reservedAmount: 0.02, committedAmount: 0.048 })
     expect(JSON.stringify(diagnostics)).not.toContain('token=should-never-render')
   })
+
+  it('TIMEOUT_DIAGNOSTICS_INCLUDE_PROVIDER_MODEL_TYPE_MS_AND_PROVIDER_CALL_ID without secrets', async () => {
+    const { job } = await failedSegovia()
+    const timeout = buildFactoryBatchTechnicalDiagnostic({
+      ...job,
+      lastFailure: 'TIMEOUT: OpenAI superó 30000 ms',
+      failureDiagnostic: { code: 'TIMEOUT', phase: 'ANALYSIS', operation: 'analysis.stage_a', cause: 'OpenAI superó 30000 ms', retryable: false, occurredAt: new Date('2026-09-30T18:49:49.671Z') },
+    }, providerCenter(), { state: 'AUTHORIZED' }, {
+      reservationId: 'bc1bf749-a663-434a-bdfa-542a96f395b1', reservationState: 'unknown', providerCallId: '57609680-1d66-483c-b4ef-bce7b7f1725e',
+      realProvider: 'deepseek', model: 'deepseek-flash', reservationOperation: 'analysis.stage_a', requestDispatched: true,
+      callStartedAt: '2026-09-30T18:49:19.440Z', timeoutAt: '2026-09-30T18:49:49.671Z', remoteRequestId: null,
+      responseHeadersReceived: null, responseBodyStarted: null, reservedAmount: 0.02, committedAmount: 0.048,
+      expectedReservationState: null, requestedTransition: null, ledgerState: 'AMBIGUOUS_PENDING', ambiguityResolution: null,
+    }, null, {
+      type: 'TOTAL_REQUEST_TIMEOUT', timeoutMs: 30_000, timeoutSource: 'LEGACY_GENERIC_DEFAULT', ambiguousRemoteResult: true, reconciliationRequired: true,
+    })
+    expect(timeout.reservation).toMatchObject({ realProvider: 'deepseek', model: 'deepseek-flash', requestDispatched: true, providerCallId: '57609680-1d66-483c-b4ef-bce7b7f1725e' })
+    expect(timeout.timeout).toEqual({ type: 'TOTAL_REQUEST_TIMEOUT', timeoutMs: 30_000, timeoutSource: 'LEGACY_GENERIC_DEFAULT', ambiguousRemoteResult: true, reconciliationRequired: true })
+    expect(timeout.suggestedAction).toContain('usage de DeepSeek')
+    expect(JSON.stringify(timeout)).not.toContain('token=should-never-render')
+  })
 })

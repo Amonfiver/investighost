@@ -105,7 +105,7 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
     {ambiguous && !showResolution && <div className="job-review-action"><p className="muted">La llamada tiene resultado remoto ambiguo y permanece bloqueada hasta una decisión humana.</p><button className="button secondary" onClick={() => setShowResolution(true)}>Resolver resultado ambiguo</button></div>}
     {showResolution && <AmbiguousCallResolutionForm job={liveJob} saving={resolving} onCancel={() => { setShowResolution(false); setResolutionError(null) }} onConfirm={resolveAmbiguity} />}
     {authorizationRequired && authorizationState !== 'AUTHORIZED' && <div className="job-review-action"><p className="muted">La red está separada de la autorización de coste de este trabajo. {diagnostic?.expectedProvider ? `Siguiente provider: ${diagnostic.expectedProvider === 'deepseek' ? 'DeepSeek' : 'Tavily'}.` : ''} {diagnostic?.nextStage ? `Etapa: ${diagnostic.nextStage}.` : ''}</p><button className="button secondary" disabled={authorizing} onClick={() => { void authorize() }}>{authorizing ? 'Solicitando autorización…' : 'Autorizar ejecución real'}</button></div>}
-    {liveJob.status === 'FAILED' && liveJob.retryable && (!authorizationRequired || authorizationState === 'AUTHORIZED') && <div className="job-review-action"><button className="button primary" disabled={retrying} onClick={() => { void retry() }}>{retrying ? 'Reintentando…' : 'Reintentar'}</button></div>}
+    {liveJob.status === 'FAILED' && liveJob.retryable && !ambiguous && (!authorizationRequired || authorizationState === 'AUTHORIZED') && <div className="job-review-action"><button className="button primary" disabled={retrying} onClick={() => { void retry() }}>{retrying ? 'Reintentando…' : 'Reintentar'}</button></div>}
     {liveJob.status === 'READY_FOR_REVIEW' && <div className="job-review-action"><button className="button primary" onClick={onOpenReview}>Abrir revisión</button></div>}
   </section>
 }
@@ -176,6 +176,11 @@ function TechnicalDiagnostic({ details }: { details: FactoryBatchTechnicalDiagno
     ['Tipo de límite', details.limit?.type ?? null], ['Valor de límite', details.limit?.value ?? null], ['Valor actual', details.limit?.currentValue ?? null],
     ['Ámbito de límite', details.limit?.scope ?? null], ['Override humano requerido', details.limit?.requiresHumanOverride ?? null], ['Acción sobre límite', details.limit?.overrideAction ?? null],
     ['Reserva', details.reservation?.reservationId ?? null], ['Estado reserva', details.reservation?.reservationState ?? null],
+    ['Proveedor real', details.reservation?.realProvider ?? null], ['Modelo real', details.reservation?.model ?? null], ['Operación de reserva', details.reservation?.reservationOperation ?? null],
+    ['Provider call local', details.reservation?.providerCallId ?? null], ['Solicitud despachada localmente', details.reservation?.requestDispatched ?? null],
+    ['Inicio de llamada', details.reservation?.callStartedAt ? new Date(details.reservation.callStartedAt).toLocaleString('es-ES') : null],
+    ['Timeout registrado', details.reservation?.timeoutAt ? new Date(details.reservation.timeoutAt).toLocaleString('es-ES') : null],
+    ['Remote request id', details.reservation?.remoteRequestId ?? null], ['Headers de respuesta observados', details.reservation?.responseHeadersReceived ?? null], ['Cuerpo de respuesta iniciado', details.reservation?.responseBodyStarted ?? null],
     ['Importe reservado', details.reservation?.reservedAmount ?? null], ['Importe comprometido', details.reservation?.committedAmount ?? null],
     ['Estado esperado de reserva', details.reservation?.expectedReservationState ?? null], ['Transición solicitada', details.reservation?.requestedTransition ?? null],
     ['Estado del ledger', details.reservation?.ledgerState ?? null],
@@ -184,6 +189,8 @@ function TechnicalDiagnostic({ details }: { details: FactoryBatchTechnicalDiagno
     ['Input evidence', details.reservation?.ambiguityResolution?.evidence?.inputCacheMissTokens ?? null], ['Output evidence', details.reservation?.ambiguityResolution?.evidence?.outputTokens ?? null],
     ['Coste evidence', details.reservation?.ambiguityResolution?.evidence ? `${details.reservation.ambiguityResolution.evidence.providerCost} ${details.reservation.ambiguityResolution.evidence.currency}` : null],
     ['Limitación evidence', details.reservation?.ambiguityResolution?.evidence?.limitation ?? null],
+    ['Tipo de timeout', details.timeout?.type ?? null], ['Timeout ms', details.timeout?.timeoutMs ?? null], ['Fuente de timeout', details.timeout?.timeoutSource ?? null],
+    ['Resultado remoto ambiguo', details.timeout?.ambiguousRemoteResult ?? null], ['Reconciliación requerida', details.timeout?.reconciliationRequired ?? null],
   ]
   return <dl className="technical-diagnostic">{rows.filter(([, value]) => value !== null).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{String(value)}</dd></div>)}</dl>
 }

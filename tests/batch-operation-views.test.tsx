@@ -58,6 +58,7 @@ describe('Production job detail', () => {
     expect(renderer).toContain("['Reanudar desde', details.resumeFromStage]")
     expect(renderer).toContain("['Tipo de límite', details.limit?.type ?? null]")
     expect(renderer).toContain("['Acción sobre límite', details.limit?.overrideAction ?? null]")
+    expect(renderer).toContain("!ambiguous && (!authorizationRequired || authorizationState === 'AUTHORIZED')")
     expect(renderer).toContain("diagnostic?.executionMode === 'REAL'")
     expect(renderer).toContain("retrying ? 'Reintentando…' : 'Reintentar'")
   })

@@ -332,6 +332,24 @@ no prueba de que DeepSeek no procesara la solicitud.
 `TIMEOUT_AMBIGUITY_FAIL_CLOSED = TRUE` y
 `TIMEOUT_DIAGNOSTICS_SAFE = DONE`.
 
+### 100 — evidence de conciliación vinculada a la llamada ambigua actual
+
+El formulario de conciliación no usa ya datos de job, ni la última
+conciliación histórica, como prefill de una nueva ambigüedad. Se abre con la
+identidad durable actual `reservationId + providerCallId`, precarga únicamente
+provider, modelo, operación e intento conocidos, y deja vacíos/editables la
+ventana, nombre público de clave, requests, tokens y coste. Electron main y el
+servicio vuelven a verificar ambas identidades antes del RPC irreversible; si
+cambió la ambigüedad se rechaza la decisión en vez de aplicarla a otra llamada.
+
+La evidencia puede conservar separadamente `inputCacheHitTokens` opcional; no
+se mezcla ni suma al valor facturable `inputCacheMissTokens`. Sigue siendo
+metadata USD append-only, sin claves, headers ni secretos.
+
+`CURRENT_AMBIGUITY_EVIDENCE_SCOPING = DONE`,
+`HISTORICAL_EVIDENCE_PREFILL = FORBIDDEN` y
+`CACHE_HIT_EVIDENCE_SEPARATE = TRUE`.
+
 ## Lo construido y su estado
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |

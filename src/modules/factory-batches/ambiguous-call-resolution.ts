@@ -28,15 +28,19 @@ export class BatchAmbiguousCallResolutionService {
       .from('real_editorial_executions').select('id').eq('owner_type', 'BATCH_JOB').eq('owner_id', job.id).maybeSingle()
     if (executionError || !execution) throw new BatchAmbiguousCallResolutionError('EXECUTION_NOT_FOUND', 'No existe la ejecución durable del trabajo')
     const { data: ambiguity, error: ambiguityError } = await this.client
-      .from('real_editorial_ambiguous_calls').select('call_id').eq('execution_owner_id', execution.id)
+      .from('real_editorial_ambiguous_calls').select('call_id,reservation_id').eq('execution_owner_id', execution.id)
+      .eq('call_id', input.providerCallId).eq('reservation_id', input.reservationId)
       .is('resolved_at', null).order('opened_at', { ascending: true }).limit(1).maybeSingle()
-    if (ambiguityError || !ambiguity) throw new BatchAmbiguousCallResolutionError('AMBIGUITY_NOT_FOUND', 'No hay una llamada ambigua pendiente para este trabajo')
+    if (ambiguityError || !ambiguity) throw new BatchAmbiguousCallResolutionError('AMBIGUITY_CHANGED', 'La llamada ambigua seleccionada ya no está pendiente para este trabajo')
+    if (!matchesSelectedBatchAmbiguity(input, ambiguity)) {
+      throw new BatchAmbiguousCallResolutionError('AMBIGUITY_CHANGED', 'La llamada ambigua seleccionada ya no coincide con la reserva pendiente')
+    }
 
     const decision = input.decision === 'CONSUMPTION_CONFIRMED'
       ? 'consumption_confirmed'
       : input.decision === 'NO_CONSUMPTION' ? 'no_consumption' : 'indeterminate'
     const resolutionKey = createHash('sha256').update(JSON.stringify({
-      executionOwnerId: execution.id, callId: ambiguity.call_id, actorId: this.actorId,
+      executionOwnerId: execution.id, reservationId: ambiguity.reservation_id, callId: ambiguity.call_id, actorId: this.actorId,
       decision, responseRecovered: input.responseRecovered, evidence: input.evidence ?? null, note: input.note ?? null,
     })).digest('hex')
     const { data, error } = await this.client.rpc('resolve_generic_real_editorial_ambiguous_call', {
@@ -68,4 +72,13 @@ function sanitize(value: string): string {
 
 export function isAmbiguousBatchCallResolution(candidate: unknown): candidate is BatchAmbiguousCallResolution {
   return BatchAmbiguousCallResolutionSchema.safeParse(candidate).success
+}
+
+/** The renderer selects one current durable ambiguity.  Verify both stable
+ * identities again in main before an irreversible human decision is written. */
+export function matchesSelectedBatchAmbiguity(
+  input: Pick<BatchAmbiguousCallResolution, 'reservationId' | 'providerCallId'>,
+  ambiguity: { reservation_id: string; call_id: string },
+): boolean {
+  return ambiguity.call_id === input.providerCallId && ambiguity.reservation_id === input.reservationId
 }

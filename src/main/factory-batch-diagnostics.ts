@@ -8,6 +8,7 @@ export type FactoryBatchUsageEvidence = {
   provider: string
   model: string
   requestCount: number
+  inputCacheHitTokens?: number
   inputCacheMissTokens: number
   outputTokens: number
   providerCost: number
@@ -22,6 +23,7 @@ export type FactoryBatchReservationDiagnostic = {
   realProvider?: string | null
   model?: string | null
   reservationOperation?: string | null
+  reservationAttempt?: number | null
   requestDispatched?: boolean
   callStartedAt?: string | null
   timeoutAt?: string | null

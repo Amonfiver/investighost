@@ -13,6 +13,11 @@ const failedJob = DestinationBatchJobSchema.parse({
   createdAt: new Date('2026-09-27T00:00:00.000Z'), updatedAt: new Date('2026-09-27T00:00:00.000Z'),
 })
 
+const currentAmbiguity = {
+  reservationId: 'bc1bf749-a663-434a-bdfa-542a96f395b1', providerCallId: '57609680-1d66-483c-b4ef-bce7b7f1725e',
+  provider: 'deepseek', model: 'deepseek-flash', operation: 'analysis.stage_a', attempt: 2,
+}
+
 describe('Production job detail', () => {
   const realSegoviaJob = { ...failedJob, id: '2efade2d-b011-4cc2-a51d-ce2a095036c1' }
 
@@ -63,21 +68,24 @@ describe('Production job detail', () => {
     expect(renderer).toContain("retrying ? 'Reintentando…' : 'Reintentar'")
   })
 
-  it('FORM_PREFILLS_KNOWN_EVIDENCE and renders every Segovia value in the actual reconciliation form', () => {
-    const html = renderToStaticMarkup(<AmbiguousCallResolutionForm job={realSegoviaJob} saving={false} onCancel={() => undefined} onConfirm={() => undefined} />)
-    for (const value of ['deepseek-flash', '2026-09-27T20:00:00+02:00', '2026-09-27T21:00:00+02:00', 'investighost', '40341', '8036', '0.01087275', 'Usage export aggregated hourly; request ID unavailable.']) expect(html).toContain(value)
+  it('CURRENT_AMBIGUITY_FORM_SCOPED_TO_RESERVATION and does not prefill a previous Segovia reconciliation', () => {
+    const html = renderToStaticMarkup(<AmbiguousCallResolutionForm job={realSegoviaJob} ambiguity={currentAmbiguity} saving={false} onCancel={() => undefined} onConfirm={() => undefined} />)
+    for (const value of ['deepseek-flash', currentAmbiguity.reservationId, currentAmbiguity.providerCallId, 'analysis.stage_a', 'Tokens input cache hit']) expect(html).toContain(value)
+    for (const historical of ['2026-09-27T20:00:00+02:00', '40341', '8036', '0.01087275']) expect(html).not.toContain(historical)
     expect(html).toContain('Resumen para confirmar')
     expect(html).toContain('Cancelar')
-    expect(html).toContain('readOnly=""')
+    expect(html).toContain('value=""')
   })
 
-  it('INPUT_VALUE_PERSISTS_AFTER_TYPING and CONFIRM_DISABLED_WHEN_INVALID use a durable local form draft', async () => {
+  it('HUMAN_EVIDENCE_FIELDS_EDITABLE and CONFIRM_DISABLED_WHEN_INVALID use a draft keyed to current ambiguity', async () => {
     const { readFile } = await import('node:fs/promises')
     const renderer = await readFile(new URL('../src/renderer/BatchOperationViews.tsx', import.meta.url), 'utf8')
-    expect(renderer).toContain('useState(() => createAmbiguousUsageDraft(job))')
+    expect(renderer).toContain('const ambiguityIdentity = `${ambiguity.reservationId}:${ambiguity.providerCallId}`')
+    expect(renderer).toContain('useEffect(() => { setDraft(createAmbiguousUsageDraft()) }, [ambiguityIdentity])')
     expect(renderer).toContain("setDraft(current => ({ ...current, [key]: value }))")
+    expect(renderer).toContain('Tokens input cache hit')
     expect(renderer).toContain('disabled={saving || !valid}')
-    const blank = renderToStaticMarkup(<AmbiguousCallResolutionForm job={failedJob} saving={false} onCancel={() => undefined} onConfirm={() => undefined} />)
+    const blank = renderToStaticMarkup(<AmbiguousCallResolutionForm job={failedJob} ambiguity={currentAmbiguity} saving={false} onCancel={() => undefined} onConfirm={() => undefined} />)
     expect(blank).toContain('disabled=""')
     expect(blank).toContain('type="button"')
   })

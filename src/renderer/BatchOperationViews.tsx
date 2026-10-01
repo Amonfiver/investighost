@@ -103,7 +103,12 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
     {savedResolutionMessage && <div className="alert success">{savedResolutionMessage}</div>}
     {liveJob.lastFailure && <div className="alert warning"><strong>{userFacingJobFailure(liveJob.lastFailure, liveJob.redoScope)}</strong><details><summary>Detalles técnicos</summary>{diagnostic ? <TechnicalDiagnostic details={diagnostic} /> : <span>{technicalJobFailureDetail(liveJob.lastFailure)}</span>}</details></div>}
     {ambiguous && !showResolution && <div className="job-review-action"><p className="muted">La llamada tiene resultado remoto ambiguo y permanece bloqueada hasta una decisión humana.</p><button className="button secondary" onClick={() => setShowResolution(true)}>Resolver resultado ambiguo</button></div>}
-    {showResolution && <AmbiguousCallResolutionForm job={liveJob} saving={resolving} onCancel={() => { setShowResolution(false); setResolutionError(null) }} onConfirm={resolveAmbiguity} />}
+    {showResolution && diagnostic?.reservation?.reservationState === 'unknown' && diagnostic.reservation.providerCallId && <AmbiguousCallResolutionForm job={liveJob} ambiguity={{
+      reservationId: diagnostic.reservation.reservationId, providerCallId: diagnostic.reservation.providerCallId,
+      provider: diagnostic.reservation.realProvider ?? 'deepseek', model: diagnostic.reservation.model ?? '',
+      operation: diagnostic.reservation.reservationOperation ?? diagnostic.operation,
+      attempt: diagnostic.reservation.reservationAttempt ?? liveJob.attemptCount,
+    }} saving={resolving} onCancel={() => { setShowResolution(false); setResolutionError(null) }} onConfirm={resolveAmbiguity} />}
     {authorizationRequired && authorizationState !== 'AUTHORIZED' && <div className="job-review-action"><p className="muted">La red está separada de la autorización de coste de este trabajo. {diagnostic?.expectedProvider ? `Siguiente provider: ${diagnostic.expectedProvider === 'deepseek' ? 'DeepSeek' : 'Tavily'}.` : ''} {diagnostic?.nextStage ? `Etapa: ${diagnostic.nextStage}.` : ''}</p><button className="button secondary" disabled={authorizing} onClick={() => { void authorize() }}>{authorizing ? 'Solicitando autorización…' : 'Autorizar ejecución real'}</button></div>}
     {liveJob.status === 'FAILED' && liveJob.retryable && !ambiguous && (!authorizationRequired || authorizationState === 'AUTHORIZED') && <div className="job-review-action"><button className="button primary" disabled={retrying} onClick={() => { void retry() }}>{retrying ? 'Reintentando…' : 'Reintentar'}</button></div>}
     {liveJob.status === 'READY_FOR_REVIEW' && <div className="job-review-action"><button className="button primary" onClick={onOpenReview}>Abrir revisión</button></div>}
@@ -111,55 +116,54 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
 }
 
 type AmbiguousUsageDraft = {
-  decision: BatchAmbiguousCallResolution['decision']; model: string; windowStart: string; windowEnd: string; apiKeyName: string
-  requestCount: string; inputCacheMissTokens: string; outputTokens: string; providerCost: string; limitation: string; note: string; locked: boolean
+  decision: BatchAmbiguousCallResolution['decision']; windowStart: string; windowEnd: string; apiKeyName: string
+  requestCount: string; inputCacheHitTokens: string; inputCacheMissTokens: string; outputTokens: string; providerCost: string; limitation: string; note: string
 }
 
-const SEGOVIA_AMBIGUOUS_USAGE_JOB_ID = '2efade2d-b011-4cc2-a51d-ce2a095036c1'
-
-function createAmbiguousUsageDraft(job: Pick<DestinationBatchJob, 'id'>): AmbiguousUsageDraft {
-  if (job.id === SEGOVIA_AMBIGUOUS_USAGE_JOB_ID) return {
-    decision: 'CONSUMPTION_CONFIRMED', model: 'deepseek-flash', windowStart: '2026-09-27T20:00:00+02:00', windowEnd: '2026-09-27T21:00:00+02:00',
-    apiKeyName: 'investighost', requestCount: '1', inputCacheMissTokens: '40341', outputTokens: '8036', providerCost: '0.01087275',
-    limitation: 'Usage export aggregated hourly; request ID unavailable.', note: '', locked: true,
-  }
-  return { decision: 'CONSUMPTION_CONFIRMED', model: '', windowStart: '', windowEnd: '', apiKeyName: '', requestCount: '', inputCacheMissTokens: '', outputTokens: '', providerCost: '', limitation: '', note: '', locked: false }
+type CurrentAmbiguity = {
+  reservationId: string; providerCallId: string; provider: string; model: string; operation: string; attempt: number
 }
 
-function ambiguousUsageDraftIsValid(draft: AmbiguousUsageDraft): boolean {
+function createAmbiguousUsageDraft(): AmbiguousUsageDraft {
+  return { decision: 'CONSUMPTION_CONFIRMED', windowStart: '', windowEnd: '', apiKeyName: '', requestCount: '', inputCacheHitTokens: '', inputCacheMissTokens: '', outputTokens: '', providerCost: '', limitation: '', note: '' }
+}
+
+function ambiguousUsageDraftIsValid(draft: AmbiguousUsageDraft, model: string): boolean {
   if (draft.decision !== 'CONSUMPTION_CONFIRMED') return true
   const start = Date.parse(draft.windowStart), end = Date.parse(draft.windowEnd)
-  const integers = [draft.requestCount, draft.inputCacheMissTokens, draft.outputTokens].map(Number)
+  const integers = [draft.requestCount, draft.inputCacheHitTokens, draft.inputCacheMissTokens, draft.outputTokens].map(Number)
   const cost = Number(draft.providerCost)
-  return Boolean(draft.model.trim() && draft.apiKeyName.trim() && draft.limitation.trim())
+  return Boolean(model.trim() && draft.apiKeyName.trim() && draft.limitation.trim())
     && Number.isFinite(start) && Number.isFinite(end) && start < end
     && Number.isInteger(integers[0]) && integers[0] >= 1 && integers.slice(1).every(value => Number.isInteger(value) && value >= 0)
     && Number.isFinite(cost) && cost >= 0
 }
 
-export function AmbiguousCallResolutionForm({ job, saving, onCancel, onConfirm }: {
-  job: DestinationBatchJob; saving: boolean; onCancel: () => void; onConfirm: (input: BatchAmbiguousCallResolution) => void
+export function AmbiguousCallResolutionForm({ job, ambiguity, saving, onCancel, onConfirm }: {
+  job: DestinationBatchJob; ambiguity: CurrentAmbiguity; saving: boolean; onCancel: () => void; onConfirm: (input: BatchAmbiguousCallResolution) => void
 }) {
-  const [draft, setDraft] = useState(() => createAmbiguousUsageDraft(job))
-  const valid = ambiguousUsageDraftIsValid(draft)
+  const ambiguityIdentity = `${ambiguity.reservationId}:${ambiguity.providerCallId}`
+  const [draft, setDraft] = useState(createAmbiguousUsageDraft)
+  useEffect(() => { setDraft(createAmbiguousUsageDraft()) }, [ambiguityIdentity])
+  const valid = ambiguousUsageDraftIsValid(draft, ambiguity.model)
   const update = (key: keyof AmbiguousUsageDraft, value: string) => setDraft(current => ({ ...current, [key]: value }))
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!valid) return
-    const base = { jobId: job.id, decision: draft.decision, responseRecovered: false }
+    const base = { jobId: job.id, reservationId: ambiguity.reservationId, providerCallId: ambiguity.providerCallId, decision: draft.decision, responseRecovered: false }
     const input: BatchAmbiguousCallResolution = draft.decision === 'CONSUMPTION_CONFIRMED'
-      ? { ...base, evidence: { evidenceType: 'PROVIDER_USAGE_EXPORT', provider: 'deepseek', model: draft.model.trim(), windowStart: draft.windowStart, windowEnd: draft.windowEnd, apiKeyName: draft.apiKeyName.trim(), requestCount: Number(draft.requestCount), inputCacheMissTokens: Number(draft.inputCacheMissTokens), outputTokens: Number(draft.outputTokens), providerCost: Number(draft.providerCost), currency: 'USD', requestIdPresentInExport: false, limitation: draft.limitation.trim() }, note: draft.note.trim() || undefined }
+      ? { ...base, evidence: { evidenceType: 'PROVIDER_USAGE_EXPORT', provider: 'deepseek', model: ambiguity.model, windowStart: draft.windowStart, windowEnd: draft.windowEnd, apiKeyName: draft.apiKeyName.trim(), requestCount: Number(draft.requestCount), inputCacheHitTokens: Number(draft.inputCacheHitTokens), inputCacheMissTokens: Number(draft.inputCacheMissTokens), outputTokens: Number(draft.outputTokens), providerCost: Number(draft.providerCost), currency: 'USD', requestIdPresentInExport: false, limitation: draft.limitation.trim() }, note: draft.note.trim() || undefined }
       : { ...base, note: draft.note.trim() || undefined }
     onConfirm(input)
   }
   const evidenceVisible = draft.decision === 'CONSUMPTION_CONFIRMED'
   return <form className="ambiguous-resolution-form" onSubmit={submit} noValidate>
-    <header><span className="card-kicker">RESOLUCIÓN HUMANA</span><h3>Resolver resultado ambiguo</h3><p>La decisión no inicia proveedores ni reconstruye una respuesta perdida.</p></header>
+    <header><span className="card-kicker">RESOLUCIÓN HUMANA</span><h3>Resolver resultado ambiguo</h3><p>La decisión no inicia proveedores ni reconstruye una respuesta perdida.</p><dl className="ambiguity-identity"><div><dt>Reserva</dt><dd>{ambiguity.reservationId}</dd></div><div><dt>Provider call</dt><dd>{ambiguity.providerCallId}</dd></div><div><dt>Intento</dt><dd>{ambiguity.attempt}</dd></div><div><dt>Operación</dt><dd>{ambiguity.operation}</dd></div></dl></header>
     <fieldset><legend>Resolución</legend><label>Resultado<select value={draft.decision} disabled={saving} onChange={event => update('decision', event.target.value)}><option value="NO_CONSUMPTION">Confirmado no consumido</option><option value="CONSUMPTION_CONFIRMED">Confirmado consumido</option><option value="INDETERMINATE">Sigue indeterminado</option></select></label><label>Respuesta recuperada<input value="No" readOnly aria-readonly="true" /></label></fieldset>
-    {evidenceVisible && <><fieldset><legend>Evidencia de provider</legend><div className="ambiguous-resolution-fields"><label>Provider<input value="DeepSeek" readOnly aria-readonly="true" /></label><label>Modelo<input value={draft.model} readOnly={draft.locked} disabled={saving} onChange={event => update('model', event.target.value)} /></label><label>Inicio ventana<input value={draft.windowStart} readOnly={draft.locked} disabled={saving} onChange={event => update('windowStart', event.target.value)} /></label><label>Fin ventana<input value={draft.windowEnd} readOnly={draft.locked} disabled={saving} onChange={event => update('windowEnd', event.target.value)} /></label><label>Nombre público API key<input value={draft.apiKeyName} readOnly={draft.locked} disabled={saving} onChange={event => update('apiKeyName', event.target.value)} /></label><label>Moneda<input value="USD" readOnly aria-readonly="true" /></label></div></fieldset>
-      <fieldset><legend>Tokens y coste</legend><div className="ambiguous-resolution-fields"><label>Requests<input value={draft.requestCount} inputMode="numeric" readOnly={draft.locked} disabled={saving} onChange={event => update('requestCount', event.target.value)} /></label><label>Tokens input miss<input value={draft.inputCacheMissTokens} inputMode="numeric" readOnly={draft.locked} disabled={saving} onChange={event => update('inputCacheMissTokens', event.target.value)} /></label><label>Tokens output<input value={draft.outputTokens} inputMode="numeric" readOnly={draft.locked} disabled={saving} onChange={event => update('outputTokens', event.target.value)} /></label><label>Coste provider USD<input value={draft.providerCost} inputMode="decimal" readOnly={draft.locked} disabled={saving} onChange={event => update('providerCost', event.target.value)} /></label></div></fieldset>
-      <aside className="ambiguous-resolution-summary"><strong>Resumen para confirmar</strong><span>DeepSeek · {draft.model}</span><span>{draft.requestCount} request · {draft.inputCacheMissTokens} input tokens · {draft.outputTokens} output tokens</span><span>{draft.providerCost} USD · respuesta recuperada: NO</span><small>Limitación: {draft.limitation}</small></aside></>}
-    <fieldset><legend>Limitación y nota</legend>{evidenceVisible && <label>Limitación<textarea value={draft.limitation} readOnly={draft.locked} disabled={saving} onChange={event => update('limitation', event.target.value)} /></label>}<label>Nota opcional<textarea value={draft.note} disabled={saving} onChange={event => update('note', event.target.value)} /></label></fieldset>
+    {evidenceVisible && <><fieldset><legend>Evidencia de provider</legend><div className="ambiguous-resolution-fields"><label>Provider<input value={ambiguity.provider === 'deepseek' ? 'DeepSeek' : ambiguity.provider} readOnly aria-readonly="true" /></label><label>Modelo<input value={ambiguity.model} readOnly aria-readonly="true" /></label><label>Inicio ventana<input value={draft.windowStart} disabled={saving} onChange={event => update('windowStart', event.target.value)} /></label><label>Fin ventana<input value={draft.windowEnd} disabled={saving} onChange={event => update('windowEnd', event.target.value)} /></label><label>Nombre público API key<input value={draft.apiKeyName} disabled={saving} onChange={event => update('apiKeyName', event.target.value)} /></label><label>Moneda<input value="USD" readOnly aria-readonly="true" /></label></div></fieldset>
+      <fieldset><legend>Tokens y coste</legend><div className="ambiguous-resolution-fields"><label>Requests<input value={draft.requestCount} inputMode="numeric" disabled={saving} onChange={event => update('requestCount', event.target.value)} /></label><label>Tokens input cache hit<input value={draft.inputCacheHitTokens} inputMode="numeric" disabled={saving} onChange={event => update('inputCacheHitTokens', event.target.value)} /></label><label>Tokens input miss<input value={draft.inputCacheMissTokens} inputMode="numeric" disabled={saving} onChange={event => update('inputCacheMissTokens', event.target.value)} /></label><label>Tokens output<input value={draft.outputTokens} inputMode="numeric" disabled={saving} onChange={event => update('outputTokens', event.target.value)} /></label><label>Coste provider USD<input value={draft.providerCost} inputMode="decimal" disabled={saving} onChange={event => update('providerCost', event.target.value)} /></label></div></fieldset>
+      <aside className="ambiguous-resolution-summary"><strong>Resumen para confirmar</strong><span>{ambiguity.provider === 'deepseek' ? 'DeepSeek' : ambiguity.provider} · {ambiguity.model}</span><span>{draft.requestCount} request · {draft.inputCacheHitTokens} input cache hit · {draft.inputCacheMissTokens} input miss · {draft.outputTokens} output tokens</span><span>{draft.providerCost} USD · respuesta recuperada: NO</span><small>Limitación: {draft.limitation}</small></aside></>}
+    <fieldset><legend>Limitación y nota</legend>{evidenceVisible && <label>Limitación<textarea value={draft.limitation} disabled={saving} onChange={event => update('limitation', event.target.value)} /></label>}<label>Nota opcional<textarea value={draft.note} disabled={saving} onChange={event => update('note', event.target.value)} /></label></fieldset>
     <p className="muted">No se guarda ninguna clave secreta, header de autorización ni token de ejecución.</p>
     <footer><button type="button" className="button ghost" disabled={saving} onClick={onCancel}>Cancelar</button><button className="button primary" disabled={saving || !valid}>{saving ? 'Guardando…' : 'Confirmar resolución humana'}</button></footer>
   </form>
@@ -177,6 +181,7 @@ function TechnicalDiagnostic({ details }: { details: FactoryBatchTechnicalDiagno
     ['Ámbito de límite', details.limit?.scope ?? null], ['Override humano requerido', details.limit?.requiresHumanOverride ?? null], ['Acción sobre límite', details.limit?.overrideAction ?? null],
     ['Reserva', details.reservation?.reservationId ?? null], ['Estado reserva', details.reservation?.reservationState ?? null],
     ['Proveedor real', details.reservation?.realProvider ?? null], ['Modelo real', details.reservation?.model ?? null], ['Operación de reserva', details.reservation?.reservationOperation ?? null],
+    ['Intento de reserva', details.reservation?.reservationAttempt ?? null],
     ['Provider call local', details.reservation?.providerCallId ?? null], ['Solicitud despachada localmente', details.reservation?.requestDispatched ?? null],
     ['Inicio de llamada', details.reservation?.callStartedAt ? new Date(details.reservation.callStartedAt).toLocaleString('es-ES') : null],
     ['Timeout registrado', details.reservation?.timeoutAt ? new Date(details.reservation.timeoutAt).toLocaleString('es-ES') : null],
@@ -186,7 +191,7 @@ function TechnicalDiagnostic({ details }: { details: FactoryBatchTechnicalDiagno
     ['Estado del ledger', details.reservation?.ledgerState ?? null],
     ['Resolución ambigua', details.reservation?.ambiguityResolution?.decision ?? null], ['Respuesta recuperada', details.reservation?.ambiguityResolution?.responseRecovered ?? null],
     ['Evidence', details.reservation?.ambiguityResolution?.evidence?.evidenceType ?? null], ['Requests evidence', details.reservation?.ambiguityResolution?.evidence?.requestCount ?? null],
-    ['Input evidence', details.reservation?.ambiguityResolution?.evidence?.inputCacheMissTokens ?? null], ['Output evidence', details.reservation?.ambiguityResolution?.evidence?.outputTokens ?? null],
+    ['Input cache hit evidence', details.reservation?.ambiguityResolution?.evidence?.inputCacheHitTokens ?? null], ['Input evidence', details.reservation?.ambiguityResolution?.evidence?.inputCacheMissTokens ?? null], ['Output evidence', details.reservation?.ambiguityResolution?.evidence?.outputTokens ?? null],
     ['Coste evidence', details.reservation?.ambiguityResolution?.evidence ? `${details.reservation.ambiguityResolution.evidence.providerCost} ${details.reservation.ambiguityResolution.evidence.currency}` : null],
     ['Limitación evidence', details.reservation?.ambiguityResolution?.evidence?.limitation ?? null],
     ['Tipo de timeout', details.timeout?.type ?? null], ['Timeout ms', details.timeout?.timeoutMs ?? null], ['Fuente de timeout', details.timeout?.timeoutSource ?? null],

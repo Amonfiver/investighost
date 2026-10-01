@@ -273,7 +273,7 @@ ipcMain.handle('factory-batches:resolve-ambiguous-call', async (_event, candidat
   const options: MessageBoxOptions = {
     type: 'warning', buttons: ['Cancelar', 'Guardar resolución'], defaultId: 0, cancelId: 0,
     title: 'Resolver resultado ambiguo', message: `Resolver la llamada ambigua de ${job.originalName}.`,
-    detail: `${selected} Esta decisión es durable, no inicia ningún provider y no puede deshacerse.`,
+    detail: `${selected}\nReserva: ${input.reservationId}\nProvider call: ${input.providerCallId}\nEsta decisión es durable, no inicia ningún provider y no puede deshacerse.`,
   }
   const result = mainWindow ? await dialog.showMessageBox(mainWindow, options) : await dialog.showMessageBox(options)
   if (result.response !== 1) throw new Error('AMBIGUITY_RESOLUTION_CONFIRMATION_REQUIRED')
@@ -1301,7 +1301,7 @@ async function readBatchReservationDiagnostic(
 
   const { data: reservation, error: reservationError } = await client
     .from('real_editorial_call_reservations')
-    .select('id,call_id,state,reserved_cost,calculated_cost,provider_id,model,operation')
+    .select('id,call_id,state,reserved_cost,calculated_cost,provider_id,model,operation,attempt')
     .eq('execution_owner_id', execution.id)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -1332,6 +1332,7 @@ async function readBatchReservationDiagnostic(
     realProvider: typeof reservation.provider_id === 'string' ? reservation.provider_id : null,
     model: typeof reservation.model === 'string' ? reservation.model : null,
     reservationOperation: typeof reservation.operation === 'string' ? reservation.operation : null,
+    reservationAttempt: typeof reservation.attempt === 'number' ? reservation.attempt : null,
     requestDispatched: Boolean(started),
     callStartedAt: started?.created_at ? String(started.created_at) : null,
     timeoutAt: terminal?.state === 'unknown' && terminal.created_at ? String(terminal.created_at) : null,
@@ -1399,7 +1400,9 @@ function usageEvidenceFromRow(value: unknown): import('./factory-batch-diagnosti
     || typeof evidence.currency !== 'string' || typeof evidence.limitation !== 'string') return null
   return {
     evidenceType: evidence.evidenceType, provider: evidence.provider, model: evidence.model,
-    requestCount: evidence.requestCount, inputCacheMissTokens: evidence.inputCacheMissTokens,
+    requestCount: evidence.requestCount,
+    inputCacheHitTokens: typeof evidence.inputCacheHitTokens === 'number' ? evidence.inputCacheHitTokens : undefined,
+    inputCacheMissTokens: evidence.inputCacheMissTokens,
     outputTokens: evidence.outputTokens, providerCost: evidence.providerCost,
     currency: evidence.currency, limitation: evidence.limitation,
   }

@@ -91,6 +91,7 @@ const ProviderUsageEvidenceSchema = z.object({
   windowEnd: z.string().datetime({ offset: true }),
   apiKeyName: z.string().trim().min(1).max(120).refine(value => !/(sk-|api[_ -]?key|authorization|bearer)/i.test(value)),
   requestCount: z.number().int().positive(),
+  inputCacheHitTokens: z.number().int().nonnegative().optional(),
   inputCacheMissTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
   providerCost: z.number().nonnegative(),
@@ -101,6 +102,8 @@ const ProviderUsageEvidenceSchema = z.object({
 
 export const BatchAmbiguousCallResolutionSchema = z.object({
   jobId: IdSchema,
+  reservationId: IdSchema,
+  providerCallId: IdSchema,
   decision: z.enum(['NO_CONSUMPTION', 'CONSUMPTION_CONFIRMED', 'INDETERMINATE']),
   responseRecovered: z.boolean(),
   evidence: ProviderUsageEvidenceSchema.optional(),

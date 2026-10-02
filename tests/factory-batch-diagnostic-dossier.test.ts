@@ -1,0 +1,60 @@
+import { mkdtemp, readFile } from 'node:fs/promises'
+import path from 'node:path'
+import os from 'node:os'
+import { describe, expect, it } from 'vitest'
+import { DestinationBatchJobSchema } from '@shared/factory-batch-contracts'
+import { buildFactoryBatchTechnicalDiagnostic } from '../src/main/factory-batch-diagnostics'
+import { buildFactoryBatchDiagnosticDossier, compactFactoryBatchDiagnosticSummary, persistFactoryBatchDiagnosticDossier, renderFactoryBatchDiagnosticMarkdown } from '../src/main/factory-batch-diagnostic-dossier'
+
+const job = DestinationBatchJobSchema.parse({
+  id: '2efade2d-b011-4cc2-a51d-ce2a095036c1', batchId: '7efab485-086e-4687-8610-5a5d96a11b9d', inputIndex: 0,
+  originalName: 'Segovia', country: 'España', normalizedName: 'segovia', normalizedCountry: 'ES', normalizedIdentity: 'segovia|ES', canonicalDestinationId: 'fb90002f-7c20-43a0-b709-5bf8f76dda17', identityState: 'NEW', reusePolicy: 'NEEDS_NEW_PRODUCTION', status: 'FAILED', currentPhase: 'ANALYSIS', completedPhases: ['IDENTITY', 'RESEARCH'], artifactRefs: {}, attemptCount: 8, retryable: false, lastFailure: 'TIMEOUT: DeepSeek superó 90000 ms', actualCost: 0, createdAt: new Date('2026-10-01T20:00:00.000Z'), updatedAt: new Date('2026-10-01T20:03:34.000Z'),
+})
+
+const providers = { externalCallsAllowed: true, providers: [{ id: 'deepseek' as const, active: true, configured: true }] } as never
+const diagnostic = buildFactoryBatchTechnicalDiagnostic(job, providers, { state: 'NOT_AUTHORIZED' }, {
+  reservationId: '9aaa90c7-7419-40d8-8448-463dfd44968f', reservationState: 'unknown', providerCallId: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2', realProvider: 'deepseek', model: 'deepseek-flash', reservationOperation: 'analysis.stage_a', requestDispatched: true, reservedAmount: 0.02, committedAmount: 0.048, expectedReservationState: null, requestedTransition: null, ledgerState: 'AMBIGUOUS_PENDING', ambiguityResolution: null,
+}, { researchCorpusExists: true, analysisArtifactExists: false, resumeFromStage: 'analysis.stage_a', nextStage: 'analysis.stage_a', expectedProvider: 'deepseek', previousAmbiguousUsageResolved: true, terminalAnalysisRetryAuthorized: false }, { type: 'TOTAL_REQUEST_TIMEOUT', timeoutMs: 90_000, timeoutSource: 'DEEPSEEK_ANALYSIS_DEFAULT', ambiguousRemoteResult: true, reconciliationRequired: true })
+
+function dossier() {
+  return buildFactoryBatchDiagnosticDossier({ job, diagnostic, generatedAt: '2026-10-02T10:00:00.000Z', version: { gitSha: 'f79a620', branch: 'feat/investighost-real-pipeline' },
+    reservations: [{ id: '9aaa90c7-7419-40d8-8448-463dfd44968f', call_id: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2', state: 'unknown', reserved_cost: 0.02, currency: 'EUR', provider_id: 'deepseek', model: 'deepseek-flash', stage: '2_analysis.stage_a', operation: 'analysis.stage_a', attempt: 3, created_at: '2026-10-01T20:02:04.000Z' }],
+    providerCalls: [{ call_id: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2', reservation_id: '9aaa90c7-7419-40d8-8448-463dfd44968f', state: 'unknown', provider_id: 'deepseek', model: 'deepseek-flash', stage: '2_analysis.stage_a', operation: 'analysis.stage_a', sanitized_error: 'DeepSeek superó 90000 ms', created_at: '2026-10-01T20:03:34.000Z' }],
+    ambiguities: [{ call_id: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2', reservation_id: '9aaa90c7-7419-40d8-8448-463dfd44968f', opened_at: '2026-10-01T20:03:34.000Z' }], resolutions: [], artifacts: [{ id: 'research-artifact', artifact_kind: 'checkpoint', artifact_key: 'workflow', version: 8, payload_hash: 'a'.repeat(64), created_at: '2026-10-01T20:00:00.000Z' }],
+  })
+}
+
+describe('expediente diagnóstico durable batch', () => {
+  it('DIAGNOSTIC_EVENTS_ARE_JOB_SCOPED_APPEND_ONLY_AND_HAVE_STABLE_IDS', () => {
+    const first = dossier(), second = dossier()
+    expect(first.schemaVersion).toBe('factory-batch-diagnostic-v1')
+    expect(first.events.map(event => event.eventId)).toEqual(second.events.map(event => event.eventId))
+    expect(first.events.every(event => event.jobId === job.id && event.batchId === job.batchId)).toBe(true)
+    expect(first.events.some(event => event.eventType === 'JOB_FAILED')).toBe(true)
+    expect(first.events.some(event => event.eventType === 'PROVIDER_CALL_TIMEOUT')).toBe(true)
+    expect(first.events.some(event => event.eventType === 'AMBIGUITY_DETECTED')).toBe(true)
+  })
+
+  it('SEGOVIA_DOSSIER exports known durable facts and marks unavailable historical information UNKNOWN', () => {
+    const markdown = renderFactoryBatchDiagnosticMarkdown(dossier())
+    expect(markdown).toContain('CURRENT_STAGE: analysis.stage_a')
+    expect(markdown).toContain('EXPECTED_PROVIDER: deepseek')
+    expect(markdown).toContain('LAST_RESERVATION: 9aaa90c7-7419-40d8-8448-463dfd44968f')
+    expect(markdown).toContain('LAST_PROVIDER_CALL: fa1342ce-b904-43a5-84fe-98f52c42b8b2')
+    expect(markdown).toContain('BUDGET_LIMIT: UNKNOWN')
+    expect(compactFactoryBatchDiagnosticSummary(dossier())).toContain('ATTEMPT=8')
+  })
+
+  it('HUMAN_MARKDOWN_EXPORT_MATCHES_STRUCTURED_SOURCE and never serializes secrets or prompt content', async () => {
+    const value = dossier()
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'investighost-dossier-'))
+    const first = await persistFactoryBatchDiagnosticDossier(dir, value)
+    await persistFactoryBatchDiagnosticDossier(dir, value)
+    const jsonl = await readFile(first.jsonlPath, 'utf8')
+    const markdown = await readFile(first.markdownPath, 'utf8')
+    expect(jsonl.split('\n').filter(Boolean)).toHaveLength(value.events.length)
+    expect(markdown).toContain('CURRENT_STATUS')
+    expect(`${jsonl}\n${markdown}`).not.toContain('sk-secret')
+    expect(`${jsonl}\n${markdown}`).not.toContain('promptContent')
+  })
+})

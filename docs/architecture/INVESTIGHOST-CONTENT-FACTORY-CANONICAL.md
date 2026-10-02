@@ -374,6 +374,26 @@ humana de presupuesto ya existente.
 `PRUDENTIAL_REGENERATION_REQUIRES_FRESH_AUTHORIZATION = TRUE` y
 `PRUDENTIAL_RESEARCH_REUSE = DONE`.
 
+### 102 — validación prudencial y expediente diagnóstico batch
+
+La opción `prudential_cost_assumed` es válida únicamente con la identidad de
+la ambigüedad actual, provider/model durables, importe positivo derivado de la
+reserva EUR, respuesta no recuperada y motivo humano de evidencia insuficiente.
+No requiere usage export, tokens, request count, remote ID ni coste confirmado
+del provider. El formulario explica los requisitos faltantes antes de habilitar
+la confirmación.
+
+Cada lectura/exportación de diagnóstico guarda un expediente JSONL append-only,
+job-scoped y saneado bajo `userData/diagnostics/jobs/<jobId>.jsonl`; el Markdown
+es una vista derivada y exportable. Reúne snapshots, reservas, provider calls,
+ambigüedades, resoluciones y referencias de artifacts con IDs estables, sin
+prompts, contenido editorial ni credenciales. Los valores históricos ausentes
+se proyectan como `UNKNOWN`, no se infieren.
+
+`PRUDENTIAL_FORM_VALIDATION = DONE`,
+`BATCH_DIAGNOSTIC_DOSSIER = DONE` y
+`DIAGNOSTIC_EXPORT_SECRET_REDACTION = DONE`.
+
 ## Lo construido y su estado
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |

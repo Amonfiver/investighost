@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import type { BatchAmbiguousCallResolution, DestinationBatchReadModel, DestinationBatchJob } from '@shared/factory-batch-contracts'
 import { BATCH_LIVE_REFRESH_INTERVAL_MS, formatCost, isActiveBatchJob, isActiveRedo, jobPhaseLabel, jobStatusLabel, technicalJobFailureDetail, userFacingJobFailure } from './factory-presentation'
 import type { FactoryBatchTechnicalDiagnostic } from '../main/factory-batch-diagnostics'
+import { prudentialResolutionRequirements } from './prudential-resolution-validation'
 
 export function BatchDetail({ batchId, onBack, onOpenJob }: { batchId: string; onBack: () => void; onOpenJob: (job: DestinationBatchJob) => void }) {
   const [model, setModel] = useState<DestinationBatchReadModel | null>(null)
@@ -31,6 +32,7 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
   const [resolving, setResolving] = useState(false)
   const [resolutionError, setResolutionError] = useState<string | null>(null)
   const [savedResolution, setSavedResolution] = useState<BatchAmbiguousCallResolution['decision'] | null>(null)
+  const [dossierMessage, setDossierMessage] = useState<string | null>(null)
   useEffect(() => { setLiveJob(job) }, [job])
   useEffect(() => {
     let mounted = true
@@ -87,6 +89,14 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
     && diagnostic?.executionMode === 'REAL'
     && diagnostic.expectedProvider !== null
   const ambiguous = diagnostic?.reservation?.reservationState === 'unknown'
+  const exportDossier = async () => {
+    try { const result = await window.electronAPI.exportDestinationBatchDiagnosticDossier(liveJob.id); setDossierMessage(`Expediente exportado: ${result.markdownPath}`) }
+    catch (reason) { setDossierMessage(reason instanceof Error ? reason.message : String(reason)) }
+  }
+  const copyDossier = async () => {
+    try { const summary = await window.electronAPI.copyDestinationBatchDiagnosticSummary(liveJob.id); await navigator.clipboard.writeText(summary); setDossierMessage('Resumen diagnóstico copiado.') }
+    catch (reason) { setDossierMessage(reason instanceof Error ? reason.message : String(reason)) }
+  }
   const savedResolutionMessage = savedResolution === 'CONSUMPTION_CONFIRMED'
     ? 'Consumo confirmado; respuesta no recuperable. Puede reintentarse la generación sin repetir la investigación ya conservada.'
     : savedResolution === 'NO_CONSUMPTION'
@@ -105,7 +115,9 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
     {authorizationError && <div className="alert error"><strong>No se pudo autorizar.</strong><span>{authorizationError}</span></div>}
     {resolutionError && <div className="alert error"><strong>No se pudo guardar la resolución.</strong><span>{resolutionError}</span></div>}
     {savedResolutionMessage && <div className="alert success">{savedResolutionMessage}</div>}
+    {dossierMessage && <div className="alert success">{dossierMessage}</div>}
     {liveJob.lastFailure && <div className="alert warning"><strong>{userFacingJobFailure(liveJob.lastFailure, liveJob.redoScope)}</strong><details><summary>Detalles técnicos</summary>{diagnostic ? <TechnicalDiagnostic details={diagnostic} /> : <span>{technicalJobFailureDetail(liveJob.lastFailure)}</span>}</details></div>}
+    <div className="job-review-action"><button className="button ghost" onClick={() => { void exportDossier() }}>Exportar expediente diagnóstico</button><button className="button ghost" onClick={() => { void copyDossier() }}>Copiar resumen diagnóstico</button></div>
     {ambiguous && !showResolution && <div className="job-review-action"><p className="muted">La llamada tiene resultado remoto ambiguo y permanece bloqueada hasta una decisión humana.</p><button className="button secondary" onClick={() => setShowResolution(true)}>Resolver resultado ambiguo</button></div>}
     {showResolution && diagnostic?.reservation?.reservationState === 'unknown' && diagnostic.reservation.providerCallId && <AmbiguousCallResolutionForm job={liveJob} ambiguity={{
       reservationId: diagnostic.reservation.reservationId, providerCallId: diagnostic.reservation.providerCallId,
@@ -133,13 +145,13 @@ function createAmbiguousUsageDraft(): AmbiguousUsageDraft {
   return { decision: 'CONSUMPTION_CONFIRMED', windowStart: '', windowEnd: '', apiKeyName: '', requestCount: '', inputCacheHitTokens: '', inputCacheMissTokens: '', outputTokens: '', providerCost: '', limitation: '', reason: '', note: '' }
 }
 
-function ambiguousUsageDraftIsValid(draft: AmbiguousUsageDraft, model: string): boolean {
-  if (draft.decision === 'PRUDENTIAL_COST_ASSUMED') return Boolean(model.trim() && draft.reason.trim())
+function ambiguousUsageDraftIsValid(draft: AmbiguousUsageDraft, ambiguity: CurrentAmbiguity): boolean {
+  if (draft.decision === 'PRUDENTIAL_COST_ASSUMED') return prudentialResolutionRequirements(ambiguity, draft).length === 0
   if (draft.decision !== 'CONSUMPTION_CONFIRMED') return true
   const start = Date.parse(draft.windowStart), end = Date.parse(draft.windowEnd)
   const integers = [draft.requestCount, draft.inputCacheHitTokens, draft.inputCacheMissTokens, draft.outputTokens].map(Number)
   const cost = Number(draft.providerCost)
-  return Boolean(model.trim() && draft.apiKeyName.trim() && draft.limitation.trim())
+  return Boolean(ambiguity.model.trim() && draft.apiKeyName.trim() && draft.limitation.trim())
     && Number.isFinite(start) && Number.isFinite(end) && start < end
     && Number.isInteger(integers[0]) && integers[0] >= 1 && integers.slice(1).every(value => Number.isInteger(value) && value >= 0)
     && Number.isFinite(cost) && cost >= 0
@@ -151,7 +163,8 @@ export function AmbiguousCallResolutionForm({ job, ambiguity, saving, onCancel, 
   const ambiguityIdentity = `${ambiguity.reservationId}:${ambiguity.providerCallId}`
   const [draft, setDraft] = useState(createAmbiguousUsageDraft)
   useEffect(() => { setDraft(createAmbiguousUsageDraft()) }, [ambiguityIdentity])
-  const valid = ambiguousUsageDraftIsValid(draft, ambiguity.model)
+  const valid = ambiguousUsageDraftIsValid(draft, ambiguity)
+  const missingRequirements = prudentialResolutionRequirements(ambiguity, draft)
   const update = (key: keyof AmbiguousUsageDraft, value: string) => setDraft(current => ({ ...current, [key]: value }))
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -174,7 +187,7 @@ export function AmbiguousCallResolutionForm({ job, ambiguity, saving, onCancel, 
       <aside className="ambiguous-resolution-summary"><strong>Resumen para confirmar</strong><span>{ambiguity.provider === 'deepseek' ? 'DeepSeek' : ambiguity.provider} · {ambiguity.model}</span><span>{draft.requestCount} request · {draft.inputCacheHitTokens} input cache hit · {draft.inputCacheMissTokens} input miss · {draft.outputTokens} output tokens</span><span>{draft.providerCost} USD · respuesta recuperada: NO</span><small>Limitación: {draft.limitation}</small></aside></>}
     {prudentialVisible && <fieldset><legend>Contabilidad prudencial</legend><p className="muted">No hay evidencia suficiente para confirmar ni negar el consumo remoto. Se contabilizará la reserva máxima prudencial, sin presentarla como coste facturado por DeepSeek. La respuesta no fue recuperada y una nueva generación será gasto adicional.</p><div className="ambiguous-resolution-fields"><label>Provider<input value={ambiguity.provider === 'deepseek' ? 'DeepSeek' : ambiguity.provider} readOnly aria-readonly="true" /></label><label>Modelo<input value={ambiguity.model} readOnly aria-readonly="true" /></label><label>Importe prudencial EUR<input value={ambiguity.reservedAmount.toFixed(6)} readOnly aria-readonly="true" /></label><label>Coste provider confirmado<input value="No" readOnly aria-readonly="true" /></label></div><label>Motivo de evidencia insuficiente<textarea required value={draft.reason} disabled={saving} onChange={event => update('reason', event.target.value)} placeholder="El usage disponible no cubre de forma fiable la ventana de la llamada." /></label><aside className="ambiguous-resolution-summary"><strong>Resumen para confirmar</strong><span>Resultado remoto: indeterminado · respuesta recuperada: NO</span><span>Contabilidad: prudencial por {ambiguity.reservedAmount.toFixed(6)} EUR</span><small>La nueva llamada requerirá una autorización humana y será gasto adicional.</small></aside></fieldset>}
     <fieldset><legend>Limitación y nota</legend>{evidenceVisible && <label>Limitación<textarea value={draft.limitation} disabled={saving} onChange={event => update('limitation', event.target.value)} /></label>}<label>Nota opcional<textarea value={draft.note} disabled={saving} onChange={event => update('note', event.target.value)} /></label></fieldset>
-    <p className="muted">No se guarda ninguna clave secreta, header de autorización ni token de ejecución.</p>
+    {prudentialVisible && missingRequirements.length > 0 && <p className="form-validation" role="status">Falta: {missingRequirements.join(', ')}</p>}<p className="muted">No se guarda ninguna clave secreta, header de autorización ni token de ejecución.</p>
     <footer><button type="button" className="button ghost" disabled={saving} onClick={onCancel}>Cancelar</button><button className="button primary" disabled={saving || !valid}>{saving ? 'Guardando…' : 'Confirmar resolución humana'}</button></footer>
   </form>
 }

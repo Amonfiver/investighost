@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { AmbiguousCallResolutionForm, BatchJobDetail } from '../src/renderer/BatchOperationViews'
+import { prudentialResolutionRequirements } from '../src/renderer/prudential-resolution-validation'
 import { DestinationBatchJobSchema } from '../src/shared/factory-batch-contracts'
 import { DestinationBatchService, MemoryDestinationBatchRepository } from '../src/modules/factory-batches'
 import { GeographicResolver, MemoryGeographyCatalogRepository } from '../src/modules/editorial-pipeline/geography'
@@ -108,5 +109,11 @@ describe('Production job detail', () => {
     expect(renderer).toContain('Coste provider confirmado')
     expect(renderer).toContain('La nueva llamada requerirá una autorización humana')
     expect(renderer).toContain('setAuthorizationState(details.authorizationState)')
+  })
+
+  it('PRUDENTIAL_FORM_ENABLES_CONFIRM_WHEN_VALID and explains the only missing human field', () => {
+    const blank = { decision: 'PRUDENTIAL_COST_ASSUMED' as const, windowStart: '', windowEnd: '', apiKeyName: '', requestCount: '', inputCacheHitTokens: '', inputCacheMissTokens: '', outputTokens: '', providerCost: '', limitation: '', reason: '', note: '' }
+    expect(prudentialResolutionRequirements(currentAmbiguity, blank)).toEqual(['Motivo de evidencia insuficiente'])
+    expect(prudentialResolutionRequirements(currentAmbiguity, { ...blank, reason: 'El Usage no cubre la ventana.' })).toEqual([])
   })
 })

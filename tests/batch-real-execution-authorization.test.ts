@@ -46,6 +46,15 @@ describe('real batch execution authorization', () => {
     expect(registry.status({ ...job, id: '90000000-0000-4000-8000-000000000098' })).toEqual({ state: 'NOT_AUTHORIZED' })
   })
 
+  it('PRUDENTIAL_REGENERATION_REQUIRES_NEW_HUMAN_AUTHORIZATION', async () => {
+    const { job } = await failedSegovia()
+    const registry = new BatchJobExecutionAuthorizationRegistry({})
+    registry.authorize(job)
+    expect(registry.status(job).state).toBe('AUTHORIZED')
+    registry.revoke(job)
+    expect(registry.status(job)).toEqual({ state: 'NOT_AUTHORIZED' })
+  })
+
   it('MISSING_BATCH_AUTHORIZATION remains retryable without duplicating the durable job, then authorization allows the same job to queue', async () => {
     const { service, job } = await failedSegovia()
     expect(requiresBatchProviderAuthorizationRecovery(job)).toBe(true)
@@ -99,7 +108,7 @@ describe('real batch execution authorization', () => {
       retryReason: 'RECONCILED_RESPONSE_LOST',
       limit: {
         type: 'DURABLE_STAGE_RETRY_POLICY', value: 'HUMAN_RECONCILIATION_REQUIRED',
-        currentValue: 'CONSUMPTION_CONFIRMED_RESPONSE_LOST', scope: 'analysis.stage_a',
+        currentValue: 'HUMAN_RESOLVED_RESPONSE_LOST', scope: 'analysis.stage_a',
         requiresHumanOverride: false,
       },
     })
@@ -120,6 +129,20 @@ describe('real batch execution authorization', () => {
     })
     expect(diagnostics.reservation).toMatchObject({ reservationState: 'started', reservedAmount: 0.02, committedAmount: 0.048 })
     expect(JSON.stringify(diagnostics)).not.toContain('token=should-never-render')
+  })
+
+  it('PRUDENTIAL_DIAGNOSTICS distinguish assumed budget exposure from confirmed provider cost', async () => {
+    const { job } = await failedSegovia()
+    const diagnostics = buildFactoryBatchTechnicalDiagnostic(job, providerCenter(), { state: 'NOT_AUTHORIZED' }, {
+      reservationId: '9aaa90c7-7419-40d8-8448-463dfd44968f', reservationState: 'failed', reservedAmount: 0.02,
+      committedAmount: 0.068, expectedReservationState: null, requestedTransition: null, ledgerState: 'FAILED',
+      ambiguityResolution: {
+        decision: 'prudential_cost_assumed', responseRecovered: false, resolvedAt: '2026-10-02T10:00:00.000Z', evidence: null,
+        prudential: { remoteResult: 'INDETERMINATE', accountingMode: 'PRUDENTIAL_MAX_ASSUMED', amount: 0.02, currency: 'EUR', providerCostConfirmed: false, reason: 'Usage no disponible.' },
+      },
+    })
+    expect(diagnostics.reservation?.ambiguityResolution?.prudential).toEqual({ remoteResult: 'INDETERMINATE', accountingMode: 'PRUDENTIAL_MAX_ASSUMED', amount: 0.02, currency: 'EUR', providerCostConfirmed: false, reason: 'Usage no disponible.' })
+    expect(JSON.stringify(diagnostics)).not.toContain('sk-')
   })
 
   it('TIMEOUT_DIAGNOSTICS_INCLUDE_PROVIDER_MODEL_TYPE_MS_AND_PROVIDER_CALL_ID without secrets', async () => {

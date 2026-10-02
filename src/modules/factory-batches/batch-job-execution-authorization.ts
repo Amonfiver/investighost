@@ -47,6 +47,13 @@ export class BatchJobExecutionAuthorizationRegistry {
   isAuthorized(job: DestinationBatchJob): boolean {
     return this.status(job).state === 'AUTHORIZED'
   }
+
+  /** A prudential resolution permits a new durable call, never an implicit
+   * reuse of prior spend consent. The next provider request needs a fresh
+   * human authorization. */
+  revoke(job: DestinationBatchJob): void {
+    this.authorizedJobs.delete(job.id)
+  }
 }
 
 export const batchJobExecutionAuthorizations = new BatchJobExecutionAuthorizationRegistry()

@@ -28,6 +28,16 @@ describe('batch durable resume plan', () => {
       .toMatchObject({ researchCorpusExists: false, expectedProvider: 'tavily', nextStage: 'research.round_1' })
   })
 
+  it('PRUDENTIAL_RESPONSE_LOST_REUSES_RESEARCH and permits only a new DeepSeek analysis reservation', () => {
+    const plan = deriveBatchResumePlan({
+      checkpointPayload: { state: 'analyzing_round_1', dossier: { sources: [{ id: 'tavily-segovia' }] } },
+      analysisArtifactExists: false,
+      ambiguity: { decision: 'prudential_cost_assumed', responseRecovered: false },
+    })
+    expect(plan).toMatchObject({ researchCorpusExists: true, resumeFromStage: 'analysis.stage_a', nextStage: 'analysis.stage_a', expectedProvider: 'deepseek', terminalAnalysisRetryAuthorized: true })
+    expect(canRetryReconciledAnalysis(failedSegovia(), plan)).toBe(true)
+  })
+
   it('NO_SILENT_LIMIT_BYPASS keeps a terminal analysis blocked without the exact human resolution', () => {
     const plan = deriveBatchResumePlan({
       checkpointPayload: { state: 'analyzing_round_1', dossier: { sources: [{ id: 'tavily-segovia' }] } },

@@ -170,7 +170,7 @@ export class SupabaseGenericDurableExecutionRepository {
       .select('terminal_decision,terminal_resolution_id,resolved_at')
       .eq('execution_owner_id', executionOwnerId)
       .eq('call_id', reservation.callId)
-      .eq('terminal_decision', 'consumption_confirmed')
+      .in('terminal_decision', ['consumption_confirmed', 'prudential_cost_assumed'])
       .not('resolved_at', 'is', null)
       .maybeSingle()
     if (ambiguityError || !ambiguity?.terminal_resolution_id) return false
@@ -180,8 +180,8 @@ export class SupabaseGenericDurableExecutionRepository {
       .eq('id', ambiguity.terminal_resolution_id)
       .maybeSingle()
     return !resolutionError
-      && resolution?.decision === 'consumption_confirmed'
-      && resolution.response_recovered === false
+      && resolution?.response_recovered === false
+      && (resolution?.decision === 'consumption_confirmed' || resolution?.decision === 'prudential_cost_assumed')
   }
 }
 

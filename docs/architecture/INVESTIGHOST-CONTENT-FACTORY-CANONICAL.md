@@ -350,6 +350,30 @@ metadata USD append-only, sin claves, headers ni secretos.
 `HISTORICAL_EVIDENCE_PREFILL = FORBIDDEN` y
 `CACHE_HIT_EVIDENCE_SEPARATE = TRUE`.
 
+### 101 — resolución prudencial de timeout sin evidencia suficiente del provider
+
+Una llamada `BATCH_JOB` de DeepSeek que fue despachada, agotó su timeout y no
+tiene evidence externo suficiente puede recibir una decisión humana durable
+`prudential_cost_assumed`. No afirma consumo confirmado ni no consumo:
+conserva `remoteResult = indeterminate`, `responseRecovered = false`,
+`providerConfirmed = false` y `INSUFFICIENT_PROVIDER_USAGE_EVIDENCE`. La
+contabilidad convierte exactamente la reserva EUR ya aprobada en exposición
+prudencial local; no inventa tokens, request count, coste facturado del
+provider ni FX.
+
+La resolución cierra la ambigüedad append-only, conserva la llamada y su
+historial, y sólo deja habilitada una generación posterior tras nueva
+autorización humana. Esa nueva generación usa una reserva y call ID nuevos,
+reanuda `analysis.stage_a` desde el corpus Research durable y no repite Tavily.
+La reserva prudencial cuenta contra los límites task/batch/daily; si no hay
+presupuesto para la nueva reserva, el ledger la bloquea y requiere la decisión
+humana de presupuesto ya existente.
+
+`PRUDENTIAL_AMBIGUOUS_TIMEOUT_RESOLUTION = DONE`,
+`PRUDENTIAL_ACCOUNTING_IS_NOT_PROVIDER_CONFIRMATION = TRUE`,
+`PRUDENTIAL_REGENERATION_REQUIRES_FRESH_AUTHORIZATION = TRUE` y
+`PRUDENTIAL_RESEARCH_REUSE = DONE`.
+
 ## Lo construido y su estado
 
 | Área | Estado | Hecho comprobado | Falta para factory V1 |

@@ -31,7 +31,7 @@ export async function readBatchResumePlan(client: SupabaseClient, job: Destinati
     client.from('real_editorial_artifacts').select('id').eq('execution_owner_id', executionId)
       .eq('artifact_kind', 'coverage').eq('artifact_key', 'final').limit(1).maybeSingle(),
     client.from('real_editorial_ambiguous_calls').select('terminal_decision,terminal_resolution_id').eq('execution_owner_id', executionId)
-      .eq('terminal_decision', 'consumption_confirmed').limit(1).maybeSingle(),
+      .in('terminal_decision', ['consumption_confirmed', 'prudential_cost_assumed']).order('resolved_at', { ascending: false }).limit(1).maybeSingle(),
   ])
   const { data: resolution } = ambiguity?.terminal_resolution_id
     ? await client.from('real_editorial_call_human_resolutions').select('decision,response_recovered')
@@ -53,8 +53,8 @@ export function deriveBatchResumePlan(artifacts: ResumeArtifacts): BatchResumePl
   const state = checkpoint && typeof checkpoint === 'object' && !Array.isArray(checkpoint)
     ? (checkpoint as { state?: unknown }).state : null
   const resumeAnalysis = hasDossier && state === 'analyzing_round_1' && !artifacts.analysisArtifactExists
-  const consumptionConfirmedResponseLost = artifacts.ambiguity?.decision === 'consumption_confirmed'
-    && artifacts.ambiguity.responseRecovered === false
+  const terminalAnalysisResolutionAllowsRetry = artifacts.ambiguity?.responseRecovered === false
+    && ['consumption_confirmed', 'prudential_cost_assumed'].includes(artifacts.ambiguity.decision)
   return {
     researchCorpusExists: hasDossier,
     analysisArtifactExists: artifacts.analysisArtifactExists,
@@ -62,7 +62,7 @@ export function deriveBatchResumePlan(artifacts: ResumeArtifacts): BatchResumePl
     nextStage: resumeAnalysis ? 'analysis.stage_a' : artifacts.analysisArtifactExists ? null : 'research.round_1',
     expectedProvider: resumeAnalysis ? 'deepseek' : artifacts.analysisArtifactExists ? null : 'tavily',
     previousAmbiguousUsageResolved: Boolean(artifacts.ambiguity),
-    terminalAnalysisRetryAuthorized: resumeAnalysis && consumptionConfirmedResponseLost,
+    terminalAnalysisRetryAuthorized: resumeAnalysis && terminalAnalysisResolutionAllowsRetry,
   }
 }
 

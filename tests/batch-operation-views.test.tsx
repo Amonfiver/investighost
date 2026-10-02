@@ -15,7 +15,7 @@ const failedJob = DestinationBatchJobSchema.parse({
 
 const currentAmbiguity = {
   reservationId: 'bc1bf749-a663-434a-bdfa-542a96f395b1', providerCallId: '57609680-1d66-483c-b4ef-bce7b7f1725e',
-  provider: 'deepseek', model: 'deepseek-flash', operation: 'analysis.stage_a', attempt: 2,
+  provider: 'deepseek', model: 'deepseek-flash', operation: 'analysis.stage_a', attempt: 2, reservedAmount: 0.02,
 }
 
 describe('Production job detail', () => {
@@ -97,5 +97,16 @@ describe('Production job detail', () => {
     expect(css).toContain('.ambiguous-resolution-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));')
     expect(css).toContain('.ambiguous-resolution-fields { grid-template-columns: 1fr; }')
     expect(css).toContain('body { margin: 0; min-width: 320px;')
+  })
+
+  it('PRUDENTIAL_RESOLUTION explains indeterminate remote consumption, its maximum reserved amount, and the new authorization requirement', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const renderer = await readFile(new URL('../src/renderer/BatchOperationViews.tsx', import.meta.url), 'utf8')
+    expect(renderer).toContain('PRUDENTIAL_COST_ASSUMED')
+    expect(renderer).toContain('contabilizar prudentemente y permitir regeneración')
+    expect(renderer).toContain('Importe prudencial EUR')
+    expect(renderer).toContain('Coste provider confirmado')
+    expect(renderer).toContain('La nueva llamada requerirá una autorización humana')
+    expect(renderer).toContain('setAuthorizationState(details.authorizationState)')
   })
 })

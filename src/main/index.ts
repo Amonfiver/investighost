@@ -269,6 +269,8 @@ ipcMain.handle('factory-batches:resolve-ambiguous-call', async (_event, candidat
     ? 'Confirmado consumido; la respuesta editorial no se recuperará.'
     : input.decision === 'NO_CONSUMPTION'
       ? 'Confirmado no consumido.'
+      : input.decision === 'PRUDENTIAL_COST_ASSUMED'
+        ? `Resultado remoto indeterminado; se imputarán prudentemente ${input.prudentialCostEur} EUR sin afirmar consumo confirmado. Una nueva llamada será gasto adicional.`
       : 'Seguirá indeterminado y bloqueado.'
   const options: MessageBoxOptions = {
     type: 'warning', buttons: ['Cancelar', 'Guardar resolución'], defaultId: 0, cancelId: 0,
@@ -277,7 +279,9 @@ ipcMain.handle('factory-batches:resolve-ambiguous-call', async (_event, candidat
   }
   const result = mainWindow ? await dialog.showMessageBox(mainWindow, options) : await dialog.showMessageBox(options)
   if (result.response !== 1) throw new Error('AMBIGUITY_RESOLUTION_CONFIRMATION_REQUIRED')
-  return new BatchAmbiguousCallResolutionService(client, MANUAL_LOCAL_ACTOR_ID).resolve(input)
+  const resolved = await new BatchAmbiguousCallResolutionService(client, MANUAL_LOCAL_ACTOR_ID).resolve(input)
+  if (input.decision === 'PRUDENTIAL_COST_ASSUMED') batchJobExecutionAuthorizations.revoke(resolved.job)
+  return resolved
 })
 
 ipcMain.handle('factory-batches:start', async (_event, batchId: unknown) => {
@@ -1320,7 +1324,7 @@ async function readBatchReservationDiagnostic(
     .eq('reservation_id', reservation.id).maybeSingle()
   const { data: resolution } = ambiguity?.terminal_resolution_id
     ? await client.from('real_editorial_call_human_resolutions')
-      .select('decision,response_recovered,decided_at,external_usage_evidence')
+      .select('decision,response_recovered,decided_at,external_usage_evidence,prudential_cost,currency,provider_confirmed,reason')
       .eq('id', ambiguity.terminal_resolution_id).maybeSingle()
     : { data: null }
   const state = String(reservation.state)
@@ -1347,7 +1351,23 @@ async function readBatchReservationDiagnostic(
     requestedTransition: invalidSettlement ? 'started → unknown' : null,
     ledgerState: state === 'unknown' ? 'AMBIGUOUS_PENDING' : state === 'started' ? 'RESERVED' : state.toUpperCase(),
     ambiguityResolution: resolution && isResolutionDecision(resolution.decision)
-      ? { decision: resolution.decision, responseRecovered: Boolean(resolution.response_recovered), resolvedAt: ambiguity?.resolved_at ? String(ambiguity.resolved_at) : null, evidence: usageEvidenceFromRow(resolution.external_usage_evidence) }
+      ? {
+          decision: resolution.decision,
+          responseRecovered: Boolean(resolution.response_recovered),
+          resolvedAt: ambiguity?.resolved_at ? String(ambiguity.resolved_at) : null,
+          evidence: usageEvidenceFromRow(resolution.external_usage_evidence),
+          prudential: resolution.decision === 'prudential_cost_assumed'
+            && typeof resolution.prudential_cost === 'number'
+            && resolution.currency === 'EUR'
+            && resolution.provider_confirmed === false
+            && typeof resolution.reason === 'string'
+            ? {
+                remoteResult: 'INDETERMINATE', accountingMode: 'PRUDENTIAL_MAX_ASSUMED',
+                amount: Number(resolution.prudential_cost), currency: 'EUR',
+                providerCostConfirmed: false, reason: resolution.reason,
+              }
+            : null,
+        }
       : null,
   }
 }
@@ -1387,8 +1407,8 @@ function readBatchTimeoutDiagnostic(
   }
 }
 
-function isResolutionDecision(value: unknown): value is 'no_consumption' | 'consumption_confirmed' | 'indeterminate' {
-  return value === 'no_consumption' || value === 'consumption_confirmed' || value === 'indeterminate'
+function isResolutionDecision(value: unknown): value is 'no_consumption' | 'consumption_confirmed' | 'indeterminate' | 'prudential_cost_assumed' {
+  return value === 'no_consumption' || value === 'consumption_confirmed' || value === 'indeterminate' || value === 'prudential_cost_assumed'
 }
 
 function usageEvidenceFromRow(value: unknown): import('./factory-batch-diagnostics').FactoryBatchUsageEvidence | null {

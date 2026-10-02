@@ -38,12 +38,24 @@ export class BatchAmbiguousCallResolutionService {
 
     const decision = input.decision === 'CONSUMPTION_CONFIRMED'
       ? 'consumption_confirmed'
-      : input.decision === 'NO_CONSUMPTION' ? 'no_consumption' : 'indeterminate'
+      : input.decision === 'NO_CONSUMPTION' ? 'no_consumption'
+        : input.decision === 'PRUDENTIAL_COST_ASSUMED' ? 'prudential_cost_assumed' : 'indeterminate'
     const resolutionKey = createHash('sha256').update(JSON.stringify({
       executionOwnerId: execution.id, reservationId: ambiguity.reservation_id, callId: ambiguity.call_id, actorId: this.actorId,
-      decision, responseRecovered: input.responseRecovered, evidence: input.evidence ?? null, note: input.note ?? null,
+      decision, responseRecovered: input.responseRecovered, evidence: input.evidence ?? null,
+      prudentialCostEur: input.prudentialCostEur ?? null, currency: input.currency ?? null,
+      reason: input.reason ?? null, acceptsPotentialDuplicateCharge: input.acceptsPotentialDuplicateCharge ?? null,
+      note: input.note ?? null,
     })).digest('hex')
-    const { data, error } = await this.client.rpc('resolve_generic_real_editorial_ambiguous_call', {
+    const { data, error } = input.decision === 'PRUDENTIAL_COST_ASSUMED'
+      ? await this.client.rpc('reconcile_generic_real_editorial_ambiguous_call_prudential', {
+          p_resolution_key: resolutionKey, p_execution_owner_id: execution.id, p_call_id: ambiguity.call_id,
+          p_reservation_id: ambiguity.reservation_id, p_actor_id: this.actorId,
+          p_prudential_cost: input.prudentialCostEur, p_currency: input.currency,
+          p_reason: input.reason, p_note: input.note ?? null,
+          p_duplicate_charge_risk_accepted: input.acceptsPotentialDuplicateCharge,
+        })
+      : await this.client.rpc('resolve_generic_real_editorial_ambiguous_call', {
       p_resolution_key: resolutionKey,
       p_execution_owner_id: execution.id,
       p_call_id: ambiguity.call_id,

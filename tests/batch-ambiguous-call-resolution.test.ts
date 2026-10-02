@@ -10,6 +10,10 @@ const migration = readFileSync(
   new URL('../supabase/migrations/20260928090000_factory_batch_ambiguous_usage_resolution.sql', import.meta.url),
   'utf8',
 )
+const prudentialMigration = readFileSync(
+  new URL('../supabase/migrations/20261002100000_factory_batch_prudential_ambiguous_call_resolution.sql', import.meta.url),
+  'utf8',
+)
 
 const evidence = {
   evidenceType: 'PROVIDER_USAGE_EXPORT' as const, provider: 'deepseek' as const, model: 'deepseek-flash',
@@ -53,5 +57,28 @@ describe('resolución humana de consumo ambiguo batch', () => {
     })
     expect(matchesSelectedBatchAmbiguity(parsed, { reservation_id: currentReservationId, call_id: currentProviderCallId })).toBe(true)
     expect(matchesSelectedBatchAmbiguity(parsed, { reservation_id: 'f3018e35-cab8-42d9-b7c3-cbff863377b2', call_id: '42e4c84d-80e6-4394-ac5e-db32f0e9dca2' })).toBe(false)
+  })
+
+  it('INDETERMINATE_REMOTE_RESULT_IS_NEITHER_CONFIRMED_CONSUMPTION_NOR_NON_CONSUMPTION and requires an explicit prudential decision', () => {
+    const prudential = BatchAmbiguousCallResolutionSchema.parse({
+      jobId: '2efade2d-b011-4cc2-a51d-ce2a095036c1', reservationId: currentReservationId, providerCallId: currentProviderCallId,
+      decision: 'PRUDENTIAL_COST_ASSUMED', responseRecovered: false, prudentialCostEur: 0.02,
+      currency: 'EUR', reason: 'El usage disponible no cubre de forma fiable la ventana de la llamada.', acceptsPotentialDuplicateCharge: true,
+    })
+    expect(prudential).toMatchObject({ decision: 'PRUDENTIAL_COST_ASSUMED', responseRecovered: false, prudentialCostEur: 0.02 })
+    expect(prudential.evidence).toBeUndefined()
+    expect(BatchAmbiguousCallResolutionSchema.safeParse({ ...prudential, reason: undefined }).success).toBe(false)
+    expect(BatchAmbiguousCallResolutionSchema.safeParse({ ...prudential, evidence }).success).toBe(false)
+  })
+
+  it('PRUDENTIAL_ACCOUNTING_COUNTS_AGAINST_BUDGET without inventing confirmed provider cost or usage evidence', () => {
+    expect(prudentialMigration).toContain('PRUDENTIAL_COST_MUST_EQUAL_RESERVED_MAXIMUM')
+    expect(prudentialMigration).toContain("'providerCostConfirmed',false")
+    expect(prudentialMigration).toContain("'remoteResult','indeterminate'")
+    expect(prudentialMigration).toContain("'accountingPolicy','PRUDENTIAL_MAX_ASSUMED'")
+    expect(prudentialMigration).toContain('spent_cost = spent_cost + p_prudential_cost')
+    expect(prudentialMigration).toContain('reserved_cost = reserved_cost - reservation.reserved_cost')
+    expect(prudentialMigration).toContain("terminal_decision = 'prudential_cost_assumed'")
+    expect(prudentialMigration).toContain('HUMAN_RESOLUTION_BUDGET_EXCEEDED')
   })
 })

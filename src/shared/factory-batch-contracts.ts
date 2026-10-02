@@ -104,11 +104,28 @@ export const BatchAmbiguousCallResolutionSchema = z.object({
   jobId: IdSchema,
   reservationId: IdSchema,
   providerCallId: IdSchema,
-  decision: z.enum(['NO_CONSUMPTION', 'CONSUMPTION_CONFIRMED', 'INDETERMINATE']),
+  decision: z.enum(['NO_CONSUMPTION', 'CONSUMPTION_CONFIRMED', 'INDETERMINATE', 'PRUDENTIAL_COST_ASSUMED']),
   responseRecovered: z.boolean(),
   evidence: ProviderUsageEvidenceSchema.optional(),
+  prudentialCostEur: z.number().finite().positive().optional(),
+  currency: z.literal('EUR').optional(),
+  reason: z.string().trim().min(1).max(500).refine(value => !/(sk-|api[_ -]?key|authorization|bearer)/i.test(value)).optional(),
+  acceptsPotentialDuplicateCharge: z.literal(true).optional(),
   note: z.string().trim().min(1).max(1000).optional(),
 }).superRefine((value, context) => {
+  const prudentialFields = ['prudentialCostEur', 'currency', 'reason', 'acceptsPotentialDuplicateCharge'] as const
+  if (value.decision === 'PRUDENTIAL_COST_ASSUMED') {
+    if (value.responseRecovered || value.evidence) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['evidence'], message: 'La conciliación prudencial no confirma consumo ni recupera respuesta.' })
+    }
+    for (const field of prudentialFields) if (value[field] === undefined) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: 'La conciliación prudencial requiere importe, moneda, motivo y aceptación de riesgo.' })
+    }
+    return
+  }
+  for (const field of prudentialFields) if (value[field] !== undefined) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: 'Los datos prudenciales sólo corresponden a esa conciliación.' })
+  }
   if (value.decision === 'CONSUMPTION_CONFIRMED' && (!value.evidence || value.responseRecovered)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['evidence'], message: 'El consumo confirmado requiere evidence y respuesta no recuperada.' })
   }

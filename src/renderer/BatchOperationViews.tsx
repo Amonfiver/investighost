@@ -73,7 +73,9 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
     try {
       const result = await window.electronAPI.resolveDestinationBatchAmbiguousCall(input)
       setLiveJob(result.job); setSavedResolution(input.decision); setShowResolution(false)
-      setDiagnostic(await window.electronAPI.getDestinationBatchTechnicalDiagnostics(liveJob.id))
+      const details = await window.electronAPI.getDestinationBatchTechnicalDiagnostics(liveJob.id)
+      setDiagnostic(details)
+      setAuthorizationState(details.authorizationState)
     } catch (reason) { setResolutionError(reason instanceof Error ? reason.message : String(reason)) } finally { setResolving(false) }
   }
   // Authorization is a start precondition for every failed real-provider job,
@@ -89,6 +91,8 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
     ? 'Consumo confirmado; respuesta no recuperable. Puede reintentarse la generación sin repetir la investigación ya conservada.'
     : savedResolution === 'NO_CONSUMPTION'
       ? 'No se confirmó consumo. Puede reintentarse la generación.'
+      : savedResolution === 'PRUDENTIAL_COST_ASSUMED'
+        ? 'Resultado remoto indeterminado; se contabilizó prudentemente. La próxima generación exige autorización nueva y no repetirá Research.'
       : savedResolution === 'INDETERMINATE'
         ? 'La llamada sigue indeterminada y queda bloqueada para evitar un posible doble consumo.'
         : null
@@ -108,6 +112,7 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
       provider: diagnostic.reservation.realProvider ?? 'deepseek', model: diagnostic.reservation.model ?? '',
       operation: diagnostic.reservation.reservationOperation ?? diagnostic.operation,
       attempt: diagnostic.reservation.reservationAttempt ?? liveJob.attemptCount,
+      reservedAmount: diagnostic.reservation.reservedAmount,
     }} saving={resolving} onCancel={() => { setShowResolution(false); setResolutionError(null) }} onConfirm={resolveAmbiguity} />}
     {authorizationRequired && authorizationState !== 'AUTHORIZED' && <div className="job-review-action"><p className="muted">La red está separada de la autorización de coste de este trabajo. {diagnostic?.expectedProvider ? `Siguiente provider: ${diagnostic.expectedProvider === 'deepseek' ? 'DeepSeek' : 'Tavily'}.` : ''} {diagnostic?.nextStage ? `Etapa: ${diagnostic.nextStage}.` : ''}</p><button className="button secondary" disabled={authorizing} onClick={() => { void authorize() }}>{authorizing ? 'Solicitando autorización…' : 'Autorizar ejecución real'}</button></div>}
     {liveJob.status === 'FAILED' && liveJob.retryable && !ambiguous && (!authorizationRequired || authorizationState === 'AUTHORIZED') && <div className="job-review-action"><button className="button primary" disabled={retrying} onClick={() => { void retry() }}>{retrying ? 'Reintentando…' : 'Reintentar'}</button></div>}
@@ -117,18 +122,19 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
 
 type AmbiguousUsageDraft = {
   decision: BatchAmbiguousCallResolution['decision']; windowStart: string; windowEnd: string; apiKeyName: string
-  requestCount: string; inputCacheHitTokens: string; inputCacheMissTokens: string; outputTokens: string; providerCost: string; limitation: string; note: string
+  requestCount: string; inputCacheHitTokens: string; inputCacheMissTokens: string; outputTokens: string; providerCost: string; limitation: string; reason: string; note: string
 }
 
 type CurrentAmbiguity = {
-  reservationId: string; providerCallId: string; provider: string; model: string; operation: string; attempt: number
+  reservationId: string; providerCallId: string; provider: string; model: string; operation: string; attempt: number; reservedAmount: number
 }
 
 function createAmbiguousUsageDraft(): AmbiguousUsageDraft {
-  return { decision: 'CONSUMPTION_CONFIRMED', windowStart: '', windowEnd: '', apiKeyName: '', requestCount: '', inputCacheHitTokens: '', inputCacheMissTokens: '', outputTokens: '', providerCost: '', limitation: '', note: '' }
+  return { decision: 'CONSUMPTION_CONFIRMED', windowStart: '', windowEnd: '', apiKeyName: '', requestCount: '', inputCacheHitTokens: '', inputCacheMissTokens: '', outputTokens: '', providerCost: '', limitation: '', reason: '', note: '' }
 }
 
 function ambiguousUsageDraftIsValid(draft: AmbiguousUsageDraft, model: string): boolean {
+  if (draft.decision === 'PRUDENTIAL_COST_ASSUMED') return Boolean(model.trim() && draft.reason.trim())
   if (draft.decision !== 'CONSUMPTION_CONFIRMED') return true
   const start = Date.parse(draft.windowStart), end = Date.parse(draft.windowEnd)
   const integers = [draft.requestCount, draft.inputCacheHitTokens, draft.inputCacheMissTokens, draft.outputTokens].map(Number)
@@ -153,16 +159,20 @@ export function AmbiguousCallResolutionForm({ job, ambiguity, saving, onCancel, 
     const base = { jobId: job.id, reservationId: ambiguity.reservationId, providerCallId: ambiguity.providerCallId, decision: draft.decision, responseRecovered: false }
     const input: BatchAmbiguousCallResolution = draft.decision === 'CONSUMPTION_CONFIRMED'
       ? { ...base, evidence: { evidenceType: 'PROVIDER_USAGE_EXPORT', provider: 'deepseek', model: ambiguity.model, windowStart: draft.windowStart, windowEnd: draft.windowEnd, apiKeyName: draft.apiKeyName.trim(), requestCount: Number(draft.requestCount), inputCacheHitTokens: Number(draft.inputCacheHitTokens), inputCacheMissTokens: Number(draft.inputCacheMissTokens), outputTokens: Number(draft.outputTokens), providerCost: Number(draft.providerCost), currency: 'USD', requestIdPresentInExport: false, limitation: draft.limitation.trim() }, note: draft.note.trim() || undefined }
+      : draft.decision === 'PRUDENTIAL_COST_ASSUMED'
+        ? { ...base, prudentialCostEur: ambiguity.reservedAmount, currency: 'EUR', reason: draft.reason.trim(), acceptsPotentialDuplicateCharge: true, note: draft.note.trim() || undefined }
       : { ...base, note: draft.note.trim() || undefined }
     onConfirm(input)
   }
   const evidenceVisible = draft.decision === 'CONSUMPTION_CONFIRMED'
+  const prudentialVisible = draft.decision === 'PRUDENTIAL_COST_ASSUMED'
   return <form className="ambiguous-resolution-form" onSubmit={submit} noValidate>
     <header><span className="card-kicker">RESOLUCIÓN HUMANA</span><h3>Resolver resultado ambiguo</h3><p>La decisión no inicia proveedores ni reconstruye una respuesta perdida.</p><dl className="ambiguity-identity"><div><dt>Reserva</dt><dd>{ambiguity.reservationId}</dd></div><div><dt>Provider call</dt><dd>{ambiguity.providerCallId}</dd></div><div><dt>Intento</dt><dd>{ambiguity.attempt}</dd></div><div><dt>Operación</dt><dd>{ambiguity.operation}</dd></div></dl></header>
-    <fieldset><legend>Resolución</legend><label>Resultado<select value={draft.decision} disabled={saving} onChange={event => update('decision', event.target.value)}><option value="NO_CONSUMPTION">Confirmado no consumido</option><option value="CONSUMPTION_CONFIRMED">Confirmado consumido</option><option value="INDETERMINATE">Sigue indeterminado</option></select></label><label>Respuesta recuperada<input value="No" readOnly aria-readonly="true" /></label></fieldset>
+    <fieldset><legend>Resolución</legend><label>Resultado<select value={draft.decision} disabled={saving} onChange={event => update('decision', event.target.value)}><option value="NO_CONSUMPTION">Confirmado no consumido</option><option value="CONSUMPTION_CONFIRMED">Confirmado consumido</option><option value="PRUDENTIAL_COST_ASSUMED">Sigue indeterminado — contabilizar prudentemente y permitir regeneración</option><option value="INDETERMINATE">Sigue indeterminado</option></select></label><label>Respuesta recuperada<input value="No" readOnly aria-readonly="true" /></label></fieldset>
     {evidenceVisible && <><fieldset><legend>Evidencia de provider</legend><div className="ambiguous-resolution-fields"><label>Provider<input value={ambiguity.provider === 'deepseek' ? 'DeepSeek' : ambiguity.provider} readOnly aria-readonly="true" /></label><label>Modelo<input value={ambiguity.model} readOnly aria-readonly="true" /></label><label>Inicio ventana<input value={draft.windowStart} disabled={saving} onChange={event => update('windowStart', event.target.value)} /></label><label>Fin ventana<input value={draft.windowEnd} disabled={saving} onChange={event => update('windowEnd', event.target.value)} /></label><label>Nombre público API key<input value={draft.apiKeyName} disabled={saving} onChange={event => update('apiKeyName', event.target.value)} /></label><label>Moneda<input value="USD" readOnly aria-readonly="true" /></label></div></fieldset>
       <fieldset><legend>Tokens y coste</legend><div className="ambiguous-resolution-fields"><label>Requests<input value={draft.requestCount} inputMode="numeric" disabled={saving} onChange={event => update('requestCount', event.target.value)} /></label><label>Tokens input cache hit<input value={draft.inputCacheHitTokens} inputMode="numeric" disabled={saving} onChange={event => update('inputCacheHitTokens', event.target.value)} /></label><label>Tokens input miss<input value={draft.inputCacheMissTokens} inputMode="numeric" disabled={saving} onChange={event => update('inputCacheMissTokens', event.target.value)} /></label><label>Tokens output<input value={draft.outputTokens} inputMode="numeric" disabled={saving} onChange={event => update('outputTokens', event.target.value)} /></label><label>Coste provider USD<input value={draft.providerCost} inputMode="decimal" disabled={saving} onChange={event => update('providerCost', event.target.value)} /></label></div></fieldset>
       <aside className="ambiguous-resolution-summary"><strong>Resumen para confirmar</strong><span>{ambiguity.provider === 'deepseek' ? 'DeepSeek' : ambiguity.provider} · {ambiguity.model}</span><span>{draft.requestCount} request · {draft.inputCacheHitTokens} input cache hit · {draft.inputCacheMissTokens} input miss · {draft.outputTokens} output tokens</span><span>{draft.providerCost} USD · respuesta recuperada: NO</span><small>Limitación: {draft.limitation}</small></aside></>}
+    {prudentialVisible && <fieldset><legend>Contabilidad prudencial</legend><p className="muted">No hay evidencia suficiente para confirmar ni negar el consumo remoto. Se contabilizará la reserva máxima prudencial, sin presentarla como coste facturado por DeepSeek. La respuesta no fue recuperada y una nueva generación será gasto adicional.</p><div className="ambiguous-resolution-fields"><label>Provider<input value={ambiguity.provider === 'deepseek' ? 'DeepSeek' : ambiguity.provider} readOnly aria-readonly="true" /></label><label>Modelo<input value={ambiguity.model} readOnly aria-readonly="true" /></label><label>Importe prudencial EUR<input value={ambiguity.reservedAmount.toFixed(6)} readOnly aria-readonly="true" /></label><label>Coste provider confirmado<input value="No" readOnly aria-readonly="true" /></label></div><label>Motivo de evidencia insuficiente<textarea required value={draft.reason} disabled={saving} onChange={event => update('reason', event.target.value)} placeholder="El usage disponible no cubre de forma fiable la ventana de la llamada." /></label><aside className="ambiguous-resolution-summary"><strong>Resumen para confirmar</strong><span>Resultado remoto: indeterminado · respuesta recuperada: NO</span><span>Contabilidad: prudencial por {ambiguity.reservedAmount.toFixed(6)} EUR</span><small>La nueva llamada requerirá una autorización humana y será gasto adicional.</small></aside></fieldset>}
     <fieldset><legend>Limitación y nota</legend>{evidenceVisible && <label>Limitación<textarea value={draft.limitation} disabled={saving} onChange={event => update('limitation', event.target.value)} /></label>}<label>Nota opcional<textarea value={draft.note} disabled={saving} onChange={event => update('note', event.target.value)} /></label></fieldset>
     <p className="muted">No se guarda ninguna clave secreta, header de autorización ni token de ejecución.</p>
     <footer><button type="button" className="button ghost" disabled={saving} onClick={onCancel}>Cancelar</button><button className="button primary" disabled={saving || !valid}>{saving ? 'Guardando…' : 'Confirmar resolución humana'}</button></footer>
@@ -190,6 +200,9 @@ function TechnicalDiagnostic({ details }: { details: FactoryBatchTechnicalDiagno
     ['Estado esperado de reserva', details.reservation?.expectedReservationState ?? null], ['Transición solicitada', details.reservation?.requestedTransition ?? null],
     ['Estado del ledger', details.reservation?.ledgerState ?? null],
     ['Resolución ambigua', details.reservation?.ambiguityResolution?.decision ?? null], ['Respuesta recuperada', details.reservation?.ambiguityResolution?.responseRecovered ?? null],
+    ['Resultado remoto', details.reservation?.ambiguityResolution?.prudential?.remoteResult ?? null], ['Modo contable', details.reservation?.ambiguityResolution?.prudential?.accountingMode ?? null],
+    ['Importe prudencial', details.reservation?.ambiguityResolution?.prudential ? `${details.reservation.ambiguityResolution.prudential.amount} ${details.reservation.ambiguityResolution.prudential.currency}` : null],
+    ['Coste provider confirmado', details.reservation?.ambiguityResolution?.prudential?.providerCostConfirmed ?? null], ['Motivo prudencial', details.reservation?.ambiguityResolution?.prudential?.reason ?? null],
     ['Evidence', details.reservation?.ambiguityResolution?.evidence?.evidenceType ?? null], ['Requests evidence', details.reservation?.ambiguityResolution?.evidence?.requestCount ?? null],
     ['Input cache hit evidence', details.reservation?.ambiguityResolution?.evidence?.inputCacheHitTokens ?? null], ['Input evidence', details.reservation?.ambiguityResolution?.evidence?.inputCacheMissTokens ?? null], ['Output evidence', details.reservation?.ambiguityResolution?.evidence?.outputTokens ?? null],
     ['Coste evidence', details.reservation?.ambiguityResolution?.evidence ? `${details.reservation.ambiguityResolution.evidence.providerCost} ${details.reservation.ambiguityResolution.evidence.currency}` : null],

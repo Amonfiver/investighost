@@ -36,10 +36,18 @@ export type FactoryBatchReservationDiagnostic = {
   requestedTransition: string | null
   ledgerState: string
   ambiguityResolution: {
-    decision: 'no_consumption' | 'consumption_confirmed' | 'indeterminate'
+    decision: 'no_consumption' | 'consumption_confirmed' | 'indeterminate' | 'prudential_cost_assumed'
     responseRecovered: boolean
     resolvedAt: string | null
     evidence: FactoryBatchUsageEvidence | null
+    prudential: {
+      remoteResult: 'INDETERMINATE'
+      accountingMode: 'PRUDENTIAL_MAX_ASSUMED'
+      amount: number
+      currency: 'EUR'
+      providerCostConfirmed: false
+      reason: string
+    } | null
   } | null
 }
 
@@ -112,7 +120,7 @@ export function buildFactoryBatchTechnicalDiagnostic(
   const limit = terminalStageLimit ? {
     type: 'DURABLE_STAGE_RETRY_POLICY' as const,
     value: 'HUMAN_RECONCILIATION_REQUIRED',
-    currentValue: reconciledTerminalRetry ? 'CONSUMPTION_CONFIRMED_RESPONSE_LOST' : 'TERMINAL_STAGE_FAILED',
+    currentValue: reconciledTerminalRetry ? 'HUMAN_RESOLVED_RESPONSE_LOST' : 'TERMINAL_STAGE_FAILED',
     scope: resume?.resumeFromStage ?? persisted?.operation ?? job.currentPhase,
     requiresHumanOverride: !reconciledTerminalRetry,
     overrideAction: reconciledTerminalRetry
@@ -146,7 +154,7 @@ export function buildFactoryBatchTechnicalDiagnostic(
       : errorCode === 'TIMEOUT' && timeout?.reconciliationRequired
         ? 'La solicitud fue despachada localmente, pero el resultado remoto es ambiguo. Comprueba el usage de DeepSeek y resuelve el resultado ambiguo antes de reintentar.'
       : reconciledTerminalRetry
-        ? 'La conciliación confirmó consumo sin respuesta recuperable. Reintenta analysis.stage_a: se creará una nueva llamada DeepSeek sin repetir Research.'
+        ? 'La conciliación humana cerró una llamada sin respuesta recuperable. Reintenta analysis.stage_a: se creará una nueva llamada DeepSeek sin repetir Research.'
       : job.retryable ? 'Reintenta el trabajo cuando la causa indicada esté resuelta.' : 'Revisa la causa técnica antes de volver a intentarlo.',
     resumeFromStage: resume?.resumeFromStage ?? null,
     reusedResearchCorpus: resume?.researchCorpusExists ?? false,

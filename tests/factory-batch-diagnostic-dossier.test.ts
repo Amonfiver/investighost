@@ -16,11 +16,18 @@ const diagnostic = buildFactoryBatchTechnicalDiagnostic(job, providers, { state:
   reservationId: '9aaa90c7-7419-40d8-8448-463dfd44968f', reservationState: 'unknown', providerCallId: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2', realProvider: 'deepseek', model: 'deepseek-flash', reservationOperation: 'analysis.stage_a', requestDispatched: true, reservedAmount: 0.02, committedAmount: 0.048, expectedReservationState: null, requestedTransition: null, ledgerState: 'AMBIGUOUS_PENDING', ambiguityResolution: null,
 }, { researchCorpusExists: true, analysisArtifactExists: false, resumeFromStage: 'analysis.stage_a', nextStage: 'analysis.stage_a', expectedProvider: 'deepseek', previousAmbiguousUsageResolved: true, terminalAnalysisRetryAuthorized: false }, { type: 'TOTAL_REQUEST_TIMEOUT', timeoutMs: 90_000, timeoutSource: 'DEEPSEEK_ANALYSIS_DEFAULT', ambiguousRemoteResult: true, reconciliationRequired: true })
 
-function dossier() {
+function dossier(ambiguityResolutionFailure?: {
+  errorCode: string
+  technicalCause: string
+  reservationId: string
+  providerCallId: string
+  operation: string
+  timestamp?: string
+}) {
   return buildFactoryBatchDiagnosticDossier({ job, diagnostic, generatedAt: '2026-10-02T10:00:00.000Z', version: { gitSha: 'f79a620', branch: 'feat/investighost-real-pipeline' },
     reservations: [{ id: '9aaa90c7-7419-40d8-8448-463dfd44968f', call_id: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2', state: 'unknown', reserved_cost: 0.02, currency: 'EUR', provider_id: 'deepseek', model: 'deepseek-flash', stage: '2_analysis.stage_a', operation: 'analysis.stage_a', attempt: 3, created_at: '2026-10-01T20:02:04.000Z' }],
     providerCalls: [{ call_id: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2', reservation_id: '9aaa90c7-7419-40d8-8448-463dfd44968f', state: 'unknown', provider_id: 'deepseek', model: 'deepseek-flash', stage: '2_analysis.stage_a', operation: 'analysis.stage_a', sanitized_error: 'DeepSeek superó 90000 ms', created_at: '2026-10-01T20:03:34.000Z' }],
-    ambiguities: [{ call_id: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2', reservation_id: '9aaa90c7-7419-40d8-8448-463dfd44968f', opened_at: '2026-10-01T20:03:34.000Z' }], resolutions: [], artifacts: [{ id: 'research-artifact', artifact_kind: 'checkpoint', artifact_key: 'workflow', version: 8, payload_hash: 'a'.repeat(64), created_at: '2026-10-01T20:00:00.000Z' }],
+    ambiguities: [{ call_id: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2', reservation_id: '9aaa90c7-7419-40d8-8448-463dfd44968f', opened_at: '2026-10-01T20:03:34.000Z' }], resolutions: [], artifacts: [{ id: 'research-artifact', artifact_kind: 'checkpoint', artifact_key: 'workflow', version: 8, payload_hash: 'a'.repeat(64), created_at: '2026-10-01T20:00:00.000Z' }], ambiguityResolutionFailure,
   })
 }
 
@@ -56,5 +63,24 @@ describe('expediente diagnóstico durable batch', () => {
     expect(markdown).toContain('CURRENT_STATUS')
     expect(`${jsonl}\n${markdown}`).not.toContain('sk-secret')
     expect(`${jsonl}\n${markdown}`).not.toContain('promptContent')
+  })
+
+  it('DIAGNOSTIC_DOSSIER_CAPTURES_RECONCILIATION_FAILURE without changing the selected ambiguity', () => {
+    const value = dossier({
+      errorCode: 'AMBIGUITY_RESOLUTION_FAILED',
+      technicalCause: 'RPC absent from PostgREST schema cache',
+      reservationId: '9aaa90c7-7419-40d8-8448-463dfd44968f',
+      providerCallId: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2',
+      operation: 'prudential reconciliation',
+      timestamp: '2026-10-03T18:00:00.000Z',
+    })
+    const event = value.events.find(item => item.eventType === 'AMBIGUITY_RESOLUTION_FAILED')
+    expect(event).toMatchObject({
+      reservationId: '9aaa90c7-7419-40d8-8448-463dfd44968f',
+      providerCallId: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2',
+      operation: 'prudential reconciliation',
+      data: { errorCode: 'AMBIGUITY_RESOLUTION_FAILED', technicalCause: 'RPC absent from PostgREST schema cache' },
+    })
+    expect(value.events.find(item => item.eventType === 'AMBIGUITY_DETECTED')?.data.reconciliationRequired).toBe(true)
   })
 })

@@ -35,6 +35,17 @@ export type FactoryBatchDiagnosticDossier = {
   version: { applicationVersion: string; gitSha: string; branch: string; buildId: string }
 }
 
+/** A failed human reconciliation has no durable ledger transition, so it must
+ * be represented explicitly in the append-only local diagnostic dossier. */
+export type FactoryBatchAmbiguityResolutionFailure = {
+  errorCode: string
+  technicalCause: string
+  reservationId: string
+  providerCallId: string
+  operation: string
+  timestamp?: string
+}
+
 export function buildFactoryBatchDiagnosticDossier(input: {
   job: DestinationBatchJob
   diagnostic: FactoryBatchTechnicalDiagnostic
@@ -43,6 +54,7 @@ export function buildFactoryBatchDiagnosticDossier(input: {
   ambiguities: Row[]
   resolutions: Row[]
   artifacts: Row[]
+  ambiguityResolutionFailure?: FactoryBatchAmbiguityResolutionFailure
   version?: Partial<FactoryBatchDiagnosticDossier['version']>
   generatedAt?: string
 }): FactoryBatchDiagnosticDossier {
@@ -85,6 +97,14 @@ export function buildFactoryBatchDiagnosticDossier(input: {
     remoteResult: row.resolved_at ? String(row.terminal_decision ?? 'UNKNOWN').toUpperCase() : 'INDETERMINATE', reconciliationRequired: !row.resolved_at,
     reconciliationDecision: row.terminal_decision ?? null,
   }, { reservationId: asString(row.reservation_id), providerCallId: asString(row.call_id) })
+  if (input.ambiguityResolutionFailure) {
+    const failure = input.ambiguityResolutionFailure
+    add('AMBIGUITY_RESOLUTION_FAILED', failure.timestamp ?? generatedAt, {
+      errorCode: failure.errorCode,
+      technicalCause: failure.technicalCause,
+      suggestedAction: 'Aplicar las migraciones locales requeridas y volver a intentar la resolución humana.',
+    }, { reservationId: failure.reservationId, providerCallId: failure.providerCallId, operation: failure.operation })
+  }
   for (const row of input.resolutions) add('HUMAN_RECONCILIATION_RECORDED', row.decided_at, {
     decision: row.decision ?? 'UNKNOWN', responseRecovered: row.response_recovered ?? null,
     evidenceSource: evidenceType(row.external_usage_evidence), evidenceLimitation: evidenceLimitation(row.external_usage_evidence),

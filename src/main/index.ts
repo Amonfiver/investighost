@@ -117,12 +117,13 @@ import {
   SupabaseStructuredPackageApprovalRepository,
   batchJobExecutionAuthorizations,
   BatchAmbiguousCallResolutionService,
+  BatchAmbiguousCallResolutionError,
   canRetryReconciledAnalysis,
   readBatchResumePlan,
 } from '@modules/factory-batches'
 import { BatchAmbiguousCallResolutionSchema } from '@shared/factory-batch-contracts'
 import { buildFactoryBatchTechnicalDiagnostic, type FactoryBatchReservationDiagnostic } from './factory-batch-diagnostics'
-import { buildFactoryBatchDiagnosticDossier, compactFactoryBatchDiagnosticSummary, persistFactoryBatchDiagnosticDossier } from './factory-batch-diagnostic-dossier'
+import { buildFactoryBatchDiagnosticDossier, compactFactoryBatchDiagnosticSummary, persistFactoryBatchDiagnosticDossier, type FactoryBatchAmbiguityResolutionFailure } from './factory-batch-diagnostic-dossier'
 import {
   getManualPersistenceStatus,
   getManualResearchRuntime,
@@ -304,10 +305,24 @@ ipcMain.handle('factory-batches:resolve-ambiguous-call', async (_event, candidat
   }
   const result = mainWindow ? await dialog.showMessageBox(mainWindow, options) : await dialog.showMessageBox(options)
   if (result.response !== 1) throw new Error('AMBIGUITY_RESOLUTION_CONFIRMATION_REQUIRED')
-  const resolved = await new BatchAmbiguousCallResolutionService(client, MANUAL_LOCAL_ACTOR_ID).resolve(input)
-  if (input.decision === 'PRUDENTIAL_COST_ASSUMED') batchJobExecutionAuthorizations.revoke(resolved.job)
-  await captureBatchJobDiagnostic(client, resolved.job)
-  return resolved
+  try {
+    const resolved = await new BatchAmbiguousCallResolutionService(client, MANUAL_LOCAL_ACTOR_ID).resolve(input)
+    if (input.decision === 'PRUDENTIAL_COST_ASSUMED') batchJobExecutionAuthorizations.revoke(resolved.job)
+    await captureBatchJobDiagnostic(client, resolved.job)
+    return resolved
+  } catch (error) {
+    const failure: FactoryBatchAmbiguityResolutionFailure = {
+      errorCode: error instanceof BatchAmbiguousCallResolutionError ? error.code : 'AMBIGUITY_RESOLUTION_FAILED',
+      technicalCause: error instanceof Error ? error.message : 'La resolución humana falló sin una causa legible.',
+      reservationId: input.reservationId,
+      providerCallId: input.providerCallId,
+      operation: input.decision === 'PRUDENTIAL_COST_ASSUMED' ? 'prudential reconciliation' : 'ambiguous reconciliation',
+    }
+    // Capturing the failure is best-effort and read-only with respect to the
+    // batch ledger: a failed RPC must never conceal the original error.
+    await captureBatchJobDiagnostic(client, job, failure).catch(() => undefined)
+    throw error
+  }
 })
 
 ipcMain.handle('factory-batches:start', async (_event, batchId: unknown) => {
@@ -1416,6 +1431,7 @@ async function buildBatchDiagnosticDossier(
   client: ReturnType<typeof createLocalSupabaseClientFromEnv>['client'],
   job: import('@shared/factory-batch-contracts').DestinationBatchJob,
   diagnostic: import('./factory-batch-diagnostics').FactoryBatchTechnicalDiagnostic,
+  ambiguityResolutionFailure?: FactoryBatchAmbiguityResolutionFailure,
 ) {
   const { data: execution } = await client.from('real_editorial_executions').select('id')
     .eq('owner_type', 'BATCH_JOB').eq('owner_id', job.id).maybeSingle()
@@ -1433,6 +1449,7 @@ async function buildBatchDiagnosticDossier(
     job, diagnostic,
     reservations: (reservations.data ?? []) as Record<string, unknown>[], providerCalls: (providerCalls.data ?? []) as Record<string, unknown>[],
     ambiguities: (ambiguities.data ?? []) as Record<string, unknown>[], resolutions: (resolutions.data ?? []) as Record<string, unknown>[], artifacts: (artifacts.data ?? []) as Record<string, unknown>[],
+    ambiguityResolutionFailure,
     version: { applicationVersion: app.getVersion(), gitSha: process.env.GIT_SHA ?? process.env.GIT_COMMIT_SHA ?? 'UNKNOWN', branch: process.env.GIT_BRANCH ?? 'UNKNOWN', buildId: process.env.BUILD_ID ?? 'UNKNOWN' },
   })
 }
@@ -1441,17 +1458,19 @@ async function persistBatchDiagnosticDossier(
   client: ReturnType<typeof createLocalSupabaseClientFromEnv>['client'],
   job: import('@shared/factory-batch-contracts').DestinationBatchJob,
   diagnostic: import('./factory-batch-diagnostics').FactoryBatchTechnicalDiagnostic,
+  ambiguityResolutionFailure?: FactoryBatchAmbiguityResolutionFailure,
 ) {
-  const dossier = await buildBatchDiagnosticDossier(client, job, diagnostic)
+  const dossier = await buildBatchDiagnosticDossier(client, job, diagnostic, ambiguityResolutionFailure)
   return persistFactoryBatchDiagnosticDossier(app.getPath('userData'), dossier)
 }
 
 async function captureBatchJobDiagnostic(
   client: ReturnType<typeof createLocalSupabaseClientFromEnv>['client'],
   job: import('@shared/factory-batch-contracts').DestinationBatchJob,
+  ambiguityResolutionFailure?: FactoryBatchAmbiguityResolutionFailure,
 ): Promise<void> {
   const diagnostic = await readBatchTechnicalDiagnostic(client, job)
-  await persistBatchDiagnosticDossier(client, job, diagnostic)
+  await persistBatchDiagnosticDossier(client, job, diagnostic, ambiguityResolutionFailure)
 }
 
 async function hasOpenBatchProviderAmbiguity(

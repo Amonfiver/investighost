@@ -116,6 +116,37 @@ describe('conciliación de fallos facturables y reanudación idempotente', () =>
       })
   })
 
+  it('NEW_AUTHORIZED_GENERATION_CAN_CREATE_NEW_RESERVATION after a reconciled Stage A without a durable artifact', async () => {
+    let sequence = 0
+    const repository = new MemoryCostLedgerRepository(
+      { task: 0.2, batch: 0.2, daily: 0.2, currency: 'EUR' },
+      { now: () => new Date(now), id: () => `segovia-stage-a-${++sequence}` },
+    )
+    const ledger = new CostLedgerService(repository, { now: () => new Date(now) })
+    await ledger.acquireExecution('real-editorial:run-morella', 'lease-segovia-stage-a', new Date('2026-07-26T00:00:00.000Z'))
+    const operation = 'factory-batch:segovia:round:1:analysis.stage_a'
+    let previousCallId: string | undefined
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      const reserved = await ledger.reserve(metadata().create(operation, attempt, 0.008, previousCallId))
+      await ledger.start(reserved.id)
+      await ledger.settle({ reservationId: reserved.id, outcome: attempt === 4 ? 'succeeded' : 'failed', calculatedCost: 0, usage: { inputTokens: 0, outputTokens: 0, toolCalls: 1, credits: 0 } })
+      previousCallId = reserved.callId
+    }
+    const provider = vi.fn(async () => ({ providerRequestIds: ['new-stage-a-call'], usage: { inputTokens: 10, outputTokens: 2, estimatedCost: 0.001 } }))
+    const executor = new LedgeredWorkflowCallExecutor(ledger, metadata(), 0.2, async () => false, undefined, async (_operation, reservation) => reservation.input.attempt === 4)
+
+    const [left, right] = await Promise.all([
+      executor.execute(operation, 0.008, provider, { retryTerminalAttempts: false }),
+      executor.execute(operation, 0.008, provider, { retryTerminalAttempts: false }),
+    ])
+
+    expect(left).toEqual(right)
+    expect(provider).toHaveBeenCalledOnce()
+    expect(await repository.findByIdempotencyKey(`${operation}:attempt:5`)).toMatchObject({ state: 'reconciled', input: { attempt: 5, retryOfCallId: previousCallId } })
+    expect(await repository.findByIdempotencyKey(`${operation}:attempt:4`)).toMatchObject({ state: 'reconciled' })
+    expect(await repository.findByIdempotencyKey(`${operation}:attempt:6`)).toBeUndefined()
+  })
+
   it('asienta incomplete recibido con remote id, uso y motivo sanitizado', async () => {
     let sequence = 0
     const repository = new MemoryCostLedgerRepository(

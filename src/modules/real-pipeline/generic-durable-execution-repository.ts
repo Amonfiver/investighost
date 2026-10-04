@@ -161,10 +161,13 @@ export class SupabaseGenericDurableExecutionRepository {
     reservation: ProviderCallReservation,
   ): Promise<boolean> {
     if (
-      reservation.state !== 'failed'
+      !['failed', 'reconciled'].includes(reservation.state)
       || reservation.input.providerId !== 'deepseek'
       || !/^analysis\.stage_[a-z0-9_]+$/i.test(reservation.input.operation)
     ) return false
+    if (reservation.state === 'reconciled') {
+      return this.canRepeatReconciledStageAfterRemediatedIncomplete(executionOwnerId, reservation)
+    }
     const { data: ambiguity, error: ambiguityError } = await this.client
       .from('real_editorial_ambiguous_calls')
       .select('terminal_decision,terminal_resolution_id,resolved_at')
@@ -182,6 +185,25 @@ export class SupabaseGenericDurableExecutionRepository {
     return !resolutionError
       && resolution?.response_recovered === false
       && (resolution?.decision === 'consumption_confirmed' || resolution?.decision === 'prudential_cost_assumed')
+  }
+
+  /** A pre-stage-checkpoint Stage A response can be repeated only after the
+   * explicitly remediated Stage B max-output failure. */
+  private async canRepeatReconciledStageAfterRemediatedIncomplete(
+    executionOwnerId: string,
+    reservation: ProviderCallReservation,
+  ): Promise<boolean> {
+    if (reservation.input.operation !== 'analysis.stage_a') return false
+    const [{ data: stageArtifact, error: artifactError }, { data: stageBFailure, error: failureError }] = await Promise.all([
+      this.client.from('real_editorial_artifacts').select('id')
+        .eq('execution_owner_id', executionOwnerId).eq('artifact_kind', 'checkpoint')
+        .eq('artifact_key', 'analysis-stage/round-1/stage_a').limit(1).maybeSingle(),
+      this.client.from('real_editorial_provider_calls').select('sanitized_error')
+        .eq('execution_owner_id', executionOwnerId).eq('operation', 'analysis.stage_b').eq('state', 'failed')
+        .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    ])
+    return !artifactError && !failureError && !stageArtifact
+      && /(?:INCOMPLETE\|.*code=max_output_tokens|max_output_tokens)/i.test(String(stageBFailure?.sanitized_error ?? ''))
   }
 }
 
@@ -261,7 +283,7 @@ export class SupabaseGenericExecutionLedgerRepository implements CostLedgerRepos
     })
     if (error || typeof data !== 'string') {
       throw new CostLedgerError(
-        'TASK_BUDGET_EXCEEDED',
+        /IDEMPOTENCY_CONFLICT/.test(error?.message ?? '') ? 'IDEMPOTENCY_CONFLICT' : 'TASK_BUDGET_EXCEEDED',
         `El ledger durable rechazó la reserva batch${error?.message ? `: ${error.message}` : ''}`,
       )
     }

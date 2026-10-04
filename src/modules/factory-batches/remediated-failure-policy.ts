@@ -22,7 +22,7 @@ export type FailureRemediation = {
 export type RemediatedFailureEligibilityInput = {
   job: DestinationBatchJob
   resume: BatchResumePlan | null
-  lastReservation: { reservationState: string; reservationOperation: string | null } | null
+  lastReservation: { reservationState: string; reservationOperation: string | null; incompleteReason?: string | null } | null
   ambiguityPending: boolean
   activeReservation: boolean
 }
@@ -33,9 +33,9 @@ export type RemediatedFailureEligibilityInput = {
 export function assessRemediatedFailure(input: RemediatedFailureEligibilityInput): FailureRemediation | null {
   const code = input.job.failureDiagnostic?.code ?? failureCode(input.job.lastFailure)
   const cause = `${input.job.failureDiagnostic?.cause ?? ''}\n${input.job.lastFailure ?? ''}`
-  const stageBMaxOutputFailure = code === 'INCOMPLETE'
+  const stageBMaxOutputFailure = ['INCOMPLETE', 'IDEMPOTENCY_CONFLICT'].includes(code)
     && input.lastReservation?.reservationOperation === 'analysis.stage_b'
-    && /max_output_tokens/i.test(cause)
+    && /max_output_tokens/i.test(`${cause}\n${input.lastReservation?.incompleteReason ?? ''}`)
   if (!stageBMaxOutputFailure) return null
 
   const resumeIsIncompleteAnalysis = Boolean(input.resume?.researchCorpusExists)

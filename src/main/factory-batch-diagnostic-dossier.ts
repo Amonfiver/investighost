@@ -98,6 +98,16 @@ export function buildFactoryBatchDiagnosticDossier(input: {
     remediation: input.diagnostic.remediation,
   }, { reservationId: input.diagnostic.reservation?.reservationId ?? null, providerCallId: input.diagnostic.reservation?.providerCallId ?? null })
   if (input.job.lastFailure) add('JOB_FAILED', input.diagnostic.timestamp, { errorCode: input.diagnostic.errorCode, errorMessage: input.job.lastFailure, retryable: input.diagnostic.retryable, suggestedAction: input.diagnostic.suggestedAction })
+  if (input.diagnostic.idempotencyConflict) {
+    const conflict = input.diagnostic.idempotencyConflict
+    add('RESERVATION_IDEMPOTENCY_CONFLICT', input.diagnostic.timestamp, {
+      operation: conflict.operation, stageAttemptRequested: conflict.stageAttemptRequested,
+      idempotencyKeyFingerprint: conflict.idempotencyKeyFingerprint,
+      conflictingReservationId: conflict.conflictingReservationId, conflictingProviderCallId: conflict.conflictingProviderCallId,
+      conflictingOperation: conflict.conflictingOperation, conflictingStageAttempt: conflict.conflictingStageAttempt,
+      provider: conflict.provider, model: conflict.model, requestDispatched: false, costCreated: false,
+    }, { reservationId: conflict.conflictingReservationId, providerCallId: conflict.conflictingProviderCallId, operation: conflict.operation, stageAttempt: conflict.conflictingStageAttempt ?? 'UNKNOWN' })
+  }
   if (input.authorizationGranted) add('AUTHORIZATION_GRANTED', input.authorizationGranted.authorizedAt, {
     expectedProvider: input.authorizationGranted.expectedProvider,
     nextStage: input.authorizationGranted.nextStage,
@@ -153,7 +163,7 @@ export function buildFactoryBatchDiagnosticDossier(input: {
 
 export function renderFactoryBatchDiagnosticMarkdown(dossier: FactoryBatchDiagnosticDossier): string {
   const d = dossier.diagnostic
-  const timeline = dossier.events.filter(event => ['JOB_FAILED', 'PROVIDER_CALL_TIMEOUT', 'AMBIGUITY_DETECTED', 'AMBIGUITY_RESOLUTION_FAILED', 'AMBIGUITY_RESOLVED', 'HUMAN_RECONCILIATION_RECORDED'].includes(event.eventType))
+  const timeline = dossier.events.filter(event => ['JOB_FAILED', 'PROVIDER_CALL_TIMEOUT', 'AMBIGUITY_DETECTED', 'AMBIGUITY_RESOLUTION_FAILED', 'AMBIGUITY_RESOLVED', 'HUMAN_RECONCILIATION_RECORDED', 'RESERVATION_IDEMPOTENCY_CONFLICT'].includes(event.eventType))
     .map(event => `- Job attempt ${event.jobAttempt}${event.stageAttempt === 'UNKNOWN' ? '' : ` · Stage attempt ${event.stageAttempt}`} · ${event.timestamp} · ${event.eventType}${event.data.errorCode ? ` · ${event.data.errorCode}` : ''}`).join('\n') || '- UNKNOWN'
   return `# Expediente diagnóstico — ${d.jobId}\n\n## Timeline\n${timeline}\n\n## CURRENT_STATUS\n\n- CURRENT_STATUS: ${dossier.job.status}\n- CURRENT_PHASE: ${d.phase}\n- CURRENT_STAGE: ${d.resumeFromStage ?? 'UNKNOWN'}\n- NEXT_STAGE: ${d.nextStage ?? 'UNKNOWN'}\n- EXPECTED_PROVIDER: ${d.expectedProvider ?? 'UNKNOWN'}\n- ACTUAL_PROVIDER_LAST_CALL: ${d.reservation?.realProvider ?? 'UNKNOWN'}\n- LAST_ERROR: ${d.internalCauseSanitized}\n- LAST_ERROR_CODE: ${d.errorCode}\n- LAST_RESERVATION: ${d.reservation?.reservationId ?? 'UNKNOWN'}\n- LAST_PROVIDER_CALL: ${d.reservation?.providerCallId ?? 'UNKNOWN'}\n- ACTIVE_RESERVATION: ${d.reservation?.reservationState === 'unknown' ? d.reservation.reservationId : 'NONE'}\n- AMBIGUITY_PENDING: ${d.reservation?.reservationState === 'unknown'}\n- REMOTE_RESULT: ${d.reservation?.reservationState === 'unknown' ? 'INDETERMINATE' : d.reservation?.ambiguityResolution?.prudential?.remoteResult ?? 'UNKNOWN'}\n- RECONCILIATION_REQUIRED: ${d.timeout?.reconciliationRequired ?? false}\n- AUTHORIZATION_STATE: ${d.authorizationState}\n- SAFE_TO_RETRY_WITHOUT_AUTHORIZATION: ${d.safeToRetryWithoutAuthorization}\n- SAFE_TO_REQUEST_AUTHORIZATION: ${d.safeToRequestAuthorization}\n- PROVIDER_CALL_ALLOWED: ${d.providerCallAllowed}\n- REMEDIATION_AVAILABLE: ${d.remediation !== null}\n- REMEDIATION_KEY: ${d.remediation?.key ?? 'UNKNOWN'}\n- REMEDIATION_VERSION: ${d.remediation?.version ?? 'UNKNOWN'}\n- FAILURE_POLICY_VERSION: ${d.remediation?.failurePolicyVersion ?? 'UNKNOWN'}\n- CURRENT_POLICY_VERSION: ${d.remediation?.currentPolicyVersion ?? 'UNKNOWN'}\n- RESEARCH_REUSED: ${d.reusedResearchCorpus}\n- BUDGET_LIMIT: UNKNOWN\n- BUDGET_USED: ${d.reservation?.committedAmount ?? 'UNKNOWN'}\n- PRUDENTIAL_EXPOSURE: ${d.reservation?.ambiguityResolution?.prudential?.amount ?? 0} EUR\n- CONFIRMED_PROVIDER_COST: ${d.reservation?.ambiguityResolution?.evidence?.providerCost ?? 'UNKNOWN'} ${d.reservation?.ambiguityResolution?.evidence?.currency ?? ''}\n- SAFE_TO_RETRY: ${d.retryable && d.reservation?.reservationState !== 'unknown'}\n- NEXT_HUMAN_ACTION: ${d.suggestedAction}\n- GIT_SHA_CURRENT: ${dossier.version.gitSha}\n`
 }

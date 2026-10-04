@@ -1381,7 +1381,7 @@ async function readBatchReservationDiagnostic(
   if (reservationError || !reservation) return null
 
   const { data: providerCalls } = await client.from('real_editorial_provider_calls')
-    .select('state,remote_id,created_at')
+    .select('state,remote_id,created_at,sanitized_error')
     .eq('reservation_id', reservation.id)
     .order('sequence', { ascending: true })
   const started = (providerCalls ?? []).find(call => call.state === 'started')
@@ -1404,6 +1404,7 @@ async function readBatchReservationDiagnostic(
     providerCallId: String(reservation.call_id),
     realProvider: typeof reservation.provider_id === 'string' ? reservation.provider_id : null,
     model: typeof reservation.model === 'string' ? reservation.model : null,
+    incompleteReason: terminal?.sanitized_error ? String(terminal.sanitized_error) : null,
     reservationOperation: typeof reservation.operation === 'string' ? reservation.operation : null,
     reservationAttempt: typeof reservation.attempt === 'number' ? reservation.attempt : null,
     requestDispatched: Boolean(started),
@@ -1453,12 +1454,13 @@ async function readBatchTechnicalDiagnostic(
     hasActiveBatchProviderReservation(client, job.id),
   ])
   const timeout = readBatchTimeoutDiagnostic(job.lastFailure, reservation, resume)
+  const idempotencyConflict = await readBatchIdempotencyConflictDiagnostic(client, job, resume)
   const remediation = assessRemediatedFailure({
     job, resume,
-    lastReservation: reservation ? { reservationState: reservation.reservationState, reservationOperation: reservation.reservationOperation ?? null } : null,
+    lastReservation: reservation ? { reservationState: reservation.reservationState, reservationOperation: reservation.reservationOperation ?? null, incompleteReason: reservation.incompleteReason } : null,
     ambiguityPending, activeReservation,
   })
-  return buildFactoryBatchTechnicalDiagnostic(job, providerCenter.snapshot(), batchJobExecutionAuthorizations.status(job), reservation, resume, timeout, remediation)
+  return buildFactoryBatchTechnicalDiagnostic(job, providerCenter.snapshot(), batchJobExecutionAuthorizations.status(job), reservation, resume, timeout, remediation, idempotencyConflict)
 }
 
 async function buildBatchDiagnosticDossier(
@@ -1560,6 +1562,37 @@ async function hasActiveBatchProviderReservation(
     .select('id').eq('execution_owner_id', execution.id)
     .in('state', ['reserved', 'started', 'unknown']).limit(1)
   return !error && (data?.length ?? 0) > 0
+}
+
+/** Reconstructs the failed allocation from durable reservation identity only.
+ * The raw key never crosses this boundary; the fingerprint is correlation-safe. */
+async function readBatchIdempotencyConflictDiagnostic(
+  client: ReturnType<typeof createLocalSupabaseClientFromEnv>['client'],
+  job: import('@shared/factory-batch-contracts').DestinationBatchJob,
+  resume: Awaited<ReturnType<typeof readBatchResumePlan>>,
+): Promise<import('./factory-batch-diagnostics').FactoryBatchIdempotencyConflictDiagnostic | null> {
+  if (job.failureDiagnostic?.code !== 'IDEMPOTENCY_CONFLICT' || resume.resumeFromStage !== 'analysis.stage_a') return null
+  const { data: execution, error: executionError } = await client.from('real_editorial_executions').select('id')
+    .eq('owner_type', 'BATCH_JOB').eq('owner_id', job.id).maybeSingle()
+  if (executionError || !execution) return null
+  // The executor reaches allocation before it has hydrated the reconciled
+  // Stage A counter. Its candidate is therefore the durable attempt 1 key.
+  const { data: reservation, error: reservationError } = await client
+    .from('real_editorial_call_reservations')
+    .select('id,call_id,idempotency_key,operation,attempt,provider_id,model')
+    .eq('execution_owner_id', execution.id).eq('operation', 'analysis.stage_a').eq('attempt', 1).maybeSingle()
+  if (reservationError || !reservation || typeof reservation.idempotency_key !== 'string') return null
+  const { data: providerCall } = await client.from('real_editorial_provider_calls')
+    .select('call_id').eq('reservation_id', reservation.id).order('sequence', { ascending: false }).limit(1).maybeSingle()
+  return {
+    operation: 'analysis.stage_a', stageAttemptRequested: 1,
+    idempotencyKeyFingerprint: createHash('sha256').update(reservation.idempotency_key).digest('hex').slice(0, 16),
+    conflictingReservationId: String(reservation.id), conflictingProviderCallId: providerCall?.call_id ? String(providerCall.call_id) : null,
+    conflictingOperation: String(reservation.operation), conflictingStageAttempt: typeof reservation.attempt === 'number' ? reservation.attempt : null,
+    provider: typeof reservation.provider_id === 'string' ? reservation.provider_id : null,
+    model: typeof reservation.model === 'string' ? reservation.model : null,
+    requestDispatched: false, costCreated: false,
+  }
 }
 
 function readBatchTimeoutDiagnostic(

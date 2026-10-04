@@ -31,6 +31,9 @@ export type TerminalAttemptRetryPermission = (
 export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
   private readonly completed = new Map<string, unknown>()
   private readonly running = new Map<string, Promise<unknown>>()
+  /** Covers reservation allocation as well as the remote call.  `running`
+   * alone starts too late to protect two workers racing before `start()`. */
+  private readonly starting = new Map<string, Promise<unknown>>()
   private readonly attempts = new Map<string, number>()
   private readonly previousReservations = new Map<string, ProviderCallReservation>()
   private spentCost: number
@@ -75,6 +78,26 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
   }
 
   async execute<T>(
+    operationId: string,
+    estimatedCost: number,
+    operation: (context?: ProviderCallExecutionContext) => Promise<T>,
+    options: { retryTerminalAttempts?: boolean } = {},
+  ): Promise<T> {
+    if (this.completed.has(operationId)) return structuredClone(this.completed.get(operationId)) as T
+    const current = this.running.get(operationId)
+    if (current) return structuredClone(await current) as T
+    const initializing = this.starting.get(operationId)
+    if (initializing) return structuredClone(await initializing) as T
+    const execution = this.executeSerialized(operationId, estimatedCost, operation, options)
+    this.starting.set(operationId, execution)
+    try {
+      return structuredClone(await execution) as T
+    } finally {
+      if (this.starting.get(operationId) === execution) this.starting.delete(operationId)
+    }
+  }
+
+  private async executeSerialized<T>(
     operationId: string,
     estimatedCost: number,
     operation: (context?: ProviderCallExecutionContext) => Promise<T>,
@@ -257,6 +280,17 @@ export class LedgeredWorkflowCallExecutor implements WorkflowCallExecutor {
       if (stored) latest = stored
     }
     if (!latest) return
+    if (latest.state === 'reconciled') {
+      // A reconciled call normally has a durable result and therefore must not
+      // be replayed. The caller may grant the narrowly scoped recovery only
+      // when that result is demonstrably absent. Seeding preserves the
+      // immutable prior attempt and gives the new logical attempt a new key.
+      if (!await this.durableResultAvailable(operationId)
+        && await this.canRetryTerminalAttempt(operationId, latest, retryTerminalAttempts)) {
+        this.seedAttempt(operationId, latest.input.attempt, latest.callId)
+      }
+      return
+    }
     if (latest.state === 'unknown') {
       throw new RealWorkflowError(
         'BUDGET_EXCEEDED',

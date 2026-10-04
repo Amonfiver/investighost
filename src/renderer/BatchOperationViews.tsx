@@ -230,6 +230,10 @@ function TechnicalDiagnostic({ details }: { details: FactoryBatchTechnicalDiagno
     ['Limitación evidence', details.reservation?.ambiguityResolution?.evidence?.limitation ?? null],
     ['Tipo de timeout', details.timeout?.type ?? null], ['Timeout ms', details.timeout?.timeoutMs ?? null], ['Fuente de timeout', details.timeout?.timeoutSource ?? null],
     ['Resultado remoto ambiguo', details.timeout?.ambiguousRemoteResult ?? null], ['Reconciliación requerida', details.timeout?.reconciliationRequired ?? null],
+    ['Conflicto idempotente', details.idempotencyConflict?.idempotencyKeyFingerprint ?? null], ['Reserva en conflicto', details.idempotencyConflict?.conflictingReservationId ?? null],
+    ['Provider call en conflicto', details.idempotencyConflict?.conflictingProviderCallId ?? null], ['Operación en conflicto', details.idempotencyConflict?.conflictingOperation ?? null],
+    ['Intento solicitado', details.idempotencyConflict?.stageAttemptRequested ?? null], ['Intento en conflicto', details.idempotencyConflict?.conflictingStageAttempt ?? null],
+    ['Provider despachado', details.idempotencyConflict?.requestDispatched ?? null], ['Coste creado', details.idempotencyConflict?.costCreated ?? null],
   ]
   return <dl className="technical-diagnostic">{rows.filter(([, value]) => value !== null).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{String(value)}</dd></div>)}</dl>
 }

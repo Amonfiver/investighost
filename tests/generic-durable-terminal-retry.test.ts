@@ -30,6 +30,26 @@ function repository(responseRecovered: boolean, decision = 'consumption_confirme
   return new SupabaseGenericDurableExecutionRepository(client as never)
 }
 
+function remediatedStageARepository(options: { stageAArtifact?: boolean; stageBError?: string } = {}) {
+  const client = {
+    from(table: string) {
+      const query = {
+        select: () => query,
+        eq: () => query,
+        in: () => query,
+        not: () => query,
+        order: () => query,
+        limit: () => query,
+        maybeSingle: async () => table === 'real_editorial_artifacts'
+          ? { data: options.stageAArtifact ? { id: 'stage-a-checkpoint' } : null, error: null }
+          : { data: { sanitized_error: options.stageBError ?? 'INCOMPLETE|type=incomplete|code=max_output_tokens|message=truncated' }, error: null },
+      }
+      return query
+    },
+  }
+  return new SupabaseGenericDurableExecutionRepository(client as never)
+}
+
 describe('generic durable terminal analysis retry permission', () => {
   it('permits a fresh analysis.stage_a reservation only after CONFIRMED_CONSUMED_RESPONSE_LOST', async () => {
     expect(await repository(false).canRetryTerminalAnalysisAfterHumanResolution('8b450640-17a5-4e1a-a12c-73d98a9e95a4', reservation)).toBe(true)
@@ -44,5 +64,12 @@ describe('generic durable terminal analysis retry permission', () => {
 
   it('PRUDENTIAL_RESPONSE_LOST permits a fresh analysis reservation without treating provider usage as confirmed', async () => {
     expect(await repository(false, 'prudential_cost_assumed').canRetryTerminalAnalysisAfterHumanResolution('8b450640-17a5-4e1a-a12c-73d98a9e95a4', reservation)).toBe(true)
+  })
+
+  it('REMEDIATED_STAGE_B_MAX_OUTPUT permits a new Stage A attempt only when its old reconciled result is not durable', async () => {
+    const reconciled = { ...reservation, id: 'd813cef0-a668-4ba3-baef-e89827f528a9', input: { ...reservation.input, attempt: 4 }, state: 'reconciled' as const }
+    expect(await remediatedStageARepository().canRetryTerminalAnalysisAfterHumanResolution('8b450640-17a5-4e1a-a12c-73d98a9e95a4', reconciled)).toBe(true)
+    expect(await remediatedStageARepository({ stageAArtifact: true }).canRetryTerminalAnalysisAfterHumanResolution('8b450640-17a5-4e1a-a12c-73d98a9e95a4', reconciled)).toBe(false)
+    expect(await remediatedStageARepository({ stageBError: 'INCOMPLETE|type=other|code=validation' }).canRetryTerminalAnalysisAfterHumanResolution('8b450640-17a5-4e1a-a12c-73d98a9e95a4', reconciled)).toBe(false)
   })
 })

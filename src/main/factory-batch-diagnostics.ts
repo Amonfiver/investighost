@@ -23,6 +23,7 @@ export type FactoryBatchReservationDiagnostic = {
   providerCallId?: string | null
   realProvider?: string | null
   model?: string | null
+  incompleteReason?: string | null
   reservationOperation?: string | null
   reservationAttempt?: number | null
   requestDispatched?: boolean
@@ -69,6 +70,22 @@ export type FactoryBatchLimitDiagnostic = {
   overrideAction: string
 }
 
+/** Public correlation facts for an allocation conflict. The raw idempotency
+ * key remains local to the ledger and is never exported. */
+export type FactoryBatchIdempotencyConflictDiagnostic = {
+  operation: string
+  stageAttemptRequested: number
+  idempotencyKeyFingerprint: string
+  conflictingReservationId: string
+  conflictingProviderCallId: string | null
+  conflictingOperation: string
+  conflictingStageAttempt: number | null
+  provider: string | null
+  model: string | null
+  requestDispatched: false
+  costCreated: false
+}
+
 export type FactoryBatchTechnicalDiagnostic = {
   errorCode: string
   humanMessage: string
@@ -104,6 +121,7 @@ export type FactoryBatchTechnicalDiagnostic = {
   reservation: FactoryBatchReservationDiagnostic | null
   limit: FactoryBatchLimitDiagnostic | null
   timeout: FactoryBatchTimeoutDiagnostic | null
+  idempotencyConflict: FactoryBatchIdempotencyConflictDiagnostic | null
 }
 
 /** Projects durable batch facts plus public provider state.  This is a safe
@@ -117,6 +135,7 @@ export function buildFactoryBatchTechnicalDiagnostic(
   resume: BatchResumePlan | null = null,
   timeout: FactoryBatchTimeoutDiagnostic | null = null,
   remediation: FailureRemediation | null = null,
+  idempotencyConflict: FactoryBatchIdempotencyConflictDiagnostic | null = null,
 ): FactoryBatchTechnicalDiagnostic {
   const persisted = job.failureDiagnostic
   const errorCode = persisted?.code ?? failureCode(job.lastFailure)
@@ -182,6 +201,7 @@ export function buildFactoryBatchTechnicalDiagnostic(
     reservation,
     limit,
     timeout,
+    idempotencyConflict,
   }
 }
 

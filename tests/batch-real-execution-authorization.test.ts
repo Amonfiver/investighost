@@ -55,6 +55,16 @@ describe('real batch execution authorization', () => {
     expect(registry.status(job)).toEqual({ state: 'NOT_AUTHORIZED' })
   })
 
+  it('RESERVATION_CONFLICT_BEFORE_DISPATCH_DOES_NOT_CONSUME_THIS_PROCESS_AUTHORIZATION', async () => {
+    const { job } = await failedSegovia()
+    const registry = new BatchJobExecutionAuthorizationRegistry({})
+    registry.authorize(job)
+    // Allocation rejects before a reservation/call boundary; there is no
+    // consume transition in the scoped authorization contract.
+    expect(registry.status(job).state).toBe('AUTHORIZED')
+    expect(new BatchJobExecutionAuthorizationRegistry({}).status(job).state).toBe('NOT_AUTHORIZED')
+  })
+
   it('MISSING_BATCH_AUTHORIZATION remains retryable without duplicating the durable job, then authorization allows the same job to queue', async () => {
     const { service, job } = await failedSegovia()
     expect(requiresBatchProviderAuthorizationRecovery(job)).toBe(true)

@@ -32,6 +32,23 @@ describe('remediated historical failures', () => {
     expect(diagnostic.suggestedAction).toContain('causa técnica')
   })
 
+  it('IDEMPOTENCY_CONFLICT_AFTER_THE_SAME_STAGE_B_MAX_OUTPUT_FAILURE retains the explicit remediation only', () => {
+    const conflict = {
+      ...job,
+      attemptCount: 10,
+      lastFailure: 'IDEMPOTENCY_CONFLICT: La clave idempotente ya pertenece a otra reserva',
+      failureDiagnostic: { ...job.failureDiagnostic!, code: 'IDEMPOTENCY_CONFLICT', operation: 'analysis.stage_a', cause: 'IDEMPOTENCY_CONFLICT' },
+    }
+    const remediation = assessRemediatedFailure({
+      job: conflict,
+      resume,
+      lastReservation: { ...reservation, incompleteReason: 'INCOMPLETE|type=incomplete|code=max_output_tokens|message=truncated' },
+      ambiguityPending: false,
+      activeReservation: false,
+    })
+    expect(remediation).toMatchObject({ available: true, key: 'analysis.stage_b.max_output_tokens.bounded-output' })
+  })
+
   it('AFTER_AUTH_PROVIDER_CALL_BECOMES_ALLOWED while OLD_AUTHORIZATION_IS_NOT_REUSED', () => {
     const remediation = assessRemediatedFailure({ job, resume, lastReservation: reservation, ambiguityPending: false, activeReservation: false })
     const before = buildFactoryBatchTechnicalDiagnostic(job, providers, { state: 'NOT_AUTHORIZED' }, null, resume, null, remediation)

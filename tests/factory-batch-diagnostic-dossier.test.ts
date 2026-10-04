@@ -140,4 +140,27 @@ describe('expediente diagnóstico durable batch', () => {
       data: { incompleteType: 'incomplete', incompleteCode: 'max_output_tokens', maxOutputTokensConfigured: 12_000, maxOutputTokensSent: 12_000, outputTokens: 12_000, inputTokens: 4908, calculatedCost: 0.0079362 },
     })
   })
+
+  it('IDEMPOTENCY_CONFLICT_EXPORTED uses only a fingerprint and the conflicting durable call', () => {
+    const conflictDiagnostic = buildFactoryBatchTechnicalDiagnostic({
+      ...job,
+      attemptCount: 10,
+      lastFailure: 'IDEMPOTENCY_CONFLICT: La clave idempotente ya pertenece a otra reserva',
+      failureDiagnostic: { code: 'IDEMPOTENCY_CONFLICT', phase: 'ANALYSIS', operation: 'analysis.stage_a', cause: 'IDEMPOTENCY_CONFLICT', retryable: false, occurredAt: new Date('2026-10-04T16:00:00.000Z') },
+    }, providers, { state: 'AUTHORIZED' }, null, {
+      researchCorpusExists: true, analysisArtifactExists: false, resumeFromStage: 'analysis.stage_a', nextStage: 'analysis.stage_a', expectedProvider: 'deepseek', previousAmbiguousUsageResolved: true, terminalAnalysisRetryAuthorized: false,
+    }, null, null, {
+      operation: 'analysis.stage_a', stageAttemptRequested: 1, idempotencyKeyFingerprint: 'a4ae434f3f8828a8',
+      conflictingReservationId: 'f3018e35-cab8-42d9-b7c3-cbff863377b2', conflictingProviderCallId: '42e4c84d-80e6-4394-ac5e-db32f0e9dca2',
+      conflictingOperation: 'analysis.stage_a', conflictingStageAttempt: 1, provider: 'deepseek', model: 'deepseek-flash', requestDispatched: false, costCreated: false,
+    })
+    const value = buildFactoryBatchDiagnosticDossier({ job: { ...job, attemptCount: 10, lastFailure: 'IDEMPOTENCY_CONFLICT: La clave idempotente ya pertenece a otra reserva' }, diagnostic: conflictDiagnostic, generatedAt: '2026-10-04T16:00:00.000Z', reservations: [], providerCalls: [], ambiguities: [], resolutions: [], artifacts: [] })
+    const event = value.events.find(item => item.eventType === 'RESERVATION_IDEMPOTENCY_CONFLICT')
+    expect(event).toMatchObject({
+      operation: 'analysis.stage_a', reservationId: 'f3018e35-cab8-42d9-b7c3-cbff863377b2', providerCallId: '42e4c84d-80e6-4394-ac5e-db32f0e9dca2', stageAttempt: 1,
+      data: { idempotencyKeyFingerprint: 'a4ae434f3f8828a8', conflictingStageAttempt: 1, requestDispatched: false, costCreated: false },
+    })
+    expect(renderFactoryBatchDiagnosticMarkdown(value)).toContain('RESERVATION_IDEMPOTENCY_CONFLICT')
+    expect(JSON.stringify(value)).not.toContain(':attempt:1')
+  })
 })

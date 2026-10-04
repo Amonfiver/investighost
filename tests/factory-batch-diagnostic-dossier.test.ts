@@ -52,6 +52,15 @@ describe('expediente diagnóstico durable batch', () => {
     expect(compactFactoryBatchDiagnosticSummary(dossier())).toContain('ATTEMPT=8')
   })
 
+  it('DOSSIER_DISTINGUISHES_AUTH_ELIGIBILITY_FROM_RETRY_ELIGIBILITY', () => {
+    const markdown = renderFactoryBatchDiagnosticMarkdown(dossier())
+    const summary = compactFactoryBatchDiagnosticSummary(dossier())
+    expect(markdown).toContain('SAFE_TO_REQUEST_AUTHORIZATION: false')
+    expect(markdown).toContain('PROVIDER_CALL_ALLOWED: false')
+    expect(summary).toContain('SAFE_TO_REQUEST_AUTHORIZATION=false')
+    expect(summary).toContain('PROVIDER_CALL_ALLOWED=false')
+  })
+
   it('HUMAN_MARKDOWN_EXPORT_MATCHES_STRUCTURED_SOURCE and never serializes secrets or prompt content', async () => {
     const value = dossier()
     const dir = await mkdtemp(path.join(os.tmpdir(), 'investighost-dossier-'))

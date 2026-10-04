@@ -162,14 +162,14 @@ describe('simplified factory UI boundaries', () => {
     expect(app).toContain("go('batch-job')")
   })
 
-  it('shows a guarded retry action only for retryable failed jobs and starts the existing durable worker', async () => {
+  it('shows a guarded retry action only when the real provider boundary is authorized and starts the existing durable worker', async () => {
     const [operations, main] = await Promise.all([
       readFile(new URL('../src/renderer/BatchOperationViews.tsx', import.meta.url), 'utf8'),
       readFile(new URL('../src/main/index.ts', import.meta.url), 'utf8'),
     ])
-    expect(operations).toContain("liveJob.status === 'FAILED' && liveJob.retryable")
+    expect(operations).toContain("const retryAllowed = liveJob.status === 'FAILED' && !ambiguous")
+    expect(operations).toContain('diagnostic.providerCallAllowed')
     expect(operations).toContain("retrying ? 'Reintentando…' : 'Reintentar'")
-    expect(operations).toContain("(!authorizationRequired || authorizationState === 'AUTHORIZED')")
     expect(operations).toContain('Autorizar ejecución real')
     expect(operations).toContain('retryDestinationBatchJob(liveJob.id)')
     expect(operations).toContain('No se pudo reintentar.')

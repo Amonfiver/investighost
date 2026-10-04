@@ -120,6 +120,7 @@ import {
   BatchAmbiguousCallResolutionService,
   BatchAmbiguousCallResolutionError,
   canRetryReconciledAnalysis,
+  assessRemediatedFailure,
   readBatchResumePlan,
 } from '@modules/factory-batches'
 import { BatchAmbiguousCallResolutionSchema } from '@shared/factory-batch-contracts'
@@ -205,16 +206,21 @@ ipcMain.handle('factory-batches:retry-job', async (_event, jobId: unknown) => {
     throw new Error('AMBIGUOUS_PROVIDER_RESULT_REQUIRES_RECONCILIATION')
   }
   const resume = await readBatchResumePlan(client, job)
+  const diagnostic = await readBatchTechnicalDiagnostic(client, job)
+  const remediatedRetry = diagnostic.remediation !== null && diagnostic.safeToRequestAuthorization
+  if (!diagnostic.safeToRetryWithoutAuthorization && !remediatedRetry) {
+    throw new Error('RETRY_NOT_ALLOWED')
+  }
+  // A fresh authorization is a precondition.  The check remains before any
+  // durable retry state, reservation, worker lease, or provider boundary.
+  if (resume.expectedProvider && !batchJobExecutionAuthorizations.isAuthorized(job)) {
+    throw new Error('BATCH_PROVIDER_AUTHORIZATION_REQUIRED')
+  }
   // Compatibility for a job that failed before the reconciled analysis retry
   // rule existed. The durable ambiguity evidence, not the message alone,
   // makes this exact failed stage eligible for a new attempt.
-  const retryJob = canRetryReconciledAnalysis(job, resume) && !job.retryable
-    ? await repository.updateJob({ ...job, retryable: true, updatedAt: new Date() })
-    : job
-  // Authorization is a precondition, not a failed provider attempt. This is
-  // deliberately before `retry()` changes state or a worker can claim a lease.
-  if (resume.expectedProvider && !batchJobExecutionAuthorizations.isAuthorized(retryJob)) {
-    throw new Error('BATCH_PROVIDER_AUTHORIZATION_REQUIRED')
+  if ((canRetryReconciledAnalysis(job, resume) || remediatedRetry) && !job.retryable) {
+    await repository.updateJob({ ...job, retryable: true, updatedAt: new Date() })
   }
   const retried = await (await getDestinationBatchRuntime()).retry(parsedJobId)
   // Same durable job, same worker: retry never reimports or creates a second destination.
@@ -234,27 +240,29 @@ ipcMain.handle('factory-batches:authorization-status', async (_event, jobId: unk
 // boundary available; it never authorizes cost for a particular batch job.
 ipcMain.handle('factory-batches:authorize-real-execution', async (_event, jobId: unknown) => {
   const parsedJobId = z.string().uuid().parse(jobId)
-  const repository = new SupabaseDestinationBatchRepository(createLocalSupabaseClientFromEnv().client)
+  const client = createLocalSupabaseClientFromEnv().client
+  const repository = new SupabaseDestinationBatchRepository(client)
   const job = await repository.getJob(parsedJobId)
   if (!job) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')
   const providers = await getProviderCenterRuntime()
   if (!providers.snapshot().externalCallsAllowed) throw new Error('EXTERNAL_CALLS_NOT_ENABLED')
-  const resume = await readBatchResumePlan(createLocalSupabaseClientFromEnv().client, job)
-  const providerLabel = resume.expectedProvider === 'deepseek' ? 'DeepSeek' : resume.expectedProvider === 'tavily' ? 'Tavily' : 'el siguiente provider'
+  const diagnostic = await readBatchTechnicalDiagnostic(client, job)
+  if (!diagnostic.safeToRequestAuthorization) throw new Error('BATCH_PROVIDER_AUTHORIZATION_NOT_ELIGIBLE')
+  const providerLabel = diagnostic.expectedProvider === 'deepseek' ? 'DeepSeek' : diagnostic.expectedProvider === 'tavily' ? 'Tavily' : 'el siguiente provider'
   const options: MessageBoxOptions = {
     type: 'warning', buttons: ['Cancelar', 'Autorizar este destino'], defaultId: 0, cancelId: 0,
     title: 'Autorizar ejecución real',
     message: `Autorizar la ejecución real de ${job.originalName}.`,
-    detail: `Este permiso habilita ${providerLabel}${resume.nextStage ? ` para ${resume.nextStage}` : ''} sólo mientras la app permanezca abierta. Puede generar costes y no inicia el trabajo automáticamente.`,
+    detail: `Este permiso habilita ${providerLabel}${diagnostic.nextStage ? ` para ${diagnostic.nextStage}` : ''} sólo mientras la app permanezca abierta. Puede generar costes y no inicia el trabajo automáticamente.`,
   }
   const result = mainWindow ? await dialog.showMessageBox(mainWindow, options) : await dialog.showMessageBox(options)
   if (result.response !== 1) throw new Error('BATCH_PROVIDER_AUTHORIZATION_CONFIRMATION_REQUIRED')
   const authorized = batchJobExecutionAuthorizations.authorize(job)
   if (authorized.authorizedAt) {
-    await captureBatchJobDiagnostic(createLocalSupabaseClientFromEnv().client, job, undefined, {
+    await captureBatchJobDiagnostic(client, job, undefined, {
       authorizedAt: authorized.authorizedAt,
-      expectedProvider: resume.expectedProvider,
-      nextStage: resume.nextStage,
+      expectedProvider: diagnostic.expectedProvider,
+      nextStage: diagnostic.nextStage,
     })
   }
   return authorized
@@ -265,11 +273,7 @@ ipcMain.handle('factory-batches:technical-diagnostics', async (_event, jobId: un
   const client = createLocalSupabaseClientFromEnv().client
   const job = await new SupabaseDestinationBatchRepository(client).getJob(parsedJobId)
   if (!job) throw new Error('DESTINATION_BATCH_JOB_NOT_FOUND')
-  const providerCenter = await getProviderCenterRuntime()
-  const reservation = await readBatchReservationDiagnostic(client, job.id, job.lastFailure)
-  const resume = await readBatchResumePlan(client, job)
-  const timeout = readBatchTimeoutDiagnostic(job.lastFailure, reservation, resume)
-  const diagnostic = buildFactoryBatchTechnicalDiagnostic(job, providerCenter.snapshot(), batchJobExecutionAuthorizations.status(job), reservation, resume, timeout)
+  const diagnostic = await readBatchTechnicalDiagnostic(client, job)
   // Captures a sanitized, append-only snapshot whenever a real failure is
   // inspected. It never changes the job, reservation, or provider state.
   void persistBatchDiagnosticDossier(client, job, diagnostic).catch(() => undefined)
@@ -1442,10 +1446,19 @@ async function readBatchTechnicalDiagnostic(
   job: import('@shared/factory-batch-contracts').DestinationBatchJob,
 ) {
   const providerCenter = await getProviderCenterRuntime()
-  const reservation = await readBatchReservationDiagnostic(client, job.id, job.lastFailure)
-  const resume = await readBatchResumePlan(client, job)
+  const [reservation, resume, ambiguityPending, activeReservation] = await Promise.all([
+    readBatchReservationDiagnostic(client, job.id, job.lastFailure),
+    readBatchResumePlan(client, job),
+    hasOpenBatchProviderAmbiguity(client, job.id),
+    hasActiveBatchProviderReservation(client, job.id),
+  ])
   const timeout = readBatchTimeoutDiagnostic(job.lastFailure, reservation, resume)
-  return buildFactoryBatchTechnicalDiagnostic(job, providerCenter.snapshot(), batchJobExecutionAuthorizations.status(job), reservation, resume, timeout)
+  const remediation = assessRemediatedFailure({
+    job, resume,
+    lastReservation: reservation ? { reservationState: reservation.reservationState, reservationOperation: reservation.reservationOperation ?? null } : null,
+    ambiguityPending, activeReservation,
+  })
+  return buildFactoryBatchTechnicalDiagnostic(job, providerCenter.snapshot(), batchJobExecutionAuthorizations.status(job), reservation, resume, timeout, remediation)
 }
 
 async function buildBatchDiagnosticDossier(
@@ -1530,6 +1543,22 @@ async function hasOpenBatchProviderAmbiguity(
   if (executionError || !execution) return false
   const { data, error } = await client.from('real_editorial_ambiguous_calls')
     .select('call_id').eq('execution_owner_id', execution.id).is('resolved_at', null).limit(1)
+  return !error && (data?.length ?? 0) > 0
+}
+
+/** A failed reservation is immutable history. Only in-flight states block a
+ * fresh consent for an explicitly remediated failure. */
+async function hasActiveBatchProviderReservation(
+  client: ReturnType<typeof createLocalSupabaseClientFromEnv>['client'],
+  jobId: string,
+): Promise<boolean> {
+  const { data: execution, error: executionError } = await client
+    .from('real_editorial_executions').select('id')
+    .eq('owner_type', 'BATCH_JOB').eq('owner_id', jobId).maybeSingle()
+  if (executionError || !execution) return false
+  const { data, error } = await client.from('real_editorial_call_reservations')
+    .select('id').eq('execution_owner_id', execution.id)
+    .in('state', ['reserved', 'started', 'unknown']).limit(1)
   return !error && (data?.length ?? 0) > 0
 }
 

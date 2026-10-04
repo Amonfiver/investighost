@@ -2,6 +2,7 @@ import type { DestinationBatchJob } from '@shared/factory-batch-contracts'
 import type { ProviderCenterSnapshot } from '@shared/provider-center-contracts'
 import type { BatchJobExecutionAuthorizationStatus } from '@modules/factory-batches'
 import type { BatchResumePlan } from '@modules/factory-batches'
+import type { FailureRemediation } from '@modules/factory-batches'
 
 export type FactoryBatchUsageEvidence = {
   evidenceType: string
@@ -85,6 +86,13 @@ export type FactoryBatchTechnicalDiagnostic = {
   providerActive: boolean
   credentialConfigured: boolean
   authorizationState: 'AUTHORIZED' | 'NOT_AUTHORIZED'
+  /** A new human consent may be requested; this never starts a provider call. */
+  safeToRequestAuthorization: boolean
+  /** A provider call is permitted only after a fresh scoped authorization. */
+  providerCallAllowed: boolean
+  /** Existing retry eligibility, excluding a new authorization request. */
+  safeToRetryWithoutAuthorization: boolean
+  remediation: Omit<FailureRemediation, 'available'> | null
   retryable: boolean
   retryReason: string | null
   internalCauseSanitized: string
@@ -108,6 +116,7 @@ export function buildFactoryBatchTechnicalDiagnostic(
   reservation: FactoryBatchReservationDiagnostic | null = null,
   resume: BatchResumePlan | null = null,
   timeout: FactoryBatchTimeoutDiagnostic | null = null,
+  remediation: FailureRemediation | null = null,
 ): FactoryBatchTechnicalDiagnostic {
   const persisted = job.failureDiagnostic
   const errorCode = persisted?.code ?? failureCode(job.lastFailure)
@@ -117,6 +126,10 @@ export function buildFactoryBatchTechnicalDiagnostic(
   const terminalStageLimit = errorCode === 'LIMIT_EXCEEDED'
     && /La etapa durable anterior terminó; requiere una decisión humana antes de reintentarla/.test(persisted?.cause ?? job.lastFailure ?? '')
   const reconciledTerminalRetry = terminalStageLimit && Boolean(resume?.terminalAnalysisRetryAuthorized)
+  const ordinaryRetry = job.retryable || authorizationRequired || reconciledTerminalRetry
+  const safeToRequestAuthorization = Boolean(resume?.expectedProvider)
+    && (ordinaryRetry || remediation?.available === true)
+  const providerCallAllowed = safeToRequestAuthorization && authorization.state === 'AUTHORIZED'
   const limit = terminalStageLimit ? {
     type: 'DURABLE_STAGE_RETRY_POLICY' as const,
     value: 'HUMAN_RECONCILIATION_REQUIRED',
@@ -144,8 +157,12 @@ export function buildFactoryBatchTechnicalDiagnostic(
     providerActive: Boolean(provider?.active),
     credentialConfigured: Boolean(provider?.configured),
     authorizationState: authorization.state,
-    retryable: job.retryable || authorizationRequired || reconciledTerminalRetry,
-    retryReason: authorizationRequired ? 'AUTHORIZATION_REQUIRED' : reconciledTerminalRetry ? 'RECONCILED_RESPONSE_LOST' : job.retryable ? 'TRANSIENT_FAILURE' : null,
+    safeToRequestAuthorization,
+    providerCallAllowed,
+    safeToRetryWithoutAuthorization: ordinaryRetry,
+    remediation: remediation ? { key: remediation.key, version: remediation.version, failurePolicyVersion: remediation.failurePolicyVersion, currentPolicyVersion: remediation.currentPolicyVersion, reason: remediation.reason } : null,
+    retryable: ordinaryRetry,
+    retryReason: authorizationRequired ? 'AUTHORIZATION_REQUIRED' : remediation?.available ? 'REMEDIATED_STAGE_B_MAX_OUTPUT' : reconciledTerminalRetry ? 'RECONCILED_RESPONSE_LOST' : job.retryable ? 'TRANSIENT_FAILURE' : null,
     internalCauseSanitized: sanitize(persisted?.cause ?? job.lastFailure ?? 'No disponible'),
     suggestedAction: authorizationRequired
       ? `Autoriza la ejecución real para ${providerLabel(expectedProvider)}${resume?.nextStage ? ` en ${resume.nextStage}` : ''} antes de reintentar.`
@@ -153,6 +170,8 @@ export function buildFactoryBatchTechnicalDiagnostic(
         ? 'La llamada anterior tiene resultado remoto ambiguo. Confirma su consumo fuera de la app antes de autorizar otro intento.'
       : errorCode === 'TIMEOUT' && timeout?.reconciliationRequired
         ? 'La solicitud fue despachada localmente, pero el resultado remoto es ambiguo. Comprueba el usage de DeepSeek y resuelve el resultado ambiguo antes de reintentar.'
+      : remediation?.available
+        ? 'La causa técnica de este fallo fue corregida. Puedes autorizar una nueva ejecución. Research se reutilizará.'
       : reconciledTerminalRetry
         ? `La conciliación humana cerró una llamada sin respuesta recuperable. Reintenta ${resume?.nextStage ?? 'analysis.stage_a'}: se creará una nueva llamada DeepSeek sin repetir Research ni los stages durables previos.`
       : job.retryable ? 'Reintenta el trabajo cuando la causa indicada esté resuelta.' : 'Revisa la causa técnica antes de volver a intentarlo.',

@@ -67,7 +67,11 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
     try {
       const result = await window.electronAPI.authorizeDestinationBatchRealExecution(liveJob.id)
       setAuthorizationState(result.state)
-      setDiagnostic(current => current ? { ...current, authorizationState: result.state } : current)
+      setDiagnostic(current => current ? {
+        ...current,
+        authorizationState: result.state,
+        providerCallAllowed: current.safeToRequestAuthorization && result.state === 'AUTHORIZED',
+      } : current)
     } catch (reason) { setAuthorizationError(reason instanceof Error ? reason.message : String(reason)) } finally { setAuthorizing(false) }
   }
   const resolveAmbiguity = async (input: BatchAmbiguousCallResolution) => {
@@ -85,10 +89,12 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
   // This keeps a reconciled analysis retry from consuming a click/attempt only
   // to discover that its in-memory consent expired after an app restart.
   const authorizationRequired = liveJob.status === 'FAILED'
-    && liveJob.retryable
     && diagnostic?.executionMode === 'REAL'
-    && diagnostic.expectedProvider !== null
+    && diagnostic.safeToRequestAuthorization === true
   const ambiguous = diagnostic?.reservation?.reservationState === 'unknown'
+  const retryAllowed = liveJob.status === 'FAILED' && !ambiguous && (diagnostic
+    ? diagnostic.providerCallAllowed || (liveJob.retryable && diagnostic.expectedProvider === null)
+    : liveJob.retryable)
   const exportDossier = async () => {
     try { const result = await window.electronAPI.exportDestinationBatchDiagnosticDossier(liveJob.id); setDossierMessage(`Expediente exportado: ${result.markdownPath}`) }
     catch (reason) { setDossierMessage(reason instanceof Error ? reason.message : String(reason)) }
@@ -126,8 +132,8 @@ export function BatchJobDetail({ job, onBack, onOpenReview }: { job: Destination
       attempt: diagnostic.reservation.reservationAttempt ?? liveJob.attemptCount,
       reservedAmount: diagnostic.reservation.reservedAmount,
     }} saving={resolving} onCancel={() => { setShowResolution(false); setResolutionError(null) }} onConfirm={resolveAmbiguity} />}
-    {authorizationRequired && authorizationState !== 'AUTHORIZED' && <div className="job-review-action"><p className="muted">La red está separada de la autorización de coste de este trabajo. {diagnostic?.expectedProvider ? `Siguiente provider: ${diagnostic.expectedProvider === 'deepseek' ? 'DeepSeek' : 'Tavily'}.` : ''} {diagnostic?.nextStage ? `Etapa: ${diagnostic.nextStage}.` : ''}</p><button className="button secondary" disabled={authorizing} onClick={() => { void authorize() }}>{authorizing ? 'Solicitando autorización…' : 'Autorizar ejecución real'}</button></div>}
-    {liveJob.status === 'FAILED' && liveJob.retryable && !ambiguous && (!authorizationRequired || authorizationState === 'AUTHORIZED') && <div className="job-review-action"><button className="button primary" disabled={retrying} onClick={() => { void retry() }}>{retrying ? 'Reintentando…' : 'Reintentar'}</button></div>}
+    {authorizationRequired && authorizationState !== 'AUTHORIZED' && <div className="job-review-action"><p className="muted">{diagnostic?.remediation?.key ? 'La causa técnica de este fallo fue corregida. Puedes autorizar una nueva ejecución. Research se reutilizará.' : 'La red está separada de la autorización de coste de este trabajo.'} {diagnostic?.expectedProvider ? `Siguiente provider: ${diagnostic.expectedProvider === 'deepseek' ? 'DeepSeek' : 'Tavily'}.` : ''} {diagnostic?.nextStage ? `Etapa: ${diagnostic.nextStage}.` : ''}</p><button className="button secondary" disabled={authorizing} onClick={() => { void authorize() }}>{authorizing ? 'Solicitando autorización…' : 'Autorizar ejecución real'}</button></div>}
+    {retryAllowed && <div className="job-review-action"><button className="button primary" disabled={retrying} onClick={() => { void retry() }}>{retrying ? 'Reintentando…' : 'Reintentar'}</button></div>}
     {liveJob.status === 'READY_FOR_REVIEW' && <div className="job-review-action"><button className="button primary" onClick={onOpenReview}>Abrir revisión</button></div>}
   </section>
 }
@@ -198,6 +204,8 @@ function TechnicalDiagnostic({ details }: { details: FactoryBatchTechnicalDiagno
     ['Destino', details.destinationId], ['Ejecución', details.executionId], ['Intento', details.attempt], ['Fecha', new Date(details.timestamp).toLocaleString('es-ES')],
     ['Modo', details.executionMode], ['Red', details.networkGate], ['Proveedor esperado', details.expectedProvider], ['Proveedor activo', details.providerActive],
     ['Credencial configurada', details.credentialConfigured], ['Autorización', details.authorizationState], ['Reintentable', details.retryable],
+    ['Puede solicitar autorización', details.safeToRequestAuthorization], ['Provider call permitido', details.providerCallAllowed], ['Seguro para retry sin autorización', details.safeToRetryWithoutAuthorization],
+    ['Remediation disponible', details.remediation?.key ?? null], ['Versión remediation', details.remediation?.version ?? null], ['Policy de fallo', details.remediation?.failurePolicyVersion ?? null], ['Policy actual', details.remediation?.currentPolicyVersion ?? null],
     ['Motivo de reintento', details.retryReason], ['Causa', details.internalCauseSanitized], ['Acción sugerida', details.suggestedAction],
     ['Reanudar desde', details.resumeFromStage], ['Corpus Research reutilizado', details.reusedResearchCorpus], ['Siguiente etapa', details.nextStage], ['Uso ambiguo anterior resuelto', details.previousAmbiguousUsageResolved],
     ['Tipo de límite', details.limit?.type ?? null], ['Valor de límite', details.limit?.value ?? null], ['Valor actual', details.limit?.currentValue ?? null],

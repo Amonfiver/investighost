@@ -64,9 +64,18 @@ describe('Production job detail', () => {
     expect(renderer).toContain("['Reanudar desde', details.resumeFromStage]")
     expect(renderer).toContain("['Tipo de límite', details.limit?.type ?? null]")
     expect(renderer).toContain("['Acción sobre límite', details.limit?.overrideAction ?? null]")
-    expect(renderer).toContain("!ambiguous && (!authorizationRequired || authorizationState === 'AUTHORIZED')")
+    expect(renderer).toContain('const retryAllowed = liveJob.status === \'FAILED\' && !ambiguous')
     expect(renderer).toContain("diagnostic?.executionMode === 'REAL'")
     expect(renderer).toContain("retrying ? 'Reintentando…' : 'Reintentar'")
+  })
+
+  it('UI_SHOWS_AUTHORIZE_WHEN_REMEDIATED and UI_HIDES_RETRY_UNTIL_AUTHORIZED on the real job-detail route', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const renderer = await readFile(new URL('../src/renderer/BatchOperationViews.tsx', import.meta.url), 'utf8')
+    expect(renderer).toContain('diagnostic.safeToRequestAuthorization === true')
+    expect(renderer).toContain('diagnostic.providerCallAllowed')
+    expect(renderer).toContain('La causa técnica de este fallo fue corregida. Puedes autorizar una nueva ejecución. Research se reutilizará.')
+    expect(renderer).not.toContain("liveJob.retryable\n    && diagnostic?.executionMode")
   })
 
   it('CURRENT_AMBIGUITY_FORM_SCOPED_TO_RESERVATION and does not prefill a previous Segovia reconciliation', () => {

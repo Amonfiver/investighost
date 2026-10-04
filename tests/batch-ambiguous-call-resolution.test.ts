@@ -14,6 +14,10 @@ const prudentialMigration = readFileSync(
   new URL('../supabase/migrations/20261002100000_factory_batch_prudential_ambiguous_call_resolution.sql', import.meta.url),
   'utf8',
 )
+const prudentialGuardMigration = readFileSync(
+  new URL('../supabase/migrations/20261004090000_factory_batch_prudential_operation_guard.sql', import.meta.url),
+  'utf8',
+)
 
 const evidence = {
   evidenceType: 'PROVIDER_USAGE_EXPORT' as const, provider: 'deepseek' as const, model: 'deepseek-flash',
@@ -96,5 +100,14 @@ describe('resolución humana de consumo ambiguo batch', () => {
     expect(prudentialMigration).toContain('p_duplicate_charge_risk_accepted boolean')
     expect(prudentialMigration).toContain('revoke all on function public.reconcile_generic_real_editorial_ambiguous_call_prudential')
     expect(prudentialMigration).toContain('to service_role;')
+  })
+
+  it('PRUDENTIAL_RPC_ACCEPTS_MATCHING_RESERVATION_CONTRACT without weakening the mismatch guard', () => {
+    expect(prudentialGuardMigration).toContain("reservation.call_id <> p_call_id")
+    expect(prudentialGuardMigration).toContain("reservation.execution_owner_id <> p_execution_owner_id")
+    expect(prudentialGuardMigration).toContain("reservation.state <> 'unknown'")
+    expect(prudentialGuardMigration).toContain("reservation.operation !~ '^analysis[.]stage_[a-z0-9_]+$'")
+    expect(prudentialGuardMigration).toContain("raise exception 'AMBIGUOUS_RESERVATION_MISMATCH'")
+    expect(prudentialGuardMigration).not.toContain("'^analysis\\\\.stage_")
   })
 })

@@ -17,7 +17,7 @@ export type FactoryBatchDiagnosticEvent = {
   batchId: string
   destinationId: string | null
   executionId: string
-  jobAttempt: number
+  jobAttempt: number | 'UNKNOWN'
   phase: string
   operation: string
   stage: string | null
@@ -44,6 +44,11 @@ export type FactoryBatchAmbiguityResolutionFailure = {
   providerCallId: string
   operation: string
   timestamp?: string
+  expectedReservationId?: string
+  receivedReservationId?: string
+  expectedProviderCallId?: string
+  receivedProviderCallId?: string
+  mismatchField?: string
 }
 
 export function buildFactoryBatchDiagnosticDossier(input: {
@@ -62,10 +67,10 @@ export function buildFactoryBatchDiagnosticDossier(input: {
   const version = { applicationVersion: input.version?.applicationVersion ?? 'UNKNOWN', gitSha: input.version?.gitSha ?? 'UNKNOWN', branch: input.version?.branch ?? 'UNKNOWN', buildId: input.version?.buildId ?? 'UNKNOWN' }
   const base = identity(input.job, input.diagnostic)
   const events: FactoryBatchDiagnosticEvent[] = []
-  const add = (eventType: string, timestamp: unknown, data: Record<string, unknown>, override: Partial<Pick<FactoryBatchDiagnosticEvent, 'reservationId' | 'providerCallId' | 'stage' | 'operation' | 'phase'>> = {}) => {
+  const add = (eventType: string, timestamp: unknown, data: Record<string, unknown>, override: Partial<Pick<FactoryBatchDiagnosticEvent, 'reservationId' | 'providerCallId' | 'stage' | 'operation' | 'phase' | 'jobAttempt'>> = {}) => {
     const event: Omit<FactoryBatchDiagnosticEvent, 'eventId'> = {
       schemaVersion: FACTORY_BATCH_DIAGNOSTIC_SCHEMA_VERSION,
-      eventType, timestamp: asIso(timestamp, generatedAt), ...base,
+      eventType, timestamp: asIso(timestamp, generatedAt), ...base, jobAttempt: override.jobAttempt ?? base.jobAttempt,
       phase: override.phase ?? base.phase, operation: override.operation ?? base.operation,
       stage: override.stage ?? null, reservationId: override.reservationId ?? null, providerCallId: override.providerCallId ?? null,
       data: sanitizeDiagnosticData({ ...data, version }),
@@ -84,26 +89,32 @@ export function buildFactoryBatchDiagnosticDossier(input: {
   }, { reservationId: input.diagnostic.reservation?.reservationId ?? null, providerCallId: input.diagnostic.reservation?.providerCallId ?? null })
   if (input.job.lastFailure) add('JOB_FAILED', input.diagnostic.timestamp, { errorCode: input.diagnostic.errorCode, errorMessage: input.job.lastFailure, retryable: input.diagnostic.retryable, suggestedAction: input.diagnostic.suggestedAction })
   if (input.diagnostic.authorizationState === 'AUTHORIZED') add('AUTHORIZATION_GRANTED', generatedAt, { expectedProvider: input.diagnostic.expectedProvider, nextStage: input.diagnostic.nextStage })
+  const reservationAttempts = new Map(input.reservations.map(row => [asString(row.id), historicalAttempt(row.attempt)]))
   for (const row of input.reservations) add('RESERVATION_OBSERVED', row.created_at ?? row.updated_at, {
     reservationState: row.state ?? 'UNKNOWN', reservedAmount: row.reserved_cost ?? null, reservedCurrency: row.currency ?? null,
     calculatedCost: row.calculated_cost ?? null, provider: row.provider_id ?? null, model: row.model ?? null, attempt: row.attempt ?? null,
-  }, { reservationId: asString(row.id), providerCallId: asString(row.call_id), stage: nullableString(row.stage), operation: nullableString(row.operation) ?? base.operation })
+  }, { reservationId: asString(row.id), providerCallId: asString(row.call_id), stage: nullableString(row.stage), operation: nullableString(row.operation) ?? base.operation, jobAttempt: historicalAttempt(row.attempt) })
   for (const row of input.providerCalls) add(String(row.state) === 'unknown' ? 'PROVIDER_CALL_TIMEOUT' : 'PROVIDER_CALL_OBSERVED', row.created_at, {
     provider: row.provider_id ?? null, model: row.model ?? null, state: row.state ?? 'UNKNOWN', requestDispatched: row.state === 'started' || row.state === 'unknown',
     remoteRequestId: row.remote_id ?? null, inputTokens: row.input_tokens ?? null, outputTokens: row.output_tokens ?? null,
     estimatedCost: row.estimated_cost ?? null, calculatedCost: row.calculated_cost ?? null, sanitizedError: row.sanitized_error ?? null,
-  }, { reservationId: asString(row.reservation_id), providerCallId: asString(row.call_id), stage: nullableString(row.stage), operation: nullableString(row.operation) ?? base.operation })
+  }, { reservationId: asString(row.reservation_id), providerCallId: asString(row.call_id), stage: nullableString(row.stage), operation: nullableString(row.operation) ?? base.operation, jobAttempt: historicalAttempt(row.attempt) })
   for (const row of input.ambiguities) add(row.resolved_at ? 'AMBIGUITY_RESOLVED' : 'AMBIGUITY_DETECTED', row.resolved_at ?? row.opened_at, {
     remoteResult: row.resolved_at ? String(row.terminal_decision ?? 'UNKNOWN').toUpperCase() : 'INDETERMINATE', reconciliationRequired: !row.resolved_at,
     reconciliationDecision: row.terminal_decision ?? null,
-  }, { reservationId: asString(row.reservation_id), providerCallId: asString(row.call_id) })
+  }, { reservationId: asString(row.reservation_id), providerCallId: asString(row.call_id), jobAttempt: reservationAttempts.get(asString(row.reservation_id)) ?? 'UNKNOWN' })
   if (input.ambiguityResolutionFailure) {
     const failure = input.ambiguityResolutionFailure
     add('AMBIGUITY_RESOLUTION_FAILED', failure.timestamp ?? generatedAt, {
       errorCode: failure.errorCode,
       technicalCause: failure.technicalCause,
+      expectedReservationId: failure.expectedReservationId ?? null,
+      receivedReservationId: failure.receivedReservationId ?? null,
+      expectedProviderCallId: failure.expectedProviderCallId ?? null,
+      receivedProviderCallId: failure.receivedProviderCallId ?? null,
+      mismatchField: failure.mismatchField ?? null,
       suggestedAction: 'Aplicar las migraciones locales requeridas y volver a intentar la resolución humana.',
-    }, { reservationId: failure.reservationId, providerCallId: failure.providerCallId, operation: failure.operation })
+    }, { reservationId: failure.reservationId, providerCallId: failure.providerCallId, operation: failure.operation, jobAttempt: 'UNKNOWN' })
   }
   for (const row of input.resolutions) add('HUMAN_RECONCILIATION_RECORDED', row.decided_at, {
     decision: row.decision ?? 'UNKNOWN', responseRecovered: row.response_recovered ?? null,
@@ -111,17 +122,17 @@ export function buildFactoryBatchDiagnosticDossier(input: {
     confirmedProviderCost: row.recognized_cost ?? null, prudentialAssumedCost: row.prudential_cost ?? null,
     accountingMode: row.decision === 'prudential_cost_assumed' ? 'PRUDENTIAL_MAX_ASSUMED' : null,
     providerCostConfirmed: row.provider_confirmed ?? null, insufficientEvidenceReason: row.reason ?? null,
-  }, { reservationId: asString(row.reservation_id), providerCallId: asString(row.call_id), operation: nullableString(row.operation) ?? base.operation })
+  }, { reservationId: asString(row.reservation_id), providerCallId: asString(row.call_id), operation: nullableString(row.operation) ?? base.operation, jobAttempt: reservationAttempts.get(asString(row.reservation_id)) ?? 'UNKNOWN' })
   for (const row of input.artifacts) add('ARTIFACT_REFERENCE_OBSERVED', row.created_at, {
     artifactId: row.id ?? null, kind: row.artifact_kind ?? null, key: row.artifact_key ?? null, version: row.version ?? null, payloadHash: row.payload_hash ?? null,
-  })
+  }, { jobAttempt: 'UNKNOWN' })
   events.sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.eventId.localeCompare(b.eventId))
   return { schemaVersion: FACTORY_BATCH_DIAGNOSTIC_SCHEMA_VERSION, generatedAt, job: input.job, diagnostic: input.diagnostic, events, version }
 }
 
 export function renderFactoryBatchDiagnosticMarkdown(dossier: FactoryBatchDiagnosticDossier): string {
   const d = dossier.diagnostic
-  const timeline = dossier.events.filter(event => ['JOB_FAILED', 'PROVIDER_CALL_TIMEOUT', 'AMBIGUITY_DETECTED', 'AMBIGUITY_RESOLVED', 'HUMAN_RECONCILIATION_RECORDED'].includes(event.eventType))
+  const timeline = dossier.events.filter(event => ['JOB_FAILED', 'PROVIDER_CALL_TIMEOUT', 'AMBIGUITY_DETECTED', 'AMBIGUITY_RESOLUTION_FAILED', 'AMBIGUITY_RESOLVED', 'HUMAN_RECONCILIATION_RECORDED'].includes(event.eventType))
     .map(event => `- Attempt ${event.jobAttempt} · ${event.timestamp} · ${event.eventType}${event.data.errorCode ? ` · ${event.data.errorCode}` : ''}`).join('\n') || '- UNKNOWN'
   return `# Expediente diagnóstico — ${d.jobId}\n\n## Timeline\n${timeline}\n\n## CURRENT_STATUS\n\n- CURRENT_STATUS: ${dossier.job.status}\n- CURRENT_PHASE: ${d.phase}\n- CURRENT_STAGE: ${d.resumeFromStage ?? 'UNKNOWN'}\n- NEXT_STAGE: ${d.nextStage ?? 'UNKNOWN'}\n- EXPECTED_PROVIDER: ${d.expectedProvider ?? 'UNKNOWN'}\n- ACTUAL_PROVIDER_LAST_CALL: ${d.reservation?.realProvider ?? 'UNKNOWN'}\n- LAST_ERROR: ${d.internalCauseSanitized}\n- LAST_ERROR_CODE: ${d.errorCode}\n- LAST_RESERVATION: ${d.reservation?.reservationId ?? 'UNKNOWN'}\n- LAST_PROVIDER_CALL: ${d.reservation?.providerCallId ?? 'UNKNOWN'}\n- ACTIVE_RESERVATION: ${d.reservation?.reservationState === 'unknown' ? d.reservation.reservationId : 'NONE'}\n- AMBIGUITY_PENDING: ${d.reservation?.reservationState === 'unknown'}\n- REMOTE_RESULT: ${d.reservation?.reservationState === 'unknown' ? 'INDETERMINATE' : d.reservation?.ambiguityResolution?.prudential?.remoteResult ?? 'UNKNOWN'}\n- RECONCILIATION_REQUIRED: ${d.timeout?.reconciliationRequired ?? false}\n- AUTHORIZATION_STATE: ${d.authorizationState}\n- RESEARCH_REUSED: ${d.reusedResearchCorpus}\n- BUDGET_LIMIT: UNKNOWN\n- BUDGET_USED: ${d.reservation?.committedAmount ?? 'UNKNOWN'}\n- PRUDENTIAL_EXPOSURE: ${d.reservation?.ambiguityResolution?.prudential?.amount ?? 0} EUR\n- CONFIRMED_PROVIDER_COST: ${d.reservation?.ambiguityResolution?.evidence?.providerCost ?? 'UNKNOWN'} ${d.reservation?.ambiguityResolution?.evidence?.currency ?? ''}\n- SAFE_TO_RETRY: ${d.retryable && d.reservation?.reservationState !== 'unknown'}\n- NEXT_HUMAN_ACTION: ${d.suggestedAction}\n- GIT_SHA_CURRENT: ${dossier.version.gitSha}\n`
 }
@@ -151,6 +162,7 @@ function stableEventId(value: Omit<FactoryBatchDiagnosticEvent, 'eventId'>): str
 function asIso(value: unknown, fallback: string): string { const date = value ? new Date(String(value)) : null; return date && !Number.isNaN(date.valueOf()) ? date.toISOString() : fallback }
 function asString(value: unknown): string | null { return typeof value === 'string' ? value : null }
 function nullableString(value: unknown): string | null { return typeof value === 'string' && value ? value : null }
+function historicalAttempt(value: unknown): number | 'UNKNOWN' { return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : 'UNKNOWN' }
 function evidenceType(value: unknown): string | null { return value && typeof value === 'object' && !Array.isArray(value) && typeof (value as Row).evidenceType === 'string' ? String((value as Row).evidenceType) : null }
 function evidenceLimitation(value: unknown): string | null { return value && typeof value === 'object' && !Array.isArray(value) && typeof (value as Row).limitation === 'string' ? String((value as Row).limitation) : null }
 export function sanitizeDiagnosticData(value: unknown): Record<string, unknown> { return sanitize(value) as Record<string, unknown> }

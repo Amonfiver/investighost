@@ -66,7 +66,16 @@ export class BatchAmbiguousCallResolutionService {
       p_note: input.note ?? null,
     })
     if (error || typeof data !== 'string') {
-      throw new BatchAmbiguousCallResolutionError('AMBIGUITY_RESOLUTION_FAILED', sanitize(error?.message ?? 'La resolución no devolvió identidad durable'))
+      const message = sanitize(error?.message ?? 'La resolución no devolvió identidad durable')
+      throw new BatchAmbiguousCallResolutionError(
+        message.includes('AMBIGUOUS_RESERVATION_MISMATCH') ? 'AMBIGUOUS_RESERVATION_MISMATCH' : 'AMBIGUITY_RESOLUTION_FAILED',
+        message,
+        {
+        expectedReservationId: String(ambiguity.reservation_id), receivedReservationId: input.reservationId,
+        expectedProviderCallId: String(ambiguity.call_id), receivedProviderCallId: input.providerCallId,
+        mismatchField: message.includes('AMBIGUOUS_RESERVATION_MISMATCH') ? 'backend reservation contract guard' : undefined,
+        },
+      )
     }
     const updated = await repository.getJob(job.id)
     if (!updated) throw new BatchAmbiguousCallResolutionError('JOB_NOT_FOUND', 'El trabajo dejó de existir tras la resolución')
@@ -75,7 +84,13 @@ export class BatchAmbiguousCallResolutionService {
 }
 
 export class BatchAmbiguousCallResolutionError extends Error {
-  constructor(readonly code: string, message: string) { super(message); this.name = 'BatchAmbiguousCallResolutionError' }
+  constructor(readonly code: string, message: string, readonly details?: {
+    expectedReservationId?: string
+    receivedReservationId?: string
+    expectedProviderCallId?: string
+    receivedProviderCallId?: string
+    mismatchField?: string
+  }) { super(message); this.name = 'BatchAmbiguousCallResolutionError' }
 }
 
 function sanitize(value: string): string {

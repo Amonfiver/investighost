@@ -20,6 +20,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import type { BrowserWindow as BrowserWindowType, MessageBoxOptions } from 'electron'
 import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import dotenv from 'dotenv'
@@ -317,6 +318,11 @@ ipcMain.handle('factory-batches:resolve-ambiguous-call', async (_event, candidat
       reservationId: input.reservationId,
       providerCallId: input.providerCallId,
       operation: input.decision === 'PRUDENTIAL_COST_ASSUMED' ? 'prudential reconciliation' : 'ambiguous reconciliation',
+      expectedReservationId: error instanceof BatchAmbiguousCallResolutionError ? error.details?.expectedReservationId : undefined,
+      receivedReservationId: error instanceof BatchAmbiguousCallResolutionError ? error.details?.receivedReservationId : undefined,
+      expectedProviderCallId: error instanceof BatchAmbiguousCallResolutionError ? error.details?.expectedProviderCallId : undefined,
+      receivedProviderCallId: error instanceof BatchAmbiguousCallResolutionError ? error.details?.receivedProviderCallId : undefined,
+      mismatchField: error instanceof BatchAmbiguousCallResolutionError ? error.details?.mismatchField : undefined,
     }
     // Capturing the failure is best-effort and read-only with respect to the
     // batch ledger: a failed RPC must never conceal the original error.
@@ -1331,9 +1337,9 @@ function readOptionalE2E04PilotId(arguments_: string[]): string | undefined {
   return RealEditorialPilotActionSchema.parse({ pilotId: candidate }).pilotId
 }
 
-/** Read-only projection of the last reservation for a batch job.  It is kept
- * in main so the renderer never receives a Supabase capability or ledger rows
- * beyond the small, sanitized diagnostic envelope. */
+/** Read-only projection of the active unresolved ambiguity for a batch job.
+ * It is kept in main so the renderer never receives a Supabase capability or
+ * ledger rows beyond the small, sanitized diagnostic envelope. */
 async function readBatchReservationDiagnostic(
   client: ReturnType<typeof createLocalSupabaseClientFromEnv>['client'],
   jobId: string,
@@ -1347,13 +1353,19 @@ async function readBatchReservationDiagnostic(
     .maybeSingle()
   if (executionError || !execution) return null
 
-  const { data: reservation, error: reservationError } = await client
-    .from('real_editorial_call_reservations')
-    .select('id,call_id,state,reserved_cost,calculated_cost,provider_id,model,operation,attempt')
-    .eq('execution_owner_id', execution.id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const { data: activeAmbiguity } = await client.from('real_editorial_ambiguous_calls')
+    .select('call_id,reservation_id,resolved_at,terminal_decision,terminal_resolution_id')
+    .eq('execution_owner_id', execution.id).is('resolved_at', null)
+    .order('opened_at', { ascending: false }).limit(1).maybeSingle()
+  const reservationResult = activeAmbiguity
+    ? await client.from('real_editorial_call_reservations')
+      .select('id,call_id,state,reserved_cost,calculated_cost,provider_id,model,operation,attempt')
+      .eq('id', activeAmbiguity.reservation_id).eq('call_id', activeAmbiguity.call_id)
+      .eq('execution_owner_id', execution.id).maybeSingle()
+    : await client.from('real_editorial_call_reservations')
+      .select('id,call_id,state,reserved_cost,calculated_cost,provider_id,model,operation,attempt')
+      .eq('execution_owner_id', execution.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+  const { data: reservation, error: reservationError } = reservationResult
   if (reservationError || !reservation) return null
 
   const { data: providerCalls } = await client.from('real_editorial_provider_calls')
@@ -1363,9 +1375,10 @@ async function readBatchReservationDiagnostic(
   const started = (providerCalls ?? []).find(call => call.state === 'started')
   const terminal = (providerCalls ?? []).at(-1)
 
-  const { data: ambiguity } = await client.from('real_editorial_ambiguous_calls')
+  const { data: resolvedAmbiguity } = activeAmbiguity ? { data: activeAmbiguity } : await client.from('real_editorial_ambiguous_calls')
     .select('resolved_at,terminal_decision,terminal_resolution_id')
     .eq('reservation_id', reservation.id).maybeSingle()
+  const ambiguity = resolvedAmbiguity
   const { data: resolution } = ambiguity?.terminal_resolution_id
     ? await client.from('real_editorial_call_human_resolutions')
       .select('decision,response_recovered,decided_at,external_usage_evidence,prudential_cost,currency,provider_confirmed,reason')
@@ -1439,7 +1452,7 @@ async function buildBatchDiagnosticDossier(
   const [reservations, providerCalls, ambiguities, resolutions, artifacts] = executionOwnerId
     ? await Promise.all([
         client.from('real_editorial_call_reservations').select('id,call_id,state,reserved_cost,calculated_cost,currency,provider_id,model,stage,operation,attempt,created_at,updated_at').eq('execution_owner_id', executionOwnerId).order('created_at', { ascending: true }),
-        client.from('real_editorial_provider_calls').select('call_id,reservation_id,state,provider_id,model,stage,operation,remote_id,input_tokens,output_tokens,estimated_cost,calculated_cost,sanitized_error,created_at').eq('execution_owner_id', executionOwnerId).order('created_at', { ascending: true }),
+        client.from('real_editorial_provider_calls').select('call_id,reservation_id,state,provider_id,model,stage,operation,attempt,remote_id,input_tokens,output_tokens,estimated_cost,calculated_cost,sanitized_error,created_at').eq('execution_owner_id', executionOwnerId).order('created_at', { ascending: true }),
         client.from('real_editorial_ambiguous_calls').select('call_id,reservation_id,opened_at,resolved_at,terminal_decision').eq('execution_owner_id', executionOwnerId).order('opened_at', { ascending: true }),
         client.from('real_editorial_call_human_resolutions').select('call_id,reservation_id,decision,response_recovered,external_usage_evidence,recognized_cost,prudential_cost,provider_confirmed,reason,operation,decided_at').eq('execution_owner_id', executionOwnerId).order('decided_at', { ascending: true }),
         client.from('real_editorial_artifacts').select('id,artifact_kind,artifact_key,version,payload_hash,created_at').eq('execution_owner_id', executionOwnerId).order('created_at', { ascending: true }),
@@ -1450,8 +1463,25 @@ async function buildBatchDiagnosticDossier(
     reservations: (reservations.data ?? []) as Record<string, unknown>[], providerCalls: (providerCalls.data ?? []) as Record<string, unknown>[],
     ambiguities: (ambiguities.data ?? []) as Record<string, unknown>[], resolutions: (resolutions.data ?? []) as Record<string, unknown>[], artifacts: (artifacts.data ?? []) as Record<string, unknown>[],
     ambiguityResolutionFailure,
-    version: { applicationVersion: app.getVersion(), gitSha: process.env.GIT_SHA ?? process.env.GIT_COMMIT_SHA ?? 'UNKNOWN', branch: process.env.GIT_BRANCH ?? 'UNKNOWN', buildId: process.env.BUILD_ID ?? 'UNKNOWN' },
+    version: { applicationVersion: app.getVersion(), gitSha: currentGitSha(), branch: process.env.GIT_BRANCH ?? currentGitBranch(), buildId: process.env.BUILD_ID ?? 'UNKNOWN' },
   })
+}
+
+function currentGitSha(): string {
+  return process.env.GIT_SHA ?? process.env.GIT_COMMIT_SHA ?? readGit(['rev-parse', 'HEAD']) ?? 'UNKNOWN'
+}
+
+function currentGitBranch(): string {
+  return process.env.GIT_BRANCH ?? readGit(['branch', '--show-current']) ?? 'UNKNOWN'
+}
+
+function readGit(args: string[]): string | null {
+  try {
+    const value = execFileSync('git', args, { cwd: rootDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    return value || null
+  } catch {
+    return null
+  }
 }
 
 async function persistBatchDiagnosticDossier(

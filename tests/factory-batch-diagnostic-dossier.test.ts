@@ -67,20 +67,38 @@ describe('expediente diagnóstico durable batch', () => {
 
   it('DIAGNOSTIC_DOSSIER_CAPTURES_RECONCILIATION_FAILURE without changing the selected ambiguity', () => {
     const value = dossier({
-      errorCode: 'AMBIGUITY_RESOLUTION_FAILED',
-      technicalCause: 'RPC absent from PostgREST schema cache',
+      errorCode: 'AMBIGUOUS_RESERVATION_MISMATCH',
+      technicalCause: 'AMBIGUOUS_RESERVATION_MISMATCH',
       reservationId: '9aaa90c7-7419-40d8-8448-463dfd44968f',
       providerCallId: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2',
       operation: 'prudential reconciliation',
       timestamp: '2026-10-03T18:00:00.000Z',
+      expectedReservationId: '9aaa90c7-7419-40d8-8448-463dfd44968f',
+      receivedReservationId: '9aaa90c7-7419-40d8-8448-463dfd44968f',
+      expectedProviderCallId: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2',
+      receivedProviderCallId: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2',
+      mismatchField: 'backend reservation contract guard',
     })
     const event = value.events.find(item => item.eventType === 'AMBIGUITY_RESOLUTION_FAILED')
     expect(event).toMatchObject({
       reservationId: '9aaa90c7-7419-40d8-8448-463dfd44968f',
       providerCallId: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2',
       operation: 'prudential reconciliation',
-      data: { errorCode: 'AMBIGUITY_RESOLUTION_FAILED', technicalCause: 'RPC absent from PostgREST schema cache' },
+      data: {
+        errorCode: 'AMBIGUOUS_RESERVATION_MISMATCH', technicalCause: 'AMBIGUOUS_RESERVATION_MISMATCH',
+        expectedReservationId: '9aaa90c7-7419-40d8-8448-463dfd44968f', receivedReservationId: '9aaa90c7-7419-40d8-8448-463dfd44968f',
+        expectedProviderCallId: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2', receivedProviderCallId: 'fa1342ce-b904-43a5-84fe-98f52c42b8b2', mismatchField: 'backend reservation contract guard',
+      },
     })
     expect(value.events.find(item => item.eventType === 'AMBIGUITY_DETECTED')?.data.reconciliationRequired).toBe(true)
+  })
+
+  it('DOSSIER_HISTORICAL_ATTEMPT_NOT_REPLACED_WITH_CURRENT_ATTEMPT', () => {
+    const value = dossier()
+    expect(value.events.find(item => item.eventType === 'RESERVATION_OBSERVED')?.jobAttempt).toBe(3)
+    expect(value.events.find(item => item.eventType === 'PROVIDER_CALL_TIMEOUT')?.jobAttempt).toBe('UNKNOWN')
+    expect(value.events.find(item => item.eventType === 'AMBIGUITY_DETECTED')?.jobAttempt).toBe(3)
+    expect(value.events.find(item => item.eventType === 'ARTIFACT_REFERENCE_OBSERVED')?.jobAttempt).toBe('UNKNOWN')
+    expect(renderFactoryBatchDiagnosticMarkdown(value)).toContain('GIT_SHA_CURRENT: f79a620')
   })
 })

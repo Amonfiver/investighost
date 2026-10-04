@@ -39,6 +39,16 @@ function stages() {
 }
 
 describe('analysis DeepSeek multi-stage', () => {
+  it('STAGE_B_MAX_OUTPUT_POLICY_MATCHES_CONTRACT by bounding the focused discrepancy payload', () => {
+    expect(DeepSeekStageBSchema.safeParse({
+      contradictions: Array.from({ length: 13 }, (_, index) => ({ text: `Contradicción ${index}`, claimIds: ['claim-1'] })),
+      gaps: [],
+    }).success).toBe(false)
+    expect(DeepSeekStageBSchema.safeParse({
+      contradictions: [],
+      gaps: [{ id: 'gap-1', topic: 'tema', description: 'x'.repeat(401), importance: 'low', requiredForProfiles: ['student'], resolvableWithResearch: true }],
+    }).success).toBe(false)
+  })
   it('valida A/B/C/D y ensambla el mismo contrato canónico', () => {
     const value = stages()
     const output = assembleDeepSeekMultiStageAnalysis(mission, dossier, DeepSeekStageASchema.parse(value.a), DeepSeekStageBSchema.parse(value.b), DeepSeekStageCSchema.parse(value.c), DeepSeekStageDSchema.parse(value.d))

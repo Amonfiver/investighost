@@ -249,7 +249,15 @@ ipcMain.handle('factory-batches:authorize-real-execution', async (_event, jobId:
   }
   const result = mainWindow ? await dialog.showMessageBox(mainWindow, options) : await dialog.showMessageBox(options)
   if (result.response !== 1) throw new Error('BATCH_PROVIDER_AUTHORIZATION_CONFIRMATION_REQUIRED')
-  return batchJobExecutionAuthorizations.authorize(job)
+  const authorized = batchJobExecutionAuthorizations.authorize(job)
+  if (authorized.authorizedAt) {
+    await captureBatchJobDiagnostic(createLocalSupabaseClientFromEnv().client, job, undefined, {
+      authorizedAt: authorized.authorizedAt,
+      expectedProvider: resume.expectedProvider,
+      nextStage: resume.nextStage,
+    })
+  }
+  return authorized
 })
 
 ipcMain.handle('factory-batches:technical-diagnostics', async (_event, jobId: unknown) => {
@@ -1445,6 +1453,7 @@ async function buildBatchDiagnosticDossier(
   job: import('@shared/factory-batch-contracts').DestinationBatchJob,
   diagnostic: import('./factory-batch-diagnostics').FactoryBatchTechnicalDiagnostic,
   ambiguityResolutionFailure?: FactoryBatchAmbiguityResolutionFailure,
+  authorizationGranted?: import('./factory-batch-diagnostic-dossier').FactoryBatchAuthorizationGrantedEvent,
 ) {
   const { data: execution } = await client.from('real_editorial_executions').select('id')
     .eq('owner_type', 'BATCH_JOB').eq('owner_id', job.id).maybeSingle()
@@ -1463,6 +1472,12 @@ async function buildBatchDiagnosticDossier(
     reservations: (reservations.data ?? []) as Record<string, unknown>[], providerCalls: (providerCalls.data ?? []) as Record<string, unknown>[],
     ambiguities: (ambiguities.data ?? []) as Record<string, unknown>[], resolutions: (resolutions.data ?? []) as Record<string, unknown>[], artifacts: (artifacts.data ?? []) as Record<string, unknown>[],
     ambiguityResolutionFailure,
+    authorizationGranted,
+    outputPolicy: {
+      maxOutputTokensConfigured: readRealLlmRouting().routes.analysis.maxOutputTokens ?? 12_000,
+      maxOutputTokensSent: readRealLlmRouting().routes.analysis.maxOutputTokens ?? 12_000,
+      recommendedFix: 'Aplicar la política estructurada concisa de Stage B antes de una nueva llamada autorizada.',
+    },
     version: { applicationVersion: app.getVersion(), gitSha: currentGitSha(), branch: process.env.GIT_BRANCH ?? currentGitBranch(), buildId: process.env.BUILD_ID ?? 'UNKNOWN' },
   })
 }
@@ -1489,8 +1504,9 @@ async function persistBatchDiagnosticDossier(
   job: import('@shared/factory-batch-contracts').DestinationBatchJob,
   diagnostic: import('./factory-batch-diagnostics').FactoryBatchTechnicalDiagnostic,
   ambiguityResolutionFailure?: FactoryBatchAmbiguityResolutionFailure,
+  authorizationGranted?: import('./factory-batch-diagnostic-dossier').FactoryBatchAuthorizationGrantedEvent,
 ) {
-  const dossier = await buildBatchDiagnosticDossier(client, job, diagnostic, ambiguityResolutionFailure)
+  const dossier = await buildBatchDiagnosticDossier(client, job, diagnostic, ambiguityResolutionFailure, authorizationGranted)
   return persistFactoryBatchDiagnosticDossier(app.getPath('userData'), dossier)
 }
 
@@ -1498,9 +1514,10 @@ async function captureBatchJobDiagnostic(
   client: ReturnType<typeof createLocalSupabaseClientFromEnv>['client'],
   job: import('@shared/factory-batch-contracts').DestinationBatchJob,
   ambiguityResolutionFailure?: FactoryBatchAmbiguityResolutionFailure,
+  authorizationGranted?: import('./factory-batch-diagnostic-dossier').FactoryBatchAuthorizationGrantedEvent,
 ): Promise<void> {
   const diagnostic = await readBatchTechnicalDiagnostic(client, job)
-  await persistBatchDiagnosticDossier(client, job, diagnostic, ambiguityResolutionFailure)
+  await persistBatchDiagnosticDossier(client, job, diagnostic, ambiguityResolutionFailure, authorizationGranted)
 }
 
 async function hasOpenBatchProviderAmbiguity(

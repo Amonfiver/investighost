@@ -4,8 +4,9 @@ import type { DestinationBatchJob } from '@shared/factory-batch-contracts'
 export type BatchResumePlan = {
   researchCorpusExists: boolean
   analysisArtifactExists: boolean
-  resumeFromStage: 'analysis.stage_a' | null
-  nextStage: 'research.round_1' | 'analysis.stage_a' | null
+  analysisStagesCompleted?: Array<'analysis.stage_a' | 'analysis.stage_b' | 'analysis.stage_c' | 'analysis.stage_d'>
+  resumeFromStage: 'analysis.stage_a' | 'analysis.stage_b' | 'analysis.stage_c' | 'analysis.stage_d' | null
+  nextStage: 'research.round_1' | 'analysis.stage_a' | 'analysis.stage_b' | 'analysis.stage_c' | 'analysis.stage_d' | null
   expectedProvider: 'tavily' | 'deepseek' | null
   previousAmbiguousUsageResolved: boolean
   terminalAnalysisRetryAuthorized: boolean
@@ -14,6 +15,7 @@ export type BatchResumePlan = {
 type ResumeArtifacts = {
   checkpointPayload: unknown
   analysisArtifactExists: boolean
+  analysisStageArtifacts?: string[]
   ambiguity: { decision: string; responseRecovered: boolean } | null
 }
 
@@ -25,11 +27,13 @@ export async function readBatchResumePlan(client: SupabaseClient, job: Destinati
     .eq('owner_type', 'BATCH_JOB').eq('owner_id', job.id).maybeSingle()
   if (executionError || !execution) return emptyResumePlan()
   const executionId = String((execution as { id: unknown }).id)
-  const [{ data: checkpoint }, { data: analysis }, { data: ambiguity }] = await Promise.all([
+  const [{ data: checkpoint }, { data: analysis }, { data: stageArtifacts }, { data: ambiguity }] = await Promise.all([
     client.from('real_editorial_artifacts').select('payload').eq('execution_owner_id', executionId)
       .eq('artifact_kind', 'checkpoint').eq('artifact_key', 'workflow').order('version', { ascending: false }).limit(1).maybeSingle(),
     client.from('real_editorial_artifacts').select('id').eq('execution_owner_id', executionId)
       .eq('artifact_kind', 'coverage').eq('artifact_key', 'final').limit(1).maybeSingle(),
+    client.from('real_editorial_artifacts').select('artifact_key').eq('execution_owner_id', executionId)
+      .eq('artifact_kind', 'checkpoint').like('artifact_key', 'analysis-stage/round-1/%'),
     client.from('real_editorial_ambiguous_calls').select('terminal_decision,terminal_resolution_id').eq('execution_owner_id', executionId)
       .in('terminal_decision', ['consumption_confirmed', 'prudential_cost_assumed']).order('resolved_at', { ascending: false }).limit(1).maybeSingle(),
   ])
@@ -40,6 +44,7 @@ export async function readBatchResumePlan(client: SupabaseClient, job: Destinati
   return deriveBatchResumePlan({
     checkpointPayload: checkpoint?.payload,
     analysisArtifactExists: Boolean(analysis),
+    analysisStageArtifacts: (stageArtifacts ?? []).map(row => String((row as { artifact_key?: unknown }).artifact_key ?? '')),
     ambiguity: resolution && typeof resolution.decision === 'string'
       ? { decision: resolution.decision, responseRecovered: resolution.response_recovered === true }
       : null,
@@ -52,14 +57,17 @@ export function deriveBatchResumePlan(artifacts: ResumeArtifacts): BatchResumePl
     && (checkpoint as { dossier?: unknown }).dossier && typeof (checkpoint as { dossier?: unknown }).dossier === 'object')
   const state = checkpoint && typeof checkpoint === 'object' && !Array.isArray(checkpoint)
     ? (checkpoint as { state?: unknown }).state : null
-  const resumeAnalysis = hasDossier && state === 'analyzing_round_1' && !artifacts.analysisArtifactExists
+  const stages = orderedCompletedStages(artifacts.analysisStageArtifacts ?? [])
+  const nextAnalysisStage = nextStage(stages)
+  const resumeAnalysis = hasDossier && state === 'analyzing_round_1' && !artifacts.analysisArtifactExists && nextAnalysisStage !== null
   const terminalAnalysisResolutionAllowsRetry = artifacts.ambiguity?.responseRecovered === false
     && ['consumption_confirmed', 'prudential_cost_assumed'].includes(artifacts.ambiguity.decision)
   return {
     researchCorpusExists: hasDossier,
     analysisArtifactExists: artifacts.analysisArtifactExists,
-    resumeFromStage: resumeAnalysis ? 'analysis.stage_a' : null,
-    nextStage: resumeAnalysis ? 'analysis.stage_a' : artifacts.analysisArtifactExists ? null : 'research.round_1',
+    analysisStagesCompleted: stages,
+    resumeFromStage: resumeAnalysis ? nextAnalysisStage : null,
+    nextStage: resumeAnalysis ? nextAnalysisStage : artifacts.analysisArtifactExists ? null : 'research.round_1',
     expectedProvider: resumeAnalysis ? 'deepseek' : artifacts.analysisArtifactExists ? null : 'tavily',
     previousAmbiguousUsageResolved: Boolean(artifacts.ambiguity),
     terminalAnalysisRetryAuthorized: resumeAnalysis && terminalAnalysisResolutionAllowsRetry,
@@ -67,7 +75,24 @@ export function deriveBatchResumePlan(artifacts: ResumeArtifacts): BatchResumePl
 }
 
 function emptyResumePlan(): BatchResumePlan {
-  return { researchCorpusExists: false, analysisArtifactExists: false, resumeFromStage: null, nextStage: 'research.round_1', expectedProvider: 'tavily', previousAmbiguousUsageResolved: false, terminalAnalysisRetryAuthorized: false }
+  return { researchCorpusExists: false, analysisArtifactExists: false, analysisStagesCompleted: [], resumeFromStage: null, nextStage: 'research.round_1', expectedProvider: 'tavily', previousAmbiguousUsageResolved: false, terminalAnalysisRetryAuthorized: false }
+}
+
+const ANALYSIS_STAGES = ['analysis.stage_a', 'analysis.stage_b', 'analysis.stage_c', 'analysis.stage_d'] as const
+type AnalysisStage = typeof ANALYSIS_STAGES[number]
+
+function orderedCompletedStages(keys: string[]): AnalysisStage[] {
+  const completed = new Set(keys.map(key => key.match(/^analysis-stage\/round-1\/(stage_[a-d])$/)?.[1]).filter(Boolean))
+  const stages: AnalysisStage[] = []
+  for (const stage of ANALYSIS_STAGES) {
+    if (!completed.has(stage.replace('analysis.', ''))) break
+    stages.push(stage)
+  }
+  return stages
+}
+
+function nextStage(completed: AnalysisStage[]): AnalysisStage | null {
+  return ANALYSIS_STAGES[completed.length] ?? null
 }
 
 /** The old reservation remains immutable.  This only makes the failed job

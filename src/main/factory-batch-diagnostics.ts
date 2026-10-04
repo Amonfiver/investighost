@@ -154,7 +154,7 @@ export function buildFactoryBatchTechnicalDiagnostic(
       : errorCode === 'TIMEOUT' && timeout?.reconciliationRequired
         ? 'La solicitud fue despachada localmente, pero el resultado remoto es ambiguo. Comprueba el usage de DeepSeek y resuelve el resultado ambiguo antes de reintentar.'
       : reconciledTerminalRetry
-        ? 'La conciliación humana cerró una llamada sin respuesta recuperable. Reintenta analysis.stage_a: se creará una nueva llamada DeepSeek sin repetir Research.'
+        ? `La conciliación humana cerró una llamada sin respuesta recuperable. Reintenta ${resume?.nextStage ?? 'analysis.stage_a'}: se creará una nueva llamada DeepSeek sin repetir Research ni los stages durables previos.`
       : job.retryable ? 'Reintenta el trabajo cuando la causa indicada esté resuelta.' : 'Revisa la causa técnica antes de volver a intentarlo.',
     resumeFromStage: resume?.resumeFromStage ?? null,
     reusedResearchCorpus: resume?.researchCorpusExists ?? false,

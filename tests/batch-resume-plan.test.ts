@@ -19,7 +19,7 @@ describe('batch durable resume plan', () => {
       analysisArtifactExists: false,
       ambiguity: { decision: 'consumption_confirmed', responseRecovered: false },
     })
-    expect(plan).toEqual({ researchCorpusExists: true, analysisArtifactExists: false, resumeFromStage: 'analysis.stage_a', nextStage: 'analysis.stage_a', expectedProvider: 'deepseek', previousAmbiguousUsageResolved: true, terminalAnalysisRetryAuthorized: true })
+    expect(plan).toEqual({ researchCorpusExists: true, analysisArtifactExists: false, analysisStagesCompleted: [], resumeFromStage: 'analysis.stage_a', nextStage: 'analysis.stage_a', expectedProvider: 'deepseek', previousAmbiguousUsageResolved: true, terminalAnalysisRetryAuthorized: true })
     expect(canRetryReconciledAnalysis(failedSegovia(), plan)).toBe(true)
   })
 
@@ -46,5 +46,33 @@ describe('batch durable resume plan', () => {
     })
     expect(plan.terminalAnalysisRetryAuthorized).toBe(false)
     expect(canRetryReconciledAnalysis(failedSegovia(), plan)).toBe(false)
+  })
+
+  it('RESUME_AFTER_STAGE_B_INCOMPLETE_IS_STAGE_B and never rewinds a durable Stage A', () => {
+    const plan = deriveBatchResumePlan({
+      checkpointPayload: { state: 'analyzing_round_1', dossier: { sources: [{ id: 'tavily-durable' }] } },
+      analysisArtifactExists: false,
+      analysisStageArtifacts: ['analysis-stage/round-1/stage_a'],
+      ambiguity: null,
+    })
+    expect(plan).toMatchObject({
+      researchCorpusExists: true,
+      analysisStagesCompleted: ['analysis.stage_a'],
+      resumeFromStage: 'analysis.stage_b',
+      nextStage: 'analysis.stage_b',
+      expectedProvider: 'deepseek',
+    })
+  })
+
+  it('STAGE_B_FAILURE_DOES_NOT_REWIND_TO_STAGE_A when only Stage A has a durable checkpoint', () => {
+    const plan = deriveBatchResumePlan({
+      checkpointPayload: { state: 'analyzing_round_1', dossier: { sources: [{ id: 'tavily-durable' }] } },
+      analysisArtifactExists: false,
+      analysisStageArtifacts: ['analysis-stage/round-1/stage_a'],
+      ambiguity: { decision: 'prudential_cost_assumed', responseRecovered: false },
+    })
+    expect(plan.resumeFromStage).toBe('analysis.stage_b')
+    expect(plan.nextStage).toBe('analysis.stage_b')
+    expect(plan.expectedProvider).toBe('deepseek')
   })
 })

@@ -22,8 +22,17 @@ export type DeepSeekAnalysisStageId = typeof DEEPSEEK_ANALYSIS_STAGE_IDS[number]
 
 export const DeepSeekStageASchema = z.object({ claims: z.array(RealKnowledgeClaimSchema) }).strict()
 export const DeepSeekStageBSchema = z.object({
-  contradictions: z.array(z.object({ text: z.string().trim().min(1).max(2_000), claimIds: z.array(z.string().trim().min(1)).min(1) }).strict()),
-  gaps: z.array(OpenAIKnowledgeGapSchema),
+  // Stage B is a focused discrepancy pass, not a second research corpus.  A
+  // bounded result keeps its structured response well below the route's
+  // finite output cap while preserving all of the editorial decisions the
+  // following stages consume.
+  contradictions: z.array(z.object({
+    text: z.string().trim().min(1).max(500),
+    claimIds: z.array(z.string().trim().min(1)).min(1).max(8),
+  }).strict()).max(12),
+  gaps: z.array(OpenAIKnowledgeGapSchema.extend({
+    description: z.string().trim().min(1).max(400),
+  })).max(12),
 }).strict()
 export const DeepSeekStageCSchema = z.object({
   coverage: RealCoverageSchema,
@@ -121,7 +130,10 @@ export class DeepSeekMultiStageAnalysisEngine implements IntelligenceEngine {
     return { stage: 'A_claims_evidence', destination: mission.destination, objectives: mission.objectives, profiles: mission.profiles, dossier, instruction: 'Extrae solo claims sustentados. Cada evidenceId debe existir en evidence.' }
   }
   private stageBPayload(mission: RealResearchMission, dossier: RealResearchDossier, claims: unknown): Record<string, unknown> {
-    return { stage: 'B_contradictions_gaps', destination: mission.destination, claims, evidence: dossier.evidence, instruction: 'Identifica contradicciones referidas a claimIds existentes y gaps sin inventar hechos.' }
+    return {
+      stage: 'B_contradictions_gaps', destination: mission.destination, claims, evidence: dossier.evidence,
+      instruction: 'Identifica sólo contradicciones materiales referidas a claimIds existentes y gaps editoriales accionables, sin inventar hechos. Devuelve como máximo 12 contradicciones y 12 gaps; sé conciso.',
+    }
   }
   private stageCPayload(mission: RealResearchMission, dossier: RealResearchDossier, claims: unknown, findings: unknown): Record<string, unknown> {
     return { stage: 'C_coverage', destination: mission.destination, profiles: mission.profiles, claims, findings, sourceMetadata: dossier.sources.map(source => ({ id: source.id, title: source.title, score: source.score })), evidence: dossier.evidence, instruction: 'Evalúa coverage y profileCoverage usando solamente los datos estructurados.' }

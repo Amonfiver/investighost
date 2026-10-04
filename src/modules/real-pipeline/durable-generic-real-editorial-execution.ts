@@ -17,7 +17,11 @@ import {
   SupabaseGenericExecutionLedgerRepository,
   type GenericDurableArtifactReference,
 } from './generic-durable-execution-repository'
-import type { IntelligenceDraft, RealPipelineProviderSelection } from './ports'
+import type { IntelligenceDraft, IntelligenceEngine, IntelligenceReview, IntelligenceRoundAnalysis, RealPipelineProviderSelection } from './ports'
+import type { IntelligenceRoutingStage, ResolvedIntelligenceRoute } from './llm-routing'
+import type { RealEditorialCoverageConstraints } from '@shared/real-editorial-pilot-contracts'
+import type { RealMasterKnowledge, RealResearchDossier, RealResearchMission } from '@shared/real-pipeline-contracts'
+import type { ZodTypeAny } from 'zod'
 import { REAL_EDITORIAL_OPERATION_BUDGETS } from './durable-real-editorial-pipeline'
 import type { BatchSharedLibraryTransition } from '@modules/library-versioning/batch-library-transition'
 import { redoGenerationStrategy, redoVariation } from '@shared/redo-guidance-contracts'
@@ -244,8 +248,18 @@ export class DurableGenericRealEditorialExecution {
         reservation,
       ),
     )
+    // The generic batch owner must persist each successful multi-stage
+    // analysis result before advancing to the next remote call.  Otherwise a
+    // Stage B failure makes a completed Stage A indistinguishable from a call
+    // that never happened after a process restart.
+    const intelligenceEngine = new DurableGenericIntelligenceEngine(
+      this.dependencies.providers.intelligenceEngine,
+      repository,
+      execution.id,
+    )
+    const providers = { ...this.dependencies.providers, intelligenceEngine }
     const workflow = new ControlledRealWorkflow(
-      this.dependencies.providers,
+      providers,
       repository.checkpointStore(execution.id, context.redo ? `workflow/redo/${context.redo.operationId}` : 'workflow'),
       calls,
       {
@@ -262,10 +276,10 @@ export class DurableGenericRealEditorialExecution {
     )
     return {
       context, execution, repository, mission, calls,
-      structuredTransport: hasStructuredTransport(this.dependencies.providers.intelligenceEngine)
-        ? this.dependencies.providers.intelligenceEngine as StructuredGenerationTransport
+      structuredTransport: hasStructuredTransport(intelligenceEngine)
+        ? intelligenceEngine as StructuredGenerationTransport
         : undefined,
-      pipeline: new FullRealEditorialPipeline(workflow, this.dependencies.providers.intelligenceEngine, calls, {
+      pipeline: new FullRealEditorialPipeline(workflow, intelligenceEngine, calls, {
         draftingCost: REAL_EDITORIAL_OPERATION_BUDGETS.drafting,
         reviewCost: REAL_EDITORIAL_OPERATION_BUDGETS.finalReview,
       }),
@@ -397,6 +411,91 @@ export class DurableGenericRealEditorialExecution {
     if (!artifact) throw new DurableGenericExecutionError('ARTIFACT_REQUIRED', `Falta ${kind}/${key}`)
     return artifact
   }
+}
+
+/**
+ * Owner-neutral equivalent of the pilot's durable intelligence adapter.  It
+ * deliberately stores only the validated stage output and usage, never a
+ * prompt or credential.  The artifact key is stable, so a restart can reuse
+ * a completed stage without issuing it again.
+ */
+export class DurableGenericIntelligenceEngine implements IntelligenceEngine {
+  readonly id: string
+  readonly model: string
+  readonly simulation: boolean
+  readonly analysisStrategy?: 'deepseek_multi_stage'
+
+  constructor(
+    private readonly delegate: IntelligenceEngine,
+    private readonly repository: SupabaseGenericDurableExecutionRepository,
+    private readonly executionOwnerId: string,
+  ) {
+    this.id = delegate.id
+    this.model = delegate.model
+    this.simulation = delegate.simulation
+    this.analysisStrategy = delegate.analysisStrategy
+  }
+
+  get analysisStageIds(): readonly string[] | undefined { return this.delegate.analysisStageIds }
+
+  routeFor(stage: IntelligenceRoutingStage): ResolvedIntelligenceRoute {
+    const routed = this.delegate as IntelligenceEngine & { routeFor?: (value: IntelligenceRoutingStage) => ResolvedIntelligenceRoute }
+    if (routed.routeFor) return routed.routeFor(stage)
+    return { providerId: this.id === 'deepseek' || this.model === 'deepseek-flash' ? 'deepseek' : 'openai', model: this.model, apiModel: this.model }
+  }
+
+  validateAnalyze(mission: RealResearchMission, dossier: RealResearchDossier): void {
+    this.delegate.validateAnalyze?.(mission, dossier)
+  }
+
+  analysisStageBudget(stage: string): number {
+    if (!this.delegate.analysisStageBudget) throw new Error('MULTI_STAGE_UNAVAILABLE')
+    return this.delegate.analysisStageBudget(stage)
+  }
+
+  analyze(...args: Parameters<IntelligenceEngine['analyze']>): Promise<IntelligenceRoundAnalysis> {
+    return this.delegate.analyze(...args)
+  }
+
+  async analyzeMultiStage(...args: Parameters<NonNullable<IntelligenceEngine['analyzeMultiStage']>>): Promise<IntelligenceRoundAnalysis> {
+    const [mission, dossier, signal, executeStage] = args
+    if (!this.delegate.analyzeMultiStage) throw new Error('MULTI_STAGE_UNAVAILABLE')
+    return this.delegate.analyzeMultiStage(mission, dossier, signal, async (stage, operation) => {
+      const key = `analysis-stage/round-${mission.round}/${stage}`
+      const existing = await this.repository.latestArtifact(this.executionOwnerId, 'checkpoint', key)
+      if (existing && isStageCheckpoint(existing.payload)) return structuredClone(existing.payload)
+      const result = await executeStage(stage, operation)
+      const prior = await this.repository.latestArtifact(this.executionOwnerId, 'checkpoint', key)
+      await this.repository.appendArtifact(this.executionOwnerId, 'checkpoint', key, (prior?.version ?? 0) + 1, {
+        stage,
+        output: result.output,
+        usage: result.usage,
+      })
+      return result
+    })
+  }
+
+  validateDraft(mission: RealResearchMission, knowledge: RealMasterKnowledge, constraints?: RealEditorialCoverageConstraints): void {
+    this.delegate.validateDraft?.(mission, knowledge, constraints)
+  }
+
+  draft(...args: Parameters<IntelligenceEngine['draft']>): Promise<IntelligenceDraft[]> { return this.delegate.draft(...args) }
+
+  async generateStructured<T>(operation: string, payload: Record<string, unknown>, schema: ZodTypeAny, signal: AbortSignal): Promise<{ output: T; usage: IntelligenceRoundAnalysis['usage'] }> {
+    if (!this.delegate.generateStructured) throw new Error('STRUCTURED_GENERATION_UNAVAILABLE')
+    return this.delegate.generateStructured<T>(operation, payload, schema, signal)
+  }
+
+  validateReview(mission: RealResearchMission, knowledge: RealMasterKnowledge, drafts: IntelligenceDraft[], constraints?: RealEditorialCoverageConstraints): void {
+    this.delegate.validateReview?.(mission, knowledge, drafts, constraints)
+  }
+
+  review(...args: Parameters<IntelligenceEngine['review']>): Promise<IntelligenceReview> { return this.delegate.review(...args) }
+}
+
+function isStageCheckpoint(value: unknown): value is { output: unknown; usage: IntelligenceRoundAnalysis['usage'] } {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value)
+    && 'output' in value && 'usage' in value)
 }
 
 export class DurableGenericExecutionError extends Error {

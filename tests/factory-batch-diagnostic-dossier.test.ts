@@ -95,10 +95,40 @@ describe('expediente diagnóstico durable batch', () => {
 
   it('DOSSIER_HISTORICAL_ATTEMPT_NOT_REPLACED_WITH_CURRENT_ATTEMPT', () => {
     const value = dossier()
-    expect(value.events.find(item => item.eventType === 'RESERVATION_OBSERVED')?.jobAttempt).toBe(3)
+    expect(value.events.find(item => item.eventType === 'RESERVATION_OBSERVED')?.jobAttempt).toBe('UNKNOWN')
+    expect(value.events.find(item => item.eventType === 'RESERVATION_OBSERVED')?.stageAttempt).toBe(3)
     expect(value.events.find(item => item.eventType === 'PROVIDER_CALL_TIMEOUT')?.jobAttempt).toBe('UNKNOWN')
-    expect(value.events.find(item => item.eventType === 'AMBIGUITY_DETECTED')?.jobAttempt).toBe(3)
+    expect(value.events.find(item => item.eventType === 'AMBIGUITY_DETECTED')?.jobAttempt).toBe('UNKNOWN')
+    expect(value.events.find(item => item.eventType === 'AMBIGUITY_DETECTED')?.stageAttempt).toBe(3)
     expect(value.events.find(item => item.eventType === 'ARTIFACT_REFERENCE_OBSERVED')?.jobAttempt).toBe('UNKNOWN')
     expect(renderFactoryBatchDiagnosticMarkdown(value)).toContain('GIT_SHA_CURRENT: f79a620')
+  })
+
+  it('AUTHORIZATION_GRANTED is emitted only for an explicit authorization transition, never a dossier read', async () => {
+    const withoutTransition = dossier()
+    const withTransition = buildFactoryBatchDiagnosticDossier({
+      job, diagnostic, generatedAt: '2026-10-02T10:00:00.000Z', reservations: [], providerCalls: [], ambiguities: [], resolutions: [], artifacts: [],
+      authorizationGranted: { authorizedAt: '2026-10-02T10:05:00.000Z', expectedProvider: 'deepseek', nextStage: 'analysis.stage_a' },
+    })
+    expect(withoutTransition.events.some(event => event.eventType === 'AUTHORIZATION_GRANTED')).toBe(false)
+    expect(withTransition.events.filter(event => event.eventType === 'AUTHORIZATION_GRANTED')).toHaveLength(1)
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'investighost-auth-dossier-'))
+    await persistFactoryBatchDiagnosticDossier(dir, withTransition)
+    await persistFactoryBatchDiagnosticDossier(dir, withTransition)
+    const jsonl = await readFile(path.join(dir, 'diagnostics', 'jobs', `${job.id}.jsonl`), 'utf8')
+    expect(jsonl.split('\n').filter(line => line.includes('AUTHORIZATION_GRANTED'))).toHaveLength(1)
+  })
+
+  it('INCOMPLETE_EVENT_EXPORTS_OUTPUT_LIMIT_METADATA without treating a completed provider result as ambiguity', () => {
+    const value = buildFactoryBatchDiagnosticDossier({
+      job: { ...job, attemptCount: 9, lastFailure: 'INCOMPLETE: max_output_tokens' }, diagnostic,
+      generatedAt: '2026-10-04T12:47:00.000Z', reservations: [], ambiguities: [], resolutions: [], artifacts: [],
+      outputPolicy: { maxOutputTokensConfigured: 12_000, maxOutputTokensSent: 12_000, recommendedFix: 'Stage B conciso' },
+      providerCalls: [{ call_id: '0fe96e38-ee08-4cdd-abf4-dcf822ee95f4', reservation_id: '6435a9e1-0f6f-480a-bd04-613cb15e68ad', state: 'failed', provider_id: 'deepseek', model: 'deepseek-flash', stage: '1_analysis.stage_b', operation: 'analysis.stage_b', attempt: 1, remote_id: '381ddebe-f433-4d3e-ac2e-ad6d8b5dc1d3', input_tokens: 4908, output_tokens: 12000, calculated_cost: 0.0079362, sanitized_error: 'INCOMPLETE|type=incomplete|code=max_output_tokens|message=truncated', created_at: '2026-10-04T12:46:54.000Z' }],
+    })
+    expect(value.events.find(event => event.eventType === 'PROVIDER_CALL_INCOMPLETE')).toMatchObject({
+      jobAttempt: 'UNKNOWN', stageAttempt: 1,
+      data: { incompleteType: 'incomplete', incompleteCode: 'max_output_tokens', maxOutputTokensConfigured: 12_000, maxOutputTokensSent: 12_000, outputTokens: 12_000, inputTokens: 4908, calculatedCost: 0.0079362 },
+    })
   })
 })
